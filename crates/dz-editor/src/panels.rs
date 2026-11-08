@@ -86,6 +86,8 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
             });
             ui.menu_button(t("View"), |ui| {
                 ui.checkbox(&mut app.show_objects, t("Objects"));
+                ui.checkbox(&mut app.show_grass, t("Grass"));
+                ui.checkbox(&mut app.show_shadows, t("Shadows"));
                 ui.checkbox(&mut app.show_water, t("Water"));
                 ui.checkbox(&mut app.show_lines, t("Roads and lines"));
                 ui.separator();

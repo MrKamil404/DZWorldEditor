@@ -3,12 +3,12 @@ use crate::world::SurfaceLayer;
 use anyhow::{ensure, Result};
 use std::collections::HashMap;
 
-fn strip_comments(text: &str) -> String {
+pub(crate) fn strip_comments(text: &str) -> String {
     text.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("\n")
 }
 
 /// Text inside the first `class <name> { ... }` block.
-fn block<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn block<'a>(text: &'a str, name: &str) -> Option<&'a str> {
     let lower = text.to_ascii_lowercase();
     let key = format!("class {}", name.to_ascii_lowercase());
     let mut from = 0;
@@ -39,13 +39,18 @@ fn block<'a>(text: &'a str, name: &str) -> Option<&'a str> {
 }
 
 /// Direct child classes of a block as (name, body).
-fn children(text: &str) -> Vec<(String, String)> {
+pub(crate) fn children(text: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut rest = text;
     while let Some(at) = rest.find("class ") {
         let after = &rest[at + 6..];
         let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
         let Some(open) = after.find('{') else { break };
+        // A forward declaration such as `class Base;` has no body.
+        if after.find(';').is_some_and(|semi| semi < open) {
+            rest = &after[name.len()..];
+            continue;
+        }
         let mut depth = 0;
         let mut end = None;
         for (i, c) in after[open..].char_indices() {
@@ -68,7 +73,7 @@ fn children(text: &str) -> Vec<(String, String)> {
     out
 }
 
-fn field(body: &str, key: &str) -> Option<String> {
+pub(crate) fn field(body: &str, key: &str) -> Option<String> {
     for stmt in body.split(';') {
         let Some((k, v)) = stmt.split_once('=') else { continue };
         if k.trim().eq_ignore_ascii_case(key) {
@@ -76,6 +81,15 @@ fn field(body: &str, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Items of an array field such as `names[] = {"a", "b"};`.
+pub(crate) fn array(body: &str, key: &str) -> Vec<String> {
+    let lower = body.to_ascii_lowercase();
+    let Some(at) = lower.find(&format!("{}[]", key.to_ascii_lowercase())) else { return Vec::new() };
+    let Some(open) = body[at..].find('{') else { return Vec::new() };
+    let Some(close) = body[at + open..].find('}') else { return Vec::new() };
+    body[at + open + 1..at + open + close].split(',').map(|v| v.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty()).collect()
 }
 
 pub fn parse(text: &str) -> Result<Vec<SurfaceLayer>> {

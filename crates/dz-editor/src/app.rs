@@ -203,6 +203,12 @@ pub struct App {
     pub shading2: Shading,
     pub wireframe: bool,
     pub show_objects: bool,
+    pub show_grass: bool,
+    pub show_shadows: bool,
+    pub clutter_db: dz_core::clutter::ClutterDb,
+    /// Per layer: (index in `clutter_models`, cumulative probability, scale min, scale max).
+    pub clutter_layers: Vec<Vec<(u32, f32, f32, f32)>>,
+    pub clutter_models: Vec<String>,
     pub show_water: bool,
     pub show_lines: bool,
     pub show_land_grid: bool,
@@ -268,13 +274,14 @@ impl App {
         let thumbs = Thumbnails::new(db.clone(), data_dir().join("thumbnails"), ctx.clone());
         let surfaces = models::scan_surfaces(&root);
         let camera_speed = settings.camera_speed;
+        let clutter_db = dz_core::clutter::ClutterDb::load(&root);
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
             doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, view_mode: ViewMode::Perspective,
-            shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_water: true, show_lines: true,
+            shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3 },
@@ -455,6 +462,18 @@ impl App {
 
     pub fn reload_layer_textures(&mut self) {
         let Some(doc) = &self.doc else { return };
+        // Ground clutter of each surface, as the game configures it.
+        let mut models: Vec<String> = Vec::new();
+        self.clutter_layers = doc.world.layers.iter().map(|l| {
+            self.clutter_db.for_texture(&l.texture).into_iter().map(|e| {
+                let i = models.iter().position(|m| *m == e.model).unwrap_or_else(|| {
+                    models.push(e.model.clone());
+                    models.len() - 1
+                });
+                (i as u32, e.threshold, e.scale_min, e.scale_max)
+            }).collect()
+        }).collect();
+        self.clutter_models = models;
         let list: Vec<_> = doc.world.layers.iter().enumerate().take(64).map(|(i, l)| (i, l.texture.clone(), l.color)).collect();
         self.layer_rx = Some(models::load_layer_textures(self.settings.tools.work_drive.clone(), list, self.ctx.clone()));
     }

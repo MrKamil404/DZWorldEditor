@@ -1,6 +1,7 @@
 //! Core of DZ World Editor: no UI code lives here.
 pub mod assets;
 pub mod build;
+pub mod clutter;
 pub mod edit;
 pub mod export;
 pub mod fsutil;

@@ -435,6 +435,10 @@
   "de": "Gelände unter der Straße angleichen",
   "pl": "Wyprofiluj teren pod drogą"
  },
+ "Grass": {
+  "de": "Gras",
+  "pl": "Trawa"
+ },
  "Height": {
   "de": "Höhe",
   "pl": "Wysokość"
@@ -1002,6 +1006,10 @@
  "Settlement": {
   "de": "Siedlung",
   "pl": "Osada"
+ },
+ "Shadows": {
+  "de": "Schatten",
+  "pl": "Cienie"
  },
  "Sharpness": {
   "de": "Schärfe",

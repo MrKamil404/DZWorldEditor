@@ -110,7 +110,7 @@ fn from_model3d(mesh: &model3d::ModelMesh, center: [f32; 3], key: (u32, u8), wit
         impostor_fit = [fit.world_size, fit.center[0] + center[0], fit.center[1] + center[1]];
         impostor_mips(rgba, IMPOSTOR_SIZE as usize)
     });
-    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, impostor, impostor_fit }
+    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, impostor, impostor_fit, conform: false }
 }
 
 /// MLOD models and everything `model3d` refuses go through the road tool's reader.
@@ -136,7 +136,7 @@ fn from_mesh3d(file: &Path, cache: &dayz_road_tool::mesh3d::Cache, key: (u32, u8
         });
         batches.push((first, indices.len() as u32 - first, tex));
     }
-    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, impostor: None, impostor_fit: [0.0; 3] })
+    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, impostor: None, impostor_fit: [0.0; 3], conform: false })
 }
 
 impl ModelLoader {
@@ -205,7 +205,86 @@ fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d
         }
         mesh.impostor = None;
     }
+    // The game fits road parts to the terrain; give them vertices to follow it with.
+    if path.contains("\\roads\\parts\\") {
+        tessellate(&mut mesh, 2.0);
+        mesh.conform = true;
+    }
     Some(mesh)
+}
+
+/// Splits triangles until no edge is longer than `limit` metres.
+fn tessellate(mesh: &mut MeshData, limit: f32) {
+    let stride = 8;
+    let source = std::mem::take(&mut mesh.vertices);
+    let vertex = |i: u32| -> [f32; 8] { source[i as usize * stride..i as usize * stride + stride].try_into().unwrap() };
+    let mix = |a: &[f32; 8], b: &[f32; 8]| -> [f32; 8] { std::array::from_fn(|k| (a[k] + b[k]) * 0.5) };
+    let len2 = |a: &[f32; 8], b: &[f32; 8]| (0..3).map(|k| (a[k] - b[k]).powi(2)).sum::<f32>();
+    let mut vertices = Vec::with_capacity(source.len() * 8);
+    let mut indices = Vec::with_capacity(mesh.indices.len() * 8);
+    let mut batches = Vec::with_capacity(mesh.batches.len());
+    let limit2 = limit * limit;
+    for &(first, count, tex) in &mesh.batches {
+        let start = indices.len() as u32;
+        for tri in mesh.indices[first as usize..(first + count) as usize].chunks_exact(3) {
+            let mut stack = vec![[vertex(tri[0]), vertex(tri[1]), vertex(tri[2])]];
+            while let Some([a, b, c]) = stack.pop() {
+                let (ab, bc, ca) = (len2(&a, &b), len2(&b, &c), len2(&c, &a));
+                let longest = ab.max(bc).max(ca);
+                if longest <= limit2 || indices.len() > 3_000_000 {
+                    for v in [a, b, c] {
+                        indices.push((vertices.len() / stride) as u32);
+                        vertices.extend_from_slice(&v);
+                    }
+                } else if longest == ab {
+                    let m = mix(&a, &b);
+                    stack.push([a, m, c]);
+                    stack.push([m, b, c]);
+                } else if longest == bc {
+                    let m = mix(&b, &c);
+                    stack.push([a, b, m]);
+                    stack.push([a, m, c]);
+                } else {
+                    let m = mix(&c, &a);
+                    stack.push([a, b, m]);
+                    stack.push([m, b, c]);
+                }
+            }
+        }
+        batches.push((start, indices.len() as u32 - start, tex));
+    }
+    mesh.vertices = vertices;
+    mesh.indices = indices;
+    mesh.batches = batches;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn tessellation_limits_edges_and_keeps_batches() {
+        let mut m = MeshData {
+            key: (0, 0),
+            vertices: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0].to_vec(),
+            indices: vec![0, 1, 2],
+            batches: vec![(0, 3, Some(0))],
+            textures: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false,
+        };
+        tessellate(&mut m, 2.0);
+        assert!(m.indices.len() > 30);
+        assert_eq!(m.batches, vec![(0, m.indices.len() as u32, Some(0))]);
+        for t in m.indices.chunks_exact(3) {
+            for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+                let (a, b) = (a as usize * 8, b as usize * 8);
+                let d: f32 = (0..3).map(|k| (m.vertices[a + k] - m.vertices[b + k]).powi(2)).sum();
+                assert!(d <= 4.0001, "{d}");
+            }
+        }
+        // Texture coordinates are interpolated with the positions.
+        for v in m.vertices.chunks_exact(8) {
+            assert!((v[6] - v[0] / 10.0).abs() < 1e-5);
+        }
+    }
 }
 
 /// Software rendered previews for the content browser, cached on disk.

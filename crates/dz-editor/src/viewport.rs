@@ -26,6 +26,7 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
+    toggles: Option<(bool, bool, Shading)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -184,6 +185,9 @@ fn write_box(out: &mut Vec<f32>, o: &Obj, y: f32, info: &ModelInfo, tint: [f32; 
     write_instance(out, &scaled, p, tint);
 }
 
+/// Model ids at and above this are ground clutter, not objects of the map.
+const CLUTTER_BASE: u32 = 0x8000_0000;
+
 const SELECT_TINT: [f32; 4] = [1.0, 0.55, 0.05, 1.0];
 
 /// Rebuilds the object draw list when something visible changed.
@@ -193,13 +197,15 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     let Some(doc) = &app.doc else { return ObjectDraw::default() };
     let world = &doc.world;
     let cache = if top { &mut app.view2 } else { &mut app.view3 };
-    if !app.show_objects || world.objects.is_empty() {
+    if !app.show_objects || (world.objects.is_empty() && app.clutter_models.is_empty()) {
         cache.draw = ObjectDraw::default();
         return ObjectDraw::default();
     }
     // The top view lists more than is on screen, so panning needs no rebuild until it nears the edge.
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
-    let moved = if v.ortho {
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 });
+    let toggled = cache.toggles != Some(toggles);
+    let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
         [cache.eye[0] - v.eye[0], cache.eye[2] - v.eye[2]].iter().any(|d| d.abs() > margin) || (cache.mpp - v.mpp).abs() > 0.06 * v.mpp
     } else {
@@ -212,6 +218,7 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
         return cache.draw.clone();
     }
     cache.frames_since = 0;
+    cache.toggles = Some(toggles);
     cache.rev = world.objects.revision;
     cache.selection_rev = app.selection_rev;
     cache.eye = v.eye;
@@ -233,6 +240,9 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     let mut boxes = Vec::new();
     let mut instances: HashMap<(u32, u8), Vec<f32>> = HashMap::new();
     let mut impostors = Vec::new();
+    let mut shadow: HashMap<(u32, u8), Vec<f32>> = HashMap::new();
+    // Shadows reach this far from the camera.
+    const SHADOW_RANGE: f32 = 260.0;
     if v.ortho {
         // Top view: footprints, thinned out when zoomed far out.
         let half = (v.rect.width().max(v.rect.height()) * v.mpp * 0.75).max(10.0);
@@ -284,6 +294,8 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                         if let Some(n) = renderer.model_triangles((m0, LOD_NEAR)).filter(|_| triangles_left > 0) {
                             triangles_left -= n as i64;
                             write_instance(instances.entry((m0, LOD_NEAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                            let key = if renderer.model_triangles((m0, LOD_FAR)).is_some() { (m0, LOD_FAR) } else { (m0, LOD_NEAR) };
+                            write_instance(shadow.entry(key).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
                             continue;
                         }
                     }
@@ -291,6 +303,9 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                         if let Some(n) = renderer.model_triangles((m0, LOD_FAR)).filter(|_| triangles_left > 0) {
                             triangles_left -= n as i64;
                             write_instance(instances.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                            if d < SHADOW_RANGE {
+                                write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                            }
                             if d < near {
                                 requests.push((m0, LOD_NEAR));
                             }
@@ -313,6 +328,78 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
             }
         }
     }
+    // Ground clutter on a 1 m grid, thinned with distance like the game's clutter range.
+    let mut clutter_requests: Vec<(u32, u8)> = Vec::new();
+    if !v.ortho && app.show_grass && !app.clutter_models.is_empty() {
+        const RANGE: i32 = 110;
+        let shading = if top { app.shading2 } else { app.shading3 };
+        if shading == Shading::Lit {
+            let (ex, ez) = (v.eye[0].round() as i32, v.eye[2].round() as i32);
+            let size = world.meta.size_m();
+            let mut triangles_left: i64 = 5_000_000;
+            // The game keeps clutter off roads: (x, z, sin, cos, half width, half length).
+            let mut road_boxes: Vec<[f32; 6]> = Vec::new();
+            let reach = RANGE as f32 + 40.0;
+            world.objects.for_each_in(v.eye[0] - reach, v.eye[2] - reach, v.eye[0] + reach, v.eye[2] + reach, |_, o| {
+                if !world.objects.model_path(o).contains(r"\roads\parts\") {
+                    return;
+                }
+                let info = &infos[o.model as usize];
+                let (sin, cos) = o.yaw.to_radians().sin_cos();
+                let (cx, cz) = ((info.min[0] + info.max[0]) * 0.5, (info.min[2] + info.max[2]) * 0.5);
+                let (hx, hz) = info.footprint();
+                road_boxes.push([o.x + cos * cx + sin * cz, o.z - sin * cx + cos * cz, sin, cos, hx, hz]);
+            });
+            let on_road = |x: f32, z: f32| road_boxes.iter().any(|b| {
+                let (dx, dz) = (x - b[0], z - b[1]);
+                (dx * b[3] - dz * b[2]).abs() < b[4] && (dx * b[2] + dz * b[3]).abs() < b[5]
+            });
+            for z in ez - RANGE..=ez + RANGE {
+                for x in ex - RANGE..=ex + RANGE {
+                    let h = (x as u32).wrapping_mul(73856093) ^ (z as u32).wrapping_mul(19349663);
+                    let h = h.wrapping_mul(2654435761);
+                    let d2 = ((x - ex).pow(2) + (z - ez).pow(2)) as f32;
+                    if d2 > (RANGE * RANGE) as f32 {
+                        continue;
+                    }
+                    let d = d2.sqrt();
+                    let keep = if d < 35.0 { 1.0 } else { (1.0 - (d - 35.0) / 75.0).max(0.12) };
+                    if (h & 1023) as f32 / 1023.0 > keep {
+                        continue;
+                    }
+                    let (wx, wz) = (x as f32 + ((h >> 10) & 255) as f32 / 255.0, z as f32 + ((h >> 18) & 255) as f32 / 255.0);
+                    if wx < 0.0 || wz < 0.0 || wx >= size || wz >= size {
+                        continue;
+                    }
+                    let r = h.rotate_left(11).wrapping_mul(40503);
+                    let pick = (r & 0xFFFF) as f32 / 65535.0;
+                    let Some(list) = app.clutter_layers.get(world.mask.sample(wx, wz, size) as usize) else { continue };
+                    let Some(&(model, _, a, b)) = list.iter().find(|e| pick < e.1) else { continue };
+                    if on_road(wx, wz) {
+                        continue;
+                    }
+                    let y = world.height.sample(wx, wz);
+                    if y < world.meta.sea_level || crate::camera::box_outside(&planes, [wx - 2.0, y - 2.0, wz - 2.0], [wx + 2.0, y + 3.0, wz + 2.0]) {
+                        continue;
+                    }
+                    let id = CLUTTER_BASE + model;
+                    let lod = if d < 25.0 { LOD_NEAR } else { LOD_FAR };
+                    let Some(n) = renderer.model_triangles((id, lod)).filter(|_| triangles_left > 0) else {
+                        clutter_requests.push((model, lod));
+                        continue;
+                    };
+                    triangles_left -= n as i64;
+                    let k = ((r >> 16) & 1023) as f32 / 1023.0;
+                    // Shrinks toward the edge of the range so grass does not pop in.
+                    let fade = ((RANGE as f32 - d) / 18.0).clamp(0.0, 1.0);
+                    let yaw = ((r >> 5) & 511) as f32 * 0.7045;
+                    write_instance(instances.entry((id, lod)).or_default(), &rotation(yaw, 0.0, 0.0, (a + (b - a) * k) * fade), [wx, y, wz], [1.0, 1.0, 1.0, 0.0]);
+                }
+            }
+        }
+    }
+    clutter_requests.sort_unstable();
+    clutter_requests.dedup();
     let mut flat = Vec::with_capacity(instances.values().map(|v| v.len()).sum());
     let mut groups = Vec::with_capacity(instances.len());
     for (k, list) in instances {
@@ -321,12 +408,22 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     }
     requests.sort_unstable();
     requests.dedup();
-    let draw = ObjectDraw { instances: Arc::new(flat), groups: Arc::new(groups), boxes: Arc::new(boxes), impostors: Arc::new(impostors) };
+    let mut shadow_flat = Vec::with_capacity(shadow.values().map(|v| v.len()).sum());
+    let mut shadow_groups = Vec::with_capacity(shadow.len());
+    for (k, list) in shadow {
+        shadow_groups.push((k, (shadow_flat.len() / 16) as u32, (list.len() / 16) as u32));
+        shadow_flat.extend_from_slice(&list);
+    }
+    let draw = ObjectDraw { instances: Arc::new(flat), groups: Arc::new(groups), boxes: Arc::new(boxes), impostors: Arc::new(impostors), shadow_instances: Arc::new(shadow_flat), shadow_groups: Arc::new(shadow_groups) };
     cache.draw = draw.clone();
     drop(renderer);
     let to_load: Vec<(u32, u8, String)> = requests.into_iter().map(|(m, l)| (m, l, world.objects.models[m as usize].path.clone())).collect();
     for (m, l, path) in to_load {
         app.loader.request((m, l), &path);
+    }
+    for (m, l) in clutter_requests {
+        let path = app.clutter_models[m as usize].clone();
+        app.loader.request((CLUTTER_BASE + m, l), &path);
     }
     draw
 }
@@ -932,6 +1029,25 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     painter.text(c + n * 1.15, egui::Align2::CENTER_CENTER, "N", egui::FontId::proportional(10.0), Color32::WHITE);
 }
 
+/// Orthographic sun view over the area in front of the camera, snapped to shadow map texels
+/// so edges do not shimmer while moving.
+fn sun_matrix(v: &View) -> [f32; 16] {
+    const RADIUS: f32 = 300.0;
+    const DEPTH: f32 = 1500.0;
+    let l = norm([-0.45, 0.8, 0.4]);
+    let r = norm(crate::camera::cross([0.0, 1.0, 0.0], l));
+    let u = crate::camera::cross(l, r);
+    let c = add(v.eye, mul(norm([v.forward[0], 0.0, v.forward[2]]), RADIUS * 0.5));
+    let texel = RADIUS * 2.0 / 2048.0;
+    let (rc, uc) = ((dot(r, c) / texel).round() * texel, (dot(u, c) / texel).round() * texel);
+    [
+        r[0] / RADIUS, u[0] / RADIUS, -l[0] / DEPTH, 0.0,
+        r[1] / RADIUS, u[1] / RADIUS, -l[1] / DEPTH, 0.0,
+        r[2] / RADIUS, u[2] / RADIUS, -l[2] / DEPTH, 0.0,
+        -rc / RADIUS, -uc / RADIUS, dot(l, c) / DEPTH, 1.0,
+    ]
+}
+
 fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
     let h = hit?;
     match app.mode {
@@ -1036,6 +1152,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         show_water: app.show_water,
         world: meta.size_m(),
         tile: 10.0 / meta.land_cell(),
+        light: (!top && app.show_shadows).then(|| sun_matrix(&v)),
     };
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
     draw_overlays(app, ui, &v, &resp);
