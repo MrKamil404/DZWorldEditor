@@ -1,55 +1,57 @@
 # DZ World Editor
 
-Edytor map do DayZ napisany w Rust. Łączy DayZForests i DayZ Road Studio w jeden program:
-tworzenie terenu, malowanie maski, stawianie obiektów, modyfikatory wysokości, generatory,
-widok 2D i 3D, biblioteka modeli, eksport do PBO oraz uruchamianie mapy w grze.
+A DayZ map editor written in Rust. It combines DayZForests and DayZ Road Studio in one program:
+terrain creation, mask painting, object placement, height modifiers, generators, 2D and 3D views,
+a model library, PBO export and running the map in the game.
 
-## Wymagania
+## Requirements
 
-- Windows 10 lub 11, karta z OpenGL 3.3.
-- Do biblioteki modeli i budowania: DayZ Tools z zamontowanym dyskiem `P:\` oraz DayZ.
+- Windows 10 or 11 and a graphics card with OpenGL 3.3.
+- For the model library and building: DayZ Tools with the `P:\` work drive mounted, and DayZ.
 
-## Budowanie
+## Building
 
 ```bash
 cargo build --release -p dz-editor
 ```
 
-Program: `target/release/DZWorldEditor.exe`.
+The program is `target/release/DZWorldEditor.exe`.
 
-## Praca z mapą
+## Working on a map
 
-| Tryb (klawisz) | Działanie |
+| Mode (key) | What it does |
 | --- | --- |
-| Zaznacz (1) | Wybór obiektów, gizmo W/E/R, modyfikator terenu pod zaznaczeniem |
-| Rzeźbienie (2) | Pędzle wysokości; Ctrl odwraca, Shift wygładza |
-| Malowanie (3) | Malowanie powierzchni maski, warstwy z `P:\dz\surfaces*` |
-| Stawianie (4) | Klik lub przeciągnięcie modelu z biblioteki |
-| Drogi (5) | Linia punktów budowana z segmentów P3D, obiekty wzdłuż linii |
-| Generatory (6) | Teren, erozja, rzeki, malowanie po regułach, rozrzut, las, osada |
+| Select (1) | Select objects, W/E/R gizmo, terrain modifier under the selection |
+| Sculpt (2) | Height brushes; Ctrl inverts, Shift smooths |
+| Paint (3) | Paint mask surfaces, layers from `P:\dz\surfaces*` |
+| Place (4) | Click, or drag a model from the library |
+| Roads (5) | A line of points built from P3D road parts, objects along a line |
+| Generate (6) | Terrain, erosion, rivers, rule-based painting, scatter, forest, settlement |
 
-Kamera 3D: prawy przycisk i WASD/QE, Shift przyspiesza, kółko przy prawym przycisku zmienia prędkość.
-Widok 2D: kółko przybliża, środkowy lub prawy przycisk przesuwa.
+3D camera: right mouse button with WASD/QE, Shift goes faster, the wheel changes speed while the right button is held.
+2D view: the wheel zooms, the middle or right button pans.
 
 ## Import
 
-`Plik > Importuj` przyjmuje folder Terrain Buildera (ASC, maska, satelita, `layers.cfg`, listy obiektów, TV4P),
-gotową mapę z `P:\` (WRP źródłowe z kaflami), projekty DayZForests i `.dzroad`.
+`File > Import` accepts a Terrain Builder folder (ASC, mask, satellite image, `layers.cfg`, object lists, TV4P),
+a built map on `P:\` (source WRP with its tiles), and DayZForests and `.dzroad` projects.
+Binarised worlds (`OPRW`) cannot be opened.
 
-## Budowanie mapy
+## Building a map
 
-Przycisk **Zbuduj** eksportuje pliki do `P:\<ID mapy>` i binaryzuje je AddonBuilderem do
-`DayZ\@<ID mapy>\addons`. **Uruchom** dodatkowo tworzy misję testową i startuje serwer oraz klienta
-`DayZDiag`. Navmesh przygotowuje się raz: `Zbuduj > Generuj navmesh`.
+**Build** exports the files to `P:\<map id>` and binarises them with AddonBuilder into
+`DayZ\@<map id>\addons`. **Play** also creates a test mission and starts a `DayZDiag` server and client.
 
-## Dodawanie języka
+The navmesh is prepared separately with `Build > Generate navmesh`: the editor starts the data server
+and NavMeshGenerator, and the mesh is generated and saved as `navmesh.nm` in that tool.
+Without a navmesh the map runs, but AI does not walk.
 
-Plik `%LOCALAPPDATA%\DZWorldEditor\lang\<kod>.json` w postaci
-`{"__name__": "Nazwa języka", "File": "Tłumaczenie"}` pojawia się w menu Język bez przebudowy programu.
+## Adding a language
 
-## Wydania
+A file `%LOCALAPPDATA%\DZWorldEditor\lang\<code>.json` of the form
+`{"__name__": "Language name", "File": "Translation"}` appears in the Language menu without rebuilding the program.
 
-Tag `vX.Y.Z` uruchamia workflow `.github/workflows/release.yml`, który publikuje `DZWorldEditor.exe`.
-Program przy starcie sprawdza najnowsze wydanie i może je zainstalować.
+## Releases
 
-Plan i szczegóły formatów: [docs/PLAN.md](docs/PLAN.md).
+A `vX.Y.Z` tag runs `.github/workflows/release.yml`, which publishes `DZWorldEditor.exe`.
+The program checks for the latest release at start and can install it.
