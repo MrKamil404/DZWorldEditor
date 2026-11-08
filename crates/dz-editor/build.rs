@@ -128,12 +128,14 @@ fn compile_windows_icon() {
     fs::write(&rc_file, format!("1 ICON \"{icon_path}\"\n"))
         .expect("write Windows icon resource file");
 
-    let rc = sdk_rc(folder).or_else(|| path_tool("rc.exe")).unwrap_or_else(|| {
-        panic!("Windows SDK rc.exe was not found; install the Windows 10/11 SDK to embed the application icon")
-    });
-    let cvtres = msvc_cvtres(folder).or_else(|| path_tool("cvtres.exe")).unwrap_or_else(|| {
-        panic!("MSVC cvtres.exe was not found; install the Visual Studio C++ build tools to embed the application icon")
-    });
+    let Some(rc) = sdk_rc(folder).or_else(|| path_tool("rc.exe")) else {
+        println!("cargo:warning=Windows SDK rc.exe was not found; building without the application icon");
+        return;
+    };
+    let Some(cvtres) = msvc_cvtres(folder).or_else(|| path_tool("cvtres.exe")) else {
+        println!("cargo:warning=MSVC cvtres.exe was not found; building without the application icon");
+        return;
+    };
 
     let status = Command::new(&rc)
         .arg("/nologo")
