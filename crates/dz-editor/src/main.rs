@@ -22,6 +22,9 @@ impl eframe::App for Host {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let now = std::time::Instant::now();
         self.app.frame_ms = self.app.frame_ms * 0.9 + (now - self.last).as_secs_f32() * 100.0;
+        if let Some(v) = &mut self.app.perf {
+            v.push((now - self.last).as_secs_f32() * 1000.0);
+        }
         self.last = now;
         self.app.tick();
         panels::ui(&mut self.app, ctx);

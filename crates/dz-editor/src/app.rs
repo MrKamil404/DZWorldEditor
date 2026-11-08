@@ -248,6 +248,8 @@ pub struct App {
     shot_path: Option<String>,
     /// Input injected by automated checks.
     pub synthetic: Vec<egui::Event>,
+    /// Frame times collected by automated checks.
+    pub perf: Option<Vec<f32>>,
 }
 
 impl App {
@@ -284,7 +286,7 @@ impl App {
             impostor_fits: HashMap::new(), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selected_line: None, selection_rev: 0, drag: None, box_select: None,
             task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(),
-            last_autosave: Instant::now(), session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(),
+            last_autosave: Instant::now(), session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
         app.rescan_assets();

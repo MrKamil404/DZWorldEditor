@@ -894,7 +894,7 @@ impl Renderer {
                 }
                 Upload::Mesh(m) => {
                     // A few per frame keep the interface smooth while models stream in.
-                    if meshes_this_frame >= 6 {
+                    if meshes_this_frame >= 2 {
                         rest.push(Upload::Mesh(m));
                         continue;
                     }

@@ -17,6 +17,7 @@ const REPOSITORY: &str = "MrKamil404/DZWorldEditor";
 const USER_AGENT: &str = concat!("DZWorldEditor-updater/", env!("CARGO_PKG_VERSION"));
 /// Ustawienie tej zmiennej wyłącza automatyczne sprawdzanie przy starcie.
 const SKIP_CHECK_ENV: &str = "DZWORLDEDITOR_NO_UPDATE_CHECK";
+const API_ENV: &str = "DZWORLDEDITOR_UPDATE_API";
 const GUI_ASSET_PREFIX: &str = "dzworldeditor";
 
 pub fn version() -> &'static str {
@@ -70,16 +71,24 @@ fn agent() -> Result<ureq::Agent> {
         .build())
 }
 
+/// Adres listy wydań. Zmienna środowiskowa pozwala użyć własnego lub testowego serwera.
+fn releases_url() -> String {
+    std::env::var(API_ENV).unwrap_or_else(|_| format!("https://api.github.com/repos/{REPOSITORY}/releases/latest"))
+}
+
 /// Najnowsze opublikowane wydanie (bez szkiców i wersji wstępnych).
 fn latest() -> Result<Release> {
-    let url = format!("https://api.github.com/repos/{REPOSITORY}/releases/latest");
+    latest_from(&releases_url())
+}
+
+fn latest_from(url: &str) -> Result<Release> {
     agent()?
-        .get(&url)
+        .get(url)
         .set("Accept", "application/vnd.github+json")
         .call()
-        .context("Nie udało się połączyć z GitHub")?
+        .context("Nie udało się połączyć z serwerem wydań")?
         .into_json()
-        .context("Nieprawidłowa odpowiedź GitHub")
+        .context("Nieprawidłowa odpowiedź serwera wydań")
 }
 
 /// Plik do pobrania: nazwany jak działający program, program GUI albo jedyny `.exe`.
@@ -484,6 +493,67 @@ impl Updater {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Minimal release server: one JSON document and one file.
+    fn serve(requests: usize, json: String, file: Vec<u8>) -> String {
+        use std::io::{BufRead, BufReader};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for _ in 0..requests {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                loop {
+                    let mut h = String::new();
+                    reader.read_line(&mut h).unwrap();
+                    if h.trim().is_empty() {
+                        break;
+                    }
+                }
+                let body = if line.contains("/latest") { json.clone().into_bytes() } else { file.clone() };
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+                stream.write_all(&body).unwrap();
+            }
+        });
+        base
+    }
+
+    #[test]
+    fn checks_downloads_and_replaces_the_program() {
+        let new_exe = b"MZ new version".to_vec();
+        let listener_probe = serve(1, String::new(), new_exe.clone());
+        let json = format!(
+            r#"{{"tag_name":"v9.9.9","html_url":"x","body":"notes","assets":[{{"name":"DZWorldEditor.exe","size":{},"browser_download_url":"{listener_probe}/DZWorldEditor.exe"}}]}}"#,
+            new_exe.len()
+        );
+        let api = serve(1, json, Vec::new());
+        let release = latest_from(&format!("{api}/releases/latest")).unwrap();
+        assert!(is_newer(&release.tag_name, version()));
+        let d = tempfile::tempdir().unwrap();
+        let exe = d.path().join("DZWorldEditor.exe");
+        std::fs::write(&exe, b"MZ old").unwrap();
+        let progress = AtomicU64::new(0);
+        install(asset(&release, "DZWorldEditor.exe").unwrap(), &exe, &progress).unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), new_exe);
+        assert_eq!(std::fs::read(previous(&exe)).unwrap(), b"MZ old");
+        assert_eq!(progress.load(Ordering::Relaxed), new_exe.len() as u64);
+        cleanup(&exe);
+        assert!(!previous(&exe).exists());
+    }
+
+    #[test]
+    fn broken_download_leaves_the_program_alone() {
+        let base = serve(1, String::new(), b"<html>not a program".to_vec());
+        let a = Asset { name: "x.exe".into(), size: 19, browser_download_url: format!("{base}/x.exe") };
+        let d = tempfile::tempdir().unwrap();
+        let exe = d.path().join("x.exe");
+        std::fs::write(&exe, b"MZ old").unwrap();
+        assert!(install(&a, &exe, &AtomicU64::new(0)).is_err());
+        assert_eq!(std::fs::read(&exe).unwrap(), b"MZ old");
+        assert!(!sibling(&exe, ".new").exists());
+    }
 
     fn release(names: &[&str]) -> Release {
         Release {

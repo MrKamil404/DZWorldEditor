@@ -197,7 +197,14 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
         cache.draw = ObjectDraw::default();
         return ObjectDraw::default();
     }
-    let moved = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)) > 16.0 || dot(sub(cache.forward, v.forward), sub(cache.forward, v.forward)) > 0.0006 || (cache.mpp - v.mpp).abs() > 0.01 * v.mpp;
+    // The top view lists more than is on screen, so panning needs no rebuild until it nears the edge.
+    let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
+    let moved = if v.ortho {
+        let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
+        [cache.eye[0] - v.eye[0], cache.eye[2] - v.eye[2]].iter().any(|d| d.abs() > margin) || (cache.mpp - v.mpp).abs() > 0.06 * v.mpp
+    } else {
+        shift > 4.0 || dot(sub(cache.forward, v.forward), sub(cache.forward, v.forward)) > 0.0006
+    };
     let loaded = renderer.stats.models as usize + renderer.impostor_layers.len();
     cache.frames_since += 1;
     let fresh = cache.rev == world.objects.revision && cache.selection_rev == app.selection_rev && !moved && !(loaded != cache.loaded && cache.frames_since > 12);
@@ -1294,6 +1301,15 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     app.camera.look_at([o.x, g + 8.0, o.z]);
                     eprintln!("GOTO {}", d.world.objects.model_path(o));
                 }
+            }
+        }
+        "perf" => {
+            if arg == "start" {
+                app.perf = Some(Vec::new());
+            } else if let Some(mut v) = app.perf.take() {
+                v.sort_by(|a, b| a.total_cmp(b));
+                let n = v.len().max(1);
+                eprintln!("PERF {arg}: frames={} avg={:.2}ms p50={:.2} p95={:.2} p99={:.2} max={:.2}", v.len(), v.iter().sum::<f32>() / n as f32, v[n / 2], v[n * 95 / 100], v[n * 99 / 100], v[n - 1]);
             }
         }
         "save" => app.save(Some(arg.into())),
