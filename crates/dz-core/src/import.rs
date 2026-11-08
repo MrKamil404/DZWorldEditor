@@ -504,6 +504,33 @@ mod tests {
         assert_eq!(r.layers[r.mask.sample(2500.0, 1500.0, size) as usize].name, "en_grass1");
     }
 
+    /// Every object of a real Terrain Builder world must come back where the game expects it.
+    #[test]
+    fn real_world_objects_survive_import_and_export() {
+        let p = Path::new("P:/DolinaBobru/world/dolinabobru.wrp");
+        if !p.exists() || std::env::var("DZ_SLOW_TESTS").is_err() { return; }
+        let db = ModelDb::new("P:/");
+        let original = Wrp::parse(&std::fs::read(p).unwrap()).unwrap();
+        let w = import_wrp(p, None, &db, &Job::default()).unwrap();
+        let (exported, _) = crate::export::wrp_objects(&w, &db);
+        assert_eq!(exported.len(), original.objects.len());
+        let (mut max_pos, mut max_axis, mut known) = (0.0f32, 0.0f32, 0usize);
+        for (a, b) in exported.iter().zip(&original.objects) {
+            assert_eq!(a.model, ObjectStore::normalize_path(&b.model));
+            for k in 0..9 {
+                max_axis = max_axis.max((a.matrix[k] - b.matrix[k]).abs());
+            }
+            for k in 9..12 {
+                max_pos = max_pos.max((a.matrix[k] - b.matrix[k]).abs());
+            }
+            if db.get(&a.model).known { known += 1; }
+        }
+        println!("objects {} with model data {known}, max position error {max_pos} m, max matrix error {max_axis}", exported.len());
+        assert!(max_pos < 0.02, "position error {max_pos}");
+        assert!(max_axis < 0.01, "matrix error {max_axis}");
+        assert_eq!(w.height.data, original.elevations);
+    }
+
     /// Imports a real built map when P: is mounted.
     #[test]
     fn real_built_map_imports() {
