@@ -26,7 +26,7 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
-    toggles: Option<(bool, bool, Shading)>,
+    toggles: Option<(bool, bool, Shading, i32)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -203,7 +203,8 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     }
     // The top view lists more than is on screen, so panning needs no rebuild until it nears the edge.
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
-    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 });
+    let shadow_range = app.settings.lighting.shadow_range;
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32);
     let toggled = cache.toggles != Some(toggles);
     let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
@@ -241,8 +242,8 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     let mut instances: HashMap<(u32, u8), Vec<f32>> = HashMap::new();
     let mut impostors = Vec::new();
     let mut shadow: HashMap<(u32, u8), Vec<f32>> = HashMap::new();
-    // Shadows reach this far from the camera.
-    const SHADOW_RANGE: f32 = 260.0;
+    // Objects drawn as impostors can still cast shadows, within this many triangles.
+    let mut shadow_triangles: i64 = 6_000_000;
     if v.ortho {
         // Top view: footprints, thinned out when zoomed far out.
         let half = (v.rect.width().max(v.rect.height()) * v.mpp * 0.75).max(10.0);
@@ -267,8 +268,16 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
         let eye = v.eye;
         // Stops very dense views from overwhelming the GPU; the rest falls back to impostors.
         let mut triangles_left: i64 = 9_000_000;
+        // Nearest cells first: the triangle budget has to go to what is close to the camera.
+        let mut order: Vec<(i32, i32, i32)> = Vec::with_capacity(((2 * cells + 1) * (2 * cells + 1)) as usize);
         for gz in kz - cells..=kz + cells {
             for gx in kx - cells..=kx + cells {
+                order.push(((gx - kx).pow(2) + (gz - kz).pow(2), gx, gz));
+            }
+        }
+        order.sort_unstable();
+        {
+            for (_, gx, gz) in order {
                 let list = world.objects.cell((gx, gz));
                 if list.is_empty() {
                     continue;
@@ -299,11 +308,12 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                             continue;
                         }
                     }
-                    if d < far || sel {
+                    // Models without a billboard (water, roads) stay as meshes at any distance.
+                    if d < far || sel || m1.is_none() {
                         if let Some(n) = renderer.model_triangles((m0, LOD_FAR)).filter(|_| triangles_left > 0) {
                             triangles_left -= n as i64;
                             write_instance(instances.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
-                            if d < SHADOW_RANGE {
+                            if d < shadow_range {
                                 write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
                             }
                             if d < near {
@@ -315,6 +325,12 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                     requests.push((m0, LOD_FAR));
                     if d < near {
                         requests.push((m0, LOD_NEAR));
+                    }
+                    if d < shadow_range && app.show_shadows {
+                        if let Some(n) = renderer.model_triangles((m0, LOD_FAR)).filter(|_| shadow_triangles > 0) {
+                            shadow_triangles -= n as i64;
+                            write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                        }
                     }
                     if let Some(layer) = m1 {
                         if let Some(fit) = app.impostor_fits.get(&m0) {
@@ -406,8 +422,9 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
         groups.push((k, (flat.len() / 16) as u32, (list.len() / 16) as u32));
         flat.extend_from_slice(&list);
     }
-    requests.sort_unstable();
-    requests.dedup();
+    // Keeps first-come order, which is nearest first, so close models load first.
+    let mut requested = std::collections::HashSet::new();
+    requests.retain(|r| requested.insert(*r));
     let mut shadow_flat = Vec::with_capacity(shadow.values().map(|v| v.len()).sum());
     let mut shadow_groups = Vec::with_capacity(shadow.len());
     for (k, list) in shadow {
@@ -1031,22 +1048,31 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
 
 /// Orthographic sun view over the area in front of the camera, snapped to shadow map texels
 /// so edges do not shimmer while moving.
-fn sun_matrix(v: &View, sun: V3) -> [f32; 16] {
-    const RADIUS: f32 = 300.0;
-    const DEPTH: f32 = 600.0;
+fn shadow_depth(range: f32) -> f32 {
+    (range * 2.0).max(600.0)
+}
+
+/// Offset that grows with the size of a shadow map texel.
+fn shadow_bias(range: f32) -> f32 {
+    let texel = range * 2.0 / 4096.0;
+    (0.3 + texel * 2.0) / (2.0 * shadow_depth(range))
+}
+
+fn sun_matrix(v: &View, sun: V3, range: f32) -> [f32; 16] {
+    let depth = shadow_depth(range);
     let l = norm(sun);
     let r = norm(crate::camera::cross([0.0, 1.0, 0.0], l));
     let u = crate::camera::cross(l, r);
     // Moves in steps so the map is redrawn rarely and its edges stay still.
-    let c = add(v.eye, mul(norm([v.forward[0], 0.0, v.forward[2]]), RADIUS * 0.5));
+    let c = add(v.eye, mul(norm([v.forward[0], 0.0, v.forward[2]]), range * 0.5));
     let c = [(c[0] / 16.0).round() * 16.0, c[1], (c[2] / 16.0).round() * 16.0];
-    let texel = RADIUS * 2.0 / 2048.0;
+    let texel = range * 2.0 / 4096.0;
     let (rc, uc) = ((dot(r, c) / texel).round() * texel, (dot(u, c) / texel).round() * texel);
     [
-        r[0] / RADIUS, u[0] / RADIUS, -l[0] / DEPTH, 0.0,
-        r[1] / RADIUS, u[1] / RADIUS, -l[1] / DEPTH, 0.0,
-        r[2] / RADIUS, u[2] / RADIUS, -l[2] / DEPTH, 0.0,
-        -rc / RADIUS, -uc / RADIUS, dot(l, c) / DEPTH, 1.0,
+        r[0] / range, u[0] / range, -l[0] / depth, 0.0,
+        r[1] / range, u[1] / range, -l[1] / depth, 0.0,
+        r[2] / range, u[2] / range, -l[2] / depth, 0.0,
+        -rc / range, -uc / range, dot(l, c) / depth, 1.0,
     ]
 }
 
@@ -1104,6 +1130,7 @@ fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
         theme::row(ui, &t("Exposure"), |ui| { ui.add(egui::Slider::new(&mut l.exposure, 0.25..=2.5)); });
         theme::row(ui, &t("Fog"), |ui| { ui.add(egui::Slider::new(&mut l.fog, 0.0..=6.0)); });
         ui.checkbox(&mut app.show_shadows, t("Shadows"));
+        theme::row(ui, &t("Shadow range"), |ui| { ui.add(egui::Slider::new(&mut l.shadow_range, 60.0..=2000.0).logarithmic(true).suffix(" m")); });
         if ui.button(t("Reset")).clicked() {
             app.settings.lighting = Lighting::default();
         }
@@ -1183,7 +1210,9 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         world: meta.size_m(),
         tile: 10.0 / meta.land_cell(),
         lighting: app.settings.lighting.gpu(),
-        light: (!top && app.show_shadows && app.settings.lighting.elevation > 1.0).then(|| sun_matrix(&v, app.settings.lighting.sun_direction())),
+        time: ctx.input(|i| i.time) as f32,
+        light: (!top && app.show_shadows && app.settings.lighting.elevation > 1.0).then(|| sun_matrix(&v, app.settings.lighting.sun_direction(), app.settings.lighting.shadow_range)),
+        shadow_bias: shadow_bias(app.settings.lighting.shadow_range),
     };
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
     draw_overlays(app, ui, &v, &resp);
@@ -1410,6 +1439,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.settings.lighting.azimuth = nums[0];
             app.settings.lighting.elevation = nums[1];
         }
+        "shadowrange" if nums.len() == 1 => app.settings.lighting.shadow_range = nums[0],
         "lang" => app.sync_language(&arg),
         "bottom" => app.bottom = if arg == "output" { crate::app::BottomTab::Output } else if arg == "build" { crate::app::BottomTab::Build } else { crate::app::BottomTab::Content },
         "sculpt" if nums.len() >= 2 => {
@@ -1489,6 +1519,11 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "report" => {
             let d = app.doc.as_ref();
+            if let (Some(d), Some(id)) = (d, app.selection.iter().next()) {
+                if let Some(o) = d.world.objects.get(*id) {
+                    eprintln!("PICKED {}", d.world.objects.model_path(o));
+                }
+            }
             eprintln!("REPORT objects={} modifiers={} lines={} selection={} undo={:?} status={}", d.map(|d| d.world.objects.len()).unwrap_or(0), d.map(|d| d.world.modifiers.len()).unwrap_or(0), d.map(|d| d.world.lines.len()).unwrap_or(0), app.selection.len(), d.and_then(|d| d.history.undo_label().map(str::to_string)), app.status);
         }
         "quit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),

@@ -110,7 +110,7 @@ fn from_model3d(mesh: &model3d::ModelMesh, center: [f32; 3], key: (u32, u8), wit
         impostor_fit = [fit.world_size, fit.center[0] + center[0], fit.center[1] + center[1]];
         impostor_mips(rgba, IMPOSTOR_SIZE as usize)
     });
-    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, shadings: mesh.shadings.clone(), impostor, impostor_fit, conform: false }
+    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, shadings: mesh.shadings.clone(), impostor, impostor_fit, conform: false, water: false }
 }
 
 /// MLOD models and everything `model3d` refuses go through the road tool's reader.
@@ -136,7 +136,7 @@ fn from_mesh3d(file: &Path, cache: &dayz_road_tool::mesh3d::Cache, key: (u32, u8
         });
         batches.push((first, indices.len() as u32 - first, tex, None));
     }
-    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false })
+    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false })
 }
 
 impl ModelLoader {
@@ -189,6 +189,11 @@ impl ModelLoader {
     }
 }
 
+/// Rivers, ponds and streams; not the beds under them or buildings named after water.
+pub fn is_water_model(path: &str) -> bool {
+    (path.contains("\\water\\") || path.contains("\\water_")) && !path.contains("streambed")
+}
+
 fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d::Cache) -> Option<MeshData> {
     let file = db.file(path);
     let info = db.get(path);
@@ -197,15 +202,16 @@ fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d
         Ok(m) => Some(from_model3d(&m, info.center, key, key.1 == LOD_FAR)),
         Err(_) => from_mesh3d(&file, cache, key),
     }?;
-    // Water surfaces use flow maps in the game; a plain colour reads correctly here.
-    if path.contains("\\water\\") {
-        mesh.textures = vec![("#water".to_string(), 1, 1, vec![42, 84, 112, 255])];
+    // Water is drawn by its own shader; the game's flow maps are not colours.
+    if is_water_model(path) {
+        mesh.textures.clear();
         mesh.shadings.clear();
         for b in &mut mesh.batches {
-            b.2 = Some(0);
+            b.2 = None;
             b.3 = None;
         }
         mesh.impostor = None;
+        mesh.water = true;
     }
     // The game fits road parts to the terrain; give them vertices to follow it with.
     if path.contains("\\roads\\parts\\") {
@@ -264,13 +270,20 @@ fn tessellate(mesh: &mut MeshData, limit: f32) {
 mod tests {
     use super::*;
     #[test]
+    fn water_models_are_told_apart() {
+        assert!(is_water_model(r"dz\water_bliss\river\enoch_river_0.p3d"));
+        assert!(is_water_model(r"dz\water\ponds\pond_50x50.p3d"));
+        assert!(!is_water_model(r"dz\water\streambed\streambed_moss_long_snake.p3d"));
+        assert!(!is_water_model(r"dz\structures\industrial\farms\farm_watertower_small.p3d"));
+    }
+    #[test]
     fn tessellation_limits_edges_and_keeps_batches() {
         let mut m = MeshData {
             key: (0, 0),
             vertices: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0].to_vec(),
             indices: vec![0, 1, 2],
             batches: vec![(0, 3, Some(0), None)],
-            textures: Vec::new(), shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false,
+            textures: Vec::new(), shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false,
         };
         tessellate(&mut m, 2.0);
         assert!(m.indices.len() > 30);

@@ -15,19 +15,21 @@ pub struct Lighting {
     pub ambient: f32,
     pub exposure: f32,
     pub fog: f32,
+    /// Metres from the camera that receive and cast shadows.
+    pub shadow_range: f32,
 }
 
 impl Default for Lighting {
     fn default() -> Self {
-        Self { azimuth: 312.0, elevation: 53.0, strength: 0.82, color: [1.0, 0.96, 0.88], ambient: 1.0, exposure: 1.0, fog: 1.0 }
+        Self { azimuth: 312.0, elevation: 53.0, strength: 0.82, color: [1.0, 0.96, 0.88], ambient: 1.0, exposure: 1.0, fog: 1.0, shadow_range: 300.0 }
     }
 }
 
 impl Lighting {
-    pub const MORNING: Lighting = Lighting { azimuth: 95.0, elevation: 16.0, strength: 0.75, color: [1.0, 0.82, 0.62], ambient: 0.8, exposure: 1.0, fog: 1.5 };
-    pub const NOON: Lighting = Lighting { azimuth: 180.0, elevation: 62.0, strength: 0.9, color: [1.0, 0.97, 0.92], ambient: 1.0, exposure: 1.0, fog: 1.0 };
-    pub const EVENING: Lighting = Lighting { azimuth: 268.0, elevation: 8.0, strength: 0.7, color: [1.0, 0.66, 0.42], ambient: 0.65, exposure: 1.0, fog: 1.6 };
-    pub const OVERCAST: Lighting = Lighting { azimuth: 200.0, elevation: 55.0, strength: 0.18, color: [0.95, 0.97, 1.0], ambient: 1.35, exposure: 1.0, fog: 2.2 };
+    pub const MORNING: Lighting = Lighting { azimuth: 95.0, elevation: 16.0, strength: 0.75, color: [1.0, 0.82, 0.62], ambient: 0.8, exposure: 1.0, fog: 1.5, shadow_range: 300.0 };
+    pub const NOON: Lighting = Lighting { azimuth: 180.0, elevation: 62.0, strength: 0.9, color: [1.0, 0.97, 0.92], ambient: 1.0, exposure: 1.0, fog: 1.0, shadow_range: 300.0 };
+    pub const EVENING: Lighting = Lighting { azimuth: 268.0, elevation: 8.0, strength: 0.7, color: [1.0, 0.66, 0.42], ambient: 0.65, exposure: 1.0, fog: 1.6, shadow_range: 300.0 };
+    pub const OVERCAST: Lighting = Lighting { azimuth: 200.0, elevation: 55.0, strength: 0.18, color: [0.95, 0.97, 1.0], ambient: 1.35, exposure: 1.0, fog: 2.2, shadow_range: 300.0 };
 
     pub fn sun_direction(&self) -> [f32; 3] {
         let (sa, ca) = self.azimuth.to_radians().sin_cos();

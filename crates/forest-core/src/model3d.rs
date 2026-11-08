@@ -30,11 +30,11 @@ pub struct Batch {
 }
 
 /// Number of texture slots of a shading.
-pub const SHADING_SLOTS: usize = 11;
+pub const SHADING_SLOTS: usize = 15;
 
 /// Textures of a material as the game combines them.
 /// Super: 0 colour (from the face when empty), 1 normal, 2 detail, 3 macro, 4 ambient, 5 specular.
-/// Multi: 0-3 colour layers, 4 mask, 5 macro, 6 ambient, 7-10 layer normals.
+/// Multi: 0-3 colour layers, 4 mask, 5 macro, 6 ambient, 7-10 layer normals, 11-14 layer `dtsmdi`.
 #[derive(Clone, Debug, Default)]
 pub struct Shading {
     pub multi: bool,
@@ -43,6 +43,16 @@ pub struct Shading {
     pub xf: [[f32; 4]; SHADING_SLOTS],
     /// pos.x, pos.y, 1 when the slot uses the second UV set.
     pub xo: [[f32; 3]; SHADING_SLOTS],
+    /// Reflectance of the surface seen head on.
+    pub reflectance: f32,
+}
+
+/// Head-on reflectance of a stage like `#(ai,32,128,1)fresnel(2.79,4.84)` (index, absorption).
+fn fresnel_reflectance(name: &str) -> Option<f32> {
+    let args = name.to_ascii_lowercase();
+    let mut values = args.split("fresnel(").nth(1)?.trim_end_matches(')').split(',').map(|v| v.trim().parse::<f32>().ok());
+    let (n, k) = (values.next()??, values.next()??);
+    Some(((n - 1.0).powi(2) + k * k) / ((n + 1.0).powi(2) + k * k))
 }
 
 #[derive(Clone)]
@@ -145,13 +155,14 @@ fn build_shading(m: &odol::Material, loader: &mut MapLoader, mesh: &mut ModelMes
     let s = &m.stages;
     let multi = s.len() >= 15 && stage_is(&s[4], "_mask");
     let table: &[(usize, usize, u32)] = if multi {
-        &[(0, 0, max), (1, 1, max), (2, 2, max), (3, 3, max), (4, 4, 512), (5, 9, 256), (6, 10, 256), (7, 11, 256), (8, 12, 256), (9, 13, 256), (10, 14, 256)]
+        &[(0, 0, max), (1, 1, max), (2, 2, max), (3, 3, max), (4, 4, 512), (5, 9, 256), (6, 10, 256), (7, 11, 256), (8, 12, 256), (9, 13, 256), (10, 14, 256), (11, 5, 256), (12, 6, 256), (13, 7, 256), (14, 8, 256)]
     } else if s.len() >= 6 && stage_is(&s[1], "nohq") && stage_is(&s[2], "dt") && stage_is(&s[3], "mc") && stage_is(&s[4], "as") && stage_is(&s[5], "smdi") {
         &[(1, 1, 256), (2, 2, 256), (3, 3, 256), (4, 4, 256), (5, 5, 256)]
     } else {
         return None;
     };
-    let mut out = Shading { multi, ..Default::default() };
+    let reflectance = if multi { 0.04 } else { s.get(6).and_then(|f| fresnel_reflectance(&f.texture)).unwrap_or(0.04) };
+    let mut out = Shading { multi, reflectance, ..Default::default() };
     for slot in 0..SHADING_SLOTS {
         out.xf[slot] = [1.0, 0.0, 0.0, 1.0];
     }
@@ -616,6 +627,13 @@ mod tests {
     }
 
     #[test]
+    fn fresnel_stage_gives_reflectance() {
+        let f = fresnel_reflectance("#(ai,32,128,1)fresnel(2.79,4.84)").unwrap();
+        assert!((f - 0.705).abs() < 0.01, "{f}");
+        assert!(fresnel_reflectance("a_co.paa").is_none());
+    }
+
+    #[test]
     fn procedural_colors_become_single_pixels() {
         let t = procedural_color("#(argb,8,8,3)color(0.5,0,1,1,nohq)").unwrap();
         assert_eq!((t.width, t.height), (1, 1));
@@ -633,7 +651,7 @@ mod tests {
         }
         let mesh = load_model(path, Path::new("P:/"), 256).unwrap();
         let multi = mesh.shadings.iter().find(|s| s.multi).expect("Multi shading");
-        for slot in 0..5 {
+        for slot in (0..5).chain(11..15) {
             assert!(multi.maps[slot].is_some(), "slot {slot}");
         }
         assert_eq!(multi.xf[2][0], 1.5, "third layer repeats");

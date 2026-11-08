@@ -1043,6 +1043,10 @@
   "de": "Siedlung",
   "pl": "Osada"
  },
+ "Shadow range": {
+  "de": "Schattenreichweite",
+  "pl": "Zasięg cieni"
+ },
  "Shadows": {
   "de": "Schatten",
   "pl": "Cienie"
