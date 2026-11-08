@@ -51,6 +51,10 @@
   "de": "An Hang ausrichten",
   "pl": "Dopasuj do spadku"
  },
+ "Ambient": {
+  "de": "Umgebungslicht",
+  "pl": "Światło otoczenia"
+ },
  "Another task is still running": {
   "de": "Eine andere Aufgabe läuft noch",
   "pl": "Inne zadanie nadal trwa"
@@ -331,6 +335,10 @@
   "de": "Erosionsrate",
   "pl": "Siła erozji"
  },
+ "Evening": {
+  "de": "Abend",
+  "pl": "Wieczór"
+ },
  "Exit": {
   "de": "Beenden",
   "pl": "Wyjście"
@@ -359,6 +367,10 @@
   "de": "Karte wird exportiert",
   "pl": "Eksport mapy"
  },
+ "Exposure": {
+  "de": "Belichtung",
+  "pl": "Ekspozycja"
+ },
  "Falloff": {
   "de": "Abfall",
   "pl": "Zanik"
@@ -386,6 +398,10 @@
  "Flatten": {
   "de": "Einebnen",
   "pl": "Wyrównaj"
+ },
+ "Fog": {
+  "de": "Nebel",
+  "pl": "Mgła"
  },
  "Folder": {
   "de": "Ordner",
@@ -563,6 +579,10 @@
   "de": "Beim Platzieren Gelände einebnen",
   "pl": "Wyrównuj teren przy stawianiu"
  },
+ "Lighting": {
+  "de": "Beleuchtung",
+  "pl": "Oświetlenie"
+ },
  "Line": {
   "de": "Linie",
   "pl": "Linia"
@@ -639,6 +659,10 @@
   "de": "Modelle: im Inhaltsbrowser wählen und Hinzufügen drücken.",
   "pl": "Modele: wybierz w bibliotece i naciśnij Dodaj."
  },
+ "Morning": {
+  "de": "Morgen",
+  "pl": "Rano"
+ },
  "Mountains": {
   "de": "Berge",
   "pl": "Góry"
@@ -682,6 +706,10 @@
  "Noise": {
   "de": "Rauschen",
   "pl": "Szum"
+ },
+ "Noon": {
+  "de": "Mittag",
+  "pl": "Południe"
  },
  "Nothing selected": {
   "de": "Nichts ausgewählt",
@@ -738,6 +766,10 @@
  "Output Log": {
   "de": "Ausgabeprotokoll",
   "pl": "Dziennik"
+ },
+ "Overcast": {
+  "de": "Bedeckt",
+  "pl": "Pochmurno"
  },
  "Package the map": {
   "de": "Karte packen",
@@ -858,6 +890,10 @@
  "Remove modifier": {
   "de": "Modifikator entfernen",
   "pl": "Usuń modyfikator"
+ },
+ "Reset": {
+  "de": "Zurücksetzen",
+  "pl": "Przywróć domyślne"
  },
  "Restart": {
   "de": "Neu starten",
@@ -1058,6 +1094,22 @@
  "Strength": {
   "de": "Stärke",
   "pl": "Siła"
+ },
+ "Sun azimuth": {
+  "de": "Sonnenazimut",
+  "pl": "Azymut słońca"
+ },
+ "Sun colour": {
+  "de": "Sonnenfarbe",
+  "pl": "Kolor słońca"
+ },
+ "Sun elevation": {
+  "de": "Sonnenhöhe",
+  "pl": "Wysokość słońca"
+ },
+ "Sun strength": {
+  "de": "Sonnenstärke",
+  "pl": "Siła słońca"
  },
  "Surface layers": {
   "de": "Oberflächenebenen",

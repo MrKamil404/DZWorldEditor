@@ -13,8 +13,12 @@ pub fn decode(b: &[u8], max: u32) -> Result<Texture> {
     ensure!(b.len() > 8, "Plik PAA jest za krótki");
     let kind = u16::from_le_bytes([b[0], b[1]]);
     let mut p = 2;
+    let mut swizzle = None;
     while b.get(p..p + 4) == Some(b"GGAT") {
         let len = u32::from_le_bytes(b.get(p + 8..p + 12).unwrap_or(&[0; 4]).try_into()?) as usize;
+        if b.get(p + 4..p + 8) == Some(b"ZIWS") && len == 4 {
+            swizzle = b.get(p + 12..p + 16).map(|v| [v[0], v[1], v[2], v[3]]);
+        }
         p += 12 + len;
     }
     let palette = u16::from_le_bytes(b.get(p..p + 2).unwrap_or(&[0; 2]).try_into()?) as usize;
@@ -85,11 +89,37 @@ pub fn decode(b: &[u8], max: u32) -> Result<Texture> {
             }
         }
     }
+    if let Some(order) = swizzle {
+        apply_swizzle(&mut rgba, order);
+    }
     Ok(Texture {
         width: w,
         height: h,
         rgba,
     })
+}
+
+/// Rearranges channels as the file asks. `order` holds the source for A, R, G, B:
+/// 0..3 are A, R, G, B, 4..7 the same inverted, 8 is one.
+fn apply_swizzle(rgba: &mut [u8], order: [u8; 4]) {
+    for p in rgba.chunks_exact_mut(4) {
+        let (r, g, b, a) = (p[0], p[1], p[2], p[3]);
+        let pick = |s: u8| match s {
+            0 => a,
+            1 => r,
+            2 => g,
+            3 => b,
+            4 => 255 - a,
+            5 => 255 - r,
+            6 => 255 - g,
+            7 => 255 - b,
+            _ => 255,
+        };
+        p[3] = pick(order[0]);
+        p[0] = pick(order[1]);
+        p[1] = pick(order[2]);
+        p[2] = pick(order[3]);
+    }
 }
 
 fn rgb565(c: u16) -> [u8; 3] {
@@ -194,6 +224,14 @@ fn dxt(data: &[u8], w: u32, h: u32, dxt5: bool, out: &mut [u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn swizzle_reorders_and_inverts_channels() {
+        let mut p = [10u8, 20, 30, 40];
+        // A = inverted red, R = inverted alpha, G and B unchanged: how normal maps are stored.
+        apply_swizzle(&mut p, [5, 4, 2, 3]);
+        assert_eq!(p, [215, 20, 30, 245]);
+    }
 
     #[test]
     fn decodes_a_dxt1_block_and_picks_the_mip_that_fits() {

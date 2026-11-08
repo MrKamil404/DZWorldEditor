@@ -16,8 +16,13 @@ pub struct Lod {
     pub faces: Vec<Vec<u16>>,
     /// Texture index of each face (`u16::MAX` when none).
     pub face_textures: Vec<u16>,
+    /// Material of each face (-1 when none).
+    pub face_materials: Vec<i32>,
+    pub materials: Vec<Material>,
     /// First UV set, one per vertex.
     pub uvs: Vec<[f32; 2]>,
+    /// Second UV set, empty when the LOD has only one.
+    pub uvs2: Vec<[f32; 2]>,
 }
 impl Lod {
     /// First vertex of a named selection (case-insensitive).
@@ -305,6 +310,7 @@ fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
         offset += if f.len() == 4 { 10 } else { 8 };
     }
     let mut face_textures = vec![u16::MAX; faces.len()];
+    let mut face_materials = vec![-1i32; faces.len()];
     for _ in 0..r.count()? {
         let lower = r.i32()?;
         let upper = r.i32()?;
@@ -320,7 +326,7 @@ fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
         // Surfaces without a texture take the colour map of their material.
         let mut texture = texture;
         if texture == u16::MAX && material >= 0 {
-            if let Some(name) = materials.get(material as usize).and_then(|m: &Vec<String>| diffuse_stage(m)) {
+            if let Some(name) = materials.get(material as usize).and_then(|m: &Material| diffuse_stage(&m.stages.iter().map(|s| s.texture.clone()).collect::<Vec<_>>())) {
                 let slot = textures.iter().position(|t| *t == name).unwrap_or_else(|| {
                     textures.push(name);
                     textures.len() - 1
@@ -331,6 +337,7 @@ fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
         for (i, &o) in offsets.iter().enumerate() {
             if o >= lower && o < upper {
                 face_textures[i] = texture;
+                face_materials[i] = material;
             }
         }
     }
@@ -365,27 +372,31 @@ fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
     let mut uv_sets = 1;
     let mut i = 0;
     let mut uvs = Vec::new();
+    let mut uvs2 = Vec::new();
     while i < uv_sets {
         let range: Vec<f32> = (0..4).map(|_| r.f32()).collect::<Result<_>>()?;
         let n = r.count()?;
         let raw = if r.u8()? != 0 { r.bytes(4)?.repeat(n) } else { r.compressed(n * 4)? };
+        let decode = |v: i16, min: f32, max: f32| (v as f32 + 32767.) / 65536. * (max - min) + min;
+        let set: Vec<[f32; 2]> = (0..n)
+            .map(|k| {
+                let u = i16::from_le_bytes([raw[k * 4], raw[k * 4 + 1]]);
+                let v = i16::from_le_bytes([raw[k * 4 + 2], raw[k * 4 + 3]]);
+                [decode(u, range[0], range[2]), decode(v, range[1], range[3])]
+            })
+            .collect();
         if i == 0 {
-            let decode = |v: i16, min: f32, max: f32| (v as f32 + 32767.) / 65536. * (max - min) + min;
-            uvs = (0..n)
-                .map(|k| {
-                    let u = i16::from_le_bytes([raw[k * 4], raw[k * 4 + 1]]);
-                    let v = i16::from_le_bytes([raw[k * 4 + 2], raw[k * 4 + 3]]);
-                    [decode(u, range[0], range[2]), decode(v, range[1], range[3])]
-                })
-                .collect();
+            uvs = set;
             uv_sets = r.count()?.max(1);
+        } else if i == 1 {
+            uvs2 = set;
         }
         i += 1;
     }
     let (count, data) = r.compressed_array(12)?;
     let f = |o: usize| f32::from_le_bytes(data[o..o + 4].try_into().unwrap());
     let vertices = (0..count).map(|i| [f(i * 12), f(i * 12 + 4), f(i * 12 + 8)]).collect();
-    Ok(Lod { resolution, vertices, selections, textures, faces, face_textures, uvs })
+    Ok(Lod { resolution, vertices, selections, textures, faces, face_textures, face_materials, materials, uvs, uvs2 })
 }
 
 /// The stage holding the colour of a material, by the texture naming convention.
@@ -397,32 +408,67 @@ fn diffuse_stage(stages: &[String]) -> Option<String> {
     ["_co", "_ca", "_mco", "_mca", "_mc", "_lco"].iter().find_map(|s| has(s)).cloned()
 }
 
-/// Names of the texture stages of a material.
-fn read_material(r: &mut Reader) -> Result<Vec<String>> {
-    r.cstring()?;
+/// One texture stage of a material.
+#[derive(Debug, Clone, Default)]
+pub struct Stage {
+    pub texture: String,
+    /// Index into `Material::transforms`.
+    pub transform: u32,
+}
+
+/// UV source and 4x3 matrix of a texture coordinate generator.
+#[derive(Debug, Clone, Default)]
+pub struct TexGen {
+    pub source: u32,
+    pub matrix: [f32; 12],
+}
+
+/// A binarised RVMAT.
+#[derive(Debug, Clone, Default)]
+pub struct Material {
+    pub name: String,
+    pub pixel_shader: u32,
+    pub stages: Vec<Stage>,
+    pub transforms: Vec<TexGen>,
+}
+
+fn read_material(r: &mut Reader) -> Result<Material> {
+    let name = r.cstring()?;
     let version = r.u32()?;
-    // Eight colours, specular power, two words, one colour.
-    r.skip(8 * 16 + 4 + 8 + 16)?;
+    // Eight colours and the specular power come before the shader ids.
+    r.skip(8 * 16 + 4)?;
+    let pixel_shader = r.u32()?;
+    r.skip(4 + 16)?;
     if version >= 20 {
         r.skip(12 * 4)?;
     }
     r.skip(16)?;
     r.cstring()?;
     r.skip(8)?;
-    let stages = r.count()?;
-    let transforms = r.count()?;
-    let mut names = Vec::with_capacity(stages);
-    for _ in 0..stages {
+    let stage_count = r.count()?;
+    let transform_count = r.count()?;
+    let mut stages = Vec::with_capacity(stage_count);
+    for _ in 0..stage_count {
         r.skip(4)?;
-        names.push(r.cstring()?);
-        r.skip(5)?;
+        let texture = r.cstring()?;
+        let transform = r.u32()?;
+        r.skip(1)?;
+        stages.push(Stage { texture, transform });
     }
-    r.skip(transforms * 52)?;
+    let mut transforms = Vec::with_capacity(transform_count);
+    for _ in 0..transform_count {
+        let source = r.u32()?;
+        let mut matrix = [0.0; 12];
+        for v in &mut matrix {
+            *v = r.f32()?;
+        }
+        transforms.push(TexGen { source, matrix });
+    }
     // Texture stage TI.
     r.skip(4)?;
     r.cstring()?;
     r.skip(5)?;
-    Ok(names)
+    Ok(Material { name, pixel_shader, stages, transforms })
 }
 
 /// The LODs whose resolution `want` accepts, read from an ODOL file.

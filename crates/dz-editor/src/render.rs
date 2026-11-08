@@ -61,7 +61,8 @@ uniform int u_ortho;
 uniform sampler2DShadow u_shadow;
 uniform mat4 u_light;
 uniform int u_has_shadow;
-const vec3 SUN = normalize(vec3(-0.45, 0.8, 0.4));
+uniform vec3 u_sun, u_sun_col, u_amb;
+uniform float u_fog, u_exposure;
 const vec3 FOG = vec3(0.66, 0.74, 0.84);
 
 float H(vec2 p){ return texture(u_height, (p / u_cell + 0.5) / u_size).r; }
@@ -113,12 +114,12 @@ void main(){
       float t = 1.0 / 2048.0, s = 0.0;
       for (int i = 0; i < 4; i++) {
         vec2 o = vec2((i & 1) * 2 - 1, (i & 2) - 1) * t;
-        s += texture(u_shadow, vec3(p.xy + o, p.z - 0.0006));
+        s += texture(u_shadow, vec3(p.xy + o, p.z - 0.0004));
       }
       shade = mix(1.0, s * 0.25, smoothstep(0.0, 0.08, min(edge.x, edge.y)));
     }
   }
-  vec3 light = vec3(0.56,0.60,0.68) * (0.6 + 0.4*n.y) + vec3(1.0,0.96,0.88) * max(dot(n, SUN), 0.0) * 0.82 * shade;
+  vec3 light = u_amb * (0.6 + 0.4*n.y) + u_sun_col * max(dot(n, u_sun), 0.0) * shade;
 
   if (u_mode == 0) { // lit, like in the game
     vec3 alb = sat;
@@ -145,7 +146,7 @@ void main(){
     col = vec3(0.62) * light;
   } else if (u_mode == 4) { // height
     float t = (v_world.y - u_height_range.x) / max(u_height_range.y - u_height_range.x, 1.0);
-    col = ramp(t) * (0.45 + 0.55 * max(dot(n, SUN), 0.0) / 0.8);
+    col = ramp(t) * (0.45 + 0.55 * max(dot(n, u_sun), 0.0) / 0.8);
   } else { // slope
     float s = degrees(acos(clamp(n.y, -1.0, 1.0)));
     col = mix(vec3(0.15,0.5,0.25), vec3(0.9,0.75,0.2), smoothstep(5.0,20.0,s));
@@ -173,7 +174,8 @@ void main(){
     float fill = bd < u_brush.z ? 0.10 : 0.0;
     col = mix(col, u_brush_color.rgb, max(max(ring, inner * 0.5), fill));
   }
-  if (u_ortho == 0 && u_mode <= 1) col = mix(col, FOG, 1.0 - exp(-dist * 0.00007));
+  if (u_ortho == 0 && u_mode <= 1) col = mix(col, FOG, 1.0 - exp(-dist * u_fog));
+  if (u_mode <= 1) col *= u_exposure;
   o = vec4(col, 1.0);
 }"#;
 
@@ -184,20 +186,21 @@ out vec3 v_world;
 void main(){ v_world = vec3(u_area.x + a_pos.x * u_area.z, u_sea, u_area.y + a_pos.y * u_area.w); gl_Position = u_vp * vec4(v_world, 1.0); }"#;
 
 const WATER_FS: &str = r#"#version 330 core
-in vec3 v_world; out vec4 o; uniform vec3 u_eye;
+in vec3 v_world; out vec4 o; uniform vec3 u_eye; uniform float u_fog, u_exposure;
 void main(){
   vec3 v = normalize(u_eye - v_world);
   float fres = pow(1.0 - max(v.y, 0.0), 3.0);
   vec3 col = mix(vec3(0.05,0.2,0.3), vec3(0.55,0.68,0.8), fres);
   float dist = distance(v_world, u_eye);
-  col = mix(col, vec3(0.66,0.74,0.84), 1.0 - exp(-dist * 0.00007));
-  o = vec4(col, 0.82);
+  col = mix(col, vec3(0.66,0.74,0.84), 1.0 - exp(-dist * u_fog));
+  o = vec4(col * u_exposure, 0.82);
 }"#;
 
 const MESH_VS: &str = r#"#version 330 core
 layout(location=0) in vec3 a_pos;
 layout(location=1) in vec3 a_normal;
 layout(location=2) in vec2 a_uv;
+layout(location=7) in vec2 a_uv2;
 layout(location=3) in vec4 i_r0;
 layout(location=4) in vec4 i_r1;
 layout(location=5) in vec4 i_r2;
@@ -208,7 +211,7 @@ uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
 uniform vec3 u_eye;
-out vec3 v_n; out vec2 v_uv; out vec3 v_world; flat out vec4 v_tint;
+out vec3 v_n; out vec2 v_uv; out vec2 v_uv2; out vec3 v_world; flat out vec4 v_tint;
 void main(){
   vec4 p = vec4(a_pos, 1.0);
   v_world = vec3(dot(i_r0, p), dot(i_r1, p), dot(i_r2, p));
@@ -218,26 +221,100 @@ void main(){
   }
   vec4 n = vec4(a_normal, 0.0);
   v_n = normalize(vec3(dot(i_r0, n), dot(i_r1, n), dot(i_r2, n)));
-  v_uv = a_uv; v_tint = i_tint;
+  v_uv = a_uv; v_uv2 = a_uv2; v_tint = i_tint;
   gl_Position = u_vp * vec4(v_world, 1.0);
 }"#;
 
 const MESH_FS: &str = r#"#version 330 core
-in vec3 v_n; in vec2 v_uv; in vec3 v_world; flat in vec4 v_tint;
+in vec3 v_n; in vec2 v_uv; in vec2 v_uv2; in vec3 v_world; flat in vec4 v_tint;
 out vec4 o;
-uniform sampler2D u_tex; uniform int u_textured; uniform vec3 u_eye; uniform float u_alpha;
-const vec3 SUN = normalize(vec3(-0.45, 0.8, 0.4));
+uniform sampler2D u_tex, u_m1, u_m2, u_m3, u_m4, u_m5, u_m6, u_m7, u_m8, u_m9, u_m10;
+uniform vec4 u_xf[11];
+uniform vec3 u_xo[11];
+uniform int u_textured, u_mode;
+uniform vec3 u_eye, u_sun, u_sun_col, u_amb;
+uniform float u_alpha, u_fog, u_exposure;
+uniform sampler2DShadow u_shadow;
+uniform mat4 u_light;
+uniform int u_has_shadow;
+
+vec2 UV(int i){
+  vec2 b = u_xo[i].z > 0.5 ? v_uv2 : v_uv;
+  return vec2(u_xf[i].x * b.x + u_xf[i].z * b.y + u_xo[i].x, u_xf[i].y * b.x + u_xf[i].w * b.y + u_xo[i].y);
+}
+// Tangent frame from screen derivatives, so meshes need no stored tangents.
+vec3 bump(vec3 N, vec3 m, vec2 uv){
+  vec3 p1 = dFdx(v_world), p2 = dFdy(v_world);
+  vec2 a = dFdx(uv), b = dFdy(uv);
+  vec3 r1 = cross(p2, N), r2 = cross(N, p1);
+  vec3 T = r1 * a.x + r2 * b.x;
+  vec3 B = r1 * a.y + r2 * b.y;
+  float k = max(dot(T, T), dot(B, B));
+  if (k <= 0.0) return N;
+  k = 1.0 / sqrt(k);
+  return normalize(T * k * m.x + B * k * m.y + N * m.z);
+}
+float shadow(vec3 n){
+  if (u_has_shadow == 0) return 1.0;
+  vec4 q = u_light * vec4(v_world + n * 0.15, 1.0);
+  vec3 p = q.xyz * 0.5 + 0.5;
+  vec2 edge = min(p.xy, 1.0 - p.xy);
+  if (min(edge.x, edge.y) <= 0.0) return 1.0;
+  float t = 1.0 / 2048.0, s = 0.0;
+  for (int i = 0; i < 4; i++) {
+    vec2 d = vec2((i & 1) * 2 - 1, (i & 2) - 1) * t;
+    s += texture(u_shadow, vec3(p.xy + d, p.z - 0.0005));
+  }
+  return mix(1.0, s * 0.25, smoothstep(0.0, 0.08, min(edge.x, edge.y)));
+}
 void main(){
-  vec4 c = vec4(0.62,0.62,0.6,1.0);
-  if (u_textured != 0) { c = texture(u_tex, v_uv); if (c.a < mix(0.42, 0.1, clamp(distance(v_world, u_eye) / 350.0, 0.0, 1.0))) discard; }
-  else if (v_tint.a > 0.0 && v_tint.a < 0.99) { c.rgb = v_tint.rgb; }
-  vec3 n = normalize(v_n);
-  float l = abs(dot(n, SUN));
-  vec3 lit = c.rgb * (vec3(0.42,0.46,0.52) + vec3(1.0,0.95,0.86) * l * 0.75);
-  if (v_tint.a >= 0.99) lit = mix(lit, v_tint.rgb, 0.55);
   float dist = distance(v_world, u_eye);
-  lit = mix(lit, vec3(0.66,0.74,0.84), 1.0 - exp(-dist * 0.00007));
-  o = vec4(lit, v_tint.a >= 0.99 ? 1.0 : u_alpha);
+  float cut = mix(0.42, 0.1, clamp(dist / 350.0, 0.0, 1.0));
+  vec3 N = normalize(v_n);
+  vec3 V = normalize(u_eye - v_world);
+  vec4 c = vec4(0.62,0.62,0.6,1.0);
+  float ao = 1.0, spec = 0.0, gloss = 32.0;
+  bool lit_sides = u_mode != 0;
+  if (lit_sides && dot(N, V) < 0.0) N = -N;
+  if (u_mode == 1) {
+    c = texture(u_tex, UV(0));
+    if (c.a < cut) discard;
+    vec4 mc = texture(u_m3, UV(3));
+    c.rgb = mix(c.rgb, mc.rgb, mc.a);
+    c.rgb *= texture(u_m2, UV(2)).rgb * 2.0;
+    ao = texture(u_m4, UV(4)).g;
+    vec4 s = texture(u_m5, UV(5));
+    spec = s.g;
+    gloss = mix(8.0, 128.0, s.b);
+    N = bump(N, texture(u_m1, UV(1)).xyz * 2.0 - 1.0, UV(1));
+  } else if (u_mode == 2) {
+    vec4 m = texture(u_m4, UV(4));
+    float base = max(1.0 - m.r - m.g - m.b, 0.0);
+    c = texture(u_tex, UV(0)) * base + texture(u_m1, UV(1)) * m.r + texture(u_m2, UV(2)) * m.g + texture(u_m3, UV(3)) * m.b;
+    c.a = 1.0;
+    vec4 mc = texture(u_m5, UV(5));
+    c.rgb = mix(c.rgb, mc.rgb, mc.a);
+    ao = texture(u_m6, UV(6)).g;
+    vec3 n = (texture(u_m7, UV(7)).xyz * base + texture(u_m8, UV(1)).xyz * m.r + texture(u_m9, UV(2)).xyz * m.g + texture(u_m10, UV(3)).xyz * m.b) * 2.0 - 1.0;
+    N = bump(N, n, UV(0));
+    spec = 0.12;
+  } else if (u_textured != 0) {
+    c = texture(u_tex, v_uv);
+    if (c.a < cut) discard;
+  } else if (v_tint.a > 0.0 && v_tint.a < 0.99) {
+    c.rgb = v_tint.rgb;
+  }
+  float ndl = lit_sides ? max(dot(N, u_sun), 0.0) : abs(dot(N, u_sun));
+  // Foliage is too sparse to shadow itself the way solid surfaces do.
+  float sh = lit_sides ? shadow(N) : mix(1.0, shadow(vec3(0.0, 1.0, 0.0)), 0.3);
+  vec3 lit = c.rgb * (u_amb * (lit_sides ? 1.0 : 0.75) * ao + u_sun_col * 0.92 * ndl * sh);
+  if (spec > 0.0) {
+    vec3 H = normalize(V + u_sun);
+    lit += u_sun_col * spec * 0.6 * pow(max(dot(N, H), 0.0), gloss) * sh * step(0.0, dot(N, u_sun));
+  }
+  if (v_tint.a >= 0.99) lit = mix(lit, v_tint.rgb, 0.55);
+  lit = mix(lit, vec3(0.66,0.74,0.84), 1.0 - exp(-dist * u_fog));
+  o = vec4(lit * u_exposure, v_tint.a >= 0.99 ? 1.0 : u_alpha);
 }"#;
 
 const SKY_VS: &str = r#"#version 330 core
@@ -247,14 +324,18 @@ void main(){ v = a_pos * 2.0 - 1.0; gl_Position = vec4(v, 1.0, 1.0); }"#;
 
 const SKY_FS: &str = r#"#version 330 core
 in vec2 v; out vec4 o;
-uniform vec3 u_f, u_r, u_u; uniform vec2 u_t;
+uniform vec3 u_f, u_r, u_u, u_sun; uniform vec2 u_t; uniform float u_exposure;
 void main(){
   vec3 d = normalize(u_f + u_r * v.x * u_t.x + u_u * v.y * u_t.y);
   float h = clamp(d.y, -0.05, 1.0);
   vec3 c = mix(vec3(0.66,0.74,0.84), vec3(0.24,0.44,0.72), pow(max(h, 0.0), 0.55));
-  float s = max(dot(d, normalize(vec3(-0.45, 0.8, 0.4))), 0.0);
+  float day = smoothstep(-0.12, 0.3, u_sun.y);
+  c = mix(vec3(0.09,0.11,0.2), c, day);
+  // Warm band near the horizon when the sun is low.
+  c = mix(c, vec3(0.95,0.6,0.38), (1.0 - smoothstep(0.0, 0.45, u_sun.y)) * smoothstep(0.35, 0.0, abs(h)) * 0.55 * smoothstep(-0.1, 0.05, u_sun.y));
+  float s = max(dot(d, u_sun), 0.0);
   c += vec3(1.0,0.9,0.75) * (pow(s, 400.0) * 1.2 + pow(s, 12.0) * 0.08);
-  o = vec4(c, 1.0);
+  o = vec4(c * u_exposure, 1.0);
 }"#;
 
 const IMPOSTOR_VS: &str = r#"#version 330 core
@@ -274,13 +355,13 @@ void main(){
 
 const IMPOSTOR_FS: &str = r#"#version 330 core
 in vec3 v_uv; in vec3 v_world; out vec4 o;
-uniform sampler2DArray u_tex; uniform vec3 u_eye;
+uniform sampler2DArray u_tex; uniform vec3 u_eye, u_sun_col, u_amb; uniform float u_fog, u_exposure;
 void main(){
   vec4 c = texture(u_tex, v_uv);
   if (c.a < 0.5) discard;
-  vec3 lit = c.rgb * vec3(0.95,0.95,0.92);
+  vec3 lit = c.rgb * (u_amb * 0.8 + u_sun_col * 0.62);
   float dist = distance(v_world, u_eye);
-  o = vec4(mix(lit, vec3(0.66,0.74,0.84), 1.0 - exp(-dist * 0.00007)), 1.0);
+  o = vec4(mix(lit, vec3(0.66,0.74,0.84), 1.0 - exp(-dist * u_fog)) * u_exposure, 1.0);
 }"#;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -452,8 +533,11 @@ pub struct MeshData {
     /// x, y, z, nx, ny, nz, u, v
     pub vertices: Vec<f32>,
     pub indices: Vec<u32>,
-    pub batches: Vec<(u32, u32, Option<usize>)>,
-    pub textures: Vec<(u32, u32, Vec<u8>)>,
+    /// (first index, index count, colour texture, shading)
+    pub batches: Vec<(u32, u32, Option<usize>, Option<usize>)>,
+    /// (name, width, height, RGBA)
+    pub textures: Vec<(String, u32, u32, Vec<u8>)>,
+    pub shadings: Vec<forest_core::model3d::Shading>,
     pub impostor: Option<Vec<(usize, Vec<u8>)>>,
     /// Side length and image centre of the impostor in model metres.
     pub impostor_fit: [f32; 3],
@@ -464,12 +548,20 @@ pub struct MeshData {
 pub const IMPOSTOR_SIZE: i32 = 192;
 pub const IMPOSTOR_LAYERS: i32 = 512;
 
+/// A material with every slot resolved to a texture.
+#[derive(Clone, Copy)]
+struct MatGpu {
+    multi: bool,
+    maps: [glow::Texture; 11],
+    xf: [f32; 44],
+    xo: [f32; 33],
+}
+
 struct Model {
     vao: glow::VertexArray,
     vbo: glow::Buffer,
     ebo: glow::Buffer,
-    batches: Vec<(u32, u32, Option<glow::Texture>)>,
-    textures: Vec<glow::Texture>,
+    batches: Vec<(u32, u32, Option<glow::Texture>, Option<MatGpu>)>,
     triangles: u32,
     conform: bool,
 }
@@ -490,6 +582,16 @@ pub struct ObjectDraw {
     pub shadow_groups: Arc<Vec<((u32, u8), u32, u32)>>,
 }
 
+/// Lighting values the shaders use.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LightGpu {
+    pub sun: [f32; 3],
+    pub sun_color: [f32; 3],
+    pub ambient: [f32; 3],
+    pub fog: f32,
+    pub exposure: f32,
+}
+
 #[derive(Clone)]
 pub struct Frame {
     pub view: View,
@@ -506,6 +608,7 @@ pub struct Frame {
     pub show_water: bool,
     pub world: f32,
     pub tile: f32,
+    pub lighting: LightGpu,
     /// Sun view for the shadow map.
     pub light: Option<[f32; 16]>,
 }
@@ -571,6 +674,10 @@ pub struct Renderer {
     shadow_buffer: Option<glow::Buffer>,
     shadow_drawn: Option<*const Vec<f32>>,
     shadow_valid: bool,
+    shadow_light: Option<[f32; 16]>,
+    /// GPU textures by name, shared between models.
+    shared: HashMap<String, glow::Texture>,
+    fallback: Option<[glow::Texture; 4]>,
 }
 
 // Only used on the GL thread; the pointer is an identity check and never dereferenced.
@@ -772,10 +879,10 @@ impl Renderer {
             ([0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
         ];
         for (n, u, v) in faces {
-            let base = (b.len() / 8) as u32;
+            let base = (b.len() / 10) as u32;
             for (s, t) in [(-0.5f32, -0.5f32), (0.5, -0.5), (-0.5, 0.5), (0.5, 0.5)] {
                 let p = [n[0] * 0.5 + u[0] * s + v[0] * t, n[1] * 0.5 + u[1] * s + v[1] * t + 0.5, n[2] * 0.5 + u[2] * s + v[2] * t];
-                b.extend_from_slice(&[p[0], p[1], p[2], n[0], n[1], n[2], 0.0, 0.0]);
+                b.extend_from_slice(&[p[0], p[1], p[2], n[0], n[1], n[2], 0.0, 0.0, 0.0, 0.0]);
             }
             bi.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 1, base + 3]);
         }
@@ -818,11 +925,13 @@ impl Renderer {
 
     unsafe fn mesh_attributes(gl: &glow::Context) {
         gl.enable_vertex_attrib_array(0);
-        gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, 32, 0);
+        gl.vertex_attrib_pointer_f32(0, 3, glow::FLOAT, false, 40, 0);
         gl.enable_vertex_attrib_array(1);
-        gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, 32, 12);
+        gl.vertex_attrib_pointer_f32(1, 3, glow::FLOAT, false, 40, 12);
         gl.enable_vertex_attrib_array(2);
-        gl.vertex_attrib_pointer_f32(2, 2, glow::FLOAT, false, 32, 24);
+        gl.vertex_attrib_pointer_f32(2, 2, glow::FLOAT, false, 40, 24);
+        gl.enable_vertex_attrib_array(7);
+        gl.vertex_attrib_pointer_f32(7, 2, glow::FLOAT, false, 40, 32);
     }
 
     unsafe fn bind_mesh_instances(gl: &glow::Context, buffer: glow::Buffer, first: u32) {
@@ -928,9 +1037,9 @@ impl Renderer {
                         gl.delete_vertex_array(m.vao);
                         gl.delete_buffer(m.vbo);
                         gl.delete_buffer(m.ebo);
-                        for t in m.textures {
-                            gl.delete_texture(t);
-                        }
+                    }
+                    for (_, t) in self.shared.drain() {
+                        gl.delete_texture(t);
                     }
                     self.impostor_layers.clear();
                     self.next_impostor = 0;
@@ -974,18 +1083,67 @@ impl Renderer {
         let ebo = gl.create_buffer()?;
         gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
         gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytes(&m.indices), glow::STATIC_DRAW);
-        let mut textures = Vec::new();
-        for (w, h, rgba) in &m.textures {
-            let t = gl.create_texture()?;
-            gl.bind_texture(glow::TEXTURE_2D, Some(t));
-            gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, *w as i32, *h as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(rgba)));
-            gl.generate_mipmap(glow::TEXTURE_2D);
-            set_filter(gl, glow::TEXTURE_2D, glow::LINEAR_MIPMAP_LINEAR, glow::LINEAR, glow::REPEAT);
+        let mut textures: Vec<glow::Texture> = Vec::with_capacity(m.textures.len());
+        for (name, w, h, rgba) in &m.textures {
+            let t = match self.shared.get(name) {
+                Some(t) => *t,
+                None => {
+                    let t = gl.create_texture()?;
+                    gl.bind_texture(glow::TEXTURE_2D, Some(t));
+                    gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, *w as i32, *h as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(rgba)));
+                    gl.generate_mipmap(glow::TEXTURE_2D);
+                    set_filter(gl, glow::TEXTURE_2D, glow::LINEAR_MIPMAP_LINEAR, glow::LINEAR, glow::REPEAT);
+                    self.shared.insert(name.clone(), t);
+                    t
+                }
+            };
             textures.push(t);
         }
-        let batches = m.batches.iter().map(|(f, c, t)| (*f, *c, t.and_then(|i| textures.get(i).copied()))).collect();
+        let fallback = match self.fallback {
+            Some(f) => f,
+            None => {
+                let mut list = Vec::new();
+                for rgba in [[255u8, 255, 255, 255], [128, 128, 128, 255], [128, 128, 255, 255], [0, 0, 0, 0]] {
+                    let t = gl.create_texture()?;
+                    gl.bind_texture(glow::TEXTURE_2D, Some(t));
+                    gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, 1, 1, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&rgba)));
+                    set_filter(gl, glow::TEXTURE_2D, glow::NEAREST, glow::NEAREST, glow::REPEAT);
+                    list.push(t);
+                }
+                let f = [list[0], list[1], list[2], list[3]];
+                self.fallback = Some(f);
+                f
+            }
+        };
+        let [white, gray, flat, clear] = fallback;
+        let batches = m.batches.iter().map(|(f, c, t, sh)| {
+            let base = t.and_then(|i| textures.get(i).copied());
+            let mat = sh.and_then(|i| m.shadings.get(i)).map(|s| {
+                let defaults = if s.multi {
+                    [gray, gray, gray, gray, clear, clear, white, flat, flat, flat, flat]
+                } else {
+                    [gray, flat, gray, clear, white, gray, gray, gray, gray, gray, gray]
+                };
+                let mut maps = defaults;
+                for k in 0..11 {
+                    if let Some(tex) = s.maps[k].and_then(|i| textures.get(i).copied()) {
+                        maps[k] = tex;
+                    }
+                }
+                if !s.multi {
+                    maps[0] = base.unwrap_or(gray);
+                }
+                let (mut xf, mut xo) = ([0.0f32; 44], [0.0f32; 33]);
+                for k in 0..11 {
+                    xf[k * 4..k * 4 + 4].copy_from_slice(&s.xf[k]);
+                    xo[k * 3..k * 3 + 3].copy_from_slice(&s.xo[k]);
+                }
+                MatGpu { multi: s.multi, maps, xf, xo }
+            });
+            (*f, *c, base, mat)
+        }).collect();
         let triangles = m.indices.len() as u32 / 3;
-        self.models.insert(m.key, Model { vao, vbo, ebo, batches, textures, triangles, conform: m.conform });
+        self.models.insert(m.key, Model { vao, vbo, ebo, batches, triangles, conform: m.conform });
         Ok(())
     }
 
@@ -1025,6 +1183,8 @@ impl Renderer {
         let u = |n: &str| gl.get_uniform_location(program, n);
         gl.uniform_matrix_4_f32_slice(u("u_vp").as_ref(), false, light);
         gl.uniform_1_i32(u("u_conform").as_ref(), 0);
+        gl.uniform_1_i32(u("u_mode").as_ref(), 0);
+        gl.uniform_1_i32(u("u_has_shadow").as_ref(), 0);
         gl.uniform_1_i32(u("u_tex").as_ref(), 0);
         gl.uniform_1_f32(u("u_alpha").as_ref(), 1.0);
         gl.uniform_3_f32_slice(u("u_eye").as_ref(), &f.view.eye);
@@ -1037,7 +1197,7 @@ impl Renderer {
             let Some(m) = self.models.get(key) else { continue };
             gl.bind_vertex_array(Some(m.vao));
             Self::bind_mesh_instances(gl, buffer, *first);
-            for (start, n, tex) in &m.batches {
+            for (start, n, tex, _) in &m.batches {
                 gl.bind_texture(glow::TEXTURE_2D, *tex);
                 gl.uniform_1_i32(textured.as_ref(), tex.is_some() as i32);
                 gl.draw_elements_instanced(glow::TRIANGLES, *n as i32, glow::UNSIGNED_INT, (*start * 4) as i32, *count as i32);
@@ -1065,7 +1225,8 @@ impl Renderer {
         self.shadow_valid = false;
         if let Some(light) = &active_light {
             let ptr = Arc::as_ptr(&f.objects.shadow_instances);
-            if self.shadow_drawn != Some(ptr) {
+            if self.shadow_drawn != Some(ptr) || self.shadow_light.as_ref() != Some(light) {
+                self.shadow_light = Some(*light);
                 if let Err(e) = self.draw_shadows(gl, f, light, mesh_prog) {
                     self.error = Some(e);
                 }
@@ -1084,10 +1245,19 @@ impl Renderer {
         gl.disable(glow::BLEND);
 
         let u = |prog: glow::Program, n: &str| gl.get_uniform_location(prog, n);
+        let light_uniforms = |prog: glow::Program| {
+            let l = &f.lighting;
+            gl.uniform_3_f32_slice(u(prog, "u_sun").as_ref(), &l.sun);
+            gl.uniform_3_f32_slice(u(prog, "u_sun_col").as_ref(), &l.sun_color);
+            gl.uniform_3_f32_slice(u(prog, "u_amb").as_ref(), &l.ambient);
+            gl.uniform_1_f32(u(prog, "u_fog").as_ref(), l.fog);
+            gl.uniform_1_f32(u(prog, "u_exposure").as_ref(), l.exposure);
+        };
         if !f.view.ortho {
             gl.depth_mask(false);
             gl.disable(glow::DEPTH_TEST);
             gl.use_program(Some(sky));
+            light_uniforms(sky);
             let v = &f.view;
             gl.uniform_3_f32_slice(u(sky, "u_f").as_ref(), &v.forward);
             gl.uniform_3_f32_slice(u(sky, "u_r").as_ref(), &v.right);
@@ -1100,6 +1270,7 @@ impl Renderer {
         }
         // Terrain.
         gl.use_program(Some(terrain));
+        light_uniforms(terrain);
         gl.uniform_matrix_4_f32_slice(u(terrain, "u_vp").as_ref(), false, &f.view.vp);
         gl.uniform_2_f32(u(terrain, "u_size").as_ref(), self.size[0], self.size[1]);
         gl.uniform_1_f32(u(terrain, "u_cell").as_ref(), self.cell);
@@ -1157,10 +1328,25 @@ impl Renderer {
         // Objects.
         gl.active_texture(glow::TEXTURE0);
         gl.use_program(Some(mesh_prog));
+        light_uniforms(mesh_prog);
         gl.uniform_matrix_4_f32_slice(u(mesh_prog, "u_vp").as_ref(), false, &f.view.vp);
         gl.uniform_3_f32(u(mesh_prog, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
         gl.uniform_1_i32(u(mesh_prog, "u_tex").as_ref(), 0);
         gl.uniform_1_f32(u(mesh_prog, "u_alpha").as_ref(), 1.0);
+        for k in 1..=10 {
+            gl.uniform_1_i32(u(mesh_prog, &format!("u_m{k}")).as_ref(), 1 + k);
+        }
+        gl.uniform_1_i32(u(mesh_prog, "u_shadow").as_ref(), 12);
+        gl.active_texture(glow::TEXTURE12);
+        gl.bind_texture(glow::TEXTURE_2D, self.shadow_map);
+        gl.uniform_1_i32(u(mesh_prog, "u_has_shadow").as_ref(), self.shadow_valid as i32);
+        if let (Some(l), true) = (&active_light, self.shadow_valid) {
+            gl.uniform_matrix_4_f32_slice(u(mesh_prog, "u_light").as_ref(), false, l);
+        }
+        gl.active_texture(glow::TEXTURE0);
+        let mode_u = u(mesh_prog, "u_mode");
+        gl.uniform_1_i32(mode_u.as_ref(), 0);
+        let (xf_u, xo_u) = (u(mesh_prog, "u_xf"), u(mesh_prog, "u_xo"));
         gl.uniform_1_i32(u(mesh_prog, "u_height").as_ref(), 1);
         gl.uniform_2_f32(u(mesh_prog, "u_size").as_ref(), self.size[0], self.size[1]);
         gl.uniform_1_f32(u(mesh_prog, "u_cell").as_ref(), self.cell);
@@ -1190,8 +1376,24 @@ impl Renderer {
                 gl.bind_vertex_array(Some(m.vao));
                 Self::bind_mesh_instances(gl, buffer, *first);
                 gl.uniform_1_i32(conform_u.as_ref(), m.conform as i32);
-                for (start, n, tex) in &m.batches {
-                    gl.bind_texture(glow::TEXTURE_2D, *tex);
+                for (start, n, tex, mat) in &m.batches {
+                    match mat {
+                        Some(mt) => {
+                            gl.uniform_1_i32(mode_u.as_ref(), if mt.multi { 2 } else { 1 });
+                            gl.uniform_4_f32_slice(xf_u.as_ref(), &mt.xf);
+                            gl.uniform_3_f32_slice(xo_u.as_ref(), &mt.xo);
+                            for k in 1..11u32 {
+                                gl.active_texture(glow::TEXTURE0 + 1 + k);
+                                gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[k as usize]));
+                            }
+                            gl.active_texture(glow::TEXTURE0);
+                            gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[0]));
+                        }
+                        None => {
+                            gl.uniform_1_i32(mode_u.as_ref(), 0);
+                            gl.bind_texture(glow::TEXTURE_2D, *tex);
+                        }
+                    }
                     gl.uniform_1_i32(textured.as_ref(), tex.is_some() as i32);
                     gl.draw_elements_instanced(glow::TRIANGLES, *n as i32, glow::UNSIGNED_INT, (*start * 4) as i32, *count as i32);
                     stats.draw_calls += 1;
@@ -1201,6 +1403,7 @@ impl Renderer {
             }
         }
         gl.uniform_1_i32(conform_u.as_ref(), 0);
+        gl.uniform_1_i32(mode_u.as_ref(), 0);
         if !f.objects.boxes.is_empty() {
             gl.bind_vertex_array(self.box_vao);
             Self::bind_mesh_instances(gl, self.box_instances.unwrap(), 0);
@@ -1218,6 +1421,7 @@ impl Renderer {
         }
         if !f.objects.impostors.is_empty() {
             gl.use_program(Some(impostor_prog));
+            light_uniforms(impostor_prog);
             gl.uniform_matrix_4_f32_slice(u(impostor_prog, "u_vp").as_ref(), false, &f.view.vp);
             gl.uniform_3_f32(u(impostor_prog, "u_right").as_ref(), f.view.right[0], f.view.right[1], f.view.right[2]);
             gl.uniform_3_f32(u(impostor_prog, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
@@ -1248,6 +1452,7 @@ impl Renderer {
             gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
             gl.depth_mask(false);
             gl.use_program(Some(water));
+            light_uniforms(water);
             gl.uniform_matrix_4_f32_slice(u(water, "u_vp").as_ref(), false, &f.view.vp);
             gl.uniform_3_f32(u(water, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
             gl.uniform_1_f32(u(water, "u_sea").as_ref(), f.sea);

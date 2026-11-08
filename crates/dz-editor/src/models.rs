@@ -98,19 +98,19 @@ fn impostor_mips(base: Vec<u8>, side: usize) -> Vec<(usize, Vec<u8>)> {
 }
 
 fn from_model3d(mesh: &model3d::ModelMesh, center: [f32; 3], key: (u32, u8), with_impostor: bool) -> MeshData {
-    let mut vertices = Vec::with_capacity(mesh.vertices.len() * 8);
+    let mut vertices = Vec::with_capacity(mesh.vertices.len() * 10);
     for v in &mesh.vertices {
-        vertices.extend_from_slice(&[v.pos[0] + center[0], v.pos[1] + center[1], v.pos[2] + center[2], v.normal[0], v.normal[1], v.normal[2], v.uv[0], v.uv[1]]);
+        vertices.extend_from_slice(&[v.pos[0] + center[0], v.pos[1] + center[1], v.pos[2] + center[2], v.normal[0], v.normal[1], v.normal[2], v.uv[0], v.uv[1], v.uv2[0], v.uv2[1]]);
     }
-    let batches = mesh.batches.iter().map(|b| (b.first_index, b.index_count, b.texture)).collect();
-    let textures = mesh.textures.iter().map(|t| (t.width, t.height, t.rgba.clone())).collect();
+    let batches = mesh.batches.iter().map(|b| (b.first_index, b.index_count, b.texture, b.shading)).collect();
+    let textures = mesh.textures.iter().zip(&mesh.texture_names).map(|(t, n)| (n.clone(), t.width, t.height, t.rgba.clone())).collect();
     let mut impostor_fit = [0.0; 3];
     let impostor = with_impostor.then(|| {
         let (rgba, fit) = model3d::render_impostor(mesh, IMPOSTOR_SIZE as u32);
         impostor_fit = [fit.world_size, fit.center[0] + center[0], fit.center[1] + center[1]];
         impostor_mips(rgba, IMPOSTOR_SIZE as usize)
     });
-    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, impostor, impostor_fit, conform: false }
+    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, shadings: mesh.shadings.clone(), impostor, impostor_fit, conform: false }
 }
 
 /// MLOD models and everything `model3d` refuses go through the road tool's reader.
@@ -126,17 +126,17 @@ fn from_mesh3d(file: &Path, cache: &dayz_road_tool::mesh3d::Cache, key: (u32, u8
             let (a, b) = ([tri[1][0] - tri[0][0], tri[1][1] - tri[0][1], tri[1][2] - tri[0][2]], [tri[2][0] - tri[0][0], tri[2][1] - tri[0][1], tri[2][2] - tri[0][2]]);
             let n = crate::camera::norm(crate::camera::cross(a, b));
             for k in 0..3 {
-                indices.push((vertices.len() / 8) as u32);
-                vertices.extend_from_slice(&[tri[k][0], tri[k][1], tri[k][2], n[0], n[1], n[2], uv[k][0], uv[k][1]]);
+                indices.push((vertices.len() / 10) as u32);
+                vertices.extend_from_slice(&[tri[k][0], tri[k][1], tri[k][2], n[0], n[1], n[2], uv[k][0], uv[k][1], uv[k][0], uv[k][1]]);
             }
         }
         let tex = cache.texture(&s.texture, file).map(|t| {
-            textures.push((t.width, t.height, t.rgba.clone()));
+            textures.push((s.texture.to_ascii_lowercase(), t.width, t.height, t.rgba.clone()));
             textures.len() - 1
         });
-        batches.push((first, indices.len() as u32 - first, tex));
+        batches.push((first, indices.len() as u32 - first, tex, None));
     }
-    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, impostor: None, impostor_fit: [0.0; 3], conform: false })
+    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false })
 }
 
 impl ModelLoader {
@@ -199,9 +199,11 @@ fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d
     }?;
     // Water surfaces use flow maps in the game; a plain colour reads correctly here.
     if path.contains("\\water\\") {
-        mesh.textures = vec![(1, 1, vec![42, 84, 112, 255])];
+        mesh.textures = vec![("#water".to_string(), 1, 1, vec![42, 84, 112, 255])];
+        mesh.shadings.clear();
         for b in &mut mesh.batches {
             b.2 = Some(0);
+            b.3 = None;
         }
         mesh.impostor = None;
     }
@@ -215,16 +217,16 @@ fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d
 
 /// Splits triangles until no edge is longer than `limit` metres.
 fn tessellate(mesh: &mut MeshData, limit: f32) {
-    let stride = 8;
+    let stride = 10;
     let source = std::mem::take(&mut mesh.vertices);
-    let vertex = |i: u32| -> [f32; 8] { source[i as usize * stride..i as usize * stride + stride].try_into().unwrap() };
-    let mix = |a: &[f32; 8], b: &[f32; 8]| -> [f32; 8] { std::array::from_fn(|k| (a[k] + b[k]) * 0.5) };
-    let len2 = |a: &[f32; 8], b: &[f32; 8]| (0..3).map(|k| (a[k] - b[k]).powi(2)).sum::<f32>();
+    let vertex = |i: u32| -> [f32; 10] { source[i as usize * stride..i as usize * stride + stride].try_into().unwrap() };
+    let mix = |a: &[f32; 10], b: &[f32; 10]| -> [f32; 10] { std::array::from_fn(|k| (a[k] + b[k]) * 0.5) };
+    let len2 = |a: &[f32; 10], b: &[f32; 10]| (0..3).map(|k| (a[k] - b[k]).powi(2)).sum::<f32>();
     let mut vertices = Vec::with_capacity(source.len() * 8);
     let mut indices = Vec::with_capacity(mesh.indices.len() * 8);
     let mut batches = Vec::with_capacity(mesh.batches.len());
     let limit2 = limit * limit;
-    for &(first, count, tex) in &mesh.batches {
+    for &(first, count, tex, shading) in &mesh.batches {
         let start = indices.len() as u32;
         for tri in mesh.indices[first as usize..(first + count) as usize].chunks_exact(3) {
             let mut stack = vec![[vertex(tri[0]), vertex(tri[1]), vertex(tri[2])]];
@@ -251,7 +253,7 @@ fn tessellate(mesh: &mut MeshData, limit: f32) {
                 }
             }
         }
-        batches.push((start, indices.len() as u32 - start, tex));
+        batches.push((start, indices.len() as u32 - start, tex, shading));
     }
     mesh.vertices = vertices;
     mesh.indices = indices;
@@ -265,23 +267,23 @@ mod tests {
     fn tessellation_limits_edges_and_keeps_batches() {
         let mut m = MeshData {
             key: (0, 0),
-            vertices: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0].to_vec(),
+            vertices: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0].to_vec(),
             indices: vec![0, 1, 2],
-            batches: vec![(0, 3, Some(0))],
-            textures: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false,
+            batches: vec![(0, 3, Some(0), None)],
+            textures: Vec::new(), shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false,
         };
         tessellate(&mut m, 2.0);
         assert!(m.indices.len() > 30);
-        assert_eq!(m.batches, vec![(0, m.indices.len() as u32, Some(0))]);
+        assert_eq!(m.batches, vec![(0, m.indices.len() as u32, Some(0), None)]);
         for t in m.indices.chunks_exact(3) {
             for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
-                let (a, b) = (a as usize * 8, b as usize * 8);
+                let (a, b) = (a as usize * 10, b as usize * 10);
                 let d: f32 = (0..3).map(|k| (m.vertices[a + k] - m.vertices[b + k]).powi(2)).sum();
                 assert!(d <= 4.0001, "{d}");
             }
         }
         // Texture coordinates are interpolated with the positions.
-        for v in m.vertices.chunks_exact(8) {
+        for v in m.vertices.chunks_exact(10) {
             assert!((v[6] - v[0] / 10.0).abs() < 1e-5);
         }
     }

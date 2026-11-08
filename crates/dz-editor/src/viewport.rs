@@ -1031,13 +1031,15 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
 
 /// Orthographic sun view over the area in front of the camera, snapped to shadow map texels
 /// so edges do not shimmer while moving.
-fn sun_matrix(v: &View) -> [f32; 16] {
+fn sun_matrix(v: &View, sun: V3) -> [f32; 16] {
     const RADIUS: f32 = 300.0;
-    const DEPTH: f32 = 1500.0;
-    let l = norm([-0.45, 0.8, 0.4]);
+    const DEPTH: f32 = 600.0;
+    let l = norm(sun);
     let r = norm(crate::camera::cross([0.0, 1.0, 0.0], l));
     let u = crate::camera::cross(l, r);
+    // Moves in steps so the map is redrawn rarely and its edges stay still.
     let c = add(v.eye, mul(norm([v.forward[0], 0.0, v.forward[2]]), RADIUS * 0.5));
+    let c = [(c[0] / 16.0).round() * 16.0, c[1], (c[2] / 16.0).round() * 16.0];
     let texel = RADIUS * 2.0 / 2048.0;
     let (rc, uc) = ((dot(r, c) / texel).round() * texel, (dot(u, c) / texel).round() * texel);
     [
@@ -1062,7 +1064,7 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
 
 fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let area = Rect::from_min_size(rect.min + vec2(6.0, 5.0), vec2(rect.width() - 12.0, 24.0));
-    let width: f32 = if top { 190.0 } else { 470.0 };
+    let width: f32 = if top { 190.0 } else { 570.0 };
     ui.painter().rect_filled(Rect::from_min_size(rect.min + vec2(2.0, 2.0), vec2(width.min(rect.width() - 4.0), 30.0)), 3.0, Color32::from_black_alpha(150));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::left_to_right(egui::Align::Center)));
     let shading = if top { &mut app.shading2 } else { &mut app.shading3 };
@@ -1077,7 +1079,35 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         let mut speed = app.camera.speed;
         child.add(egui::Slider::new(&mut speed, 1.0..=4000.0).logarithmic(true).suffix(" m/s").show_value(true).text(""));
         app.camera.speed = speed;
+        lighting_menu(app, &mut child);
     }
+}
+
+fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
+    use crate::settings::Lighting;
+    ui.menu_button(t("Lighting"), |ui| {
+        ui.set_min_width(260.0);
+        let l = &mut app.settings.lighting;
+        ui.horizontal_wrapped(|ui| {
+            for (name, preset) in [("Morning", Lighting::MORNING), ("Noon", Lighting::NOON), ("Evening", Lighting::EVENING), ("Overcast", Lighting::OVERCAST)] {
+                if ui.button(t(name)).clicked() {
+                    *l = preset;
+                }
+            }
+        });
+        ui.separator();
+        theme::row(ui, &t("Sun azimuth"), |ui| { ui.add(egui::Slider::new(&mut l.azimuth, 0.0..=360.0).suffix("°")); });
+        theme::row(ui, &t("Sun elevation"), |ui| { ui.add(egui::Slider::new(&mut l.elevation, -10.0..=90.0).suffix("°")); });
+        theme::row(ui, &t("Sun strength"), |ui| { ui.add(egui::Slider::new(&mut l.strength, 0.0..=2.0)); });
+        theme::row(ui, &t("Sun colour"), |ui| { ui.color_edit_button_rgb(&mut l.color); });
+        theme::row(ui, &t("Ambient"), |ui| { ui.add(egui::Slider::new(&mut l.ambient, 0.0..=2.0)); });
+        theme::row(ui, &t("Exposure"), |ui| { ui.add(egui::Slider::new(&mut l.exposure, 0.25..=2.5)); });
+        theme::row(ui, &t("Fog"), |ui| { ui.add(egui::Slider::new(&mut l.fog, 0.0..=6.0)); });
+        ui.checkbox(&mut app.show_shadows, t("Shadows"));
+        if ui.button(t("Reset")).clicked() {
+            app.settings.lighting = Lighting::default();
+        }
+    });
 }
 
 fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
@@ -1152,7 +1182,8 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         show_water: app.show_water,
         world: meta.size_m(),
         tile: 10.0 / meta.land_cell(),
-        light: (!top && app.show_shadows).then(|| sun_matrix(&v)),
+        lighting: app.settings.lighting.gpu(),
+        light: (!top && app.show_shadows && app.settings.lighting.elevation > 1.0).then(|| sun_matrix(&v, app.settings.lighting.sun_direction())),
     };
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
     draw_overlays(app, ui, &v, &resp);
@@ -1374,6 +1405,10 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "top" if nums.len() >= 3 => {
             app.top_center = [nums[0], nums[1]];
             app.top_mpp = nums[2];
+        }
+        "light" if nums.len() >= 2 => {
+            app.settings.lighting.azimuth = nums[0];
+            app.settings.lighting.elevation = nums[1];
         }
         "lang" => app.sync_language(&arg),
         "bottom" => app.bottom = if arg == "output" { crate::app::BottomTab::Output } else if arg == "build" { crate::app::BottomTab::Build } else { crate::app::BottomTab::Content },

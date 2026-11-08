@@ -15,6 +15,7 @@ pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
+    pub uv2: [f32; 2],
 }
 
 /// Trójkąty korzystające z jednej tekstury.
@@ -24,6 +25,24 @@ pub struct Batch {
     pub index_count: u32,
     /// Indeks w `ModelMesh::textures`; `None` = brak tekstury (kolor zastępczy).
     pub texture: Option<usize>,
+    /// Indeks w `ModelMesh::shadings`; materiał Super lub Multi.
+    pub shading: Option<usize>,
+}
+
+/// Number of texture slots of a shading.
+pub const SHADING_SLOTS: usize = 11;
+
+/// Textures of a material as the game combines them.
+/// Super: 0 colour (from the face when empty), 1 normal, 2 detail, 3 macro, 4 ambient, 5 specular.
+/// Multi: 0-3 colour layers, 4 mask, 5 macro, 6 ambient, 7-10 layer normals.
+#[derive(Clone, Debug, Default)]
+pub struct Shading {
+    pub multi: bool,
+    pub maps: [Option<usize>; SHADING_SLOTS],
+    /// aside.x, aside.y, up.x, up.y of each slot's UV transform.
+    pub xf: [[f32; 4]; SHADING_SLOTS],
+    /// pos.x, pos.y, 1 when the slot uses the second UV set.
+    pub xo: [[f32; 3]; SHADING_SLOTS],
 }
 
 #[derive(Clone)]
@@ -39,6 +58,9 @@ pub struct ModelMesh {
     pub indices: Vec<u32>,
     pub batches: Vec<Batch>,
     pub textures: Vec<TextureImage>,
+    /// Name of each texture, so identical ones can be shared on the GPU.
+    pub texture_names: Vec<String>,
+    pub shadings: Vec<Shading>,
     pub min: [f32; 3],
     pub max: [f32; 3],
 }
@@ -75,6 +97,74 @@ fn describe_format_error(bytes: &[u8]) -> Option<String> {
 
 /// Ścieżka tekstury z modelu → plik `.paa` pod `root` (P:\). `None` dla tekstur
 /// proceduralnych (`#(argb,...)`) i pustych wpisów.
+/// Solid colour of a procedural texture such as `#(argb,8,8,3)color(0.5,0.5,1,1,nohq)`.
+fn procedural_color(name: &str) -> Option<TextureImage> {
+    let args = name.trim().strip_prefix('#')?.split("color(").nth(1)?;
+    let values: Vec<f32> = args.split(',').take(4).filter_map(|v| v.trim().parse().ok()).collect();
+    (values.len() == 4).then(|| TextureImage {
+        width: 1,
+        height: 1,
+        rgba: values.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8).collect(),
+    })
+}
+
+/// Loads a material map once per model.
+struct MapLoader<'a> {
+    root: &'a Path,
+    seen: HashMap<String, Option<usize>>,
+}
+impl MapLoader<'_> {
+    fn load(&mut self, name: &str, limit: u32, mesh: &mut ModelMesh) -> Option<usize> {
+        let key = name.to_ascii_lowercase();
+        if key.trim().is_empty() {
+            return None;
+        }
+        if let Some(v) = self.seen.get(&key) {
+            return *v;
+        }
+        let image = procedural_color(name).or_else(|| {
+            let bytes = std::fs::read(texture_path(self.root, name)?).ok()?;
+            let t = paa::decode(&bytes, limit).ok()?;
+            Some(TextureImage { width: t.width, height: t.height, rgba: t.rgba })
+        });
+        let slot = image.map(|i| {
+            mesh.textures.push(i);
+            mesh.texture_names.push(key.clone());
+            mesh.textures.len() - 1
+        });
+        self.seen.insert(key, slot);
+        slot
+    }
+}
+
+fn stage_is(stage: &odol::Stage, kind: &str) -> bool {
+    stage.texture.to_ascii_lowercase().contains(kind)
+}
+
+fn build_shading(m: &odol::Material, loader: &mut MapLoader, mesh: &mut ModelMesh, max: u32) -> Option<Shading> {
+    let s = &m.stages;
+    let multi = s.len() >= 15 && stage_is(&s[4], "_mask");
+    let table: &[(usize, usize, u32)] = if multi {
+        &[(0, 0, max), (1, 1, max), (2, 2, max), (3, 3, max), (4, 4, 512), (5, 9, 256), (6, 10, 256), (7, 11, 256), (8, 12, 256), (9, 13, 256), (10, 14, 256)]
+    } else if s.len() >= 6 && stage_is(&s[1], "nohq") && stage_is(&s[2], "dt") && stage_is(&s[3], "mc") && stage_is(&s[4], "as") && stage_is(&s[5], "smdi") {
+        &[(1, 1, 256), (2, 2, 256), (3, 3, 256), (4, 4, 256), (5, 5, 256)]
+    } else {
+        return None;
+    };
+    let mut out = Shading { multi, ..Default::default() };
+    for slot in 0..SHADING_SLOTS {
+        out.xf[slot] = [1.0, 0.0, 0.0, 1.0];
+    }
+    for &(slot, stage, limit) in table {
+        out.maps[slot] = loader.load(&s[stage].texture, limit, mesh);
+        if let Some(t) = m.transforms.get(s[stage].transform as usize) {
+            out.xf[slot] = [t.matrix[0], t.matrix[1], t.matrix[3], t.matrix[4]];
+            out.xo[slot] = [t.matrix[9], t.matrix[10], (t.source == 5) as u32 as f32];
+        }
+    }
+    Some(out)
+}
+
 fn texture_path(root: &Path, name: &str) -> Option<std::path::PathBuf> {
     let name = name.trim().trim_start_matches(['\\', '/']);
     if name.is_empty() || name.starts_with('#') {
@@ -124,12 +214,18 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32) -> Result<ModelMes
         let image = texture_path(root, name)
             .and_then(|p| std::fs::read(p).ok())
             .and_then(|b| paa::decode(&b, max_texture).ok());
-        let slot = image.map(|t| {
-            let mut image = TextureImage { width: t.width, height: t.height, rgba: t.rgba };
-            prepare_foliage(&mut image);
-            mesh.textures.push(image);
-            mesh.textures.len() - 1
-        });
+        let slot = image
+            .map(|t| {
+                let mut image = TextureImage { width: t.width, height: t.height, rgba: t.rgba };
+                prepare_foliage(&mut image);
+                image
+            })
+            .or_else(|| procedural_color(name))
+            .map(|image| {
+                mesh.textures.push(image);
+                mesh.texture_names.push(name.to_ascii_lowercase());
+                mesh.textures.len() - 1
+            });
         texture_slots.insert(i as u16, slot);
     }
 
@@ -156,17 +252,20 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32) -> Result<ModelMes
             pos,
             normal: normalize(normals[i]),
             uv: lod.uvs.get(i).copied().unwrap_or([0.0, 0.0]),
+            uv2: lod.uvs2.get(i).or(lod.uvs.get(i)).copied().unwrap_or([0.0, 0.0]),
         })
         .collect();
 
     // Grupowanie trójkątów po teksturze, z zachowaniem kolejności pierwszego użycia.
-    let mut order: Vec<u16> = Vec::new();
-    let mut groups: HashMap<u16, Vec<u32>> = HashMap::new();
+    let mut loader = MapLoader { root, seen: HashMap::new() };
+    let mut shading_of: HashMap<i32, Option<usize>> = HashMap::new();
+    let mut order: Vec<(u16, i32)> = Vec::new();
+    let mut groups: HashMap<(u16, i32), Vec<u32>> = HashMap::new();
     for (face_index, face) in lod.faces.iter().enumerate() {
         if !valid(face) {
             continue;
         }
-        let key = lod.face_textures.get(face_index).copied().unwrap_or(u16::MAX);
+        let key = (lod.face_textures.get(face_index).copied().unwrap_or(u16::MAX), lod.face_materials.get(face_index).copied().unwrap_or(-1));
         let group = groups.entry(key).or_insert_with(|| {
             order.push(key);
             Vec::new()
@@ -177,10 +276,23 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32) -> Result<ModelMes
     }
     for key in order {
         let group = &groups[&key];
+        let shading = match shading_of.get(&key.1) {
+            Some(s) => *s,
+            None => {
+                let built = lod.materials.get(key.1.max(0) as usize).filter(|_| key.1 >= 0).and_then(|m| build_shading(m, &mut loader, &mut mesh, max_texture));
+                let index = built.map(|b| {
+                    mesh.shadings.push(b);
+                    mesh.shadings.len() - 1
+                });
+                shading_of.insert(key.1, index);
+                index
+            }
+        };
         mesh.batches.push(Batch {
             first_index: mesh.indices.len() as u32,
             index_count: group.len() as u32,
-            texture: texture_slots.get(&key).copied().flatten(),
+            texture: texture_slots.get(&key.0).copied().flatten(),
+            shading,
         });
         mesh.indices.extend_from_slice(group);
     }
@@ -454,11 +566,14 @@ mod tests {
             pos: [x, y, 0.0],
             normal: [0.0, 0.0, 1.0],
             uv: [0.0, 0.0],
+            uv2: [0.0, 0.0],
         };
         ModelMesh {
             vertices: vec![vertex(-1.0, 0.0), vertex(1.0, 0.0), vertex(1.0, 4.0), vertex(-1.0, 4.0)],
             indices: vec![0, 1, 2, 0, 2, 3],
-            batches: vec![Batch { first_index: 0, index_count: 6, texture: None }],
+            batches: vec![Batch { first_index: 0, index_count: 6, texture: None, shading: None }],
+            texture_names: Vec::new(),
+            shadings: Vec::new(),
             textures: Vec::new(),
             min: [-1.0, 0.0, 0.0],
             max: [1.0, 4.0, 0.0],
@@ -498,6 +613,32 @@ mod tests {
         let mut t = TextureImage { width: 1, height: 1, rgba: vec![25, 25, 25, 255] };
         prepare_foliage(&mut t);
         assert_eq!(t.rgba, vec![25, 25, 25, 255]);
+    }
+
+    #[test]
+    fn procedural_colors_become_single_pixels() {
+        let t = procedural_color("#(argb,8,8,3)color(0.5,0,1,1,nohq)").unwrap();
+        assert_eq!((t.width, t.height), (1, 1));
+        assert_eq!(t.rgba, vec![128, 0, 255, 255]);
+        assert!(procedural_color("#(ai,32,128,1)fresnel(2.79,4.84)").is_none());
+        assert!(procedural_color("dz\\a_co.paa").is_none());
+    }
+
+    /// A building whose walls are a Multi material when P: is mounted.
+    #[test]
+    fn multi_material_keeps_layers_mask_and_tiling() {
+        let path = Path::new("P:/dz/structures/walls/wall_cyel_end2.p3d");
+        if !path.exists() {
+            return;
+        }
+        let mesh = load_model(path, Path::new("P:/"), 256).unwrap();
+        let multi = mesh.shadings.iter().find(|s| s.multi).expect("Multi shading");
+        for slot in 0..5 {
+            assert!(multi.maps[slot].is_some(), "slot {slot}");
+        }
+        assert_eq!(multi.xf[2][0], 1.5, "third layer repeats");
+        assert_eq!(multi.xo[4][2], 1.0, "mask uses the second UV set");
+        assert!(mesh.batches.iter().any(|b| b.shading.is_some()));
     }
 
     #[test]
