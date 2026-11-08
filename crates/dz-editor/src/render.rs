@@ -592,7 +592,7 @@ pub struct MeshData {
 }
 
 pub const IMPOSTOR_SIZE: i32 = 192;
-pub const IMPOSTOR_LAYERS: i32 = 512;
+pub const IMPOSTOR_LAYERS: i32 = 1024;
 
 /// A material with every slot resolved to a texture.
 #[derive(Clone, Copy)]

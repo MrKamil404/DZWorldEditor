@@ -268,6 +268,8 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
         let eye = v.eye;
         // Stops very dense views from overwhelming the GPU; the rest falls back to impostors.
         let mut triangles_left: i64 = 9_000_000;
+        // Models with no billboard to fall back on draw from a budget of their own.
+        let mut no_billboard_left: i64 = 4_000_000;
         // Nearest cells first: the triangle budget has to go to what is close to the camera.
         let mut order: Vec<(i32, i32, i32)> = Vec::with_capacity(((2 * cells + 1) * (2 * cells + 1)) as usize);
         for gz in kz - cells..=kz + cells {
@@ -310,8 +312,12 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                     }
                     // Models without a billboard (water, roads) stay as meshes at any distance.
                     if d < far || sel || m1.is_none() {
-                        if let Some(n) = renderer.model_triangles((m0, LOD_FAR)).filter(|_| triangles_left > 0) {
-                            triangles_left -= n as i64;
+                        if let Some(n) = renderer.model_triangles((m0, LOD_FAR)).filter(|_| triangles_left > 0 || (m1.is_none() && no_billboard_left > 0)) {
+                            if triangles_left > 0 {
+                                triangles_left -= n as i64;
+                            } else {
+                                no_billboard_left -= n as i64;
+                            }
                             write_instance(instances.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
                             if d < shadow_range {
                                 write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
