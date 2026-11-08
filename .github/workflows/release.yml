@@ -22,7 +22,7 @@ jobs:
           cmd /c "cargo test --workspace --release --no-fail-fast > test.log 2>&1"
           $code = $LASTEXITCODE
           Get-Content test.log
-          Select-String -Path test.log -Pattern 'panicked at|^test .* FAILED|^error' -Context 0,1 | Select-Object -First 9 | ForEach-Object {
+          Select-String -CaseSensitive -Path test.log -Pattern 'panicked at|^test .* FAILED|^error' -Context 0,1 | Select-Object -First 9 | ForEach-Object {
             $next = ($_.Context.PostContext -join ' ')
             Write-Output "::error::$($_.Line) $next"
           }
