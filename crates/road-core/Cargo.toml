@@ -1,0 +1,21 @@
+[package]
+name = "road-core"
+version.workspace = true
+edition = "2024"
+description = "Road design core taken from DayZ Road Studio (TV4P, MLOD fitting, routing, grading)"
+
+[lib]
+name = "dayz_road_tool"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+png = "0.18.1"
+image = { workspace = true }
+memmap2 = "0.9"
+
+[dev-dependencies]
+flate2 = "1"
+crc32fast = "1"

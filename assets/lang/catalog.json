@@ -1,0 +1,1258 @@
+{
+ "1. Export files": {
+  "de": "1. Dateien exportieren",
+  "pl": "1. Eksportuj pliki"
+ },
+ "2. Build PBO": {
+  "de": "2. PBO erstellen",
+  "pl": "2. Zbuduj PBO"
+ },
+ "3. Build and play": {
+  "de": "3. Erstellen und starten",
+  "pl": "3. Zbuduj i uruchom"
+ },
+ "A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched.": {
+  "de": "Ein Modifikator ebnet das Gelände unter dem Objekt und folgt ihm. Das modellierte Gelände bleibt unverändert.",
+  "pl": "Modyfikator wyrównuje teren pod obiektem i podąża za nim. Rzeźbiony teren pozostaje nienaruszony."
+ },
+ "About": {
+  "de": "Über",
+  "pl": "O programie"
+ },
+ "Add layer": {
+  "de": "Ebene hinzufügen",
+  "pl": "Dodaj warstwę"
+ },
+ "Add modifier to selection": {
+  "de": "Modifikator zur Auswahl hinzufügen",
+  "pl": "Dodaj modyfikator do zaznaczenia"
+ },
+ "Add rule": {
+  "de": "Regel hinzufügen",
+  "pl": "Dodaj regułę"
+ },
+ "Add selected model": {
+  "de": "Gewähltes Modell hinzufügen",
+  "pl": "Dodaj wybrany model"
+ },
+ "Add terrain modifiers": {
+  "de": "Geländemodifikatoren hinzufügen",
+  "pl": "Dodaj modyfikatory terenu"
+ },
+ "Add zone": {
+  "de": "Zone hinzufügen",
+  "pl": "Dodaj strefę"
+ },
+ "Additional mods": {
+  "de": "Zusätzliche Mods",
+  "pl": "Dodatkowe mody"
+ },
+ "Align to slope": {
+  "de": "An Hang ausrichten",
+  "pl": "Dopasuj do spadku"
+ },
+ "Another task is still running": {
+  "de": "Eine andere Aufgabe läuft noch",
+  "pl": "Inne zadanie nadal trwa"
+ },
+ "Archipelago": {
+  "de": "Archipel",
+  "pl": "Archipelag"
+ },
+ "Area radius": {
+  "de": "Gebietsradius",
+  "pl": "Promień obszaru"
+ },
+ "Author": {
+  "de": "Autor",
+  "pl": "Autor"
+ },
+ "Autosave every": {
+  "de": "Automatisch speichern alle",
+  "pl": "Autozapis co"
+ },
+ "Base height": {
+  "de": "Grundhöhe",
+  "pl": "Wysokość bazowa"
+ },
+ "Blend": {
+  "de": "Übergang",
+  "pl": "Przejście"
+ },
+ "Brush": {
+  "de": "Pinsel",
+  "pl": "Pędzel"
+ },
+ "Build": {
+  "de": "Erstellen",
+  "pl": "Zbuduj"
+ },
+ "Build PBO": {
+  "de": "PBO erstellen",
+  "pl": "Zbuduj PBO"
+ },
+ "Build and play": {
+  "de": "Erstellen und starten",
+  "pl": "Zbuduj i uruchom"
+ },
+ "Build finished": {
+  "de": "Erstellung abgeschlossen",
+  "pl": "Budowanie zakończone"
+ },
+ "Build road": {
+  "de": "Straße bauen",
+  "pl": "Zbuduj drogę"
+ },
+ "Building and starting map": {
+  "de": "Karte wird erstellt und gestartet",
+  "pl": "Budowanie i uruchamianie mapy"
+ },
+ "Building map": {
+  "de": "Karte wird erstellt",
+  "pl": "Budowanie mapy"
+ },
+ "Building road": {
+  "de": "Straße wird gebaut",
+  "pl": "Budowanie drogi"
+ },
+ "Buildings: pick in the Content Browser and press Add.": {
+  "de": "Gebäude: im Inhaltsbrowser wählen und Hinzufügen drücken.",
+  "pl": "Budynki: wybierz w bibliotece i naciśnij Dodaj."
+ },
+ "Built on the DayZForests and DayZ Road Studio engines.": {
+  "de": "Basiert auf den Engines von DayZForests und DayZ Road Studio.",
+  "pl": "Oparty na silnikach DayZForests i DayZ Road Studio."
+ },
+ "Cancel": {
+  "de": "Abbrechen",
+  "pl": "Anuluj"
+ },
+ "Canyons": {
+  "de": "Canyons",
+  "pl": "Kaniony"
+ },
+ "Carve rivers": {
+  "de": "Flüsse eingraben",
+  "pl": "Wyrzeźb rzeki"
+ },
+ "Check for updates": {
+  "de": "Nach Updates suchen",
+  "pl": "Sprawdź aktualizacje"
+ },
+ "Check for updates at start": {
+  "de": "Beim Start nach Updates suchen",
+  "pl": "Sprawdzaj aktualizacje przy starcie"
+ },
+ "Checking for updates...": {
+  "de": "Suche nach Updates...",
+  "pl": "Sprawdzanie aktualizacji..."
+ },
+ "Choose a Terrain Builder or built map folder": {
+  "de": "Terrain-Builder- oder Kartenordner wählen",
+  "pl": "Wybierz folder Terrain Buildera lub zbudowanej mapy"
+ },
+ "Choose a folder for the project": {
+  "de": "Projektordner wählen",
+  "pl": "Wybierz folder projektu"
+ },
+ "Choose a folder or type at least two letters": {
+  "de": "Ordner wählen oder mindestens zwei Buchstaben eingeben",
+  "pl": "Wybierz folder lub wpisz co najmniej dwie litery"
+ },
+ "Choose a model for the line first": {
+  "de": "Zuerst ein Modell für die Linie wählen",
+  "pl": "Najpierw wybierz model dla linii"
+ },
+ "Choose a model in the Content Browser below, then click on the terrain. Models can also be dragged onto the map.": {
+  "de": "Modell unten im Inhaltsbrowser wählen und auf das Gelände klicken. Modelle lassen sich auch auf die Karte ziehen.",
+  "pl": "Wybierz model w bibliotece poniżej i kliknij na terenie. Modele można też przeciągać na mapę."
+ },
+ "Choose a model in the Content Browser first": {
+  "de": "Zuerst ein Modell im Inhaltsbrowser wählen",
+  "pl": "Najpierw wybierz model w bibliotece"
+ },
+ "Clearings": {
+  "de": "Lichtungen",
+  "pl": "Polany"
+ },
+ "Click on the map": {
+  "de": "Auf die Karte klicken",
+  "pl": "Kliknij na mapie"
+ },
+ "Click to add points. Enter finishes, Backspace removes the last point, Esc cancels.": {
+  "de": "Punkte per Klick setzen. Enter beendet, Rücktaste entfernt den letzten Punkt, Esc bricht ab.",
+  "pl": "Klikaj, aby dodać punkty. Enter kończy, Backspace usuwa ostatni punkt, Esc anuluje."
+ },
+ "Click to select, drag for a box, Shift adds. W, E, R change the gizmo. F frames the selection.": {
+  "de": "Klicken wählt aus, Ziehen zieht einen Rahmen, Shift ergänzt. W, E, R wechseln das Gizmo. F zeigt die Auswahl.",
+  "pl": "Kliknij, aby zaznaczyć, przeciągnij dla ramki, Shift dodaje. W, E, R zmieniają gizmo. F pokazuje zaznaczenie."
+ },
+ "Coast": {
+  "de": "Küste",
+  "pl": "Wybrzeże"
+ },
+ "Confirm": {
+  "de": "Bestätigen",
+  "pl": "Potwierdź"
+ },
+ "Content Browser": {
+  "de": "Inhaltsbrowser",
+  "pl": "Biblioteka"
+ },
+ "Contour lines": {
+  "de": "Höhenlinien",
+  "pl": "Warstwice"
+ },
+ "Could not check for updates": {
+  "de": "Updates konnten nicht geprüft werden",
+  "pl": "Nie udało się sprawdzić aktualizacji"
+ },
+ "Create": {
+  "de": "Erstellen",
+  "pl": "Utwórz"
+ },
+ "Ctrl inverts raise and lower, Shift smooths. [ and ] or Shift+wheel change the size.": {
+  "de": "Strg kehrt Heben und Senken um, Shift glättet. [ und ] oder Shift+Rad ändern die Größe.",
+  "pl": "Ctrl odwraca podnoszenie i obniżanie, Shift wygładza. [ i ] lub Shift+kółko zmieniają rozmiar."
+ },
+ "Cut": {
+  "de": "Nur abtragen",
+  "pl": "Tylko obniżaj"
+ },
+ "DayZ": {
+  "de": "DayZ",
+  "pl": "DayZ"
+ },
+ "DayZ Tools": {
+  "de": "DayZ Tools",
+  "pl": "DayZ Tools"
+ },
+ "DayZ Tools, game and work drive found": {
+  "de": "DayZ Tools, Spiel und Arbeitslaufwerk gefunden",
+  "pl": "Znaleziono DayZ Tools, grę i dysk roboczy"
+ },
+ "DayZ terrain editor": {
+  "de": "DayZ-Karteneditor",
+  "pl": "Edytor map do DayZ"
+ },
+ "DayZForests project...": {
+  "de": "DayZForests-Projekt...",
+  "pl": "Projekt DayZForests..."
+ },
+ "Delete": {
+  "de": "Löschen",
+  "pl": "Usuń"
+ },
+ "Delete objects": {
+  "de": "Objekte löschen",
+  "pl": "Usuń obiekty"
+ },
+ "Deposition": {
+  "de": "Ablagerung",
+  "pl": "Osadzanie"
+ },
+ "Depth": {
+  "de": "Tiefe",
+  "pl": "Głębokość"
+ },
+ "Detail": {
+  "de": "Detail",
+  "pl": "Szczegółowość"
+ },
+ "Details": {
+  "de": "Details",
+  "pl": "Szczegóły"
+ },
+ "Detect automatically": {
+  "de": "Automatisch erkennen",
+  "pl": "Wykryj automatycznie"
+ },
+ "Display": {
+  "de": "Anzeige",
+  "pl": "Wyświetlanie"
+ },
+ "Distance from street": {
+  "de": "Abstand zur Straße",
+  "pl": "Odległość od ulicy"
+ },
+ "Download and install ({0} MB)": {
+  "de": "Herunterladen und installieren ({0} MB)",
+  "pl": "Pobierz i zainstaluj ({0} MB)"
+ },
+ "Downloading {0}": {
+  "de": "{0} wird heruntergeladen",
+  "pl": "Pobieranie {0}"
+ },
+ "Draw": {
+  "de": "Zeichnen",
+  "pl": "Rysowanie"
+ },
+ "Droplets": {
+  "de": "Tropfen",
+  "pl": "Krople"
+ },
+ "Duplicate": {
+  "de": "Duplizieren",
+  "pl": "Powiel"
+ },
+ "Duplicate objects": {
+  "de": "Objekte duplizieren",
+  "pl": "Powiel obiekty"
+ },
+ "Easting offset": {
+  "de": "Easting-Versatz",
+  "pl": "Przesunięcie easting"
+ },
+ "Edge noise": {
+  "de": "Kantenrauschen",
+  "pl": "Szum krawędzi"
+ },
+ "Edit": {
+  "de": "Bearbeiten",
+  "pl": "Edycja"
+ },
+ "Effect": {
+  "de": "Wirkung",
+  "pl": "Efekt"
+ },
+ "Elevation": {
+  "de": "Höhe über Gelände",
+  "pl": "Wysokość nad terenem"
+ },
+ "Enabled": {
+  "de": "Aktiviert",
+  "pl": "Włączony"
+ },
+ "Erosion": {
+  "de": "Erosion",
+  "pl": "Erozja"
+ },
+ "Erosion rate": {
+  "de": "Erosionsrate",
+  "pl": "Siła erozji"
+ },
+ "Exit": {
+  "de": "Beenden",
+  "pl": "Wyjście"
+ },
+ "Export and binarise the PBO": {
+  "de": "PBO exportieren und binarisieren",
+  "pl": "Eksportuj i zbinaryzuj PBO"
+ },
+ "Export files for the PBO": {
+  "de": "Dateien für PBO exportieren",
+  "pl": "Eksportuj pliki do PBO"
+ },
+ "Export with Terrain Builder sources": {
+  "de": "Mit Terrain-Builder-Quellen exportieren",
+  "pl": "Eksportuj ze źródłami Terrain Buildera"
+ },
+ "Export, binarise and start the map in DayZ": {
+  "de": "Exportieren, binarisieren und Karte in DayZ starten",
+  "pl": "Eksportuj, zbinaryzuj i uruchom mapę w DayZ"
+ },
+ "Exported to {0}: {1} tiles, {2} materials, {3} objects": {
+  "de": "Exportiert nach {0}: {1} Kacheln, {2} Materialien, {3} Objekte",
+  "pl": "Wyeksportowano do {0}: {1} kafli, {2} materiałów, {3} obiektów"
+ },
+ "Exporting map": {
+  "de": "Karte wird exportiert",
+  "pl": "Eksport mapy"
+ },
+ "Falloff": {
+  "de": "Abfall",
+  "pl": "Zanik"
+ },
+ "Feature size": {
+  "de": "Formgröße",
+  "pl": "Rozmiar form"
+ },
+ "File": {
+  "de": "Datei",
+  "pl": "Plik"
+ },
+ "Fill": {
+  "de": "Nur auffüllen",
+  "pl": "Tylko podnoś"
+ },
+ "Fixed height, ignores the terrain": {
+  "de": "Feste Höhe, ignoriert das Gelände",
+  "pl": "Stała wysokość, ignoruje teren"
+ },
+ "Fixed target height": {
+  "de": "Feste Zielhöhe",
+  "pl": "Stała wysokość docelowa"
+ },
+ "Flatten": {
+  "de": "Einebnen",
+  "pl": "Wyrównaj"
+ },
+ "Folder": {
+  "de": "Ordner",
+  "pl": "Folder"
+ },
+ "Forest (DayZForests)": {
+  "de": "Wald (DayZForests)",
+  "pl": "Las (DayZForests)"
+ },
+ "Full detail distance": {
+  "de": "Distanz volle Details",
+  "pl": "Odległość pełnych detali"
+ },
+ "General": {
+  "de": "Allgemein",
+  "pl": "Ogólne"
+ },
+ "Generate": {
+  "de": "Generatoren",
+  "pl": "Generatory"
+ },
+ "Generate forest": {
+  "de": "Wald erzeugen",
+  "pl": "Generuj las"
+ },
+ "Generate navmesh...": {
+  "de": "Navmesh erzeugen...",
+  "pl": "Generuj navmesh..."
+ },
+ "Generate settlement": {
+  "de": "Siedlung erzeugen",
+  "pl": "Generuj osadę"
+ },
+ "Generate terrain": {
+  "de": "Gelände erzeugen",
+  "pl": "Generuj teren"
+ },
+ "Generating forest": {
+  "de": "Wald wird erzeugt",
+  "pl": "Generowanie lasu"
+ },
+ "Generating settlement": {
+  "de": "Siedlung wird erzeugt",
+  "pl": "Generowanie osady"
+ },
+ "Grade the terrain under the road": {
+  "de": "Gelände unter der Straße angleichen",
+  "pl": "Wyprofiluj teren pod drogą"
+ },
+ "Height": {
+  "de": "Höhe",
+  "pl": "Wysokość"
+ },
+ "Height offset": {
+  "de": "Höhenversatz",
+  "pl": "Przesunięcie wysokości"
+ },
+ "Height range": {
+  "de": "Höhenbereich",
+  "pl": "Zakres wysokości"
+ },
+ "Heightmap (ASC)...": {
+  "de": "Höhenkarte (ASC)...",
+  "pl": "Mapa wysokości (ASC)..."
+ },
+ "Help": {
+  "de": "Hilfe",
+  "pl": "Pomoc"
+ },
+ "Hills": {
+  "de": "Hügel",
+  "pl": "Wzgórza"
+ },
+ "Hillshade": {
+  "de": "Schummerung",
+  "pl": "Cieniowanie"
+ },
+ "Hydraulic erosion": {
+  "de": "Wassererosion",
+  "pl": "Erozja wodna"
+ },
+ "Import": {
+  "de": "Importieren",
+  "pl": "Importuj"
+ },
+ "Import DayZForests project": {
+  "de": "DayZForests-Projekt importieren",
+  "pl": "Import projektu DayZForests"
+ },
+ "Import Road Studio project": {
+  "de": "Road-Studio-Projekt importieren",
+  "pl": "Import projektu Road Studio"
+ },
+ "Import TV4P roads": {
+  "de": "TV4P-Straßen importieren",
+  "pl": "Import dróg z TV4P"
+ },
+ "Import Terrain Builder or built map...": {
+  "de": "Terrain Builder oder fertige Karte importieren...",
+  "pl": "Importuj Terrain Builder lub gotową mapę..."
+ },
+ "Import heightmap": {
+  "de": "Höhenkarte importieren",
+  "pl": "Import mapy wysokości"
+ },
+ "Import objects": {
+  "de": "Objekte importieren",
+  "pl": "Import obiektów"
+ },
+ "Imported {0} objects": {
+  "de": "{0} Objekte importiert",
+  "pl": "Zaimportowano obiektów: {0}"
+ },
+ "Importing WRP": {
+  "de": "WRP wird importiert",
+  "pl": "Import WRP"
+ },
+ "Importing heightmap": {
+  "de": "Höhenkarte wird importiert",
+  "pl": "Import mapy wysokości"
+ },
+ "Importing map": {
+  "de": "Karte wird importiert",
+  "pl": "Import mapy"
+ },
+ "Importing mask": {
+  "de": "Maske wird importiert",
+  "pl": "Import maski"
+ },
+ "Importing satellite image": {
+  "de": "Satellitenbild wird importiert",
+  "pl": "Import obrazu satelitarnego"
+ },
+ "Installed. The new version starts after a restart.": {
+  "de": "Installiert. Die neue Version startet nach einem Neustart.",
+  "pl": "Zainstalowano. Nowa wersja zadziała po ponownym uruchomieniu."
+ },
+ "Interface scale": {
+  "de": "Oberflächenskalierung",
+  "pl": "Skala interfejsu"
+ },
+ "Island": {
+  "de": "Insel",
+  "pl": "Wyspa"
+ },
+ "Land grid": {
+  "de": "Geländeraster",
+  "pl": "Siatka terenu"
+ },
+ "Land grid {0}, cell {1} m, {2} tiles per side": {
+  "de": "Geländeraster {0}, Zelle {1} m, {2} Kacheln pro Seite",
+  "pl": "Siatka terenu {0}, komórka {1} m, kafli na bok: {2}"
+ },
+ "Language": {
+  "de": "Sprache",
+  "pl": "Język"
+ },
+ "Later": {
+  "de": "Später",
+  "pl": "Później"
+ },
+ "Latitude": {
+  "de": "Breitengrad",
+  "pl": "Szerokość geogr."
+ },
+ "Level the ground under buildings": {
+  "de": "Gelände unter Gebäuden einebnen",
+  "pl": "Wyrównaj teren pod budynkami"
+ },
+ "Level the ground when placing": {
+  "de": "Beim Platzieren Gelände einebnen",
+  "pl": "Wyrównuj teren przy stawianiu"
+ },
+ "Line": {
+  "de": "Linie",
+  "pl": "Linia"
+ },
+ "Lit": {
+  "de": "Beleuchtet",
+  "pl": "Oświetlony"
+ },
+ "Loading models: {0}": {
+  "de": "Modelle werden geladen: {0}",
+  "pl": "Wczytywanie modeli: {0}"
+ },
+ "Log": {
+  "de": "Protokoll",
+  "pl": "Dziennik"
+ },
+ "Longitude": {
+  "de": "Längengrad",
+  "pl": "Długość geogr."
+ },
+ "Lower": {
+  "de": "Senken",
+  "pl": "Obniż"
+ },
+ "Make terraces": {
+  "de": "Terrassen erzeugen",
+  "pl": "Utwórz tarasy"
+ },
+ "Map ID": {
+  "de": "Karten-ID",
+  "pl": "ID mapy"
+ },
+ "Mask": {
+  "de": "Maske",
+  "pl": "Maska"
+ },
+ "Mask image...": {
+  "de": "Maskenbild...",
+  "pl": "Obraz maski..."
+ },
+ "Max scale": {
+  "de": "Max. Skalierung",
+  "pl": "Maks. skala"
+ },
+ "Max slope": {
+  "de": "Max. Neigung",
+  "pl": "Maks. spadek"
+ },
+ "Min height": {
+  "de": "Min. Höhe",
+  "pl": "Min. wysokość"
+ },
+ "Min scale": {
+  "de": "Min. Skalierung",
+  "pl": "Min. skala"
+ },
+ "Minimum distance": {
+  "de": "Mindestabstand",
+  "pl": "Minimalna odległość"
+ },
+ "Minimum radius": {
+  "de": "Mindestradius",
+  "pl": "Minimalny promień"
+ },
+ "Model": {
+  "de": "Modell",
+  "pl": "Model"
+ },
+ "Models not found on the work drive ({0}), placed without height correction": {
+  "de": "Modelle nicht auf dem Arbeitslaufwerk gefunden ({0}), ohne Höhenkorrektur platziert",
+  "pl": "Nie znaleziono modeli na dysku roboczym ({0}), postawiono bez korekty wysokości"
+ },
+ "Models: pick in the Content Browser and press Add.": {
+  "de": "Modelle: im Inhaltsbrowser wählen und Hinzufügen drücken.",
+  "pl": "Modele: wybierz w bibliotece i naciśnij Dodaj."
+ },
+ "Mountains": {
+  "de": "Berge",
+  "pl": "Góry"
+ },
+ "Move": {
+  "de": "Bewegen",
+  "pl": "Przesuń"
+ },
+ "Move camera here": {
+  "de": "Kamera hierher",
+  "pl": "Przenieś tu kamerę"
+ },
+ "Name": {
+  "de": "Name",
+  "pl": "Nazwa"
+ },
+ "Navmesh server started. Generate the mesh in NavMeshGenerator, save it as navmesh.nm in the map's navmesh folder, then build again.": {
+  "de": "Navmesh-Server gestartet. Netz im NavMeshGenerator erzeugen, als navmesh.nm im navmesh-Ordner der Karte speichern und neu erstellen.",
+  "pl": "Serwer navmesh uruchomiony. Wygeneruj siatkę w NavMeshGenerator, zapisz jako navmesh.nm w folderze navmesh mapy i zbuduj ponownie."
+ },
+ "New project": {
+  "de": "Neues Projekt",
+  "pl": "Nowy projekt"
+ },
+ "New project...": {
+  "de": "Neues Projekt...",
+  "pl": "Nowy projekt..."
+ },
+ "New version {0}": {
+  "de": "Neue Version {0}",
+  "pl": "Nowa wersja {0}"
+ },
+ "No": {
+  "de": "Nein",
+  "pl": "Nie"
+ },
+ "No release notes": {
+  "de": "Keine Versionshinweise",
+  "pl": "Brak opisu zmian"
+ },
+ "Noise": {
+  "de": "Rauschen",
+  "pl": "Szum"
+ },
+ "Nothing selected": {
+  "de": "Nichts ausgewählt",
+  "pl": "Nic nie zaznaczono"
+ },
+ "Object draw distance": {
+  "de": "Objekt-Sichtweite",
+  "pl": "Zasięg rysowania obiektów"
+ },
+ "Objects": {
+  "de": "Objekte",
+  "pl": "Obiekty"
+ },
+ "Objects ({0})": {
+  "de": "Objekte ({0})",
+  "pl": "Obiekty ({0})"
+ },
+ "Objects along a line": {
+  "de": "Objekte entlang einer Linie",
+  "pl": "Obiekty wzdłuż linii"
+ },
+ "Offset": {
+  "de": "Versatz",
+  "pl": "Przesunięcie"
+ },
+ "Only on surfaces": {
+  "de": "Nur auf Oberflächen",
+  "pl": "Tylko na powierzchniach"
+ },
+ "Open language folder": {
+  "de": "Sprachordner öffnen",
+  "pl": "Otwórz folder języków"
+ },
+ "Open map folder": {
+  "de": "Kartenordner öffnen",
+  "pl": "Otwórz folder mapy"
+ },
+ "Open project...": {
+  "de": "Projekt öffnen...",
+  "pl": "Otwórz projekt..."
+ },
+ "Opened {0}": {
+  "de": "{0} geöffnet",
+  "pl": "Otwarto {0}"
+ },
+ "Opening project": {
+  "de": "Projekt wird geöffnet",
+  "pl": "Otwieranie projektu"
+ },
+ "Outliner": {
+  "de": "Gliederung",
+  "pl": "Hierarchia"
+ },
+ "Output Log": {
+  "de": "Ausgabeprotokoll",
+  "pl": "Dziennik"
+ },
+ "Package the map": {
+  "de": "Karte packen",
+  "pl": "Pakowanie mapy"
+ },
+ "Paint": {
+  "de": "Malen",
+  "pl": "Malowanie"
+ },
+ "Paint surface": {
+  "de": "Oberfläche malen",
+  "pl": "Malowanie powierzchni"
+ },
+ "Paint surfaces": {
+  "de": "Oberflächen malen",
+  "pl": "Pomaluj powierzchnie"
+ },
+ "Passes": {
+  "de": "Durchläufe",
+  "pl": "Przebiegi"
+ },
+ "Paths": {
+  "de": "Pfade",
+  "pl": "Ścieżki"
+ },
+ "Per hectare": {
+  "de": "Pro Hektar",
+  "pl": "Na hektar"
+ },
+ "Perspective": {
+  "de": "Perspektive",
+  "pl": "Perspektywa"
+ },
+ "Pitch": {
+  "de": "Neigung",
+  "pl": "Pochylenie"
+ },
+ "Place": {
+  "de": "Platzieren",
+  "pl": "Stawianie"
+ },
+ "Place object": {
+  "de": "Objekt platzieren",
+  "pl": "Postaw obiekt"
+ },
+ "Place objects": {
+  "de": "Objekte platzieren",
+  "pl": "Stawianie obiektów"
+ },
+ "Place selected model here": {
+  "de": "Gewähltes Modell hier platzieren",
+  "pl": "Postaw tu wybrany model"
+ },
+ "Placed {0} objects": {
+  "de": "{0} Objekte platziert",
+  "pl": "Postawiono obiektów: {0}"
+ },
+ "Placing objects along the line": {
+  "de": "Objekte werden entlang der Linie platziert",
+  "pl": "Stawianie obiektów wzdłuż linii"
+ },
+ "Plains": {
+  "de": "Ebenen",
+  "pl": "Równiny"
+ },
+ "Play": {
+  "de": "Starten",
+  "pl": "Uruchom"
+ },
+ "Player start": {
+  "de": "Spielerstart",
+  "pl": "Start gracza"
+ },
+ "Plot size": {
+  "de": "Grundstücksgröße",
+  "pl": "Rozmiar działki"
+ },
+ "Program update": {
+  "de": "Programmupdate",
+  "pl": "Aktualizacja programu"
+ },
+ "Project settings": {
+  "de": "Projekteinstellungen",
+  "pl": "Ustawienia projektu"
+ },
+ "Project settings...": {
+  "de": "Projekteinstellungen...",
+  "pl": "Ustawienia projektu..."
+ },
+ "Radius": {
+  "de": "Radius",
+  "pl": "Promień"
+ },
+ "Raise": {
+  "de": "Heben",
+  "pl": "Podnieś"
+ },
+ "Ramp": {
+  "de": "Rampe",
+  "pl": "Rampa"
+ },
+ "Random rotation": {
+  "de": "Zufällige Drehung",
+  "pl": "Losowy obrót"
+ },
+ "Recent projects": {
+  "de": "Letzte Projekte",
+  "pl": "Ostatnie projekty"
+ },
+ "Redo": {
+  "de": "Wiederholen",
+  "pl": "Ponów"
+ },
+ "Release page": {
+  "de": "Release-Seite",
+  "pl": "Strona wydania"
+ },
+ "Remove modifier": {
+  "de": "Modifikator entfernen",
+  "pl": "Usuń modyfikator"
+ },
+ "Restart": {
+  "de": "Neu starten",
+  "pl": "Uruchom ponownie"
+ },
+ "Restart to use {0}": {
+  "de": "Neu starten, um {0} zu verwenden",
+  "pl": "Uruchom ponownie, aby użyć {0}"
+ },
+ "River valley": {
+  "de": "Flusstal",
+  "pl": "Dolina rzeki"
+ },
+ "Rivers": {
+  "de": "Flüsse",
+  "pl": "Rzeki"
+ },
+ "Road": {
+  "de": "Straße",
+  "pl": "Droga"
+ },
+ "Road Studio project...": {
+  "de": "Road-Studio-Projekt...",
+  "pl": "Projekt Road Studio..."
+ },
+ "Road or line": {
+  "de": "Straße oder Linie",
+  "pl": "Droga lub linia"
+ },
+ "Road type": {
+  "de": "Straßentyp",
+  "pl": "Typ drogi"
+ },
+ "Roads": {
+  "de": "Straßen",
+  "pl": "Drogi"
+ },
+ "Roads and lines": {
+  "de": "Straßen und Linien",
+  "pl": "Drogi i linie"
+ },
+ "Roads and lines ({0})": {
+  "de": "Straßen und Linien ({0})",
+  "pl": "Drogi i linie ({0})"
+ },
+ "Roads from TV4P...": {
+  "de": "Straßen aus TV4P...",
+  "pl": "Drogi z TV4P..."
+ },
+ "Roll": {
+  "de": "Rollen",
+  "pl": "Przechył"
+ },
+ "Rotate": {
+  "de": "Drehen",
+  "pl": "Obróć"
+ },
+ "Roughness": {
+  "de": "Rauheit",
+  "pl": "Chropowatość"
+ },
+ "Satellite": {
+  "de": "Satellit",
+  "pl": "Satelita"
+ },
+ "Satellite image...": {
+  "de": "Satellitenbild...",
+  "pl": "Obraz satelitarny..."
+ },
+ "Save": {
+  "de": "Speichern",
+  "pl": "Zapisz"
+ },
+ "Save as...": {
+  "de": "Speichern unter...",
+  "pl": "Zapisz jako..."
+ },
+ "Saved {0}": {
+  "de": "{0} gespeichert",
+  "pl": "Zapisano {0}"
+ },
+ "Scale": {
+  "de": "Skalierung",
+  "pl": "Skala"
+ },
+ "Scan the work drive again": {
+  "de": "Arbeitslaufwerk neu durchsuchen",
+  "pl": "Przeskanuj dysk roboczy ponownie"
+ },
+ "Scatter objects": {
+  "de": "Objekte verteilen",
+  "pl": "Rozrzuć obiekty"
+ },
+ "Scattering objects": {
+  "de": "Objekte werden verteilt",
+  "pl": "Rozrzucanie obiektów"
+ },
+ "Sculpt": {
+  "de": "Modellieren",
+  "pl": "Rzeźbienie"
+ },
+ "Sculpt terrain": {
+  "de": "Gelände modellieren",
+  "pl": "Rzeźbienie terenu"
+ },
+ "Sculpt tool": {
+  "de": "Modellierwerkzeug",
+  "pl": "Narzędzie rzeźbienia"
+ },
+ "Sea level": {
+  "de": "Meeresspiegel",
+  "pl": "Poziom morza"
+ },
+ "Search models...": {
+  "de": "Modelle suchen...",
+  "pl": "Szukaj modeli..."
+ },
+ "Search...": {
+  "de": "Suchen...",
+  "pl": "Szukaj..."
+ },
+ "Seed": {
+  "de": "Seed",
+  "pl": "Ziarno"
+ },
+ "Select": {
+  "de": "Auswählen",
+  "pl": "Zaznacz"
+ },
+ "Selection": {
+  "de": "Auswahl",
+  "pl": "Zaznaczenie"
+ },
+ "Set player start here": {
+  "de": "Spielerstart hier setzen",
+  "pl": "Ustaw tu start gracza"
+ },
+ "Settings": {
+  "de": "Einstellungen",
+  "pl": "Ustawienia"
+ },
+ "Settings...": {
+  "de": "Einstellungen...",
+  "pl": "Ustawienia..."
+ },
+ "Settlement": {
+  "de": "Siedlung",
+  "pl": "Osada"
+ },
+ "Sharpness": {
+  "de": "Schärfe",
+  "pl": "Ostrość"
+ },
+ "Size": {
+  "de": "Größe",
+  "pl": "Rozmiar"
+ },
+ "Slope": {
+  "de": "Neigung",
+  "pl": "Spadek"
+ },
+ "Slope limit": {
+  "de": "Hanglimit",
+  "pl": "Limit spadku"
+ },
+ "Smooth": {
+  "de": "Glätten",
+  "pl": "Wygładź"
+ },
+ "Spacing": {
+  "de": "Abstand",
+  "pl": "Odstęp"
+ },
+ "Start the game client too": {
+  "de": "Auch den Spielclient starten",
+  "pl": "Uruchom także klienta gry"
+ },
+ "Starting navmesh tools": {
+  "de": "Navmesh-Werkzeuge werden gestartet",
+  "pl": "Uruchamianie narzędzi navmesh"
+ },
+ "Step height": {
+  "de": "Stufenhöhe",
+  "pl": "Wysokość stopnia"
+ },
+ "Stop": {
+  "de": "Stoppen",
+  "pl": "Zatrzymaj"
+ },
+ "Streets": {
+  "de": "Straßen",
+  "pl": "Ulice"
+ },
+ "Strength": {
+  "de": "Stärke",
+  "pl": "Siła"
+ },
+ "Surface layers": {
+  "de": "Oberflächenebenen",
+  "pl": "Warstwy powierzchni"
+ },
+ "Surface painting": {
+  "de": "Oberflächen malen",
+  "pl": "Malowanie powierzchni"
+ },
+ "Terraces and rivers": {
+  "de": "Terrassen und Flüsse",
+  "pl": "Tarasy i rzeki"
+ },
+ "Terrain Builder objects (TXT)...": {
+  "de": "Terrain-Builder-Objekte (TXT)...",
+  "pl": "Obiekty Terrain Buildera (TXT)..."
+ },
+ "Terrain Builder or built map folder...": {
+  "de": "Terrain-Builder- oder Kartenordner...",
+  "pl": "Folder Terrain Buildera lub gotowej mapy..."
+ },
+ "Terrain detail": {
+  "de": "Geländedetail",
+  "pl": "Szczegółowość terenu"
+ },
+ "Terrain modifier": {
+  "de": "Geländemodifikator",
+  "pl": "Modyfikator terenu"
+ },
+ "Terrain modifiers ({0})": {
+  "de": "Geländemodifikatoren ({0})",
+  "pl": "Modyfikatory terenu ({0})"
+ },
+ "Terrain shape": {
+  "de": "Geländeform",
+  "pl": "Kształt terenu"
+ },
+ "Terrain under objects": {
+  "de": "Gelände unter Objekten",
+  "pl": "Teren pod obiektami"
+ },
+ "Terrain {0} × {0}, cell {1} m, map {2} m": {
+  "de": "Gelände {0} × {0}, Zelle {1} m, Karte {2} m",
+  "pl": "Teren {0} × {0}, komórka {1} m, mapa {2} m"
+ },
+ "Test session ended": {
+  "de": "Testsitzung beendet",
+  "pl": "Sesja testowa zakończona"
+ },
+ "Test session stopped": {
+  "de": "Testsitzung gestoppt",
+  "pl": "Sesja testowa zatrzymana"
+ },
+ "Texture tiles": {
+  "de": "Texturkacheln",
+  "pl": "Kafle tekstur"
+ },
+ "The download replaces the current file; the previous one stays as .old until the next start.": {
+  "de": "Der Download ersetzt die aktuelle Datei; die vorherige bleibt bis zum nächsten Start als .old erhalten.",
+  "pl": "Pobrany program zastąpi obecny plik; poprzedni zostaje jako .old do następnego uruchomienia."
+ },
+ "The elevation is then measured from sea level": {
+  "de": "Die Höhe wird dann ab Meeresspiegel gemessen",
+  "pl": "Wysokość jest wtedy liczona od poziomu morza"
+ },
+ "The game blends at most five surfaces per texture tile; if a tile uses more, the rarest are replaced on export.": {
+  "de": "Das Spiel mischt höchstens fünf Oberflächen pro Kachel; bei mehr werden die seltensten beim Export ersetzt.",
+  "pl": "Gra miesza najwyżej pięć powierzchni na kafel; gdy kafel ma ich więcej, najrzadsze zostaną zastąpione przy eksporcie."
+ },
+ "The heightmap has {0} columns, the project {1}": {
+  "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
+  "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
+ },
+ "The project has unsaved changes. Close without saving?": {
+  "de": "Das Projekt hat ungespeicherte Änderungen. Ohne Speichern schließen?",
+  "pl": "Projekt ma niezapisane zmiany. Zamknąć bez zapisywania?"
+ },
+ "The release has no .exe to download": {
+  "de": "Das Release enthält keine .exe zum Herunterladen",
+  "pl": "Wydanie nie zawiera pliku .exe do pobrania"
+ },
+ "Thermal erosion": {
+  "de": "Thermische Erosion",
+  "pl": "Erozja termiczna"
+ },
+ "Tile size": {
+  "de": "Kachelgröße",
+  "pl": "Rozmiar kafla"
+ },
+ "Top": {
+  "de": "Draufsicht",
+  "pl": "Z góry"
+ },
+ "Transform": {
+  "de": "Transformation",
+  "pl": "Transformacja"
+ },
+ "Transform objects": {
+  "de": "Objekte transformieren",
+  "pl": "Transformuj obiekty"
+ },
+ "Type": {
+  "de": "Typ",
+  "pl": "Typ"
+ },
+ "Underground": {
+  "de": "Unterirdisch",
+  "pl": "Pod ziemią"
+ },
+ "Undo": {
+  "de": "Rückgängig",
+  "pl": "Cofnij"
+ },
+ "Use selected": {
+  "de": "Gewähltes verwenden",
+  "pl": "Użyj wybranego"
+ },
+ "Version": {
+  "de": "Version",
+  "pl": "Wersja"
+ },
+ "Version {0} is available": {
+  "de": "Version {0} ist verfügbar",
+  "pl": "Dostępna wersja {0}"
+ },
+ "View": {
+  "de": "Ansicht",
+  "pl": "Widok"
+ },
+ "WRP world...": {
+  "de": "WRP-Welt...",
+  "pl": "Świat WRP..."
+ },
+ "Warp": {
+  "de": "Verzerrung",
+  "pl": "Zniekształcenie"
+ },
+ "Water": {
+  "de": "Wasser",
+  "pl": "Woda"
+ },
+ "Whole map": {
+  "de": "Ganze Karte",
+  "pl": "Cała mapa"
+ },
+ "Width": {
+  "de": "Breite",
+  "pl": "Szerokość"
+ },
+ "Wireframe": {
+  "de": "Drahtgitter",
+  "pl": "Siatka"
+ },
+ "Work drive": {
+  "de": "Arbeitslaufwerk",
+  "pl": "Dysk roboczy"
+ },
+ "Write the newer WRP format with underground flag": {
+  "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",
+  "pl": "Zapisuj nowszy format WRP z flagą podziemia"
+ },
+ "X {0}  Z {1}  height {2} m  slope {3}°  surface {4}": {
+  "de": "X {0}  Z {1}  Höhe {2} m  Neigung {3}°  Oberfläche {4}",
+  "pl": "X {0}  Z {1}  wysokość {2} m  spadek {3}°  powierzchnia {4}"
+ },
+ "Yaw": {
+  "de": "Gieren",
+  "pl": "Obrót"
+ },
+ "Yes": {
+  "de": "Ja",
+  "pl": "Tak"
+ },
+ "You have the latest version": {
+  "de": "Du hast die neueste Version",
+  "pl": "Masz najnowszą wersję"
+ },
+ "Your version: {0}": {
+  "de": "Deine Version: {0}",
+  "pl": "Twoja wersja: {0}"
+ },
+ "layers.cfg...": {
+  "de": "layers.cfg...",
+  "pl": "layers.cfg..."
+ },
+ "none": {
+  "de": "keine",
+  "pl": "brak"
+ },
+ "objects": {
+  "de": "Objekte",
+  "pl": "obiektów"
+ },
+ "{0} models": {
+  "de": "{0} Modelle",
+  "pl": "modeli: {0}"
+ },
+ "{0} objects selected": {
+  "de": "{0} Objekte ausgewählt",
+  "pl": "Zaznaczono obiektów: {0}"
+ },
+ "{0} points": {
+  "de": "{0} Punkte",
+  "pl": "Punktów: {0}"
+ }
+}

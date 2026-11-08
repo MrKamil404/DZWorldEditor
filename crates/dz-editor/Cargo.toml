@@ -1,0 +1,27 @@
+[package]
+name = "dz-editor"
+version.workspace = true
+edition.workspace = true
+description = "DZ World Editor - DayZ map editor"
+build = "build.rs"
+
+[[bin]]
+name = "DZWorldEditor"
+path = "src/main.rs"
+
+[dependencies]
+dz-core = { path = "../dz-core" }
+forest-core = { path = "../forest-core" }
+road-core = { path = "../road-core" }
+eframe = "0.31.1"
+rfd = "0.15.4"
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rayon.workspace = true
+image.workspace = true
+ureq = { version = "2.12", default-features = false, features = ["json", "native-tls"] }
+native-tls = "0.2"
+
+[features]
+ui-screenshot = ["eframe/__screenshot"]

@@ -1,0 +1,19 @@
+[package]
+name = "dz-core"
+version.workspace = true
+edition.workspace = true
+description = "World model, generators, import and export for DZ World Editor"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rayon.workspace = true
+image.workspace = true
+rand.workspace = true
+forest-core = { path = "../forest-core" }
+road-core = { path = "../road-core" }
+sha1_smol = "1"
+
+[dev-dependencies]
+tempfile = "3"
