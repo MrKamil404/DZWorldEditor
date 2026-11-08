@@ -2,7 +2,7 @@
 use crate::fsutil::{atomic_write, bytes_to_f32s, f32s_to_bytes};
 use crate::objects::ObjectStore;
 use crate::terrain::{Heightmap, MaskMap, RgbImage};
-use crate::world::{MapLine, SurfaceLayer, TerrainModifier, World, WorldMeta};
+use crate::world::{default_object_layers, MapLine, ObjectLayer, SurfaceLayer, TerrainModifier, World, WorldMeta};
 use anyhow::{ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -19,6 +19,10 @@ struct ProjectFile {
     lines: Vec<MapLine>,
     mask_size: [usize; 2],
     satellite_size: Option<[usize; 2]>,
+    #[serde(default = "default_object_layers")]
+    object_layers: Vec<ObjectLayer>,
+    #[serde(default)]
+    active_layer: u16,
 }
 
 /// Which parts need rewriting; rasters are large, so unchanged ones are skipped.
@@ -59,6 +63,8 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         lines: w.lines.clone(),
         mask_size: [w.mask.width, w.mask.height],
         satellite_size: w.satellite.as_ref().map(|s| [s.width, s.height]),
+        object_layers: w.object_layers.clone(),
+        active_layer: w.active_layer,
     };
     atomic_write(&dir.join(PROJECT_FILE), &serde_json::to_vec_pretty(&file)?)
 }
@@ -84,7 +90,12 @@ pub fn load(dir: &Path) -> Result<World> {
         None => None,
     };
     let objects = ObjectStore::from_bytes(&std::fs::read(dir.join("objects.dzob")).context("objects.dzob")?)?;
-    Ok(World::from_parts(file.meta, base, mask, file.layers, satellite, objects, file.modifiers, file.lines))
+    let mut w = World::from_parts(file.meta, base, mask, file.layers, satellite, objects, file.modifiers, file.lines);
+    if !file.object_layers.is_empty() {
+        w.object_layers = file.object_layers;
+        w.active_layer = file.active_layer.min(w.object_layers.len() as u16 - 1);
+    }
+    Ok(w)
 }
 
 /// `dir` holds a project.
@@ -125,6 +136,25 @@ mod tests {
         // Modifiers are applied on load.
         assert_eq!(r.height.at(50, 50), 53.0);
         assert_eq!(r.new_modifier_id(), 10);
+        assert_eq!(r.object_layers.len(), 1);
+    }
+    #[test]
+    fn object_layers_survive_saving() {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("L", 64, 8.0), 1.0);
+        let l = w.add_object_layer("Rocks");
+        w.object_layers[l as usize].visible = false;
+        w.active_layer = l;
+        let m = w.objects.intern("dz\\x.p3d");
+        let mut o = Obj { x: 1.0, z: 2.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 };
+        o.set_layer(l);
+        w.objects.insert(o);
+        save(&w, d.path(), SaveParts::ALL).unwrap();
+        let r = load(d.path()).unwrap();
+        assert_eq!(r.object_layers[1].name, "Rocks");
+        assert!(!r.object_layers[1].visible);
+        assert_eq!(r.active_layer, 1);
+        assert_eq!(r.objects.iter().next().unwrap().1.layer(), 1);
     }
     #[test]
     fn partial_save_leaves_other_files() {

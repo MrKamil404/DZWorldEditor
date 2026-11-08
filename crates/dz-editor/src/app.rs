@@ -164,8 +164,42 @@ pub struct Doc {
     pub height_range: [f32; 2],
 }
 
+fn ctx_shift(ctx: &egui::Context) -> bool {
+    ctx.input(|i| i.modifiers.shift)
+}
+
+pub struct ImportDialog {
+    pub plan: dz_core::import::ImportPlan,
+    pub scan: dz_core::import::FolderScan,
+}
+
+/// Per-model and per-layer counts, recomputed only when the objects change.
+pub struct OutlinerCache {
+    pub revision: u64,
+    pub layers: usize,
+    pub histogram: Vec<(u32, usize)>,
+    pub layer_counts: Vec<usize>,
+}
+
+pub enum LayerAction {
+    New,
+    Active(u16),
+    Visible(u16),
+    Editable(u16),
+    Export(u16),
+    Solo(u16),
+    EditAll,
+    ShowAll,
+    Select(u16),
+    MoveSelection(u16),
+    Rename(u16, String),
+    Delete(u16),
+    DeleteWithObjects(u16),
+}
+
 pub enum Dialog {
     None,
+    Import(Box<ImportDialog>),
     NewProject(NewProject),
     Settings,
     ProjectSettings,
@@ -246,6 +280,8 @@ pub struct App {
     pub filter: String,
     pub browser_folder: Option<String>,
     pub outliner_filter: String,
+    pub outliner_cache: Option<OutlinerCache>,
+    pub layer_rename: Option<(u16, String)>,
     pub last_autosave: Instant,
     pub session: Option<dz_core::build::Session>,
     pub close_confirmed: bool,
@@ -292,7 +328,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selected_line: None, selection_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(),
+            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None,
             last_autosave: Instant::now(), session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
@@ -643,8 +679,10 @@ impl App {
         let map: Vec<u32> = models.iter().map(|m| doc.world.objects.intern(m)).collect();
         let mut change = Vec::with_capacity(objects.len());
         let mut ids = Vec::with_capacity(objects.len());
+        let layer = doc.world.target_layer();
         for mut o in objects {
             o.model = map[o.model as usize];
+            o.set_layer(layer);
             let id = doc.world.objects.insert(o);
             change.push((id, None, Some(o)));
             ids.push(id);
@@ -791,11 +829,176 @@ impl App {
 
     pub fn import_folder(&mut self) {
         let Some(dir) = rfd::FileDialog::new().set_title(t("Choose a Terrain Builder or built map folder")).pick_folder() else { return };
+        self.scan_for_import(dir);
+    }
+
+    /// Looks through a folder and lets the user review what was found.
+    pub fn scan_for_import(&mut self, dir: PathBuf) {
+        self.spawn(t("Looking through the folder"), move |_| {
+            let scan = dz_core::import::scan_folder(&dir);
+            let plan = dz_core::import::ImportPlan::from_scan(&dir, &scan);
+            Ok(Box::new(move |app: &mut App| app.dialog = Dialog::Import(Box::new(ImportDialog { plan, scan }))) as Finish)
+        });
+    }
+
+    pub fn run_import(&mut self, plan: dz_core::import::ImportPlan) {
         let (assets, db) = (self.assets.clone(), self.db.clone());
         self.spawn(t("Importing map"), move |job| {
-            let w = dz_core::import::import_folder(&dir, &assets, &db, job)?;
+            let w = dz_core::import::import_plan(&plan, &assets, &db, job)?;
             Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
         });
+    }
+
+    /// Terrain Builder layers into the open project, each as a new object layer.
+    pub fn import_tv4l(&mut self) {
+        let Some(files) = rfd::FileDialog::new().add_filter("Terrain Builder", &["tv4l"]).pick_files() else { return };
+        let Some(doc) = &self.doc else { return };
+        let mut lite = doc.world.lite();
+        self.spawn(t("Import Terrain Builder layers"), move |job| {
+            let layers: Vec<dz_core::import::LayerFile> = files.iter().filter_map(|p| dz_core::tv4l::read_info(p).ok().map(|info| dz_core::import::LayerFile { path: p.clone(), info, import: true })).collect();
+            let libraries = files.first().map(|f| dz_core::import::libraries_near(f)).unwrap_or_default();
+            anyhow::ensure!(!libraries.is_empty(), "No TemplateLibs folder next to the layers");
+            let before = lite.object_layers.len();
+            dz_core::import::add_tb_layers(&mut lite, &layers, &libraries, job)?;
+            Ok(Box::new(move |app: &mut App| app.merge_layers(lite, before)) as Finish)
+        });
+    }
+
+    fn merge_layers(&mut self, lite: World, first: usize) {
+        let Some(doc) = &mut self.doc else { return };
+        let previous = doc.world.object_layers.clone();
+        let mut map: HashMap<u16, u16> = HashMap::new();
+        for (i, l) in lite.object_layers.iter().enumerate().skip(first) {
+            let n = doc.world.add_object_layer(&l.name);
+            let target = &mut doc.world.object_layers[n as usize];
+            (target.visible, target.editable, target.export) = (l.visible, l.editable, l.export);
+            map.insert(i as u16, n);
+        }
+        let models: Vec<u32> = lite.objects.models.iter().map(|m| doc.world.objects.intern(&m.path)).collect();
+        let mut change = Vec::with_capacity(lite.objects.len());
+        for (_, o) in lite.objects.iter() {
+            let mut o = *o;
+            o.model = models[o.model as usize];
+            o.set_layer(map.get(&o.layer()).copied().unwrap_or(0));
+            let id = doc.world.objects.insert(o);
+            change.push((id, None, Some(o)));
+        }
+        let count = change.len();
+        doc.history.push(t("Import Terrain Builder layers"), Change::ObjectLayers(previous));
+        doc.history.push(t("Import Terrain Builder layers"), Change::Objects(change));
+        doc.history.group_last(2, t("Import Terrain Builder layers"));
+        doc.dirty.objects = true;
+        self.info(tf("Imported {0} objects", &[&count.to_string()]));
+    }
+
+    /// Call after layers change: views refresh and unreachable objects leave the selection.
+    fn layers_changed(&mut self) {
+        let Some(doc) = &mut self.doc else { return };
+        doc.world.objects.revision += 1;
+        doc.history.revision += 1;
+        let w = &doc.world;
+        let before = self.selection.len();
+        self.selection.retain(|id| w.objects.get(*id).is_some_and(|o| w.object_interactive(o)));
+        if self.selection.len() != before {
+            self.selection_rev += 1;
+        }
+    }
+
+    pub fn layer_action(&mut self, action: LayerAction) {
+        let Some(doc) = &mut self.doc else { return };
+        let layers = &mut doc.world.object_layers;
+        match action {
+            LayerAction::New => {
+                let previous = layers.clone();
+                let n = doc.world.add_object_layer(&t("New layer"));
+                doc.world.active_layer = n;
+                doc.history.push(t("New layer"), Change::ObjectLayers(previous));
+                self.layer_rename = Some((n, doc.world.object_layers[n as usize].name.clone()));
+            }
+            LayerAction::Active(l) => {
+                doc.world.active_layer = l;
+                doc.history.revision += 1;
+                return;
+            }
+            LayerAction::Visible(l) => layers[l as usize].visible ^= true,
+            LayerAction::Editable(l) => layers[l as usize].editable ^= true,
+            LayerAction::Export(l) => layers[l as usize].export ^= true,
+            LayerAction::Solo(l) => {
+                for (i, x) in layers.iter_mut().enumerate() {
+                    x.editable = i == l as usize;
+                }
+                layers[l as usize].visible = true;
+                doc.world.active_layer = l;
+            }
+            LayerAction::EditAll => layers.iter_mut().for_each(|x| x.editable = true),
+            LayerAction::ShowAll => layers.iter_mut().for_each(|x| x.visible = true),
+            LayerAction::Select(l) => {
+                let w = &doc.world;
+                if !ctx_shift(&self.ctx) {
+                    self.selection.clear();
+                }
+                self.selection.extend(w.objects.iter().filter(|(_, o)| o.layer() == l && w.object_interactive(o)).map(|(id, _)| id));
+                self.selection_rev += 1;
+                return;
+            }
+            LayerAction::MoveSelection(l) => {
+                let mut change = Vec::with_capacity(self.selection.len());
+                for id in &self.selection {
+                    let Some(before) = doc.world.objects.get(*id).copied() else { continue };
+                    let mut after = before;
+                    after.set_layer(l);
+                    doc.world.objects.update(*id, after);
+                    change.push((*id, Some(before), Some(after)));
+                }
+                if !change.is_empty() {
+                    doc.history.push(t("Move to layer"), Change::Objects(change));
+                    doc.dirty.objects = true;
+                }
+            }
+            LayerAction::Rename(l, name) => {
+                let name = name.trim();
+                if !name.is_empty() && name != layers[l as usize].name {
+                    let previous = layers.clone();
+                    layers[l as usize].name = name.to_string();
+                    doc.history.push(t("Rename"), Change::ObjectLayers(previous));
+                }
+            }
+            LayerAction::Delete(l) => {
+                if l == 0 { return; }
+                let previous = layers.clone();
+                let list: Vec<(u32, Obj)> = doc.world.objects.iter().filter(|(_, o)| o.layer() == l).map(|(id, o)| (id, *o)).collect();
+                let mut change = Vec::with_capacity(list.len());
+                for (id, before) in list {
+                    let mut after = before;
+                    after.set_layer(0);
+                    doc.world.objects.update(id, after);
+                    change.push((id, Some(before), Some(after)));
+                }
+                doc.world.object_layers[l as usize].deleted = true;
+                doc.world.active_layer = doc.world.target_layer();
+                doc.history.push(t("Delete layer"), Change::Objects(change));
+                doc.history.push(t("Delete layer"), Change::ObjectLayers(previous));
+                doc.history.group_last(2, t("Delete layer"));
+                doc.dirty.objects = true;
+            }
+            LayerAction::DeleteWithObjects(l) => {
+                if l == 0 { return; }
+                let previous = layers.clone();
+                let ids: BTreeSet<u32> = doc.world.objects.iter().filter(|(_, o)| o.layer() == l).map(|(id, _)| id).collect();
+                let any = !ids.is_empty();
+                doc.world.object_layers[l as usize].deleted = true;
+                doc.world.active_layer = doc.world.target_layer();
+                doc.history.push(t("Delete layer"), Change::ObjectLayers(previous));
+                if any {
+                    self.selection = ids;
+                    self.delete_selection();
+                    if let Some(d) = &mut self.doc {
+                        d.history.group_last(2, t("Delete layer"));
+                    }
+                }
+            }
+        }
+        self.layers_changed();
     }
 
     pub fn import_wrp(&mut self) {

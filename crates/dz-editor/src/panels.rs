@@ -64,6 +64,7 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                         if ui.button(t("Satellite image...")).clicked() { ui.close_menu(); app.import_satellite(); }
                         if ui.button(t("Mask image...")).clicked() { ui.close_menu(); app.import_mask(); }
                         if ui.button(t("layers.cfg...")).clicked() { ui.close_menu(); app.import_layers_cfg(); }
+                        if ui.button(t("Terrain Builder layers (TV4L)...")).clicked() { ui.close_menu(); app.import_tv4l(); }
                         if ui.button(t("Terrain Builder objects (TXT)...")).clicked() { ui.close_menu(); app.import_objects_txt(); }
                         if ui.button(t("DayZForests project...")).clicked() { ui.close_menu(); app.import_forest(); }
                         if ui.button(t("Road Studio project...")).clicked() { ui.close_menu(); app.import_road_project(); }
@@ -606,11 +607,23 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     ui.add(egui::TextEdit::singleline(&mut app.outliner_filter).hint_text(t("Search...")).desired_width(f32::INFINITY));
     let Some(doc) = &app.doc else { return };
     let filter = app.outliner_filter.to_ascii_lowercase();
-    let hist = doc.world.objects.histogram();
+    let revision = doc.world.objects.revision;
+    let layer_total = doc.world.object_layers.len();
+    if app.outliner_cache.as_ref().is_none_or(|c| c.revision != revision || c.layers != layer_total) {
+        app.outliner_cache = Some(OutlinerCache { revision, layers: layer_total, histogram: doc.world.objects.histogram(), layer_counts: doc.world.objects.layer_counts(layer_total) });
+    }
+    let cache = app.outliner_cache.as_ref().unwrap();
+    let hist = cache.histogram.clone();
+    let counts = cache.layer_counts.clone();
+    let layers = doc.world.object_layers.clone();
+    let active = doc.world.target_layer();
+    let has_selection = !app.selection.is_empty();
+    let mut layer_action = None;
     let mods: Vec<(u64, String)> = doc.world.modifiers.iter().map(|m| (m.id, m.name.clone())).collect();
     let lines: Vec<(usize, String, usize)> = doc.world.lines.iter().enumerate().map(|(i, l)| (i, l.name.clone(), l.points.len())).collect();
     let paths: Vec<String> = hist.iter().map(|(m, _)| doc.world.objects.models[*m as usize].path.clone()).collect();
     let mut select_model = None;
+    let mut start_rename = None;
     let mut select_modifier = None;
     let mut select_line = None;
     egui::ScrollArea::vertical().id_salt("outl").auto_shrink([false, false]).show(ui, |ui| {
@@ -622,6 +635,49 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
         egui::CollapsingHeader::new(tf("Roads and lines ({0})", &[&lines.len().to_string()])).default_open(false).show(ui, |ui| {
             for (i, name, n) in lines.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
                 if ui.selectable_label(app.selected_line == Some(*i), format!("{name}  ({n})")).clicked() { select_line = Some(*i); }
+            }
+        });
+        let live = layers.iter().filter(|l| !l.deleted).count();
+        egui::CollapsingHeader::new(tf("Object layers ({0})", &[&live.to_string()])).default_open(true).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if ui.small_button(format!("+ {}", t("New layer"))).clicked() { layer_action = Some(LayerAction::New); }
+                if ui.small_button(t("Edit all")).clicked() { layer_action = Some(LayerAction::EditAll); }
+                if ui.small_button(t("Show all")).clicked() { layer_action = Some(LayerAction::ShowAll); }
+            });
+            for (i, l) in layers.iter().enumerate().filter(|(_, l)| !l.deleted) {
+                if !filter.is_empty() && !l.name.to_ascii_lowercase().contains(&filter) { continue; }
+                let id = i as u16;
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    if ui.add(egui::Button::new("👁").small().selected(l.visible)).on_hover_text(t("Visible")).clicked() { layer_action = Some(LayerAction::Visible(id)); }
+                    if ui.add(egui::Button::new("✏").small().selected(l.editable)).on_hover_text(t("Editable")).clicked() { layer_action = Some(LayerAction::Editable(id)); }
+                    if let Some((_, name)) = app.layer_rename.as_mut().filter(|(r, _)| *r == id) {
+                        let edit = ui.add(egui::TextEdit::singleline(name).desired_width(f32::INFINITY));
+                        edit.request_focus();
+                        if edit.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            layer_action = Some(LayerAction::Rename(id, name.clone()));
+                        }
+                        return;
+                    }
+                    let mut text = RichText::new(format!("{}  ({})", l.name, counts.get(i).copied().unwrap_or(0)));
+                    if !l.interactive() { text = text.weak(); }
+                    if !l.export { text = text.italics(); }
+                    let row = ui.selectable_label(active == id, text).on_hover_text(t("Click: active layer (new objects go here). Ctrl+click: turn editing on or off."));
+                    if row.clicked() {
+                        layer_action = Some(if ui.input(|i| i.modifiers.command) { LayerAction::Editable(id) } else { LayerAction::Active(id) });
+                    }
+                    row.context_menu(|ui| {
+                        if ui.button(t("Edit only this layer")).clicked() { layer_action = Some(LayerAction::Solo(id)); ui.close_menu(); }
+                        if ui.button(t("Select objects")).clicked() { layer_action = Some(LayerAction::Select(id)); ui.close_menu(); }
+                        if ui.add_enabled(has_selection, egui::Button::new(t("Move selection here"))).clicked() { layer_action = Some(LayerAction::MoveSelection(id)); ui.close_menu(); }
+                        let mut export = l.export;
+                        if ui.checkbox(&mut export, t("Include in export")).clicked() { layer_action = Some(LayerAction::Export(id)); ui.close_menu(); }
+                        ui.separator();
+                        if ui.button(t("Rename")).clicked() { start_rename = Some((id, l.name.clone())); ui.close_menu(); }
+                        if ui.add_enabled(id != 0, egui::Button::new(t("Delete layer, keep objects"))).clicked() { layer_action = Some(LayerAction::Delete(id)); ui.close_menu(); }
+                        if ui.add_enabled(id != 0, egui::Button::new(t("Delete layer and objects"))).clicked() { layer_action = Some(LayerAction::DeleteWithObjects(id)); ui.close_menu(); }
+                    });
+                });
             }
         });
         egui::CollapsingHeader::new(tf("Objects ({0})", &[&doc.world.objects.len().to_string()])).default_open(true).show(ui, |ui| {
@@ -636,9 +692,14 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
         let shift = ui.input(|i| i.modifiers.shift);
         if !shift { app.selection.clear(); }
         let d = app.doc.as_ref().unwrap();
-        app.selection.extend(d.world.objects.iter().filter(|(_, o)| o.model == m).map(|(id, _)| id));
+        app.selection.extend(d.world.objects.iter().filter(|(_, o)| o.model == m && d.world.object_interactive(o)).map(|(id, _)| id));
         app.selection_rev += 1;
     }
+    if let Some(a) = layer_action {
+        if matches!(a, LayerAction::Rename(..)) { app.layer_rename = None; }
+        app.layer_action(a);
+    }
+    if start_rename.is_some() { app.layer_rename = start_rename; }
     if select_modifier.is_some() { app.selected_modifier = select_modifier; app.selected_line = None; }
     if select_line.is_some() { app.selected_line = select_line; app.selected_modifier = None; }
 }
@@ -648,6 +709,7 @@ fn details(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().id_salt("det").auto_shrink([false, false]).show(ui, |ui| {
         if let Some(id) = app.selected_modifier { modifier_details(app, ui, id); return; }
         if let Some(i) = app.selected_line { line_details(app, ui, i); return; }
+        selection_layer(app, ui);
         if app.selection.len() == 1 {
             object_details(app, ui);
         } else if app.selection.len() > 1 {
@@ -656,6 +718,22 @@ fn details(app: &mut App, ui: &mut egui::Ui) {
             ui.weak(t("Nothing selected"));
         }
     });
+}
+
+/// Layer of the selected objects, with a way to move them to another one.
+fn selection_layer(app: &mut App, ui: &mut egui::Ui) {
+    let Some(doc) = &app.doc else { return };
+    let Some(first) = app.selection.iter().next().and_then(|id| doc.world.objects.get(*id)) else { return };
+    let mut chosen = first.layer();
+    let current = chosen;
+    let layers: Vec<(u16, String)> = doc.world.object_layers.iter().enumerate().filter(|(_, l)| !l.deleted).map(|(i, l)| (i as u16, l.name.clone())).collect();
+    row(ui, &t("Layer"), |ui| {
+        let shown = layers.iter().find(|(i, _)| *i == current).map(|(_, n)| n.clone()).unwrap_or_default();
+        egui::ComboBox::from_id_salt("sel_layer").selected_text(shown).show_ui(ui, |ui| {
+            for (i, n) in &layers { ui.selectable_value(&mut chosen, *i, n); }
+        });
+    });
+    if chosen != current { app.layer_action(LayerAction::MoveSelection(chosen)); }
 }
 
 fn object_details(app: &mut App, ui: &mut egui::Ui) {
@@ -886,6 +964,86 @@ fn content_browser(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
+fn path_choice(ui: &mut egui::Ui, label: &str, value: &mut Option<std::path::PathBuf>, choices: &[std::path::PathBuf], pick: impl FnOnce() -> Option<std::path::PathBuf>) {
+    row(ui, label, |ui| {
+        let shown = value.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| t("(none)"));
+        egui::ComboBox::from_id_salt(label).width(ui.available_width() - 36.0).truncate().selected_text(shown).show_ui(ui, |ui| {
+            ui.selectable_value(value, None, t("(none)"));
+            for c in choices { ui.selectable_value(value, Some(c.clone()), c.display().to_string()); }
+        });
+        if ui.button("…").clicked() {
+            if let Some(p) = pick() { *value = Some(p); }
+        }
+    });
+}
+
+fn import_window(app: &mut App, ui: &mut egui::Ui, d: &mut ImportDialog, close: &mut bool) {
+    let ImportDialog { plan, scan } = d;
+    let file = |name: &'static str, ext: &'static [&'static str]| move || rfd::FileDialog::new().add_filter(name, ext).pick_file();
+    let folder = || rfd::FileDialog::new().pick_folder();
+    row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut plan.name); });
+    ui.add_space(4.0);
+    path_choice(ui, &t("Heightmap"), &mut plan.asc, &scan.asc, file("ASC", &["asc"]));
+    path_choice(ui, &t("Built world (WRP)"), &mut plan.wrp, &scan.wrp, file("WRP", &["wrp"]));
+    let tiles: Vec<_> = scan.tile_dir.iter().cloned().collect();
+    path_choice(ui, &t("Generated tiles"), &mut plan.tile_dir, &tiles, folder);
+    path_choice(ui, &t("Satellite"), &mut plan.satellite, &scan.satellite, file("Image", &["bmp", "png", "tif"]));
+    path_choice(ui, &t("Mask"), &mut plan.mask, &scan.mask, file("Image", &["bmp", "png", "tif"]));
+    path_choice(ui, &t("Surfaces (layers.cfg)"), &mut plan.layers_cfg, &scan.layers_cfg, file("layers.cfg", &["cfg"]));
+    path_choice(ui, &t("Roads (TV4P)"), &mut plan.tv4p, &scan.tv4p, file("Terrain Builder", &["tv4p"]));
+    ui.weak(if plan.asc.is_some() { t("Terrain comes from the heightmap.") } else if plan.wrp.is_some() { t("Terrain comes from the WRP.") } else { t("Choose a heightmap or a WRP.") });
+    ui.separator();
+    ui.add_enabled(plan.wrp.is_some(), egui::Checkbox::new(&mut plan.objects_from_wrp, t("Objects from the WRP")));
+    ui.horizontal(|ui| {
+        ui.strong(t("Terrain Builder layers"));
+        if ui.small_button(t("All")).clicked() { plan.layers.iter_mut().for_each(|l| l.import = true); }
+        if ui.small_button(t("Visible only")).clicked() { plan.layers.iter_mut().for_each(|l| l.import = l.info.visible && l.info.objects > 0); }
+        if ui.small_button(t("None")).clicked() { plan.layers.iter_mut().for_each(|l| l.import = false); }
+        if ui.small_button(t("Add layers...")).clicked() {
+            for p in rfd::FileDialog::new().add_filter("Terrain Builder", &["tv4l"]).pick_files().unwrap_or_default() {
+                if plan.layers.iter().any(|l| l.path == p) { continue; }
+                if let Ok(info) = dz_core::tv4l::read_info(&p) { plan.layers.push(dz_core::import::LayerFile { path: p, info, import: true }); }
+            }
+        }
+    });
+    egui::ScrollArea::vertical().id_salt("import_layers").max_height(190.0).auto_shrink([false, true]).show(ui, |ui| {
+        for l in &mut plan.layers {
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut l.import, &l.info.name).on_hover_text(l.path.display().to_string());
+                ui.weak(l.info.objects.to_string());
+                if !l.info.visible { ui.weak(t("hidden in Terrain Builder")); }
+            });
+        }
+    });
+    let chosen: u64 = plan.layers.iter().filter(|l| l.import).map(|l| l.info.objects as u64).sum();
+    row(ui, &t("Template libraries"), |ui| {
+        ui.label(tf("{0} files", &[&plan.libraries.len().to_string()]));
+        if ui.button("…").clicked() {
+            if let Some(d) = rfd::FileDialog::new().pick_folder() { plan.libraries = dz_core::tv4l::libraries_in(&d); }
+        }
+    });
+    if chosen > 0 && plan.libraries.is_empty() {
+        ui.colored_label(Color32::from_rgb(235, 170, 70), t("Without template libraries the layers cannot be matched to models."));
+    }
+    if !plan.lists.is_empty() {
+        ui.strong(t("Object lists (TXT)"));
+        egui::ScrollArea::vertical().id_salt("import_lists").max_height(100.0).auto_shrink([false, true]).show(ui, |ui| {
+            for (p, on) in &mut plan.lists {
+                ui.checkbox(on, p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()).on_hover_text(p.display().to_string());
+            }
+        });
+    }
+    ui.separator();
+    ui.horizontal(|ui| {
+        if ui.add_enabled(plan.can_import(), egui::Button::new(t("Import"))).clicked() {
+            app.run_import(plan.clone());
+            *close = true;
+        }
+        if ui.button(t("Cancel")).clicked() { *close = true; }
+        if chosen > 0 { ui.weak(tf("{0} objects will be imported", &[&chosen.to_string()])); }
+    });
+}
+
 fn dialogs(app: &mut App, ctx: &egui::Context) {
     let mut dialog = std::mem::replace(&mut app.dialog, Dialog::None);
     let mut open = true;
@@ -914,6 +1072,9 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
                     close = true;
                 }
             });
+        }
+        Dialog::Import(d) => {
+            egui::Window::new(t("Import map")).collapsible(false).resizable(true).default_width(760.0).open(&mut open).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| import_window(app, ui, d, &mut close));
         }
         Dialog::Settings => settings_window(app, ctx, &mut open),
         Dialog::ProjectSettings => project_window(app, ctx, &mut open),

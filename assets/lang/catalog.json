@@ -1,4 +1,8 @@
 {
+ "(none)": {
+  "de": "(keine)",
+  "pl": "(brak)"
+ },
  "1. Export files": {
   "de": "1. Dateien exportieren",
   "pl": "1. Eksportuj pliki"
@@ -22,6 +26,10 @@
  "Add layer": {
   "de": "Ebene hinzufügen",
   "pl": "Dodaj warstwę"
+ },
+ "Add layers...": {
+  "de": "Ebenen hinzufügen...",
+  "pl": "Dodaj warstwy..."
  },
  "Add modifier to selection": {
   "de": "Modifikator zur Auswahl hinzufügen",
@@ -50,6 +58,10 @@
  "Align to slope": {
   "de": "An Hang ausrichten",
   "pl": "Dopasuj do spadku"
+ },
+ "All": {
+  "de": "Alle",
+  "pl": "Wszystkie"
  },
  "Ambient": {
   "de": "Umgebungslicht",
@@ -127,6 +139,10 @@
   "de": "Basiert auf den Engines von DayZForests und DayZ Road Studio.",
   "pl": "Oparty na silnikach DayZForests i DayZ Road Studio."
  },
+ "Built world (WRP)": {
+  "de": "Erstellte Welt (WRP)",
+  "pl": "Zbudowany świat (WRP)"
+ },
  "Cancel": {
   "de": "Abbrechen",
   "pl": "Anuluj"
@@ -163,6 +179,10 @@
   "de": "Ordner wählen oder mindestens zwei Buchstaben eingeben",
   "pl": "Wybierz folder lub wpisz co najmniej dwie litery"
  },
+ "Choose a heightmap or a WRP.": {
+  "de": "Wähle eine Höhenkarte oder eine WRP.",
+  "pl": "Wybierz mapę wysokości lub WRP."
+ },
  "Choose a model for the line first": {
   "de": "Zuerst ein Modell für die Linie wählen",
   "pl": "Najpierw wybierz model dla linii"
@@ -190,6 +210,10 @@
  "Click to select, drag for a box, Shift adds. W, E, R change the gizmo. F frames the selection.": {
   "de": "Klicken wählt aus, Ziehen zieht einen Rahmen, Shift ergänzt. W, E, R wechseln das Gizmo. F zeigt die Auswahl.",
   "pl": "Kliknij, aby zaznaczyć, przeciągnij dla ramki, Shift dodaje. W, E, R zmieniają gizmo. F pokazuje zaznaczenie."
+ },
+ "Click: active layer (new objects go here). Ctrl+click: turn editing on or off.": {
+  "de": "Klick: aktive Ebene (neue Objekte landen hier). Strg+Klick: Bearbeitung ein- oder ausschalten.",
+  "pl": "Kliknięcie: aktywna warstwa (tu trafiają nowe obiekty). Ctrl+kliknięcie: włącza lub wyłącza edycję."
  },
  "Coast": {
   "de": "Küste",
@@ -246,6 +270,18 @@
  "Delete": {
   "de": "Löschen",
   "pl": "Usuń"
+ },
+ "Delete layer": {
+  "de": "Ebene löschen",
+  "pl": "Usuń warstwę"
+ },
+ "Delete layer and objects": {
+  "de": "Ebene und Objekte löschen",
+  "pl": "Usuń warstwę wraz z obiektami"
+ },
+ "Delete layer, keep objects": {
+  "de": "Ebene löschen, Objekte behalten",
+  "pl": "Usuń warstwę, zachowaj obiekty"
  },
  "Delete objects": {
   "de": "Objekte löschen",
@@ -314,6 +350,18 @@
  "Edit": {
   "de": "Bearbeiten",
   "pl": "Edycja"
+ },
+ "Edit all": {
+  "de": "Alle bearbeiten",
+  "pl": "Edytuj wszystkie"
+ },
+ "Edit only this layer": {
+  "de": "Nur diese Ebene bearbeiten",
+  "pl": "Edytuj tylko tę warstwę"
+ },
+ "Editable": {
+  "de": "Bearbeitbar",
+  "pl": "Edytowalna"
  },
  "Effect": {
   "de": "Wirkung",
@@ -439,6 +487,10 @@
   "de": "Gelände erzeugen",
   "pl": "Generuj teren"
  },
+ "Generated tiles": {
+  "de": "Erzeugte Kacheln",
+  "pl": "Wygenerowane kafle"
+ },
  "Generating forest": {
   "de": "Wald wird erzeugt",
   "pl": "Generowanie lasu"
@@ -466,6 +518,10 @@
  "Height range": {
   "de": "Höhenbereich",
   "pl": "Zakres wysokości"
+ },
+ "Heightmap": {
+  "de": "Höhenkarte",
+  "pl": "Mapa wysokości"
  },
  "Heightmap (ASC)...": {
   "de": "Höhenkarte (ASC)...",
@@ -503,6 +559,10 @@
   "de": "TV4P-Straßen importieren",
   "pl": "Import dróg z TV4P"
  },
+ "Import Terrain Builder layers": {
+  "de": "Terrain-Builder-Ebenen importieren",
+  "pl": "Import warstw Terrain Buildera"
+ },
  "Import Terrain Builder or built map...": {
   "de": "Terrain Builder oder fertige Karte importieren...",
   "pl": "Importuj Terrain Builder lub gotową mapę..."
@@ -510,6 +570,10 @@
  "Import heightmap": {
   "de": "Höhenkarte importieren",
   "pl": "Import mapy wysokości"
+ },
+ "Import map": {
+  "de": "Karte importieren",
+  "pl": "Import mapy"
  },
  "Import objects": {
   "de": "Objekte importieren",
@@ -538,6 +602,10 @@
  "Importing satellite image": {
   "de": "Satellitenbild wird importiert",
   "pl": "Import obrazu satelitarnego"
+ },
+ "Include in export": {
+  "de": "Beim Export einbeziehen",
+  "pl": "Uwzględnij w eksporcie"
  },
  "Installed. The new version starts after a restart.": {
   "de": "Installiert. Die neue Version startet nach einem Neustart.",
@@ -571,6 +639,10 @@
   "de": "Breitengrad",
   "pl": "Szerokość geogr."
  },
+ "Layer": {
+  "de": "Ebene",
+  "pl": "Warstwa"
+ },
  "Level the ground under buildings": {
   "de": "Gelände unter Gebäuden einebnen",
   "pl": "Wyrównaj teren pod budynkami"
@@ -602,6 +674,10 @@
  "Longitude": {
   "de": "Längengrad",
   "pl": "Długość geogr."
+ },
+ "Looking through the folder": {
+  "de": "Ordner wird durchsucht",
+  "pl": "Przeszukiwanie folderu"
  },
  "Lower": {
   "de": "Senken",
@@ -675,6 +751,14 @@
   "de": "Kamera hierher",
   "pl": "Przenieś tu kamerę"
  },
+ "Move selection here": {
+  "de": "Auswahl hierher verschieben",
+  "pl": "Przenieś tu zaznaczenie"
+ },
+ "Move to layer": {
+  "de": "In Ebene verschieben",
+  "pl": "Przenieś do warstwy"
+ },
  "Name": {
   "de": "Name",
   "pl": "Nazwa"
@@ -682,6 +766,10 @@
  "Navmesh server started. Generate the mesh in NavMeshGenerator, save it as navmesh.nm in the map's navmesh folder, then build again.": {
   "de": "Navmesh-Server gestartet. Netz im NavMeshGenerator erzeugen, als navmesh.nm im navmesh-Ordner der Karte speichern und neu erstellen.",
   "pl": "Serwer navmesh uruchomiony. Wygeneruj siatkę w NavMeshGenerator, zapisz jako navmesh.nm w folderze navmesh mapy i zbuduj ponownie."
+ },
+ "New layer": {
+  "de": "Neue Ebene",
+  "pl": "Nowa warstwa"
  },
  "New project": {
   "de": "Neues Projekt",
@@ -707,6 +795,10 @@
   "de": "Rauschen",
   "pl": "Szum"
  },
+ "None": {
+  "de": "Keine",
+  "pl": "Żadne"
+ },
  "Noon": {
   "de": "Mittag",
   "pl": "Południe"
@@ -719,6 +811,14 @@
   "de": "Objekt-Sichtweite",
   "pl": "Zasięg rysowania obiektów"
  },
+ "Object layers ({0})": {
+  "de": "Objektebenen ({0})",
+  "pl": "Warstwy obiektów ({0})"
+ },
+ "Object lists (TXT)": {
+  "de": "Objektlisten (TXT)",
+  "pl": "Listy obiektów (TXT)"
+ },
  "Objects": {
   "de": "Objekte",
   "pl": "Obiekty"
@@ -730,6 +830,10 @@
  "Objects along a line": {
   "de": "Objekte entlang einer Linie",
   "pl": "Obiekty wzdłuż linii"
+ },
+ "Objects from the WRP": {
+  "de": "Objekte aus der WRP",
+  "pl": "Obiekty z WRP"
  },
  "Offset": {
   "de": "Versatz",
@@ -891,6 +995,10 @@
   "de": "Modifikator entfernen",
   "pl": "Usuń modyfikator"
  },
+ "Rename": {
+  "de": "Umbenennen",
+  "pl": "Zmień nazwę"
+ },
  "Reset": {
   "de": "Zurücksetzen",
   "pl": "Przywróć domyślne"
@@ -930,6 +1038,10 @@
  "Roads": {
   "de": "Straßen",
   "pl": "Drogi"
+ },
+ "Roads (TV4P)": {
+  "de": "Straßen (TV4P)",
+  "pl": "Drogi (TV4P)"
  },
  "Roads and lines": {
   "de": "Straßen und Linien",
@@ -1023,6 +1135,10 @@
   "de": "Auswählen",
   "pl": "Zaznacz"
  },
+ "Select objects": {
+  "de": "Objekte auswählen",
+  "pl": "Zaznacz obiekty"
+ },
  "Selection": {
   "de": "Auswahl",
   "pl": "Zaznaczenie"
@@ -1054,6 +1170,10 @@
  "Sharpness": {
   "de": "Schärfe",
   "pl": "Ostrość"
+ },
+ "Show all": {
+  "de": "Alle anzeigen",
+  "pl": "Pokaż wszystkie"
  },
  "Size": {
   "de": "Größe",
@@ -1123,9 +1243,25 @@
   "de": "Oberflächen malen",
   "pl": "Malowanie powierzchni"
  },
+ "Surfaces (layers.cfg)": {
+  "de": "Oberflächen (layers.cfg)",
+  "pl": "Powierzchnie (layers.cfg)"
+ },
+ "Template libraries": {
+  "de": "Vorlagenbibliotheken",
+  "pl": "Biblioteki szablonów"
+ },
  "Terraces and rivers": {
   "de": "Terrassen und Flüsse",
   "pl": "Tarasy i rzeki"
+ },
+ "Terrain Builder layers": {
+  "de": "Terrain-Builder-Ebenen",
+  "pl": "Warstwy Terrain Buildera"
+ },
+ "Terrain Builder layers (TV4L)...": {
+  "de": "Terrain-Builder-Ebenen (TV4L)...",
+  "pl": "Warstwy Terrain Buildera (TV4L)..."
  },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
@@ -1134,6 +1270,14 @@
  "Terrain Builder or built map folder...": {
   "de": "Terrain-Builder- oder Kartenordner...",
   "pl": "Folder Terrain Buildera lub gotowej mapy..."
+ },
+ "Terrain comes from the WRP.": {
+  "de": "Das Gelände stammt aus der WRP.",
+  "pl": "Teren zostanie wczytany z WRP."
+ },
+ "Terrain comes from the heightmap.": {
+  "de": "Das Gelände stammt aus der Höhenkarte.",
+  "pl": "Teren zostanie wczytany z mapy wysokości."
  },
  "Terrain detail": {
   "de": "Geländedetail",
@@ -1170,6 +1314,10 @@
  "Texture tiles": {
   "de": "Texturkacheln",
   "pl": "Kafle tekstur"
+ },
+ "The active layer is hidden or locked": {
+  "de": "Die aktive Ebene ist ausgeblendet oder gesperrt",
+  "pl": "Aktywna warstwa jest ukryta lub zablokowana"
  },
  "The download replaces the current file; the previous one stays as .old until the next start.": {
   "de": "Der Download ersetzt die aktuelle Datei; die vorherige bleibt bis zum nächsten Start als .old erhalten.",
@@ -1243,6 +1391,14 @@
   "de": "Ansicht",
   "pl": "Widok"
  },
+ "Visible": {
+  "de": "Sichtbar",
+  "pl": "Widoczna"
+ },
+ "Visible only": {
+  "de": "Nur sichtbare",
+  "pl": "Tylko widoczne"
+ },
  "WRP world...": {
   "de": "WRP-Welt...",
   "pl": "Świat WRP..."
@@ -1266,6 +1422,10 @@
  "Wireframe": {
   "de": "Drahtgitter",
   "pl": "Siatka"
+ },
+ "Without template libraries the layers cannot be matched to models.": {
+  "de": "Ohne Vorlagenbibliotheken lassen sich die Ebenen keinen Modellen zuordnen.",
+  "pl": "Bez bibliotek szablonów nie da się dopasować warstw do modeli."
  },
  "Work drive": {
   "de": "Arbeitslaufwerk",
@@ -1295,6 +1455,10 @@
   "de": "Deine Version: {0}",
   "pl": "Twoja wersja: {0}"
  },
+ "hidden in Terrain Builder": {
+  "de": "in Terrain Builder ausgeblendet",
+  "pl": "ukryta w Terrain Builderze"
+ },
  "layers.cfg...": {
   "de": "layers.cfg...",
   "pl": "layers.cfg..."
@@ -1307,6 +1471,10 @@
   "de": "Objekte",
   "pl": "obiektów"
  },
+ "{0} files": {
+  "de": "{0} Dateien",
+  "pl": "Pliki: {0}"
+ },
  "{0} models": {
   "de": "{0} Modelle",
   "pl": "modeli: {0}"
@@ -1314,6 +1482,10 @@
  "{0} objects selected": {
   "de": "{0} Objekte ausgewählt",
   "pl": "Zaznaczono obiektów: {0}"
+ },
+ "{0} objects will be imported": {
+  "de": "{0} Objekte werden importiert",
+  "pl": "Obiekty do wczytania: {0}"
  },
  "{0} points": {
   "de": "{0} Punkte",

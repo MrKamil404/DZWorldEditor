@@ -1,5 +1,5 @@
 //! The edited map: project settings, rasters, objects and non-destructive height modifiers.
-use crate::objects::ObjectStore;
+use crate::objects::{Obj, ObjectStore};
 use crate::terrain::{Heightmap, MaskMap, Rect, RgbImage};
 use serde::{Deserialize, Serialize};
 
@@ -171,6 +171,39 @@ pub struct MapLine {
     pub width: f32,
 }
 
+/// A named group of placed objects. Objects refer to layers by index, so a deleted layer
+/// stays in the list as a tombstone and undo keeps working.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ObjectLayer {
+    pub name: String,
+    #[serde(default = "yes")]
+    pub visible: bool,
+    #[serde(default = "yes")]
+    pub editable: bool,
+    #[serde(default = "yes")]
+    pub export: bool,
+    #[serde(default)]
+    pub deleted: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl ObjectLayer {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into(), visible: true, editable: true, export: true, deleted: false }
+    }
+    /// Tools may pick and change the objects of this layer.
+    pub fn interactive(&self) -> bool {
+        self.visible && self.editable && !self.deleted
+    }
+}
+
+pub fn default_object_layers() -> Vec<ObjectLayer> {
+    vec![ObjectLayer::new("Default")]
+}
+
 #[derive(Clone)]
 pub struct World {
     pub meta: WorldMeta,
@@ -184,6 +217,10 @@ pub struct World {
     pub objects: ObjectStore,
     pub modifiers: Vec<TerrainModifier>,
     pub lines: Vec<MapLine>,
+    /// Never empty; layer 0 cannot be deleted.
+    pub object_layers: Vec<ObjectLayer>,
+    /// Layer that receives new objects.
+    pub active_layer: u16,
     next_modifier: u64,
 }
 
@@ -220,13 +257,15 @@ impl World {
             objects: ObjectStore::default(),
             modifiers: Vec::new(),
             lines: Vec::new(),
+            object_layers: default_object_layers(),
+            active_layer: 0,
             meta,
             next_modifier: 1,
         }
     }
     pub fn from_parts(meta: WorldMeta, base: Heightmap, mask: MaskMap, layers: Vec<SurfaceLayer>, satellite: Option<RgbImage>, objects: ObjectStore, modifiers: Vec<TerrainModifier>, lines: Vec<MapLine>) -> Self {
         let next_modifier = modifiers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
-        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, objects, modifiers, lines, next_modifier };
+        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, objects, modifiers, lines, object_layers: default_object_layers(), active_layer: 0, next_modifier };
         w.recompose(None);
         w
     }
@@ -238,8 +277,44 @@ impl World {
         }
         World {
             meta: self.meta.clone(), base: self.base.clone(), height: self.height.clone(), mask: self.mask.clone(),
-            layers: self.layers.clone(), satellite: None, objects, modifiers: Vec::new(), lines: Vec::new(), next_modifier: self.next_modifier,
+            layers: self.layers.clone(), satellite: None, objects, modifiers: Vec::new(), lines: Vec::new(), object_layers: self.object_layers.clone(), active_layer: self.active_layer, next_modifier: self.next_modifier,
         }
+    }
+    #[inline]
+    fn object_layer(&self, o: &Obj) -> Option<&ObjectLayer> {
+        self.object_layers.get(o.layer() as usize)
+    }
+    #[inline]
+    pub fn object_visible(&self, o: &Obj) -> bool {
+        self.object_layer(o).is_none_or(|l| l.visible)
+    }
+    /// Tools may pick and change this object.
+    #[inline]
+    pub fn object_interactive(&self, o: &Obj) -> bool {
+        self.object_layer(o).is_none_or(ObjectLayer::interactive)
+    }
+    #[inline]
+    pub fn object_exported(&self, o: &Obj) -> bool {
+        self.object_layer(o).is_none_or(|l| l.export)
+    }
+    /// Layer that new objects go to; falls back to the first one if the active layer is gone.
+    pub fn target_layer(&self) -> u16 {
+        match self.object_layers.get(self.active_layer as usize) {
+            Some(l) if !l.deleted => self.active_layer,
+            _ => 0,
+        }
+    }
+    /// Appends a layer with a name not used yet and returns its index.
+    pub fn add_object_layer(&mut self, name: &str) -> u16 {
+        let taken = |n: &str, ls: &[ObjectLayer]| ls.iter().any(|l| !l.deleted && l.name.eq_ignore_ascii_case(n));
+        let mut unique = name.to_string();
+        let mut k = 2;
+        while taken(&unique, &self.object_layers) {
+            unique = format!("{name} {k}");
+            k += 1;
+        }
+        self.object_layers.push(ObjectLayer::new(unique));
+        (self.object_layers.len() - 1) as u16
     }
     pub fn new_modifier_id(&mut self) -> u64 {
         let id = self.next_modifier;

@@ -93,6 +93,7 @@ pub enum Change {
     /// (id, before, after); `None` means the object does not exist in that state.
     Objects(Vec<(u32, Option<Obj>, Option<Obj>)>),
     Modifiers(Vec<TerrainModifier>),
+    ObjectLayers(Vec<crate::world::ObjectLayer>),
     /// A whole-raster change produced by a generator.
     WholeHeight(Vec<f32>),
     WholeMask(Vec<u8>),
@@ -159,6 +160,11 @@ impl Change {
                 t.height = Some(w.base.full_rect());
                 t.objects = true;
             }
+            Change::ObjectLayers(prev) => {
+                std::mem::swap(prev, &mut w.object_layers);
+                w.objects.revision += 1;
+                t.objects = true;
+            }
             Change::WholeHeight(v) => {
                 std::mem::swap(v, &mut w.base.data);
                 w.recompose(None);
@@ -185,6 +191,7 @@ impl Change {
             Change::Mask(s) => s.bytes(),
             Change::Objects(l) => l.len() * 80,
             Change::Modifiers(l) => l.len() * 96,
+            Change::ObjectLayers(l) => l.len() * 64,
             Change::WholeHeight(v) => v.len() * 4,
             Change::WholeMask(v) => v.len(),
             Change::Group(l) => l.iter().map(|c| c.bytes()).sum(),

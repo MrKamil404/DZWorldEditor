@@ -15,6 +15,7 @@ pub mod paa_write;
 pub mod pbo;
 pub mod project;
 pub mod terrain;
+pub mod tv4l;
 pub mod world;
 pub mod wrp;
 

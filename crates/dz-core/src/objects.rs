@@ -23,6 +23,19 @@ pub const FLAG_UNDERGROUND: u32 = 1;
 pub const FLAG_ABSOLUTE: u32 = 2;
 /// Set when a modifier is attached to the object.
 pub const FLAG_LOCKED: u32 = 4;
+/// The object layer is kept in the upper half of `flags`.
+const LAYER_SHIFT: u32 = 16;
+
+impl Obj {
+    #[inline]
+    pub fn layer(&self) -> u16 {
+        (self.flags >> LAYER_SHIFT) as u16
+    }
+    #[inline]
+    pub fn set_layer(&mut self, layer: u16) {
+        self.flags = self.flags & ((1 << LAYER_SHIFT) - 1) | (layer as u32) << LAYER_SHIFT;
+    }
+}
 
 /// One model used on the map, interned so every object stores just an index.
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -182,6 +195,16 @@ impl ObjectStore {
             ground.sample(o.x, o.z) + o.elevation
         }
     }
+    /// Objects per layer; `layers` is the length of the result.
+    pub fn layer_counts(&self, layers: usize) -> Vec<usize> {
+        let mut n = vec![0usize; layers];
+        for (_, o) in self.iter() {
+            if let Some(c) = n.get_mut(o.layer() as usize) {
+                *c += 1;
+            }
+        }
+        n
+    }
     /// Counts per model, most used first.
     pub fn histogram(&self) -> Vec<(u32, usize)> {
         let mut n = vec![0usize; self.models.len()];
@@ -263,6 +286,32 @@ pub fn rotation(yaw: f32, pitch: f32, roll: f32, scale: f32) -> [[f32; 3]; 3] {
     ]
 }
 
+/// Editor angles of an orientation written by Terrain Builder, whose rotation is
+/// Rz(-roll) * Rx(-pitch) * Ry(yaw): the tilts are about world axes, applied after the yaw.
+pub fn from_terrain_builder(yaw: f32, pitch: f32, roll: f32) -> (f32, f32, f32) {
+    if pitch == 0.0 && roll == 0.0 {
+        return (yaw, 0.0, 0.0);
+    }
+    let (sy, cy) = yaw.to_radians().sin_cos();
+    let (sp, cp) = (-pitch).to_radians().sin_cos();
+    let (sr, cr) = (-roll).to_radians().sin_cos();
+    let right = [cr * cy - sr * sp * sy, sr * cy + cr * sp * sy, -cp * sy];
+    let up = [-sr * cp, cr * cp, sp];
+    let dir = [cr * sy + sr * sp * cy, sr * sy - cr * sp * cy, cp * cy];
+    let (a, b, c, _) = angles(&[right, up, dir]);
+    (a, b, c)
+}
+
+/// Inverse of [`from_terrain_builder`].
+pub fn to_terrain_builder(yaw: f32, pitch: f32, roll: f32) -> (f32, f32, f32) {
+    if pitch == 0.0 && roll == 0.0 {
+        return (yaw, 0.0, 0.0);
+    }
+    let m = rotation(yaw, pitch, roll, 1.0);
+    let sp = m[1][2].clamp(-1.0, 1.0);
+    ((-m[0][2]).atan2(m[2][2]).to_degrees(), -sp.asin().to_degrees(), m[1][0].atan2(m[1][1]).to_degrees())
+}
+
 /// Inverse of [`rotation`]: (yaw, pitch, roll, scale).
 pub fn angles(m: &[[f32; 3]; 3]) -> (f32, f32, f32, f32) {
     let len = |v: [f32; 3]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
@@ -291,6 +340,17 @@ mod tests {
         }
     }
     #[test]
+    fn terrain_builder_angles_convert_both_ways() {
+        // Read from a real layer and the world built from it.
+        let (y, p, r) = from_terrain_builder(19.981888, 2.786426, 358.9851);
+        let m = rotation(y, p, r, 1.0);
+        let (ty, tp, tr) = to_terrain_builder(y, p, r);
+        assert!((ty - 19.981888).abs() < 1e-3 && (tp - 2.786426).abs() < 1e-3 && (tr.rem_euclid(360.0) - 358.9851).abs() < 1e-3, "{ty} {tp} {tr}");
+        assert!((p + 2.965).abs() < 0.01 && r.abs() < 0.05, "{p} {r}");
+        assert!((m[1][1] - p.to_radians().cos() * r.to_radians().cos()).abs() < 1e-5);
+        assert_eq!(from_terrain_builder(33.0, 0.0, 0.0), (33.0, 0.0, 0.0));
+    }
+    #[test]
     fn matches_terrain_builder_yaw_in_a_real_wrp() {
         // Matrix read from dolinabobru.wrp: right, up, dir.
         let m = rotation(-86.5, 0.0, 0.0, 1.0);
@@ -312,6 +372,16 @@ mod tests {
         s.for_each_in(896.0, 0.0, 1000.0, 100.0, |_, _| found += 1);
         assert_eq!(found, 1);
         assert_eq!(s.insert(obj(1.0, 1.0)), a);
+    }
+    #[test]
+    fn layer_shares_flags_without_touching_them() {
+        let mut o = Obj { flags: FLAG_UNDERGROUND | FLAG_ABSOLUTE, ..obj(0.0, 0.0) };
+        assert_eq!(o.layer(), 0);
+        o.set_layer(513);
+        assert_eq!((o.layer(), o.flags & 0xffff), (513, FLAG_UNDERGROUND | FLAG_ABSOLUTE));
+        o.flags ^= FLAG_ABSOLUTE;
+        o.set_layer(7);
+        assert_eq!((o.layer(), o.flags & 0xffff), (7, FLAG_UNDERGROUND));
     }
     #[test]
     fn binary_round_trip() {

@@ -135,6 +135,9 @@ fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
                 }
                 for &id in world.objects.cell((gx, gz)) {
                     let Some(ob) = world.objects.get(id) else { continue };
+                    if !world.object_interactive(ob) {
+                        continue;
+                    }
                     let ground = ObjectStore::origin_y(ob, &world.height);
                     let info = app.db.get(world.objects.model_path(ob));
                     if let Some(h) = ray_box(&o, &d, ob, ground, &info) {
@@ -252,6 +255,9 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
         let min_size = (v.mpp * 2.0).max(0.2);
         boxes.reserve(1 << 16);
         world.objects.for_each_in(ex - half, ez - half, ex + half, ez + half, |id, o| {
+            if !world.object_visible(o) {
+                return;
+            }
             let sel = selection.contains(&id);
             if !sel && (keep > 1 && id % keep != 0) {
                 return;
@@ -290,6 +296,9 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                 }
                 for &id in list {
                     let Some(o) = world.objects.get(id) else { continue };
+                    if !world.object_visible(o) {
+                        continue;
+                    }
                     let info = &infos[o.model as usize];
                     let y = ObjectStore::origin_y(o, &world.height);
                     let (dx, dy, dz) = (o.x - eye[0], y - eye[1], o.z - eye[2]);
@@ -363,7 +372,7 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
             let mut road_boxes: Vec<[f32; 6]> = Vec::new();
             let reach = RANGE as f32 + 40.0;
             world.objects.for_each_in(v.eye[0] - reach, v.eye[2] - reach, v.eye[0] + reach, v.eye[2] + reach, |_, o| {
-                if !world.objects.model_path(o).contains(r"\roads\parts\") {
+                if !world.object_visible(o) || !world.objects.model_path(o).contains(r"\roads\parts\") {
                     return;
                 }
                 let info = &infos[o.model as usize];
@@ -488,13 +497,19 @@ fn finish_strokes(app: &mut App) {
 pub fn place_model(app: &mut App, model: &str, x: f32, z: f32) {
     let (random, align, smin, smax, auto_pad, falloff) = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max, app.place.auto_pad, app.place.pad_falloff);
     let Some(doc) = &mut app.doc else { return };
+    let layer = doc.world.target_layer();
+    if !doc.world.object_layers[layer as usize].interactive() {
+        app.warn(t("The active layer is hidden or locked"));
+        return;
+    }
     let model_id = doc.world.objects.intern(model);
     let seed = (x.to_bits() ^ z.to_bits().rotate_left(13)).wrapping_mul(2654435761);
     let yaw = if random { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
     let k = ((seed >> 3) & 1023) as f32 / 1023.0;
     let scale = smin + (smax - smin) * k;
     let (pitch, roll) = if align { gen::slope_angles(&doc.world.height, x, z, yaw) } else { (0.0, 0.0) };
-    let o = Obj { x, z, elevation: 0.0, yaw, pitch, roll, scale, model: model_id, flags: 0 };
+    let mut o = Obj { x, z, elevation: 0.0, yaw, pitch, roll, scale, model: model_id, flags: 0 };
+    o.set_layer(layer);
     let id = doc.world.objects.insert(o);
     doc.history.push(t("Place object"), Change::Objects(vec![(id, None, Some(o))]));
     doc.dirty.objects = true;
@@ -921,6 +936,9 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
         }
         let mut found = Vec::new();
         world.objects.for_each_in(x0, z0, x1, z1, |id, o| {
+            if !world.object_interactive(o) {
+                return;
+            }
             if let Some(s) = v.project([o.x, ObjectStore::origin_y(o, &world.height), o.z]) {
                 if r.contains(s) {
                     found.push(id);
@@ -1278,7 +1296,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     }
     if select_all {
         if let Some(d) = &app.doc {
-            app.selection = d.world.objects.iter().map(|(id, _)| id).collect();
+            app.selection = d.world.objects.iter().filter(|(_, o)| d.world.object_interactive(o)).map(|(id, _)| id).collect();
             app.selection_rev += 1;
         }
     }
@@ -1387,6 +1405,41 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
     match cmd {
         "wait" => app.autoscript.as_mut().unwrap().wait = arg.parse().unwrap_or(10),
         "open" => app.open_project(arg.into()),
+        "importscan" => app.scan_for_import(arg.into()),
+        "importgo" => {
+            if let crate::app::Dialog::Import(d) = std::mem::replace(&mut app.dialog, crate::app::Dialog::None) {
+                app.run_import(d.plan);
+            }
+        }
+        "layers" => {
+            if let Some(d) = &app.doc {
+                let n = d.world.objects.layer_counts(d.world.object_layers.len());
+                for (i, l) in d.world.object_layers.iter().enumerate() {
+                    eprintln!("LAYER {i} {:?} objects={} visible={} editable={} export={} deleted={}", l.name, n[i], l.visible, l.editable, l.export, l.deleted);
+                }
+                eprintln!("LAYERS total={} selection={} active={}", d.world.objects.len(), app.selection.len(), d.world.active_layer);
+            }
+        }
+        "layer" => {
+            use crate::app::LayerAction as A;
+            let mut it = arg.split_whitespace();
+            let what = it.next().unwrap_or("");
+            let l: u16 = it.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+            match what {
+                "visible" => app.layer_action(A::Visible(l)),
+                "editable" => app.layer_action(A::Editable(l)),
+                "solo" => app.layer_action(A::Solo(l)),
+                "active" => app.layer_action(A::Active(l)),
+                "select" => app.layer_action(A::Select(l)),
+                "move" => app.layer_action(A::MoveSelection(l)),
+                "editall" => app.layer_action(A::EditAll),
+                "showall" => app.layer_action(A::ShowAll),
+                "new" => app.layer_action(A::New),
+                "delete" => app.layer_action(A::Delete(l)),
+                "deleteall" => app.layer_action(A::DeleteWithObjects(l)),
+                _ => eprintln!("unknown layer command {what}"),
+            }
+        }
         "wrp" => {
             let db = app.db.clone();
             app.spawn("wrp", move |job| {

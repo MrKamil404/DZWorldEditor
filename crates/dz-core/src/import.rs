@@ -1,7 +1,7 @@
 //! Importers for existing work: Terrain Builder folders, WRP worlds, DayZForests and Road Studio.
 use crate::assets::AssetIndex;
 use crate::model_info::ModelDb;
-use crate::objects::{angles, Obj, ObjectStore, FLAG_ABSOLUTE, FLAG_UNDERGROUND};
+use crate::objects::{angles, from_terrain_builder, Obj, ObjectStore, FLAG_ABSOLUTE, FLAG_UNDERGROUND};
 use crate::terrain::{parse_asc, Heightmap, MaskMap, RgbImage};
 use crate::world::{default_layers, MapLine, SurfaceLayer, World, WorldMeta};
 use crate::wrp::Wrp;
@@ -86,7 +86,8 @@ pub fn parse_tb_objects(text: &str, w: &mut World, assets: &AssetIndex, absolute
         if v(8) != 0.0 {
             flags |= FLAG_UNDERGROUND;
         }
-        out.push(Obj { x: v(1) - shift.0, z: v(2) - shift.1, yaw: v(3), pitch: v(4), roll: v(5), scale: if v(6) > 0.0 { v(6) } else { 1.0 }, elevation: v(7), model, flags });
+        let (yaw, pitch, roll) = from_terrain_builder(v(3), v(4), v(5));
+        out.push(Obj { x: v(1) - shift.0, z: v(2) - shift.1, yaw, pitch, roll, scale: if v(6) > 0.0 { v(6) } else { 1.0 }, elevation: v(7), model, flags });
     }
     (out, missing.into_iter().map(|(k, n)| format!("{k} ({n})")).collect())
 }
@@ -109,57 +110,188 @@ fn objects_from_wrp(wrp: &Wrp, height: &Heightmap, sea: f32, db: &ModelDb) -> Ob
     store
 }
 
-/// Finds an existing built or source map below a folder by what it contains.
+/// A Terrain Builder layer found on disk.
+#[derive(Debug, Clone)]
+pub struct LayerFile {
+    pub path: PathBuf,
+    pub info: crate::tv4l::LayerInfo,
+    pub import: bool,
+}
+
+/// Everything below a folder that looks like part of a map, best guesses first.
 #[derive(Debug, Default, Clone)]
 pub struct FolderScan {
-    pub wrp: Option<PathBuf>,
-    pub asc: Option<PathBuf>,
-    pub satellite: Option<PathBuf>,
-    pub mask: Option<PathBuf>,
-    pub layers_cfg: Option<PathBuf>,
+    pub wrp: Vec<PathBuf>,
+    pub asc: Vec<PathBuf>,
+    pub satellite: Vec<PathBuf>,
+    pub mask: Vec<PathBuf>,
+    pub layers_cfg: Vec<PathBuf>,
     pub objects: Vec<PathBuf>,
     pub tv4p: Vec<PathBuf>,
     pub tile_dir: Option<PathBuf>,
+    pub libraries: Vec<PathBuf>,
+    pub layers: Vec<LayerFile>,
 }
 
-pub fn scan_folder(root: &Path) -> FolderScan {
-    let mut s = FolderScan::default();
-    let mut stack = vec![(root.to_path_buf(), 0)];
+fn walk(root: &Path, s: &mut FolderScan, found: &mut HashMap<PathBuf, (usize, u64)>) {
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
         let Ok(rd) = std::fs::read_dir(&dir) else { continue };
         for e in rd.flatten() {
             let p = e.path();
             let name = e.file_name().to_string_lossy().to_ascii_lowercase();
             if p.is_dir() {
-                if name == "layers" && p.join("S_000_000_lco.paa").is_file() | p.join("S_000_000_lco.png").is_file() {
-                    s.tile_dir = Some(p.clone());
-                } else if depth < 4 && !name.ends_with(".cache") && !name.ends_with(".layers") {
+                if name == "layers" && (p.join("S_000_000_lco.paa").is_file() || p.join("S_000_000_lco.png").is_file()) {
+                    s.tile_dir.get_or_insert(p.clone());
+                } else if depth < 5 && ![".cache", ".layersbackup", ".shapes", ".git"].iter().any(|x| name.ends_with(x)) {
                     stack.push((p, depth + 1));
                 }
                 continue;
             }
-            let bigger = |old: &Option<PathBuf>| old.as_ref().and_then(|o| o.metadata().ok()).map(|m| m.len()).unwrap_or(0) < p.metadata().map(|m| m.len()).unwrap_or(0);
-            if name.ends_with(".wrp") {
-                if bigger(&s.wrp) { s.wrp = Some(p.clone()); }
+            let list = if name.ends_with(".wrp") {
+                &mut s.wrp
             } else if name.ends_with(".asc") {
-                if bigger(&s.asc) { s.asc = Some(p.clone()); }
+                &mut s.asc
             } else if name == "layers.cfg" {
-                s.layers_cfg = Some(p.clone());
+                &mut s.layers_cfg
             } else if name.ends_with(".tv4p") {
-                s.tv4p.push(p.clone());
+                &mut s.tv4p
+            } else if name.ends_with(".tml") {
+                &mut s.libraries
+            } else if name.ends_with(".tv4l") {
+                match crate::tv4l::read_info(&p) {
+                    Ok(info) => {
+                        let import = info.visible && info.objects > 0;
+                        s.layers.push(LayerFile { path: p, info, import });
+                    }
+                    Err(_) => continue,
+                }
+                continue;
             } else if name.ends_with(".bmp") || name.ends_with(".png") || name.ends_with(".tif") {
-                if name.contains("legend") || name.contains("preview") { continue; }
-                if name.contains("mask") { if bigger(&s.mask) { s.mask = Some(p.clone()); } }
-                else if name.contains("sat") { if bigger(&s.satellite) { s.satellite = Some(p.clone()); } }
+                if name.contains("legend") || name.contains("preview") {
+                    continue;
+                }
+                if name.contains("mask") {
+                    &mut s.mask
+                } else if name.contains("sat") {
+                    &mut s.satellite
+                } else {
+                    continue;
+                }
             } else if name.ends_with(".txt") {
                 let first = std::fs::read(&p).ok().and_then(|b| b.split(|c| *c == b'\n').next().map(|l| String::from_utf8_lossy(l).to_string()));
-                if first.map(|l| l.starts_with('"') && l.matches(';').count() >= 7).unwrap_or(false) {
-                    s.objects.push(p.clone());
+                if first.is_some_and(|l| l.starts_with('"') && l.matches(';').count() >= 7) {
+                    &mut s.objects
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            };
+            let size = e.metadata().map(|m| m.len()).unwrap_or(0);
+            found.insert(p.clone(), (depth, size));
+            list.push(p);
+        }
+    }
+}
+
+/// Looks through a project folder (or the folder of a `.tv4p`). Files may be anywhere below
+/// it: they are recognised by content and name, not by where the program expects them.
+pub fn scan_folder(root: &Path) -> FolderScan {
+    let root = if root.is_file() { root.parent().unwrap_or(root) } else { root };
+    let mut s = FolderScan::default();
+    let mut found = HashMap::new();
+    walk(root, &mut s, &mut found);
+    // Terrain Builder often lives in a subfolder with the heightmap one level up.
+    if s.asc.is_empty() {
+        if let Some(up) = root.parent().filter(|p| p.parent().is_some()) {
+            if !s.tv4p.is_empty() || !s.layers.is_empty() {
+                let mut wider = FolderScan::default();
+                walk(up, &mut wider, &mut found);
+                let seen: Vec<PathBuf> = s.layers.iter().map(|l| l.path.clone()).collect();
+                wider.layers.retain(|l| !seen.contains(&l.path));
+                s.asc = wider.asc;
+                s.satellite.extend(wider.satellite.into_iter().filter(|p| !p.starts_with(root)));
+                s.mask.extend(wider.mask.into_iter().filter(|p| !p.starts_with(root)));
+                s.layers_cfg.extend(wider.layers_cfg.into_iter().filter(|p| !p.starts_with(root)));
+                s.wrp.extend(wider.wrp.into_iter().filter(|p| !p.starts_with(root)));
+                if s.libraries.is_empty() {
+                    s.libraries = wider.libraries;
                 }
             }
         }
     }
+    // "<Map>Source" usually sits next to the built "<Map>".
+    if s.wrp.is_empty() {
+        let name = root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let base = name.strip_suffix("Source").or(name.strip_suffix("source")).map(|b| b.trim_end_matches(['_', '-', ' ']).to_string());
+        if let (Some(base), Some(parent)) = (base, root.parent()) {
+            let built = parent.join(base);
+            if built.is_dir() {
+                let mut other = FolderScan::default();
+                walk(&built, &mut other, &mut found);
+                s.wrp = other.wrp;
+                s.tile_dir = s.tile_dir.take().or(other.tile_dir);
+            }
+        }
+    }
+    // Closest to the root first, then the largest.
+    let rank = |p: &PathBuf| found.get(p).map(|(d, n)| (*d, std::cmp::Reverse(*n))).unwrap_or((usize::MAX, std::cmp::Reverse(0)));
+    for list in [&mut s.wrp, &mut s.asc, &mut s.satellite, &mut s.mask, &mut s.layers_cfg, &mut s.tv4p] {
+        list.sort_by_key(rank);
+    }
+    // The project that owns the layers is the one with a `<name>.Layers` folder beside it.
+    s.tv4p.sort_by_key(|p| !p.with_extension("Layers").is_dir());
+    s.objects.sort();
+    s.libraries.sort();
+    s.layers.sort_by_key(|l| l.info.priority);
     s
+}
+
+/// What to bring in; starts from a [`FolderScan`] and is adjusted by the user.
+#[derive(Debug, Default, Clone)]
+pub struct ImportPlan {
+    pub name: String,
+    pub asc: Option<PathBuf>,
+    pub wrp: Option<PathBuf>,
+    pub objects_from_wrp: bool,
+    pub tile_dir: Option<PathBuf>,
+    pub satellite: Option<PathBuf>,
+    pub mask: Option<PathBuf>,
+    pub layers_cfg: Option<PathBuf>,
+    pub tv4p: Option<PathBuf>,
+    pub libraries: Vec<PathBuf>,
+    pub layers: Vec<LayerFile>,
+    pub lists: Vec<(PathBuf, bool)>,
+}
+
+impl ImportPlan {
+    pub fn from_scan(root: &Path, scan: &FolderScan) -> Self {
+        let dir = if root.is_file() { root.parent().unwrap_or(root) } else { root };
+        let name = dir.file_name().map(|s| s.to_string_lossy().trim_end_matches("Source").trim_end_matches(['_', '-', ' ']).to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| "Imported".into());
+        let asc = scan.asc.first().cloned();
+        let has_layers = scan.layers.iter().any(|l| l.import);
+        // A built map has its surfaces in the tiles; loose pictures only belong to a source.
+        let source = asc.is_some() || scan.tile_dir.is_none();
+        Self {
+            name,
+            wrp: scan.wrp.first().cloned(),
+            objects_from_wrp: !has_layers && scan.objects.is_empty(),
+            tile_dir: scan.tile_dir.clone(),
+            satellite: scan.satellite.first().filter(|_| source).cloned(),
+            mask: scan.mask.first().filter(|_| source).cloned(),
+            layers_cfg: scan.layers_cfg.first().cloned(),
+            tv4p: scan.tv4p.first().cloned(),
+            libraries: scan.libraries.clone(),
+            layers: scan.layers.clone(),
+            // Lists are usually exports of the same layers.
+            lists: scan.objects.iter().map(|p| (p.clone(), !has_layers)).collect(),
+            asc,
+        }
+    }
+    pub fn can_import(&self) -> bool {
+        self.asc.is_some() || self.wrp.is_some()
+    }
 }
 
 /// Rebuilds satellite and mask from the generated tiles of a built map.
@@ -323,49 +455,145 @@ pub fn import_wrp(path: &Path, tile_dir: Option<&Path>, db: &ModelDb, job: &Job)
     Ok(World::from_parts(meta, height, mask, layers, satellite, objects, Vec::new(), Vec::new()))
 }
 
-/// Builds a project out of the loose files of a Terrain Builder folder.
-pub fn import_folder(root: &Path, assets: &AssetIndex, db: &ModelDb, job: &Job) -> Result<World> {
-    job.stage("Looking through the folder");
-    let scan = scan_folder(root);
-    if scan.asc.is_none() {
-        if let Some(wrp) = &scan.wrp {
-            return import_wrp(wrp, scan.tile_dir.as_deref(), db, job);
-        }
-        bail!("No heightmap (.asc) or world (.wrp) found in {}", root.display());
-    }
+fn world_from_asc(asc: &Path, plan: &ImportPlan, job: &Job) -> Result<World> {
     job.stage("Reading heightmap");
-    let asc = read_asc(scan.asc.as_ref().unwrap())?;
+    let asc = read_asc(asc)?;
     ensure!(asc.map.cols == asc.map.rows, "Only square heightmaps are supported");
-    let name = root.file_name().map(|s| s.to_string_lossy().trim_end_matches("Source").trim_end_matches('_').to_string()).unwrap_or_else(|| "Imported".into());
-    let mut meta = WorldMeta::new(&name, asc.map.cols as u32, asc.map.cell);
+    let mut meta = WorldMeta::new(&plan.name, asc.map.cols as u32, asc.map.cell);
     if asc.xll != 0.0 {
         meta.easting = asc.xll;
     }
     meta.northing = asc.yll;
-    let mut layers = match &scan.layers_cfg {
-        Some(p) => crate::layers_cfg::parse(&String::from_utf8_lossy(&std::fs::read(p)?))?,
-        None => default_layers(),
-    };
-    let satellite = match &scan.satellite {
-        Some(p) => {
-            job.stage(format!("Reading {}", p.display()));
-            Some(RgbImage::load(p)?)
+    let px = (meta.size_m() as usize).clamp(1024, 20480);
+    let base = asc.map;
+    let w = World::from_parts(meta, base, MaskMap::new(px, px, 0), default_layers(), None, ObjectStore::default(), Vec::new(), Vec::new());
+    Ok(w)
+}
+
+/// Replaces satellite, mask and surfaces with the pictures chosen in the plan.
+fn apply_pictures(w: &mut World, plan: &ImportPlan, job: &Job) -> Result<()> {
+    if let Some(p) = &plan.layers_cfg {
+        if plan.asc.is_some() || plan.mask.is_some() {
+            w.layers = crate::layers_cfg::parse(&String::from_utf8_lossy(&std::fs::read(p)?))?;
         }
-        None => None,
+    }
+    if let Some(p) = &plan.satellite {
+        job.stage(format!("Reading {}", p.display()));
+        w.satellite = Some(RgbImage::load(p)?);
+    }
+    if let Some(p) = &plan.mask {
+        job.stage(format!("Reading {}", p.display()));
+        let img = RgbImage::load(p)?;
+        let mut layers = std::mem::take(&mut w.layers);
+        w.mask = mask_from_image(&img, &mut layers, job)?;
+        w.layers = layers;
+    }
+    Ok(())
+}
+
+/// Removes the map-frame offset: known easting first, then the usual ones.
+fn frame_offset(all: &[crate::tv4l::TbObject], meta: &WorldMeta) -> Option<(f64, f64)> {
+    let size = meta.size_m() as f64;
+    let step = (all.len() / 2000).max(1);
+    let sample: Vec<_> = all.iter().step_by(step).collect();
+    let inside = |ex: f64, ey: f64| {
+        let n = sample.iter().filter(|o| (0.0..=size).contains(&(o.x - ex)) && (0.0..=size).contains(&(o.z - ey))).count();
+        n as f64 >= sample.len() as f64 * 0.9
     };
-    let mask = match &scan.mask {
-        Some(p) => {
-            job.stage(format!("Reading {}", p.display()));
-            let img = RgbImage::load(p)?;
-            mask_from_image(&img, &mut layers, job)?
+    [(meta.easting, meta.northing), (200_000.0, 0.0), (0.0, 0.0), (meta.easting, 0.0)].into_iter().find(|(x, y)| inside(*x, *y))
+}
+
+/// Adds Terrain Builder layers to the world, each as an object layer of its own.
+pub fn add_tb_layers(w: &mut World, files: &[LayerFile], libraries: &[PathBuf], job: &Job) -> Result<usize> {
+    job.stage("Reading template libraries");
+    let templates = crate::tv4l::read_libraries(libraries);
+    job.log(format!("{} templates in {} libraries", templates.len(), libraries.len()));
+    job.stage("Reading Terrain Builder layers");
+    let read: Vec<Result<crate::tv4l::Layer>> = files.par_iter().map(|f| crate::tv4l::load(&f.path)).collect();
+    let mut layers = Vec::with_capacity(read.len());
+    for (f, r) in files.iter().zip(read) {
+        match r {
+            Ok(l) => layers.push(l),
+            Err(e) => job.log(format!("{}: {e:#}", f.path.display())),
         }
+    }
+    ensure!(!layers.is_empty() || files.is_empty(), "None of the selected layers could be read");
+    let joined: Vec<crate::tv4l::TbObject> = layers.iter().flat_map(|l| l.objects.iter().step_by((l.objects.len() / 2000).max(1)).copied()).collect();
+    let (ex, ey) = match frame_offset(&joined, &w.meta) {
+        Some(o) => o,
         None => {
-            let px = (meta.size_m() as usize).clamp(1024, 20480);
-            MaskMap::new(px, px, 0)
+            job.log("Layer coordinates do not match the map frame; check the easting and northing in the project settings.");
+            (w.meta.easting, w.meta.northing)
         }
     };
-    let mut w = World::from_parts(meta, asc.map, mask, layers, satellite, ObjectStore::default(), Vec::new(), Vec::new());
-    for p in &scan.objects {
+    let total: usize = layers.iter().map(|l| l.objects.len()).sum();
+    let mut done = 0usize;
+    let mut unknown: HashMap<u32, usize> = HashMap::new();
+    for l in layers {
+        job.stage(format!("Placing {} ({} objects)", l.info.name, l.objects.len()));
+        // Terrain Builder has a "default" layer of its own; it takes over the empty first one.
+        let reuse = l.info.name.eq_ignore_ascii_case(&w.object_layers[0].name) && !w.objects.iter().any(|(_, o)| o.layer() == 0);
+        let layer = if reuse { 0 } else { w.add_object_layer(&l.info.name) };
+        let meta = &mut w.object_layers[layer as usize];
+        meta.visible = l.info.visible;
+        meta.editable = !l.info.locked;
+        meta.export = l.info.visible;
+        let mut model_of: HashMap<u32, Option<u32>> = HashMap::new();
+        for o in &l.objects {
+            let model = *model_of.entry(o.template).or_insert_with(|| templates.get(&o.template).map(|p| w.objects.intern(p)));
+            let Some(model) = model else {
+                *unknown.entry(o.template).or_default() += 1;
+                continue;
+            };
+            let (yaw, pitch, roll) = from_terrain_builder(o.yaw, o.pitch, o.roll);
+            let mut obj = Obj { x: (o.x - ex) as f32, z: (o.z - ey) as f32, elevation: o.elevation, yaw, pitch, roll, scale: if o.scale > 0.0 { o.scale } else { 1.0 }, model, flags: 0 };
+            obj.set_layer(layer);
+            w.objects.insert(obj);
+        }
+        done += l.objects.len();
+        job.set_progress(0.5 + 0.5 * done as f32 / total.max(1) as f32);
+    }
+    if !unknown.is_empty() {
+        let lost: usize = unknown.values().sum();
+        job.log(format!("{lost} objects of {} templates are missing from the libraries and were skipped", unknown.len()));
+    }
+    Ok(total)
+}
+
+/// Template libraries that belong to the project of a layer file.
+pub fn libraries_near(layer: &Path) -> Vec<PathBuf> {
+    layer.ancestors().skip(1).take(4).map(|d| d.join("TemplateLibs")).find(|d| d.is_dir()).map(|d| crate::tv4l::libraries_in(&d)).unwrap_or_default()
+}
+
+/// Builds a world according to the plan.
+pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &Job) -> Result<World> {
+    let mut w = match (&plan.asc, &plan.wrp) {
+        (Some(asc), _) => world_from_asc(asc, plan, job)?,
+        (None, Some(wrp)) => {
+            let mut w = import_wrp(wrp, plan.tile_dir.as_deref(), db, job)?;
+            w.objects = ObjectStore::default();
+            w.meta.name = plan.name.clone();
+            w
+        }
+        (None, None) => bail!("Choose a heightmap (.asc) or a world (.wrp)"),
+    };
+    apply_pictures(&mut w, plan, job)?;
+    if plan.objects_from_wrp {
+        if let Some(path) = &plan.wrp {
+            job.stage("Reading WRP objects");
+            let wrp = Wrp::parse(&std::fs::read(path).with_context(|| format!("{}", path.display()))?)?;
+            w.objects = objects_from_wrp(&wrp, &w.height, 0.0, db);
+            job.log(format!("{}: {} objects", path.display(), w.objects.len()));
+        }
+    }
+    let chosen: Vec<LayerFile> = plan.layers.iter().filter(|l| l.import).cloned().collect();
+    if !chosen.is_empty() {
+        add_tb_layers(&mut w, &chosen, &plan.libraries, job)?;
+    }
+    for (p, on) in &plan.lists {
+        if !*on {
+            continue;
+        }
         job.stage(format!("Reading objects {}", p.display()));
         let text = String::from_utf8_lossy(&std::fs::read(p)?).into_owned();
         let (list, missing) = parse_tb_objects(&text, &mut w, assets, false);
@@ -373,17 +601,28 @@ pub fn import_folder(root: &Path, assets: &AssetIndex, db: &ModelDb, job: &Job) 
         if !missing.is_empty() {
             job.log(format!("Unknown models: {}", missing.join(", ")));
         }
-        for o in list {
+        let layer = w.add_object_layer(&p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Objects".into()));
+        for mut o in list {
+            o.set_layer(layer);
             w.objects.insert(o);
         }
     }
-    for p in &scan.tv4p {
+    if let Some(p) = &plan.tv4p {
         match import_tv4p(p, &mut w) {
             Ok(n) => job.log(format!("{}: {n} roads", p.display())),
             Err(e) => job.log(format!("{}: {e:#}", p.display())),
         }
     }
     Ok(w)
+}
+
+/// Builds a project from a folder using the best guess for every part.
+pub fn import_folder(root: &Path, assets: &AssetIndex, db: &ModelDb, job: &Job) -> Result<World> {
+    job.stage("Looking through the folder");
+    let scan = scan_folder(root);
+    let plan = ImportPlan::from_scan(root, &scan);
+    ensure!(plan.can_import(), "No heightmap (.asc) or world (.wrp) found in {}", root.display());
+    import_plan(&plan, assets, db, job)
 }
 
 /// Roads of a Terrain Builder project as lines.
@@ -529,6 +768,67 @@ mod tests {
         assert!(max_pos < 0.02, "position error {max_pos}");
         assert!(max_axis < 0.01, "matrix error {max_axis}");
         assert_eq!(w.height.data, original.elevations);
+    }
+
+    #[test]
+    fn scan_finds_files_wherever_they_are_and_ranks_by_depth() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path();
+        std::fs::create_dir_all(p.join("a/b")).unwrap();
+        std::fs::create_dir_all(p.join("map.LayersBackup")).unwrap();
+        std::fs::write(p.join("a/b/deep_mask.png"), vec![0; 5000]).unwrap();
+        std::fs::write(p.join("my_mask.png"), vec![0; 10]).unwrap();
+        std::fs::write(p.join("a/h.asc"), b"x").unwrap();
+        std::fs::write(p.join("a/lib.tml"), b"x").unwrap();
+        std::fs::write(p.join("map.LayersBackup/o.tml"), b"x").unwrap();
+        let s = scan_folder(p);
+        assert_eq!(s.mask[0], p.join("my_mask.png"));
+        assert_eq!(s.asc.len(), 1);
+        assert_eq!(s.libraries, vec![p.join("a/lib.tml")]);
+        let plan = ImportPlan::from_scan(p, &s);
+        assert!(plan.can_import());
+        assert!(plan.objects_from_wrp);
+    }
+
+    #[test]
+    fn frame_offset_prefers_a_matching_frame() {
+        let meta = WorldMeta::new("A", 1024, 4.0);
+        let o = |x: f64, z: f64| crate::tv4l::TbObject { template: 0, x, z, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, elevation: 0.0 };
+        assert_eq!(frame_offset(&[o(201000.0, 500.0), o(203000.0, 900.0)], &meta), Some((200_000.0, 0.0)));
+        assert_eq!(frame_offset(&[o(1000.0, 500.0)], &meta), Some((0.0, 0.0)));
+        assert_eq!(frame_offset(&[o(900000.0, 500.0)], &meta), None);
+    }
+
+    /// Objects read from Terrain Builder layers must agree with the world built from them.
+    #[test]
+    fn real_layers_match_the_built_world() {
+        let lp = Path::new("P:/BalticrusSource/TerrainBuilder/balticrus.Layers/kamil-woda.tv4l");
+        let wp = Path::new("P:/Balticrus/world/Balticrus.wrp");
+        if !lp.exists() || !wp.exists() || std::env::var("DZ_SLOW_TESTS").is_err() { return; }
+        let db = ModelDb::new("P:/");
+        let built = import_wrp(wp, None, &db, &Job::default()).unwrap();
+        let lib = crate::tv4l::libraries_in(Path::new("P:/BalticrusSource/TerrainBuilder/TemplateLibs"));
+        let templates = crate::tv4l::read_libraries(&lib);
+        let layer = crate::tv4l::load(lp).unwrap();
+        let (mut found, mut max_axis, mut max_scale, mut max_elev) = (0, 0.0f32, 0.0f32, 0.0f32);
+        for o in &layer.objects {
+            let path = &templates[&o.template];
+            let (x, z) = ((o.x - 200000.0) as f32, o.z as f32);
+            let mut best: Option<Obj> = None;
+            built.objects.for_each_in(x - 1.0, z - 1.0, x + 1.0, z + 1.0, |_, c| {
+                if built.objects.model_path(c) == path && (c.x - x).abs() < 0.5 && (c.z - z).abs() < 0.5 { best = Some(*c); }
+            });
+            if let Some(c) = best {
+                found += 1;
+                let (a, b) = (crate::objects::rotation(c.yaw, c.pitch, c.roll, 1.0), { let (y, p, r) = from_terrain_builder(o.yaw, o.pitch, o.roll); crate::objects::rotation(y, p, r, 1.0) });
+                for i in 0..3 { for k in 0..3 { max_axis = max_axis.max((a[i][k] - b[i][k]).abs()); } }
+                max_scale = max_scale.max((c.scale - o.scale).abs());
+                max_elev = max_elev.max((c.elevation - o.elevation).abs());
+            }
+        }
+        println!("layer {} objects, matched in WRP {found}, max matrix error {max_axis}, scale {max_scale}, elevation {max_elev}", layer.objects.len());
+        assert!(found > 30);
+        assert!(max_axis < 0.001 && max_scale < 0.01 && max_elev < 0.01);
     }
 
     /// Imports a real built map when P: is mounted.

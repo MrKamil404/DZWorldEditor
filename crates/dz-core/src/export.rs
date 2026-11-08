@@ -269,7 +269,7 @@ pub fn wrp_objects(w: &World, db: &ModelDb) -> (Vec<WrpObject>, Vec<String>) {
     let info: Vec<_> = w.objects.models.iter().map(|m| db.get(&m.path)).collect();
     let mut missing = BTreeSet::new();
     let mut out = Vec::with_capacity(w.objects.len());
-    for (_, o) in w.objects.iter() {
+    for (_, o) in w.objects.iter().filter(|(_, o)| w.object_exported(o)) {
         let i = &info[o.model as usize];
         if !i.known {
             missing.insert(w.objects.models[o.model as usize].path.clone());
@@ -507,11 +507,12 @@ pub fn write_source(w: &World, dir: &Path) -> Result<()> {
     atomic_write(&dir.join("layers.cfg"), crate::layers_cfg::write(&w.layers, "mapLegend.png").as_bytes())?;
     use std::fmt::Write;
     let mut text = String::with_capacity(w.objects.len() * 80);
-    for (_, o) in w.objects.iter() {
+    for (_, o) in w.objects.iter().filter(|(_, o)| w.object_exported(o)) {
         let path = w.objects.model_path(o);
         let stem = path.rsplit('\\').next().unwrap_or(path).trim_end_matches(".p3d");
+        let (yaw, pitch, roll) = crate::objects::to_terrain_builder(o.yaw, o.pitch, o.roll);
         let _ = writeln!(text, "\"{stem}\";{:.6};{:.6};{:.6};{:.6};{:.6};{:.6};{:.6};{};",
-            o.x as f64 + w.meta.easting, o.z as f64 + w.meta.northing, o.yaw, o.pitch, o.roll, o.scale, o.elevation, u32::from(o.flags & FLAG_UNDERGROUND != 0));
+            o.x as f64 + w.meta.easting, o.z as f64 + w.meta.northing, yaw, pitch, roll, o.scale, o.elevation, u32::from(o.flags & FLAG_UNDERGROUND != 0));
     }
     atomic_write(&dir.join("objects.txt"), text.as_bytes())
 }
