@@ -109,11 +109,15 @@ void main(){
     if (near > 0.002) {
       vec2 t = v_world.xz * u_tile;
       vec2 dx = dFdx(t), dy = dFdy(t);
-      vec3 s = textureGrad(u_layers, vec3(t, float(a)), dx, dy).rgb / max(avg(a), vec3(0.05)) * wa
-             + textureGrad(u_layers, vec3(t, float(b)), dx, dy).rgb / max(avg(b), vec3(0.05)) * wb
-             + textureGrad(u_layers, vec3(t, float(c)), dx, dy).rgb / max(avg(c), vec3(0.05)) * wc
-             + textureGrad(u_layers, vec3(t, float(d)), dx, dy).rgb / max(avg(d), vec3(0.05)) * wd;
-      alb = mix(sat, sat * s, near);
+      vec3 ta = textureGrad(u_layers, vec3(t, float(a)), dx, dy).rgb;
+      vec3 tb = textureGrad(u_layers, vec3(t, float(b)), dx, dy).rgb;
+      vec3 tc = textureGrad(u_layers, vec3(t, float(c)), dx, dy).rgb;
+      vec3 td = textureGrad(u_layers, vec3(t, float(d)), dx, dy).rgb;
+      vec3 s = ta / max(avg(a), vec3(0.05)) * wa + tb / max(avg(b), vec3(0.05)) * wb + tc / max(avg(c), vec3(0.05)) * wc + td / max(avg(d), vec3(0.05)) * wd;
+      vec3 raw = ta * wa + tb * wb + tc * wc + td * wd;
+      // Close up the game shows the surface texture itself, tinted a little by the satellite.
+      vec3 tinted = sat * clamp(s, vec3(0.4), vec3(1.6));
+      alb = mix(sat, mix(raw, tinted, u_has_sat != 0 ? 0.45 : 0.0), near);
     }
     col = alb * light;
   } else if (u_mode == 1) { // satellite
