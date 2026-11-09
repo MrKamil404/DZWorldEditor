@@ -5,7 +5,7 @@ use crate::theme::{self, row};
 use dz_core::edit::Change;
 use dz_core::gen;
 use dz_core::library::*;
-use dz_core::objects::Obj;
+use dz_core::objects::{Obj, ObjectStore};
 use dz_core::shapes::{MapShape, ShapeKind, ShapeLayer};
 use dz_core::world::World;
 use eframe::egui::{self, vec2, Color32};
@@ -13,10 +13,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// What is being dragged out of a library.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LibDrag {
     Generator(u64),
     ObjectPreset(u64),
+    ForestPreset(String),
+}
+
+/// What was under the cursor when something was dropped on the map.
+#[derive(Clone, Copy, Debug)]
+pub struct Dropped {
+    pub shape: Option<(usize, usize)>,
+    pub route: Option<u64>,
+    pub at: [f32; 2],
 }
 
 pub fn library_path() -> PathBuf {
@@ -29,6 +38,7 @@ struct KindContext {
     presets: Vec<String>,
     model: Option<String>,
     has_satellite: bool,
+    object_presets: Vec<(u64, String)>,
 }
 
 fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindContext {
@@ -40,6 +50,7 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
         presets,
         model: app.place.model.clone(),
         has_satellite: doc.is_some_and(|d| d.world.satellite.is_some()),
+        object_presets: app.library.objects.iter().map(|p| (p.id, p.name.clone())).collect(),
     }
 }
 
@@ -64,6 +75,73 @@ fn model_field(ui: &mut egui::Ui, label: String, value: &mut String, selected: &
         }
         if !value.is_empty() && ui.small_button("✖").clicked() { value.clear(); }
     });
+}
+
+/// Chooses an object preset in place of a list of models.
+fn preset_pick(ui: &mut egui::Ui, value: &mut Option<u64>, cx: &KindContext) {
+    row(ui, &t("Object preset"), |ui| {
+        let shown = value.and_then(|id| cx.object_presets.iter().find(|p| p.0 == id)).map(|p| p.1.clone()).unwrap_or_else(|| t("(none)"));
+        egui::ComboBox::from_id_salt("objects_preset").selected_text(shown).show_ui(ui, |ui| {
+            ui.selectable_value(value, None, t("(none)"));
+            for (id, name) in &cx.object_presets { ui.selectable_value(value, Some(*id), name); }
+        });
+    });
+}
+
+fn models_list(ui: &mut egui::Ui, models: &mut Vec<(String, f32)>, cx: &KindContext) {
+    let mut remove = None;
+    let list = ui.vertical(|ui| {
+        for (i, (m, k)) in models.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.add(egui::DragValue::new(k).speed(0.05).range(0.01..=100.0));
+                ui.label(m.rsplit('\\').next().unwrap_or(m)).on_hover_text(m.as_str());
+                if ui.small_button("✖").clicked() { remove = Some(i); }
+            });
+        }
+    }).response;
+    if let Some(p) = list.dnd_release_payload::<String>() { if !models.iter().any(|m| m.0 == *p) { models.push(((*p).clone(), 1.0)); } }
+    if let Some(i) = remove { models.remove(i); }
+    if ui.button(format!("+ {}", t("Add selected model"))).on_hover_text(t("Models can also be dropped here.")).clicked() {
+        if let Some(m) = &cx.model { if !models.iter().any(|x| x.0 == *m) { models.push((m.clone(), 1.0)); } }
+    }
+}
+
+fn objects_ui(ui: &mut egui::Ui, set: &mut ObjectSet, cx: &KindContext) {
+    preset_pick(ui, &mut set.preset, cx);
+    if set.preset.is_some() {
+        return;
+    }
+    models_list(ui, &mut set.models, cx);
+    number(ui, t("Min scale"), &mut set.scale_min, 0.1..=4.0);
+    number(ui, t("Max scale"), &mut set.scale_max, 0.1..=4.0);
+    if set.scale_max < set.scale_min { set.scale_max = set.scale_min; }
+    ui.checkbox(&mut set.random_yaw, t("Random rotation"));
+    ui.checkbox(&mut set.align, t("Align to slope"));
+}
+
+fn count_row(ui: &mut egui::Ui, label: String, v: &mut u32, range: std::ops::RangeInclusive<u32>) {
+    row(ui, &label, |ui| { ui.add(egui::Slider::new(v, range)); });
+}
+
+const POWERLINES: &str = "P:\\samples\\DayZ-Misc-master\\Powerlines";
+
+/// A margin that can be switched off.
+fn margin_field(ui: &mut egui::Ui, label: String, value: &mut Option<f32>) {
+    ui.horizontal(|ui| {
+        let mut on = value.is_some();
+        if ui.checkbox(&mut on, label).changed() { *value = on.then_some(10.0); }
+        if let Some(v) = value { ui.add(egui::DragValue::new(v).speed(0.5).range(0.0..=200.0).suffix(" m")); }
+    });
+}
+
+/// How a generator follows its line.
+fn line_ui(ui: &mut egui::Ui, o: &mut LineOptions) {
+    ui.horizontal(|ui| {
+        for (mode, name) in [(LineMode::Polyline, "Along the line"), (LineMode::Bezier, "Bezier curve")] {
+            if crate::theme::tool_button(ui, o.mode == mode, &t(name)).clicked() { o.mode = mode; }
+        }
+    });
+    number(ui, t("Distance from the line"), &mut o.offset, -60.0..=60.0);
 }
 
 fn preset_combo(ui: &mut egui::Ui, id: impl std::hash::Hash, value: &mut String, presets: &[String]) {
@@ -140,6 +218,24 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 }
             }
             ui.separator();
+            ui.strong(t("Keep free of trees"));
+            let mut remove = None;
+            for (i, s) in g.skip_surfaces.iter_mut().enumerate() {
+                ui.push_id(("skip", i), |ui| ui.horizontal(|ui| {
+                    egui::ComboBox::from_id_salt("layer").width(120.0).selected_text(s.0.clone()).show_ui(ui, |ui| {
+                        for n in &cx.layers { ui.selectable_value(&mut s.0, n.clone(), n); }
+                    });
+                    ui.add(egui::DragValue::new(&mut s.1).speed(0.5).range(0.0..=200.0).suffix(" m"));
+                    if ui.small_button("✖").clicked() { remove = Some(i); }
+                }));
+            }
+            if let Some(i) = remove { g.skip_surfaces.remove(i); }
+            if ui.button(format!("+ {}", t("Add surface"))).clicked() {
+                g.skip_surfaces.push((cx.layers.first().cloned().unwrap_or_default(), 10.0));
+            }
+            margin_field(ui, t("Roads"), &mut g.avoid_roads);
+            margin_field(ui, t("Buildings"), &mut g.avoid_buildings);
+            ui.separator();
             let mut filtered = g.color_filter.is_some();
             if ui.checkbox(&mut filtered, t("Only on satellite colours")).changed() {
                 g.color_filter = filtered.then(|| forest_core::preset::ColorFilter { samples: Vec::new(), tolerance: 60, invert: false });
@@ -214,35 +310,170 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             ui.checkbox(&mut s.flatten, t("Level the ground under buildings"));
         }
         GeneratorKind::Fence(g) => {
-            model_field(ui, t("Model"), &mut g.model, &cx.model);
-            number(ui, t("Spacing"), &mut g.spacing, 0.0..=60.0);
-            ui.weak(t("Spacing 0 uses the length of the model."));
+            preset_pick(ui, &mut g.preset, cx);
+            if g.preset.is_none() { model_field(ui, t("Model"), &mut g.model, &cx.model); }
+            number(ui, t("Spacing"), &mut g.spacing, -30.0..=100.0);
+            ui.weak(t("Gap between the pieces. 0 makes them touch, negative values overlap them."));
             number(ui, t("Turn"), &mut g.yaw_offset, -180.0..=180.0);
+            ui.checkbox(&mut g.random_rotation, t("Random rotation"));
             ui.checkbox(&mut g.follow_slope, t("Follow the slope"));
+            ui.checkbox(&mut g.join_corners, t("Join the pieces at corners"));
+            model_field(ui, t("First object"), &mut g.start_model, &cx.model);
+            if !g.start_model.is_empty() { ui.checkbox(&mut g.flip_start, t("Rotate the first object by 180°")); }
+            model_field(ui, t("Last object"), &mut g.end_model, &cx.model);
+            if !g.end_model.is_empty() { ui.checkbox(&mut g.flip_end, t("Rotate the last object by 180°")); }
+            line_ui(ui, &mut g.line);
+        }
+        GeneratorKind::Area(g) => {
+            objects_ui(ui, &mut g.objects, cx);
+            match g.method {
+                AreaMethod::HighDensity => {
+                    number(ui, t("Per hectare"), &mut g.density, 1.0..=2000.0);
+                    number(ui, t("Patches per hectare"), &mut g.fraction, 0.05..=50.0);
+                    number(ui, t("Patch blending m"), &mut g.blend, 0.0..=100.0);
+                }
+                AreaMethod::LocalMaximum | AreaMethod::LocalMinimum => {
+                    number(ui, t("Search radius"), &mut g.search_radius, 8.0..=300.0);
+                }
+                _ => number(ui, t("Clusters per hectare"), &mut g.cluster_density, 0.05..=100.0),
+            }
+            if g.method != AreaMethod::HighDensity {
+                count_row(ui, t("Objects in a cluster"), &mut g.cluster_max, 1..=200);
+                number(ui, t("Min radius"), &mut g.min_radius, 0.5..=100.0);
+                number(ui, t("Max radius"), &mut g.max_radius, 0.5..=200.0);
+                if g.max_radius < g.min_radius { g.max_radius = g.min_radius; }
+            }
+            if g.method == AreaMethod::LowDensityStrip { number(ui, t("Strip width"), &mut g.strip_width, 0.5..=60.0); }
+            number(ui, t("Minimum distance"), &mut g.min_distance, 0.25..=60.0);
+            number(ui, t("Max slope"), &mut g.max_slope, 0.0..=90.0);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::Line(g) => {
+            objects_ui(ui, &mut g.objects, cx);
+            match g.method {
+                LineMethod::Random => number(ui, t("Per hectare"), &mut g.density, 1.0..=2000.0),
+                LineMethod::SparseCluster => {
+                    number(ui, t("Clusters per hectare"), &mut g.cluster_density, 0.05..=200.0);
+                    count_row(ui, t("Objects in a cluster"), &mut g.cluster_max, 1..=200);
+                    number(ui, t("Min radius"), &mut g.min_radius, 0.5..=100.0);
+                    number(ui, t("Max radius"), &mut g.max_radius, 0.5..=200.0);
+                    if g.max_radius < g.min_radius { g.max_radius = g.min_radius; }
+                }
+                LineMethod::Nodes => number(ui, t("Chance per node %"), &mut g.probability, 0.0..=100.0),
+            }
+            if g.method != LineMethod::Nodes {
+                number(ui, t("Nearest to the line"), &mut g.inner_distance, 0.0..=200.0);
+                number(ui, t("Furthest from the line"), &mut g.max_distance, 0.0..=300.0);
+                if g.max_distance < g.inner_distance { g.max_distance = g.inner_distance; }
+            }
+            if g.method != LineMethod::SparseCluster { number(ui, t("Turn"), &mut g.rotation, -180.0..=180.0); }
+            number(ui, t("Minimum distance"), &mut g.min_distance, 0.25..=60.0);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+            line_ui(ui, &mut g.line);
         }
         GeneratorKind::PowerLine(g) => {
-            model_field(ui, t("Tower"), &mut g.tower, &cx.model);
-            model_field(ui, t("Corner tower"), &mut g.corner, &cx.model);
-            model_field(ui, t("Wires"), &mut g.wire, &cx.model);
+            row(ui, &t("Configuration"), |ui| {
+                let files: Vec<PathBuf> = std::fs::read_dir(POWERLINES).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("xml"))).collect()).unwrap_or_default();
+                let mut chosen = None;
+                egui::ComboBox::from_id_salt("power").selected_text(g.config.clone()).show_ui(ui, |ui| {
+                    for p in &files {
+                        let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                        if ui.selectable_label(g.config == name, &name).clicked() { chosen = Some(p.clone()); }
+                    }
+                });
+                if ui.small_button("…").on_hover_text(t("Terrain Processor configuration (XML)")).clicked() {
+                    chosen = rfd::FileDialog::new().add_filter("XML", &["xml"]).pick_file();
+                }
+                if let Some(p) = chosen {
+                    let name = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                    if let Ok(text) = std::fs::read(&p) {
+                        if let Ok(parsed) = parse_powerlines(&String::from_utf8_lossy(&text), &name) {
+                            let (spacing, line) = (g.spacing, g.line);
+                            *g = parsed;
+                            (g.spacing, g.line) = (spacing, line);
+                        }
+                    }
+                }
+            });
+            ui.weak(tf("{0} pole types, {1} wire types", &[&g.poles.len().to_string(), &g.wires.len().to_string()]));
             number(ui, t("Spacing"), &mut g.spacing, 0.0..=300.0);
             ui.weak(t("Spacing 0 uses the length of the wire model."));
-            number(ui, t("Turn"), &mut g.yaw_offset, -180.0..=180.0);
+            line_ui(ui, &mut g.line);
+        }
+        GeneratorKind::Scatter(s) => {
+            preset_pick(ui, &mut s.preset, cx);
+            if s.preset.is_none() { models_list(ui, &mut s.models, cx); }
+            number(ui, t("Per hectare"), &mut s.density, 0.1..=600.0);
+            number(ui, t("Minimum distance"), &mut s.min_distance, 0.5..=100.0);
+            number(ui, t("Min slope"), &mut s.min_slope, 0.0..=90.0);
+            number(ui, t("Max slope"), &mut s.max_slope, 0.0..=90.0);
+            number(ui, t("Min height"), &mut s.min_height, -200.0..=1500.0);
+            number(ui, t("Max height"), &mut s.max_height, -200.0..=9000.0);
+            number(ui, t("Min scale"), &mut s.scale_min, 0.1..=4.0);
+            number(ui, t("Max scale"), &mut s.scale_max, 0.1..=4.0);
+            if s.scale_max < s.scale_min { s.scale_max = s.scale_min; }
+            ui.checkbox(&mut s.align_to_slope, t("Align to slope"));
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut s.seed)); });
+            ui.collapsing(t("Only on surfaces"), |ui| {
+                for n in &cx.layers {
+                    let mut on = s.layers.contains(n);
+                    if ui.checkbox(&mut on, n).changed() {
+                        if on { s.layers.push(n.clone()); } else { s.layers.retain(|l| l != n); }
+                    }
+                }
+            });
+        }
+        GeneratorKind::River(g) => {
+            number(ui, t("Width"), &mut g.width, 2.0..=120.0);
+            number(ui, t("Depth"), &mut g.depth, 0.3..=20.0);
+            number(ui, t("Blend"), &mut g.falloff, 0.0..=80.0);
+            model_field(ui, t("Water model"), &mut g.model, &cx.model);
+            ui.weak(t("The river runs from the first point of the line to the last."));
+            line_ui(ui, &mut g.line);
+        }
+        GeneratorKind::Terrain(g) => {
+            row(ui, &t("Type"), |ui| {
+                egui::ComboBox::from_id_salt("kind").selected_text(t(g.kind.name())).show_ui(ui, |ui| {
+                    for k in gen::TerrainKind::ALL { ui.selectable_value(&mut g.kind, k, t(k.name())); }
+                });
+            });
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+            number(ui, t("Base height"), &mut g.base, 0.0..=800.0);
+            number(ui, t("Height range"), &mut g.amplitude, 1.0..=1500.0);
+            number(ui, t("Feature size"), &mut g.feature, 100.0..=15000.0);
+            row(ui, &t("Detail"), |ui| { ui.add(egui::Slider::new(&mut g.octaves, 1..=12)); });
+            number(ui, t("Roughness"), &mut g.roughness, 0.2..=0.8);
+            number(ui, t("Warp"), &mut g.warp, 0.0..=2000.0);
+            number(ui, t("Blend"), &mut g.blend, 0.0..=1.0);
+        }
+        GeneratorKind::Erosion(e) => {
+            row(ui, &t("Droplets"), |ui| { ui.add(egui::Slider::new(&mut e.droplets, 10_000..=4_000_000).logarithmic(true)); });
+            number(ui, t("Erosion rate"), &mut e.erode, 0.05..=0.9);
+            number(ui, t("Deposition"), &mut e.deposit, 0.05..=0.9);
+        }
+        GeneratorKind::ThermalErosion { iterations, talus } => {
+            row(ui, &t("Passes"), |ui| { ui.add(egui::Slider::new(iterations, 1..=200)); });
+            number(ui, t("Slope limit"), talus, 10.0..=70.0);
+        }
+        GeneratorKind::Terraces { step, sharpness } => {
+            number(ui, t("Step height"), step, 1.0..=80.0);
+            number(ui, t("Sharpness"), sharpness, 0.0..=1.0);
         }
     }
     sample
 }
 
 /// A library entry drawn like a model in the browser.
-fn tile(ui: &mut egui::Ui, name: &str, letter: &str, color: Color32, selected: bool, image: Option<egui::TextureId>) -> egui::Response {
-    let cell = vec2(104.0, 122.0);
+fn tile(ui: &mut egui::Ui, side: f32, name: &str, letter: &str, color: Color32, selected: bool, image: Option<egui::TextureId>) -> egui::Response {
+    let cell = vec2(side + 8.0, side + 26.0);
     let (rect, resp) = ui.allocate_exact_size(cell, egui::Sense::click_and_drag());
     ui.painter().rect_filled(rect, 3.0, if selected { theme::ACCENT_SOFT } else if resp.hovered() { theme::HOVER } else { Color32::from_rgb(42, 42, 44) });
-    let art = egui::Rect::from_min_size(rect.min + vec2(4.0, 4.0), vec2(96.0, 96.0));
+    let art = egui::Rect::from_min_size(rect.min + vec2(4.0, 4.0), vec2(side, side));
     match image {
         Some(id) => { ui.painter().image(id, art, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE); }
         None => {
             ui.painter().rect_filled(art, 2.0, color);
-            ui.painter().text(art.center(), egui::Align2::CENTER_CENTER, letter, egui::FontId::proportional(40.0), Color32::from_white_alpha(210));
+            ui.painter().text(art.center(), egui::Align2::CENTER_CENTER, letter, egui::FontId::proportional(side * 0.42), Color32::from_white_alpha(210));
         }
     }
     let short: String = if name.chars().count() > 15 { name.chars().take(14).chain(['…']).collect() } else { name.to_string() };
@@ -257,6 +488,123 @@ fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::Settlement(_) => ("B", Color32::from_rgb(112, 64, 58)),
         GeneratorKind::Fence(_) => ("W", Color32::from_rgb(86, 88, 96)),
         GeneratorKind::PowerLine(_) => ("P", Color32::from_rgb(56, 84, 128)),
+        GeneratorKind::Scatter(_) => ("O", Color32::from_rgb(92, 96, 60)),
+        GeneratorKind::Area(_) => ("A", Color32::from_rgb(70, 104, 66)),
+        GeneratorKind::Line(_) => ("L", Color32::from_rgb(92, 84, 112)),
+        GeneratorKind::River(_) => ("R", Color32::from_rgb(40, 96, 130)),
+        GeneratorKind::Terrain(_) => ("T", Color32::from_rgb(96, 110, 70)),
+        GeneratorKind::Erosion(_) => ("E", Color32::from_rgb(110, 92, 70)),
+        GeneratorKind::ThermalErosion { .. } => ("E", Color32::from_rgb(120, 100, 76)),
+        GeneratorKind::Terraces { .. } => ("T", Color32::from_rgb(120, 110, 80)),
+    }
+}
+
+/// What a library entry shows as its picture.
+#[derive(Clone)]
+enum Preview {
+    Model(String),
+    Picture(String, GeneratorKind),
+    Nothing,
+}
+
+fn preset_model(app: &App, preset: &str, user: &[forest_core::user_presets::UserPreset]) -> Option<String> {
+    use forest_core::user_presets::UserPreset;
+    let weights = user.iter().find(|p| p.name == preset).cloned().or_else(|| forest_core::species::zone_presets().iter().find(|p| p.name == preset).map(UserPreset::from_builtin))?.weights;
+    let heaviest = weights.iter().max_by(|a, b| a.1.total_cmp(&b.1))?;
+    app.assets.resolve(&heaviest.0).map(str::to_string)
+}
+
+fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
+    let model = match kind {
+        GeneratorKind::Forest(f) => preset_model(app, &f.preset, &f.user_presets),
+        GeneratorKind::Scatter(s) => s.preset.and_then(|id| app.library.objects.iter().find(|p| p.id == id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| s.models.first().map(|m| m.0.clone())),
+        GeneratorKind::Area(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Line(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Settlement(s) => s.buildings.first().cloned(),
+        GeneratorKind::Fence(g) => g.preset.and_then(|id| app.library.objects.iter().find(|p| p.id == id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| Some(g.model.clone()).filter(|m| !m.is_empty())),
+        GeneratorKind::PowerLine(g) => g.poles.first().and_then(|p| app.assets.resolve(&p.name).map(str::to_string)),
+        _ => None,
+    };
+    match model {
+        Some(m) => Preview::Model(ObjectStore::normalize_path(&m)),
+        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_)) => Preview::Nothing,
+        None => {
+            let key = match kind {
+                GeneratorKind::Terrain(p) => format!("terrain {p:?}"),
+                GeneratorKind::SurfacePaint { rules, .. } => format!("paint {:?}", rules.iter().map(|r| r.layer).collect::<Vec<_>>()),
+                other => other.type_name().to_string(),
+            };
+            Preview::Picture(key, kind.clone())
+        }
+    }
+}
+
+/// A small hillshaded terrain, or the surface colours of a painting generator.
+fn picture_of(app: &App, kind: &GeneratorKind) -> egui::ColorImage {
+    const N: usize = 96;
+    if let GeneratorKind::SurfacePaint { rules, .. } = kind {
+        let colors: Vec<[u8; 3]> = app.doc.as_ref().map(|d| rules.iter().filter_map(|r| d.world.layers.get(r.layer).map(|l| l.color)).collect()).unwrap_or_default();
+        let colors: Vec<[u8; 3]> = colors.into_iter().chain([[108, 142, 66], [136, 156, 74], [120, 96, 70]]).take(3).collect();
+        let mut px = Vec::with_capacity(N * N);
+        for y in 0..N {
+            for x in 0..N {
+                let c = colors[((x + y) * colors.len() / (2 * N)).min(colors.len() - 1)];
+                px.push(Color32::from_rgb(c[0], c[1], c[2]));
+            }
+        }
+        return egui::ColorImage { size: [N, N], pixels: px };
+    }
+    if matches!(kind, GeneratorKind::River(_)) {
+        let mut px = Vec::with_capacity(N * N);
+        for y in 0..N {
+            let middle = 48.0 + (y as f32 * 0.09).sin() * 20.0 + (y as f32 * 0.031).cos() * 7.0;
+            for x in 0..N {
+                let d = (x as f32 - middle).abs();
+                let grain = ((x * 7 + y * 13) % 11) as f32;
+                px.push(if d < 8.0 { Color32::from_rgb(38, 92 + (8.0 - d) as u8 * 4, 128 + (8.0 - d) as u8 * 6) }
+                    else if d < 12.0 { Color32::from_rgb(126, 112, 82) }
+                    else { Color32::from_rgb(92 + grain as u8, 122 + grain as u8, 62) });
+            }
+        }
+        return egui::ColorImage { size: [N, N], pixels: px };
+    }
+    let params = if let GeneratorKind::Terrain(p) = kind { p.clone() } else { gen::TerrainParams::default() };
+    let job = dz_core::Job::default();
+    let cell = params.feature / 24.0;
+    let mut h = dz_core::terrain::Heightmap::new(N, N, cell, params.base);
+    gen::generate_terrain(&mut h, &params, &job);
+    match kind {
+        GeneratorKind::Terraces { step, sharpness } => gen::terrace(&mut h, step * params.amplitude / 60.0, *sharpness),
+        GeneratorKind::ThermalErosion { talus, .. } => gen::thermal_erosion(&mut h, 8, *talus, &job),
+        GeneratorKind::Erosion(e) => gen::hydraulic_erosion(&mut h, &gen::ErosionParams { droplets: 12_000, ..e.clone() }, &job),
+        _ => {}
+    }
+    let (lo, hi) = h.min_max();
+    let mut px = Vec::with_capacity(N * N);
+    for j in (0..N).rev() {
+        for i in 0..N {
+            let n = h.normal(i as f32 * cell, j as f32 * cell);
+            let shade = (n[0] * -0.45 + n[1] * 0.75 + n[2] * 0.45).clamp(0.15, 1.0);
+            let t = ((h.at(i, j) - lo) / (hi - lo).max(0.01)).clamp(0.0, 1.0);
+            let c = [(70.0 + 120.0 * t) * shade, (105.0 + 70.0 * t) * shade, (60.0 + 80.0 * t) * shade];
+            px.push(Color32::from_rgb(c[0] as u8, c[1] as u8, c[2] as u8));
+        }
+    }
+    egui::ColorImage { size: [N, N], pixels: px }
+}
+
+fn preview_texture(app: &mut App, ctx: &egui::Context, preview: &Preview) -> Option<egui::TextureId> {
+    match preview {
+        Preview::Model(m) => app.thumbs.get(m).map(|t| t.id()),
+        Preview::Picture(key, kind) => {
+            if !app.lib_thumbs.contains_key(key) {
+                let image = picture_of(app, kind);
+                let handle = ctx.load_texture(format!("lib:{key}"), image, egui::TextureOptions::LINEAR);
+                app.lib_thumbs.insert(key.clone(), handle);
+            }
+            app.lib_thumbs.get(key).map(|t| t.id())
+        }
+        Preview::Nothing => None,
     }
 }
 
@@ -268,7 +616,7 @@ fn folder_list(ui: &mut egui::Ui, current: &mut Option<String>, folders: &[Strin
     for f in folders {
         let r = ui.selectable_label(current.as_deref() == Some(f.as_str()), f);
         if r.clicked() { *current = Some(f.clone()); }
-        if let Some(p) = r.dnd_release_payload::<LibDrag>() { moved = Some((*p, f.clone())); }
+        if let Some(p) = r.dnd_release_payload::<LibDrag>() { moved = Some(((*p).clone(), f.clone())); }
     }
     ui.separator();
     ui.horizontal(|ui| {
@@ -281,8 +629,8 @@ fn folder_list(ui: &mut egui::Ui, current: &mut Option<String>, folders: &[Strin
     (moved, created)
 }
 
-fn grid_columns(ui: &egui::Ui) -> usize {
-    (ui.available_width() / 108.0).floor().max(1.0) as usize
+fn grid_columns(ui: &egui::Ui, side: f32) -> usize {
+    (ui.available_width() / (side + 12.0)).floor().max(1.0) as usize
 }
 
 pub fn generators_tab(app: &mut App, ui: &mut egui::Ui) {
@@ -318,18 +666,20 @@ pub fn generators_tab(app: &mut App, ui: &mut egui::Ui) {
     if let Some(name) = result.1 {
         if !app.library.generator_folders.contains(&name) { app.library.generator_folders.push(name); app.lib_dirty = true; }
     }
-    let shown: Vec<(u64, String, &'static str, Color32, bool)> = app.built_in.iter().map(|g| (g, true)).chain(app.library.generators.iter().map(|g| (g, false)))
+    let shown: Vec<(u64, String, &'static str, Color32, bool, Preview)> = app.built_in.iter().map(|g| (g, true)).chain(app.library.generators.iter().map(|g| (g, false)))
         .filter(|(g, _)| current.as_deref().is_none_or(|f| f == g.folder))
-        .map(|(g, b)| { let (l, c) = kind_look(&g.kind); (g.id, if b { t(&g.name) } else { g.name.clone() }, l, c, b) }).collect();
-    let columns = grid_columns(ui);
+        .map(|(g, b)| { let (l, c) = kind_look(&g.kind); (g.id, if b { t(&g.name) } else { g.name.clone() }, l, c, b, preview_of(app, &g.kind)) }).collect();
+    let side = app.settings.library_tile;
+    let columns = grid_columns(ui, side);
     let mut add = None;
     let mut delete = None;
     let mut copy = None;
     egui::ScrollArea::vertical().id_salt("gens").auto_shrink([false, false]).show(ui, |ui| {
         for chunk in shown.chunks(columns) {
             ui.horizontal(|ui| {
-                for (id, name, letter, color, built_in) in chunk {
-                    let r = tile(ui, name, letter, *color, app.edit_generator == Some(*id), None);
+                for (id, name, letter, color, built_in, preview) in chunk {
+                    let image = preview_texture(app, ui.ctx(), preview);
+                    let r = tile(ui, side, name, letter, *color, app.edit_generator == Some(*id), image);
                     if r.clicked() { app.edit_generator = Some(*id); app.selected_generator = None; }
                     if r.double_clicked() { add = Some(*id); }
                     r.dnd_set_drag_payload(LibDrag::Generator(*id));
@@ -360,7 +710,8 @@ pub fn generators_tab(app: &mut App, ui: &mut egui::Ui) {
 
 pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
     const ROADS: &str = "Roads";
-    let mut folders = vec![t(ROADS)];
+    let forests_label = t("Forests");
+    let mut folders = vec![t(ROADS), forests_label.clone()];
     folders.extend(app.library.object_folders.iter().cloned());
     let roads_label = t(ROADS);
     let (mut current, mut new_name) = (app.preset_folder.clone(), std::mem::take(&mut app.new_folder));
@@ -382,27 +733,43 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
     app.preset_folder = current.clone();
     app.new_folder = new_name;
     if let Some((LibDrag::ObjectPreset(id), folder)) = result.0 {
-        if folder != roads_label {
+        if folder != roads_label && folder != forests_label {
             if let Some(p) = app.library.objects.iter_mut().find(|p| p.id == id) { p.folder = folder; app.lib_dirty = true; }
         }
     }
     if let Some(name) = result.1 {
-        if name != roads_label && !app.library.object_folders.contains(&name) { app.library.object_folders.push(name); app.lib_dirty = true; }
+        if name != roads_label && name != forests_label && !app.library.object_folders.contains(&name) { app.library.object_folders.push(name); app.lib_dirty = true; }
     }
-    let columns = grid_columns(ui);
+    let side = app.settings.library_tile;
+    let columns = grid_columns(ui, side);
     let show_roads = current.as_deref().is_none_or(|f| f == roads_label);
+    let show_forests = current.as_deref().is_none_or(|f| f == forests_label);
+    let forests: Vec<(String, Option<String>)> = if show_forests { gen::forest_preset_names().into_iter().map(|n| { let m = preset_model(app, &n, &[]).map(|m| ObjectStore::normalize_path(&m)); (n, m) }).collect() } else { Vec::new() };
+    let road_model = |app: &App, family: &str| app.road_catalog.iter().filter(|c| c.family == family && c.category == 3).min_by_key(|c| c.path.len()).map(|c| {
+        let path = ObjectStore::normalize_path(&c.path);
+        if path.contains('\\') { path.strip_prefix("p:\\").unwrap_or(&path).to_string() } else { format!("dz\\structures\\roads\\parts\\{path}") }
+    });
     let families: Vec<String> = if show_roads { app.road_families.clone() } else { Vec::new() };
     let shown: Vec<(u64, String, Option<String>)> = app.library.objects.iter().filter(|p| current.as_deref().is_none_or(|f| f == p.folder)).map(|p| (p.id, p.name.clone(), p.items.first().map(|i| i.0.clone()))).collect();
-    enum Entry { Road(String), Preset(u64, String, Option<String>) }
-    let entries: Vec<Entry> = families.into_iter().map(Entry::Road).chain(shown.into_iter().map(|(a, b, c)| Entry::Preset(a, b, c))).collect();
+    enum Entry { Road(String, Option<String>), Forest(String, Option<String>), Preset(u64, String, Option<String>) }
+    let entries: Vec<Entry> = families.into_iter().map(|f| { let m = road_model(app, &f); Entry::Road(f, m) }).chain(forests.into_iter().map(|(n, m)| Entry::Forest(n, m))).chain(shown.into_iter().map(|(a, b, c)| Entry::Preset(a, b, c))).collect();
+    let mut add_forest_now = None;
     let mut delete = None;
     egui::ScrollArea::vertical().id_salt("presets").auto_shrink([false, false]).show(ui, |ui| {
         for chunk in entries.chunks(columns) {
             ui.horizontal(|ui| {
                 for e in chunk {
                     match e {
-                        Entry::Road(family) => {
-                            let r = tile(ui, family, "R", Color32::from_rgb(70, 72, 78), app.line.family == *family, None);
+                        Entry::Forest(name, model) => {
+                            let image = model.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
+                            let r = tile(ui, side, name, "F", Color32::from_rgb(44, 96, 56), false, image);
+                            if r.double_clicked() { add_forest_now = Some(name.clone()); }
+                            r.dnd_set_drag_payload(LibDrag::ForestPreset(name.clone()));
+                            r.context_menu(|ui| { if ui.button(t("Add to the project")).clicked() { add_forest_now = Some(name.clone()); ui.close_menu(); } });
+                        }
+                        Entry::Road(family, model) => {
+                            let image = model.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
+                            let r = tile(ui, side, family, "R", Color32::from_rgb(70, 72, 78), app.line.family == *family, image);
                             if r.clicked() {
                                 app.line.family = family.clone();
                                 app.line.action = LineAction::Road;
@@ -412,7 +779,7 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
                         }
                         Entry::Preset(id, name, first) => {
                             let image = first.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
-                            let r = tile(ui, name, "O", Color32::from_rgb(64, 78, 92), app.edit_object == Some(*id), image);
+                            let r = tile(ui, side, name, "O", Color32::from_rgb(64, 78, 92), app.edit_object == Some(*id), image);
                             if r.clicked() {
                                 app.edit_object = Some(*id);
                                 app.selected_generator = None;
@@ -433,6 +800,7 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
             });
         }
     });
+    if let Some(name) = add_forest_now { add_forest(app, &name, None); }
     if let Some(id) = delete {
         app.library.objects.retain(|p| p.id != id);
         if app.edit_object == Some(id) { app.edit_object = None; }
@@ -442,7 +810,37 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
 }
 
 /// Shows the library entry or project generator being edited. Returns false when there is none.
+/// A whole road picked with the Select tool.
+fn whole_route_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
+    let Some(doc) = &app.doc else { return };
+    let Some(index) = doc.world.routes.iter().position(|r| r.id == id) else { app.whole = None; return };
+    let r = &doc.world.routes[index];
+    ui.strong(r.name.clone());
+    ui.weak(r.family.clone());
+    ui.label(tf("{0} models", &[&r.objects.len().to_string()]));
+    let (mut edit, mut delete) = (false, false);
+    ui.horizontal_wrapped(|ui| {
+        edit = ui.button(t("Edit route")).clicked();
+        delete = ui.button(t("Delete route")).clicked();
+    });
+    if edit {
+        app.mode = Mode::Lines;
+        app.line.action = LineAction::Edit;
+        app.line.selected_route = Some(index);
+        app.whole = None;
+        app.selection.clear();
+        app.selection_rev += 1;
+    }
+    if delete {
+        app.delete_selection();
+    }
+}
+
 pub fn details(app: &mut App, ui: &mut egui::Ui) -> bool {
+    if let Some(SelectedWhole::Route(id)) = app.whole {
+        whole_route_details(app, ui, id);
+        return true;
+    }
     if let Some(id) = app.selected_generator {
         instance_details(app, ui, id);
         return true;
@@ -513,6 +911,8 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     let cx = context(app, &user);
     let shape_layers: Vec<String> = doc.world.shape_layers.iter().map(|l| l.name.clone()).collect();
     let selected_shape = app.shape.selection.iter().next().copied().and_then(|(l, s)| Some((doc.world.shape_layers.get(l)?.name.clone(), s)));
+    let routes: Vec<(u64, String)> = doc.world.routes.iter().map(|r| (r.id, r.name.clone())).collect();
+    let selected_route = app.line.selected_route.and_then(|i| doc.world.routes.get(i)).map(|r| r.id);
     let doc = app.doc.as_mut().unwrap();
     let g = &mut doc.world.generators[index];
     row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut g.name); });
@@ -525,8 +925,10 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
                 row(ui, "Z", |ui| { ui.add(egui::DragValue::new(&mut p[1]).speed(1.0)); });
             }
         }
+        TargetKind::Map => {}
         kind => {
             let shown = match &g.target {
+                GenTarget::Route(id) => routes.iter().find(|r| r.0 == *id).map(|r| r.1.clone()).unwrap_or_default(),
                 GenTarget::Map => t("Whole map"),
                 GenTarget::Layer(l) => l.clone(),
                 GenTarget::Shape { layer, index } => format!("{layer} #{}", index + 1),
@@ -536,8 +938,14 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
                 egui::ComboBox::from_id_salt("target").selected_text(shown).show_ui(ui, |ui| {
                     if kind == TargetKind::Area { ui.selectable_value(&mut g.target, GenTarget::Map, t("Whole map")); }
                     for l in &shape_layers { ui.selectable_value(&mut g.target, GenTarget::Layer(l.clone()), l); }
+                    if kind == TargetKind::Line {
+                        for (id, name) in &routes { ui.selectable_value(&mut g.target, GenTarget::Route(*id), name); }
+                    }
                 });
             });
+            if kind == TargetKind::Line && ui.add_enabled(selected_route.is_some(), egui::Button::new(t("Use selected route"))).clicked() {
+                if let Some(id) = selected_route { g.target = GenTarget::Route(id); }
+            }
             if ui.add_enabled(selected_shape.is_some(), egui::Button::new(t("Use selected shape"))).clicked() {
                 if let Some((layer, index)) = selected_shape { g.target = GenTarget::Shape { layer, index }; }
             }
@@ -577,7 +985,6 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
             0 => {
                 app.selected_generator = Some(id);
                 app.selected_modifier = None;
-                app.selected_line = None;
             }
             1 => run_generator(app, id),
             2 => select_objects(app, id),
@@ -616,7 +1023,7 @@ fn duplicate_instance(app: &mut App, id: u64) {
     doc.history.push(t("Duplicate"), Change::Generators(before));
 }
 
-fn delete_instance(app: &mut App, id: u64, with_objects: bool) {
+pub fn delete_instance(app: &mut App, id: u64, with_objects: bool) {
     let Some(doc) = &mut app.doc else { return };
     let Some(g) = doc.world.generators.iter().find(|g| g.id == id).cloned() else { return };
     let before = doc.world.generators.clone();
@@ -633,41 +1040,82 @@ fn delete_instance(app: &mut App, id: u64, with_objects: bool) {
         app.selection_rev += 1;
     }
     if app.selected_generator == Some(id) { app.selected_generator = None; }
+    if let (true, Some(m)) = (with_objects, g.modifier) {
+        app.set_modifiers(&t("Delete generator"), |list| list.retain(|x| x.id != m));
+    }
 }
 
-/// Puts a library generator into the project. It works on the shape it was dropped on, the
-/// selected shape or, for what needs no shape, the whole map.
-pub fn add_instance(app: &mut App, preset: u64, drop: Option<(Option<(usize, usize)>, [f32; 2])>) {
+/// Puts a library generator into the project. It works on what it was dropped on, the
+/// selected shape or road or, for what needs nothing, the whole map.
+pub fn add_instance(app: &mut App, preset: u64, drop: Option<Dropped>) {
     let Some(p) = app.built_in.iter().chain(app.library.generators.iter()).find(|g| g.id == preset).cloned() else { return };
+    let name = if p.folder == BUILT_IN { t(&p.name) } else { p.name.clone() };
+    add_kind(app, p.kind, name, drop);
+}
+
+/// A forest generator using one preset of the library.
+pub fn add_forest(app: &mut App, preset: &str, drop: Option<Dropped>) {
+    let forest = ForestGen { preset: preset.to_string(), ..Default::default() };
+    add_kind(app, GeneratorKind::Forest(Box::new(forest)), preset.to_string(), drop);
+}
+
+fn add_kind(app: &mut App, kind: GeneratorKind, name: String, drop: Option<Dropped>) {
+    let selected_route = app.line.selected_route.and_then(|i| app.doc.as_ref()?.world.routes.get(i)).map(|r| r.id);
     let Some(doc) = &mut app.doc else { return };
-    let shape_at = drop.and_then(|d| d.0).or_else(|| app.shape.selection.iter().next().copied());
-    let wants = p.kind.target_kind();
+    let shape_at = drop.and_then(|d| d.shape).or_else(|| app.shape.selection.iter().next().copied());
+    let wants = kind.target_kind();
     let usable = shape_at.and_then(|(l, s)| {
         let layer = doc.world.shape_layers.get(l)?;
         let shape = layer.shapes.get(s)?;
-        let fits = match wants { TargetKind::Area => shape.kind == ShapeKind::Polygon, TargetKind::Line => shape.kind == ShapeKind::Polyline, TargetKind::Point => false };
+        let fits = match wants {
+            TargetKind::Area => shape.kind == ShapeKind::Polygon,
+            TargetKind::Line => shape.kind != ShapeKind::Point,
+            _ => false,
+        };
         fits.then(|| GenTarget::Shape { layer: layer.name.clone(), index: s })
     });
+    let on_route = drop.and_then(|d| d.route).or(selected_route).filter(|_| wants == TargetKind::Line).map(GenTarget::Route);
+    // Dropped on a road, the road wins over a shape that merely happens to be selected.
+    let usable = if drop.is_some_and(|d| d.route.is_some() && d.shape.is_none()) { on_route.clone().or(usable) } else { usable.or(on_route) };
     let target = match (wants, usable, drop) {
         (_, Some(t), _) => t,
-        (TargetKind::Point, _, Some((_, p))) => GenTarget::Point(p),
+        (TargetKind::Point, _, Some(d)) => GenTarget::Point(d.at),
         (TargetKind::Point, _, None) => { let s = doc.world.meta.size_m(); GenTarget::Point([s * 0.5, s * 0.5]) }
-        (TargetKind::Area, _, _) => GenTarget::Map,
+        (TargetKind::Area | TargetKind::Map, _, _) => GenTarget::Map,
         (TargetKind::Line, _, _) => {
-            app.warn(t("Drop this generator on a polyline, or select one first"));
+            app.warn(t("Drop this generator on a line or a road, or select one first"));
             return;
         }
     };
     let before = doc.world.generators.clone();
     let id = new_id();
-    let run = target != GenTarget::Map && !matches!(&p.kind, GeneratorKind::Settlement(s) if s.buildings.is_empty());
-    let name = if p.folder == BUILT_IN { t(&p.name) } else { p.name.clone() };
-    doc.world.generators.push(GeneratorInstance { id, name, kind: p.kind, target, objects: Vec::new() });
+    let run = target != GenTarget::Map && match &kind {
+        GeneratorKind::Settlement(s) => !s.buildings.is_empty(),
+        GeneratorKind::Scatter(s) => !s.models.is_empty() || s.preset.is_some(),
+        GeneratorKind::Area(g) => !g.objects.models.is_empty() || g.objects.preset.is_some(),
+        GeneratorKind::Line(g) => !g.objects.models.is_empty() || g.objects.preset.is_some(),
+        GeneratorKind::Fence(g) => !g.model.is_empty() || g.preset.is_some(),
+        _ => true,
+    };
+    doc.world.generators.push(GeneratorInstance { id, name, kind, target, objects: Vec::new(), modifier: None });
     doc.history.push(t("Add generator"), Change::Generators(before));
     app.selected_generator = Some(id);
     app.selected_modifier = None;
-    app.selected_line = None;
     if run { run_generator(app, id); }
+}
+
+/// Lines a generator can follow: roads, polylines, and the outlines of polygons.
+fn target_lines(w: &World, target: &GenTarget) -> Vec<Vec<[f32; 2]>> {
+    if let GenTarget::Route(id) = target {
+        return w.routes.iter().find(|r| r.id == *id).map(|r| vec![r.centerline.clone()]).unwrap_or_default();
+    }
+    let mut out: Vec<Vec<[f32; 2]>> = target_shapes(w, target, ShapeKind::Polyline).into_iter().map(|s| s.points).collect();
+    for s in target_shapes(w, target, ShapeKind::Polygon) {
+        let mut ring = s.points;
+        ring.push(ring[0]);
+        out.push(ring);
+    }
+    out
 }
 
 fn target_shapes(w: &World, target: &GenTarget, kind: ShapeKind) -> Vec<MapShape> {
@@ -686,9 +1134,10 @@ pub fn run_generator(app: &mut App, id: u64) {
     let mut lite = doc.world.lite();
     let db = app.db.clone();
     let assets = app.assets.clone();
+    let presets = app.library.objects.clone();
     let world = &doc.world;
     let polygons = target_shapes(world, &g.target, ShapeKind::Polygon);
-    let lines = target_shapes(world, &g.target, ShapeKind::Polyline);
+    let lines = target_lines(world, &g.target);
     if g.target != GenTarget::Map && !matches!(g.target, GenTarget::Point(_)) && polygons.is_empty() && lines.is_empty() {
         app.warn(t("The shape this generator works on no longer exists"));
         return;
@@ -705,7 +1154,18 @@ pub fn run_generator(app: &mut App, id: u64) {
             let areas = if shapes.is_empty() { Vec::new() } else { vec![(ShapeLayer { name: g.name.clone(), visible: true, shapes }, f.preset.clone())] };
             let satellite = world.satellite.as_ref().filter(|_| wants_filter || gen::forest_needs_satellite(&f.project)).map(gen::satellite_for_forest);
             let forest = *f;
-            let req = gen::ForestRequest { project: forest.project, zones, areas, satellite, color_filter: forest.color_filter, edge_presets: forest.edge_presets, user_presets: forest.user_presets };
+            let skip_surfaces: Vec<(usize, f32)> = forest.skip_surfaces.iter().filter_map(|(l, m)| Some((world.layers.iter().position(|x| x.name == *l)?, *m))).collect();
+            let keep_out = (forest.avoid_roads.is_some() || forest.avoid_buildings.is_some()).then(|| {
+                let buildings = forest.avoid_buildings.map(|_| world.objects.iter().filter_map(|(_, o)| {
+                    let path = world.objects.model_path(o);
+                    if !path.contains("\\structures") || path.contains("\\roads\\") || path.contains("\\walls\\") || path.contains("\\rail\\") { return None; }
+                    let info = db.get(path);
+                    let (hx, hz) = if info.known { info.footprint() } else { (4.0, 4.0) };
+                    Some([o.x, o.z, o.yaw, hx * o.scale, hz * o.scale])
+                }).collect()).unwrap_or_default();
+                gen::KeepOut { roads: if forest.avoid_roads.is_some() { world.routes.iter().map(|r| r.centerline.clone()).collect() } else { Vec::new() }, road_margin: forest.avoid_roads.unwrap_or(0.0), buildings, building_margin: forest.avoid_buildings.unwrap_or(0.0) }
+            });
+            let req = gen::ForestRequest { project: forest.project, zones, areas, satellite, color_filter: forest.color_filter, edge_presets: forest.edge_presets, user_presets: forest.user_presets, skip_surfaces, keep_out };
             app.spawn(label, move |job| {
                 let (objects, notes) = gen::generate_forest(&mut lite, &assets, req, job)?;
                 let models = model_list(&lite);
@@ -739,10 +1199,15 @@ pub fn run_generator(app: &mut App, id: u64) {
                 }) as Finish)
             });
         }
-        GeneratorKind::Fence(f) => {
+        GeneratorKind::Fence(mut f) => {
+            f.resolved = f.preset.and_then(|id| presets.iter().find(|p| p.id == id)).map(|p| p.items.clone()).unwrap_or_default();
+            if f.resolved.is_empty() && f.model.is_empty() {
+                app.warn(t("Choose at least one model"));
+                return;
+            }
             app.spawn(label, move |_| {
                 let mut objects = Vec::new();
-                for l in &lines { objects.extend(gen::fence_objects(&mut lite, &db, &l.points, &f)); }
+                for l in &lines { objects.extend(gen::fence_objects(&mut lite, &db, l, &f)); }
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
             });
@@ -750,11 +1215,109 @@ pub fn run_generator(app: &mut App, id: u64) {
         GeneratorKind::PowerLine(f) => {
             app.spawn(label, move |_| {
                 let mut objects = Vec::new();
-                for l in &lines { objects.extend(gen::power_objects(&mut lite, &db, &l.points, &f)); }
+                for l in &lines { objects.extend(gen::power_objects(&mut lite, &db, &assets, l, &f)?); }
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
             });
         }
+        GeneratorKind::Area(mut g) => {
+            g.objects = g.objects.resolved(&presets);
+            let (index, bounds) = area_bounds(&polygons, world.meta.size_m());
+            app.spawn(label, move |job| {
+                let objects = dz_core::modules::area_objects(&mut lite, &g, index.as_ref(), bounds, job)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
+            });
+        }
+        GeneratorKind::Line(mut g) => {
+            g.objects = g.objects.resolved(&presets);
+            app.spawn(label, move |job| {
+                let objects = dz_core::modules::line_objects(&mut lite, &g, &lines, job)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
+            });
+        }
+        GeneratorKind::Scatter(mut rule) => {
+            if let Some(p) = rule.preset.and_then(|id| presets.iter().find(|p| p.id == id)) {
+                rule.models = p.items.clone();
+                (rule.scale_min, rule.scale_max, rule.align_to_slope) = (p.scale_min, p.scale_max, p.align);
+            }
+            let index = (!polygons.is_empty()).then(|| dz_core::shapes::PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: polygons.clone() }));
+            let s = world.meta.size_m();
+            let mut bounds = if polygons.is_empty() { [0.0, 0.0, s, s] } else { [f32::MAX, f32::MAX, f32::MIN, f32::MIN] };
+            for p in polygons.iter().flat_map(|x| &x.points) {
+                bounds = [bounds[0].min(p[0]), bounds[1].min(p[1]), bounds[2].max(p[0]), bounds[3].max(p[1])];
+            }
+            app.spawn(label, move |job| {
+                let objects = gen::scatter(&mut lite, &rule, index.as_ref(), bounds, job)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
+            });
+        }
+        GeneratorKind::River(r) => {
+            let Some(line) = lines.first().map(|l| gen::prepare_line(l, &r.line)) else { return };
+            app.spawn(label, move |_| {
+                let (modifier, surface) = gen::river_modifier(&lite.base, 0, &lite.meta.name.clone(), &line, &r).ok_or_else(|| anyhow::anyhow!("The line is too short"))?;
+                let objects = gen::river_objects(&mut lite, &db, &modifier, &surface, &r);
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    store_modifier(a, id, modifier);
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Terrain(p) => height_job(app, label, move |h, job| gen::generate_terrain(h, &p, job)),
+        GeneratorKind::Erosion(p) => height_job(app, label, move |h, job| gen::hydraulic_erosion(h, &p, job)),
+        GeneratorKind::ThermalErosion { iterations, talus } => height_job(app, label, move |h, job| gen::thermal_erosion(h, iterations, talus, job)),
+        GeneratorKind::Terraces { step, sharpness } => height_job(app, label, move |h, _| gen::terrace(h, step, sharpness)),
+    }
+}
+
+/// What a generator fills: its polygons, or the whole map without any.
+fn area_bounds(polygons: &[MapShape], size: f32) -> (Option<dz_core::shapes::PolygonIndex>, [f32; 4]) {
+    if polygons.is_empty() {
+        return (None, [0.0, 0.0, size, size]);
+    }
+    let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+    for p in polygons.iter().flat_map(|x| &x.points) {
+        b = [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])];
+    }
+    (Some(dz_core::shapes::PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: polygons.to_vec() })), b)
+}
+
+fn height_job(app: &mut App, title: String, f: impl FnOnce(&mut dz_core::terrain::Heightmap, &dz_core::Job) + Send + 'static) {
+    let Some(doc) = &app.doc else { return };
+    let mut base = doc.world.base.clone();
+    let label = title.clone();
+    app.spawn(title, move |job| {
+        f(&mut base, job);
+        job.check()?;
+        Ok(Box::new(move |a: &mut App| a.apply_heights(&label, base.data)) as Finish)
+    });
+}
+
+/// Replaces the terrain modifier of a generator with a new one, undone together with its objects.
+fn store_modifier(app: &mut App, id: u64, mut modifier: dz_core::world::TerrainModifier) {
+    let Some(doc) = &mut app.doc else { return };
+    let Some(index) = doc.world.generators.iter().position(|g| g.id == id) else { return };
+    let before = doc.world.modifiers.clone();
+    let name = doc.world.generators[index].name.clone();
+    modifier.name = name.clone();
+    let known = doc.world.generators[index].modifier;
+    let at = known.and_then(|m| doc.world.modifiers.iter().position(|x| x.id == m));
+    modifier.id = known.unwrap_or_else(|| doc.world.new_modifier_id());
+    doc.world.generators[index].modifier = Some(modifier.id);
+    let mut area = at.and_then(|k| doc.world.modifier_rect(&doc.world.modifiers[k]));
+    if let Some(r) = doc.world.modifier_rect(&modifier) { area = Some(area.map_or(r, |a| a.union(r))); }
+    match at {
+        Some(k) => doc.world.modifiers[k] = modifier,
+        None => doc.world.modifiers.push(modifier),
+    }
+    doc.history.push(name.clone(), Change::Modifiers(before));
+    doc.history.group_last(2, name);
+    if let Some(r) = area {
+        doc.world.recompose(Some(r));
+        app.height_changed(r);
     }
 }
 
@@ -820,15 +1383,14 @@ pub fn take_sample(app: &mut App, x: f32, z: f32) {
     app.lib_dirty = true;
 }
 
-/// Places one model of an object preset.
-pub fn place_preset(app: &mut App, id: u64, x: f32, z: f32) {
-    let Some(p) = app.library.objects.iter().find(|p| p.id == id).cloned() else { return };
+/// A model of an object preset chosen by weight, with the preset's placement options.
+pub fn pick_from_preset(app: &mut App, id: u64, seed: u32) -> Option<(String, (bool, bool, f32, f32))> {
+    let p = app.library.objects.iter().find(|p| p.id == id).cloned()?;
     let total: f32 = p.items.iter().map(|i| i.1).sum();
     if p.items.is_empty() || total <= 0.0 {
         app.warn(t("This preset has no models yet"));
-        return;
+        return None;
     }
-    let seed = (x.to_bits() ^ z.to_bits().rotate_left(13)).wrapping_mul(2654435761);
     let mut pick = ((seed >> 8) as f32 / (u32::MAX >> 8) as f32) * total;
     let mut model = p.items[0].0.clone();
     for (m, w) in &p.items {
@@ -836,8 +1398,15 @@ pub fn place_preset(app: &mut App, id: u64, x: f32, z: f32) {
         pick -= w;
         if pick <= 0.0 { break; }
     }
+    Some((model, (p.random_yaw, p.align, p.scale_min, p.scale_max)))
+}
+
+/// Places one model of an object preset.
+pub fn place_preset(app: &mut App, id: u64, x: f32, z: f32) {
+    let seed = (x.to_bits() ^ z.to_bits().rotate_left(13)).wrapping_mul(2654435761);
+    let Some((model, options)) = pick_from_preset(app, id, seed) else { return };
     let saved = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
-    (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = (p.random_yaw, p.align, p.scale_min, p.scale_max);
+    (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = options;
     crate::viewport::place_model(app, &model, x, z);
     (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = saved;
 }

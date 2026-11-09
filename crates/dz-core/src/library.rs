@@ -1,5 +1,5 @@
 //! Reusable generators and object presets, and the generators placed in a project.
-use crate::gen::{PaintRule, SettlementRule};
+use crate::gen::{ErosionParams, PaintRule, ScatterRule, SettlementRule, TerrainParams};
 use forest_core::preset::{ColorFilter, ForestProject};
 use forest_core::user_presets::UserPreset;
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,12 @@ pub struct ForestGen {
     /// (preset, share) planted along the edges of zones.
     pub edge_presets: Vec<(String, f32)>,
     pub user_presets: Vec<UserPreset>,
+    /// (surface layer name, margin in metres) kept free of trees.
+    pub skip_surfaces: Vec<(String, f32)>,
+    /// Margin from roads in metres, when they are avoided.
+    pub avoid_roads: Option<f32>,
+    /// Margin from buildings in metres, when they are avoided.
+    pub avoid_buildings: Option<f32>,
 }
 
 impl Default for ForestGen {
@@ -34,42 +40,288 @@ impl Default for ForestGen {
             color_filter: None,
             edge_presets: Vec::new(),
             user_presets: Vec::new(),
+            skip_surfaces: Vec::new(),
+            avoid_roads: None,
+            avoid_buildings: None,
         }
     }
 }
 
+/// How a generator follows its line.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum LineMode {
+    /// Straight between the points, with corners.
+    #[default]
+    Polyline,
+    /// A smooth curve through the points.
+    Bezier,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct LineOptions {
+    pub mode: LineMode,
+    /// Distance to the side of the line in metres; positive is to the right.
+    pub offset: f32,
+}
+
+/// Models a generator chooses from, listed or taken from an object preset.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ObjectSet {
+    /// (model, weight)
+    pub models: Vec<(String, f32)>,
+    /// When set, this preset's models and options are used instead.
+    pub preset: Option<u64>,
+    pub scale_min: f32,
+    pub scale_max: f32,
+    pub random_yaw: bool,
+    pub align: bool,
+}
+
+impl Default for ObjectSet {
+    fn default() -> Self {
+        Self { models: Vec::new(), preset: None, scale_min: 0.9, scale_max: 1.1, random_yaw: true, align: false }
+    }
+}
+
+impl ObjectSet {
+    /// The set with its preset, if any, filled in.
+    pub fn resolved(&self, presets: &[ObjectPreset]) -> ObjectSet {
+        match self.preset.and_then(|id| presets.iter().find(|p| p.id == id)) {
+            Some(p) => ObjectSet { models: p.items.clone(), preset: None, scale_min: p.scale_min, scale_max: p.scale_max, random_yaw: p.random_yaw, align: p.align },
+            None => self.clone(),
+        }
+    }
+    pub fn first_model<'a>(&'a self, presets: &'a [ObjectPreset]) -> Option<&'a str> {
+        let listed = self.models.first().map(|m| m.0.as_str());
+        self.preset.and_then(|id| presets.iter().find(|p| p.id == id)).and_then(|p| p.items.first()).map(|m| m.0.as_str()).or(listed)
+    }
+}
+
+/// Objects at regular steps along a line, Terrain Processor's Line: Regular. Fences are the
+/// same thing with their pieces joined at the corners.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct FenceGen {
     pub model: String,
-    /// Metres between pieces; 0 takes the length of the model.
+    /// Object preset used instead of `model`.
+    pub preset: Option<u64>,
+    /// (model, weight) worked out from the preset when the generator runs.
+    #[serde(skip)]
+    pub resolved: Vec<(String, f32)>,
+    /// Metres between one piece and the next; negative pieces overlap.
     pub spacing: f32,
     pub yaw_offset: f32,
+    pub random_rotation: bool,
     pub follow_slope: bool,
+    /// Divide every stretch so its pieces end on the corners of the line.
+    pub join_corners: bool,
+    /// Placed at the first and last point of the line.
+    pub start_model: String,
+    pub end_model: String,
+    pub flip_start: bool,
+    pub flip_end: bool,
+    pub seed: u64,
+    pub line: LineOptions,
 }
 
 impl Default for FenceGen {
     fn default() -> Self {
-        Self { model: r"dz\structures\walls\wall_cnc_5.p3d".into(), spacing: 0.0, yaw_offset: 0.0, follow_slope: true }
+        Self { model: r"dz\structures\walls\wall_cnc_5.p3d".into(), preset: None, resolved: Vec::new(), spacing: 0.0, yaw_offset: 0.0, random_rotation: false, follow_slope: true, join_corners: true, start_model: String::new(), end_model: String::new(), flip_start: false, flip_end: false, seed: 1, line: LineOptions::default() }
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum AreaMethod {
+    /// Patches of single models in a dense cover.
+    #[default]
+    HighDensity,
+    LocalMaximum,
+    LocalMinimum,
+    LowDensityCircle,
+    LowDensityStrip,
+}
+
+/// Terrain Processor's area tasks.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AreaGen {
+    pub method: AreaMethod,
+    pub objects: ObjectSet,
+    pub seed: u64,
+    /// Objects per hectare (high density).
+    pub density: f32,
+    /// Patches per hectare (high density).
+    pub fraction: f32,
+    /// How far patches run into each other, in metres (high density).
+    pub blend: f32,
+    /// Clusters per hectare (low density).
+    pub cluster_density: f32,
+    /// Most objects in one cluster.
+    pub cluster_max: u32,
+    pub min_radius: f32,
+    pub max_radius: f32,
+    /// Width of one strip in metres.
+    pub strip_width: f32,
+    /// How far a peak or hollow must stand out from its surroundings, in metres.
+    pub search_radius: f32,
+    pub min_distance: f32,
+    pub max_slope: f32,
+}
+
+impl Default for AreaGen {
+    fn default() -> Self {
+        Self { method: AreaMethod::HighDensity, objects: ObjectSet::default(), seed: 1, density: 300.0, fraction: 2.0, blend: 10.0, cluster_density: 4.0, cluster_max: 12, min_radius: 5.0, max_radius: 15.0, strip_width: 6.0, search_radius: 40.0, min_distance: 2.0, max_slope: 45.0 }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum LineMethod {
+    #[default]
+    Random,
+    SparseCluster,
+    Nodes,
+}
+
+/// Terrain Processor's line tasks other than Line: Regular.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct LineGen {
+    pub method: LineMethod,
+    pub objects: ObjectSet,
+    pub seed: u64,
+    /// Objects per hectare of the strip along the line.
+    pub density: f32,
+    /// Clusters per hectare of the strip along the line.
+    pub cluster_density: f32,
+    pub cluster_max: u32,
+    pub min_radius: f32,
+    pub max_radius: f32,
+    /// Nothing nearer to the line than this, in metres.
+    pub inner_distance: f32,
+    /// Nothing further from the line than this, in metres.
+    pub max_distance: f32,
+    /// Chance of an object on each node, in percent.
+    pub probability: f32,
+    /// Added to the direction of the line, in degrees.
+    pub rotation: f32,
+    pub min_distance: f32,
+    pub line: LineOptions,
+}
+
+impl Default for LineGen {
+    fn default() -> Self {
+        Self { method: LineMethod::Random, objects: ObjectSet::default(), seed: 1, density: 60.0, cluster_density: 6.0, cluster_max: 8, min_radius: 3.0, max_radius: 8.0, inner_distance: 0.0, max_distance: 10.0, probability: 100.0, rotation: 0.0, min_distance: 1.0, line: LineOptions::default() }
+    }
+}
+
+/// Where a wire attaches to a pole, in the pole model's coordinates.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WireJoint {
+    pub incoming: bool,
+    pub outgoing: bool,
+    pub at: [f32; 3],
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PolePreset {
+    pub name: String,
+    /// Positive for poles along the line, -1 for junctions and ends.
+    pub kind: i32,
+    pub model_angle: f32,
+    pub offset: [f32; 3],
+    pub joints: Vec<WireJoint>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WirePreset {
+    pub name: String,
+    pub length: f32,
+    pub height: f32,
+    /// Drawn on the map; used for one wire of each span.
+    pub main: bool,
+}
+
+/// A power line as Terrain Processor describes one.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct PowerGen {
-    pub tower: String,
-    /// Tower at bends of the line; empty uses the normal tower.
-    pub corner: String,
-    /// Wires between two towers; empty leaves them out.
-    pub wire: String,
-    /// Metres between towers; 0 takes the length of the wire model.
+    pub config: String,
+    pub poles: Vec<PolePreset>,
+    pub wires: Vec<WirePreset>,
+    /// Metres between poles; 0 takes the length of the wire model.
     pub spacing: f32,
-    pub yaw_offset: f32,
+    pub line: LineOptions,
 }
 
 impl Default for PowerGen {
     fn default() -> Self {
-        Self { tower: r"dz\structures\industrial\power\power_hv_tower.p3d".into(), corner: String::new(), wire: r"dz\structures\industrial\power\power_hv_line.p3d".into(), spacing: 0.0, yaw_offset: 0.0 }
+        let joint = |z: f32| WireJoint { incoming: true, outgoing: true, at: [-0.013, 15.977, z] };
+        Self {
+            config: "powerline_hv2".into(),
+            poles: vec![PolePreset { name: "Power_HV2_Tower".into(), kind: 1, model_angle: 0.0, offset: [0.0; 3], joints: vec![joint(-7.433), joint(0.0), joint(7.533)] }],
+            wires: vec![
+                WirePreset { name: "Power_HV2_Wire".into(), length: 50.0, height: -0.4, main: false },
+                WirePreset { name: "Power_HV2_Wire_Main".into(), length: 50.0, height: -0.4, main: true },
+            ],
+            spacing: 0.0,
+            line: LineOptions::default(),
+        }
+    }
+}
+
+fn xml_blocks<'a>(text: &'a str, name: &str) -> Vec<&'a str> {
+    let (open, close) = (format!("<{name}>"), format!("</{name}>"));
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(a) = rest.find(&open) {
+        let body = &rest[a + open.len()..];
+        let Some(b) = body.find(&close) else { break };
+        out.push(&body[..b]);
+        rest = &body[b + close.len()..];
+    }
+    out
+}
+
+fn xml_text<'a>(block: &'a str, name: &str) -> Option<&'a str> {
+    xml_blocks(block, name).into_iter().next().map(str::trim)
+}
+
+/// Reads a Terrain Processor power line configuration.
+pub fn parse_powerlines(text: &str, config: &str) -> anyhow::Result<PowerGen> {
+    let number = |b: &str, n: &str| xml_text(b, n).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
+    let mut poles = Vec::new();
+    for p in xml_blocks(text, "Pole") {
+        let offset = xml_text(p, "Offset").unwrap_or("");
+        let joints = xml_blocks(p, "Joint").into_iter().map(|j| {
+            let kind = xml_text(j, "Type").unwrap_or("InOut");
+            WireJoint { incoming: kind != "Out", outgoing: kind != "In", at: [number(j, "X"), number(j, "Y"), number(j, "Z")] }
+        }).collect();
+        poles.push(PolePreset { name: xml_text(p, "Name").unwrap_or("").to_string(), kind: number(p, "Type") as i32, model_angle: number(p, "ModelAngle"), offset: [number(offset, "X"), number(offset, "Y"), number(offset, "Z")], joints });
+    }
+    let wires: Vec<WirePreset> = xml_blocks(text, "Wire").into_iter().map(|w| WirePreset {
+        name: xml_text(w, "Name").unwrap_or("").to_string(), length: number(w, "Length"), height: number(w, "Height"), main: xml_text(w, "MapDraw").is_some_and(|v| v == "true"),
+    }).collect();
+    anyhow::ensure!(!poles.is_empty() && !wires.is_empty(), "No poles or wires in this configuration");
+    Ok(PowerGen { config: config.to_string(), poles, wires, spacing: 0.0, line: LineOptions::default() })
+}
+
+/// A river cut along a line, with water models in its bed.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct RiverGen {
+    pub width: f32,
+    pub depth: f32,
+    pub falloff: f32,
+    /// Water model laid along the bed; empty leaves the bed dry.
+    pub model: String,
+    pub line: LineOptions,
+}
+
+impl Default for RiverGen {
+    fn default() -> Self {
+        Self { width: 14.0, depth: 3.0, falloff: 14.0, model: r"dz\water\streams\river_24_24.p3d".into(), line: LineOptions { mode: LineMode::Bezier, offset: 0.0 } }
     }
 }
 
@@ -80,6 +332,14 @@ pub enum GeneratorKind {
     Settlement(SettlementRule),
     Fence(FenceGen),
     PowerLine(PowerGen),
+    Scatter(ScatterRule),
+    Area(AreaGen),
+    Line(LineGen),
+    River(RiverGen),
+    Terrain(TerrainParams),
+    Erosion(ErosionParams),
+    ThermalErosion { iterations: u32, talus: f32 },
+    Terraces { step: f32, sharpness: f32 },
 }
 
 /// What a generator needs to be pointed at.
@@ -88,14 +348,17 @@ pub enum TargetKind {
     Area,
     Line,
     Point,
+    /// Works on the terrain of the whole map.
+    Map,
 }
 
 impl GeneratorKind {
     pub fn target_kind(&self) -> TargetKind {
         match self {
-            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } => TargetKind::Area,
+            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) => TargetKind::Area,
             GeneratorKind::Settlement(_) => TargetKind::Point,
-            GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) => TargetKind::Line,
+            GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::River(_) | GeneratorKind::Line(_) => TargetKind::Line,
+            GeneratorKind::Terrain(_) | GeneratorKind::Erosion(_) | GeneratorKind::ThermalErosion { .. } | GeneratorKind::Terraces { .. } => TargetKind::Map,
         }
     }
     /// Name of the built-in generator this one derives from.
@@ -106,6 +369,24 @@ impl GeneratorKind {
             GeneratorKind::Settlement(_) => "Settlement",
             GeneratorKind::Fence(_) => "Fence",
             GeneratorKind::PowerLine(_) => "Power line",
+            GeneratorKind::Scatter(_) => "Area: Random",
+            GeneratorKind::Area(g) => match g.method {
+                AreaMethod::HighDensity => "Area: High-density Cluster",
+                AreaMethod::LocalMaximum => "Area: Local Maximum Cluster",
+                AreaMethod::LocalMinimum => "Area: Local Minimum Cluster",
+                AreaMethod::LowDensityCircle => "Area: Low-density Cluster (circle)",
+                AreaMethod::LowDensityStrip => "Area: Low-density Cluster (strip)",
+            },
+            GeneratorKind::Line(g) => match g.method {
+                LineMethod::Random => "Line: Random",
+                LineMethod::SparseCluster => "Line: Sparse Cluster",
+                LineMethod::Nodes => "Line: Nodes Objects",
+            },
+            GeneratorKind::River(_) => "River",
+            GeneratorKind::Terrain(_) => "Terrain shape",
+            GeneratorKind::Erosion(_) => "Hydraulic erosion",
+            GeneratorKind::ThermalErosion { .. } => "Thermal erosion",
+            GeneratorKind::Terraces { .. } => "Terraces",
         }
     }
 }
@@ -163,6 +444,21 @@ pub fn built_in_generators() -> Vec<GeneratorPreset> {
         make(3, "Settlement", GeneratorKind::Settlement(SettlementRule::default())),
         make(4, "Fence", GeneratorKind::Fence(FenceGen::default())),
         make(5, "Power line", GeneratorKind::PowerLine(PowerGen::default())),
+        make(6, "Area: Random", GeneratorKind::Scatter(ScatterRule::default())),
+        make(7, "River", GeneratorKind::River(RiverGen::default())),
+        make(8, "Terrain shape", GeneratorKind::Terrain(TerrainParams::default())),
+        make(9, "Hydraulic erosion", GeneratorKind::Erosion(ErosionParams::default())),
+        make(10, "Thermal erosion", GeneratorKind::ThermalErosion { iterations: 20, talus: 40.0 }),
+        make(11, "Terraces", GeneratorKind::Terraces { step: 12.0, sharpness: 0.6 }),
+        make(12, "Area: High-density Cluster", GeneratorKind::Area(AreaGen::default())),
+        make(13, "Area: Local Maximum Cluster", GeneratorKind::Area(AreaGen { method: AreaMethod::LocalMaximum, ..Default::default() })),
+        make(14, "Area: Local Minimum Cluster", GeneratorKind::Area(AreaGen { method: AreaMethod::LocalMinimum, ..Default::default() })),
+        make(15, "Area: Low-density Cluster (circle)", GeneratorKind::Area(AreaGen { method: AreaMethod::LowDensityCircle, ..Default::default() })),
+        make(16, "Area: Low-density Cluster (strip)", GeneratorKind::Area(AreaGen { method: AreaMethod::LowDensityStrip, max_radius: 25.0, ..Default::default() })),
+        make(17, "Line: Random", GeneratorKind::Line(LineGen::default())),
+        make(18, "Line: Regular", GeneratorKind::Fence(FenceGen { model: String::new(), spacing: 10.0, follow_slope: false, join_corners: false, ..Default::default() })),
+        make(19, "Line: Sparse Cluster", GeneratorKind::Line(LineGen { method: LineMethod::SparseCluster, ..Default::default() })),
+        make(20, "Line: Nodes Objects", GeneratorKind::Line(LineGen { method: LineMethod::Nodes, ..Default::default() })),
     ]
 }
 
@@ -173,6 +469,8 @@ pub enum GenTarget {
     /// All shapes of a layer, by name so the shapes can be edited.
     Layer(String),
     Shape { layer: String, index: usize },
+    /// A road or track, by its id.
+    Route(u64),
     Point([f32; 2]),
 }
 
@@ -184,6 +482,9 @@ pub struct GeneratorInstance {
     pub kind: GeneratorKind,
     pub target: GenTarget,
     pub objects: Vec<u32>,
+    /// The terrain modifier this generator made, if any.
+    #[serde(default)]
+    pub modifier: Option<u64>,
 }
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -219,6 +520,18 @@ mod tests {
     #[test]
     fn built_ins_cover_every_kind() {
         let names: Vec<&str> = built_in_generators().iter().map(|g| g.kind.type_name()).collect();
-        assert_eq!(names, ["Forest", "Surface painting", "Settlement", "Fence", "Power line"]);
+        assert_eq!(names.len(), 20);
+        assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects"));
+    }
+
+    #[test]
+    fn power_line_configuration_is_read() {
+        let xml = "<PowerlinesConfiguration><Poles><Pole><Name>Tower</Name><Type>-1</Type><ModelAngle>90</ModelAngle><Offset><X>1</X><Y>0</Y><Z>0</Z></Offset><JointLines><JointLine><Joint><Type>In</Type><X>0.5</X><Y>9</Y><Z>-2</Z></Joint><Joint><Type>InOut</Type><X>0</X><Y>9</Y><Z>2</Z></Joint></JointLine></JointLines></Pole></Poles><Wires><Wire><Name>W</Name><Length>50</Length><Height>-0.4</Height><MapDraw>true</MapDraw></Wire></Wires></PowerlinesConfiguration>";
+        let g = parse_powerlines(xml, "x").unwrap();
+        assert_eq!(g.poles[0].name, "Tower");
+        assert_eq!((g.poles[0].kind, g.poles[0].model_angle, g.poles[0].offset[0]), (-1, 90.0, 1.0));
+        assert_eq!(g.poles[0].joints.len(), 2);
+        assert!(g.poles[0].joints[0].incoming && !g.poles[0].joints[0].outgoing);
+        assert!(g.wires[0].main && g.wires[0].length == 50.0 && g.wires[0].height == -0.4);
     }
 }

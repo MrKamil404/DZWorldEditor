@@ -15,7 +15,7 @@ use dz_core::objects::Obj;
 use dz_core::project::{self, SaveParts};
 use dz_core::terrain::Rect;
 use dz_core::shapes::{MapShape, ShapeKind, ShapeLayer};
-use dz_core::world::{MapLine, World, WorldMeta};
+use dz_core::world::{World, WorldMeta};
 use dz_core::Job;
 use eframe::egui;
 use std::collections::{BTreeSet, HashMap};
@@ -42,6 +42,12 @@ pub enum ShapeTool {
     Polygon,
     Polyline,
     Point,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SelectedWhole {
+    Route(u64),
+    Generator(u64),
 }
 
 pub struct ShapePanel {
@@ -130,6 +136,11 @@ pub struct PlaceSettings {
     pub scale_min: f32,
     pub scale_max: f32,
     pub align: bool,
+    /// Paints objects with a brush instead of placing one per click.
+    pub brush: bool,
+    pub brush_radius: f32,
+    /// Least distance between painted objects.
+    pub brush_spacing: f32,
     /// Places models of this object preset instead of `model`.
     pub preset: Option<u64>,
     pub auto_pad: bool,
@@ -151,33 +162,15 @@ pub struct LineSettings {
     pub rail_routing: dayz_road_tool::document::RoutingSettings,
     pub grade_width: f32,
     pub grade_falloff: f32,
+    pub grading: dz_core::world::RoadGrading,
+    /// Clicks add points to this end of the selected route: true for its start.
+    pub extend: Option<bool>,
     pub selected_route: Option<usize>,
     pub selected_point: Option<usize>,
     /// Waypoints before the drag in progress.
     pub point_drag: Option<Vec<[f32; 2]>>,
     /// Shape layer whose polygons the route must avoid.
     pub forbidden: Option<usize>,
-}
-
-pub struct GenPanel {
-    pub terrain: gen::TerrainParams,
-    pub erosion: gen::ErosionParams,
-    pub thermal_iters: u32,
-    pub thermal_talus: f32,
-    pub terrace_step: f32,
-    pub terrace_sharp: f32,
-    pub rivers: u32,
-    pub river_width: f32,
-    pub river_depth: f32,
-}
-
-impl Default for GenPanel {
-    fn default() -> Self {
-        Self {
-            terrain: Default::default(), erosion: Default::default(), thermal_iters: 20, thermal_talus: 40.0,
-            terrace_step: 12.0, terrace_sharp: 0.6, rivers: 3, river_width: 8.0, river_depth: 3.0,
-        }
-    }
 }
 
 pub struct NewProject {
@@ -304,13 +297,25 @@ pub struct App {
     pub show_land_grid: bool,
     pub show_tile_grid: bool,
     pub show_contours: bool,
+    /// Metres of height between two contour lines.
+    pub contour_interval: f32,
+    /// The camera may go below the terrain.
+    pub camera_under: bool,
+    /// Clicks in the Select tool take whole roads and generators.
+    pub select_whole: bool,
+    /// The road or generator all of the selection belongs to.
+    pub whole: Option<SelectedWhole>,
+    pub hole_tool: bool,
+    pub hole_radius: f32,
+    /// State before the hole stroke in progress, for undo.
+    pub hole_before: Option<dz_core::holes::Holes>,
+    pub holes_seen: u32,
     pub bottom: BottomTab,
 
     pub sculpt: SculptSettings,
     pub paint: PaintSettings,
     pub place: PlaceSettings,
     pub line: LineSettings,
-    pub gen: GenPanel,
     pub stroke: Option<SculptStroke>,
     pub mask_stroke: Option<MaskStroke>,
 
@@ -324,7 +329,6 @@ pub struct App {
 
     pub selection: BTreeSet<u32>,
     pub selected_modifier: Option<u64>,
-    pub selected_line: Option<usize>,
     pub selection_rev: u64,
     pub drag: Option<crate::viewport::ObjectDrag>,
     pub box_select: Option<(egui::Pos2, egui::Pos2, bool)>,
@@ -359,6 +363,11 @@ pub struct App {
     /// The generator or preset waiting for a satellite colour from the map.
     pub sampling: Option<u64>,
     pub lib_dirty: bool,
+    /// Pictures made for library entries with no model to show.
+    pub lib_thumbs: HashMap<String, egui::TextureHandle>,
+    /// What the placement brush has done since the button went down.
+    pub place_stroke: Vec<(u32, Option<Obj>, Option<Obj>)>,
+    pub place_counter: u32,
     /// Shape layers opened in the outliner.
     pub shape_open: BTreeSet<usize>,
     pub last_autosave: Instant,
@@ -397,17 +406,17 @@ impl App {
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
-            show_land_grid: false, show_tile_grid: false, show_contours: false, bottom: BottomTab::Content,
+            show_land_grid: false, show_tile_grid: false, show_contours: false, contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), only_on: None, picking: false },
-            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, preset: None, auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0 },
-            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
-            gen: GenPanel::default(), stroke: None, mask_stroke: None,
+            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0 },
+            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
+            stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selected_line: None, selection_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, shape_open: BTreeSet::new(),
+            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
+            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
@@ -450,7 +459,7 @@ impl App {
     pub fn route_request(&self, family: String, points: Vec<[f32; 2]>, terrain_route: bool, settings: dayz_road_tool::document::RoutingSettings) -> gen::RouteRequest {
         let world = self.doc.as_ref().map(|d| &d.world);
         let forbidden = self.line.forbidden.and_then(|i| world?.shape_layers.get(i)).map(|l| l.shapes.iter().filter(|s| s.kind == ShapeKind::Polygon).map(|s| s.points.clone()).collect()).unwrap_or_default();
-        let roads = world.map(|w| w.lines.iter().map(|l| l.points.clone()).chain(w.routes.iter().filter(|r| !dayz_road_tool::rails::is_track_family(&r.family)).map(|r| r.centerline.clone())).collect()).unwrap_or_default();
+        let roads = world.map(|w| w.routes.iter().filter(|r| !dayz_road_tool::rails::is_track_family(&r.family)).map(|r| r.centerline.clone()).collect()).unwrap_or_default();
         gen::RouteRequest { family, points, terrain_route, settings, forbidden, roads }
     }
 
@@ -465,7 +474,7 @@ impl App {
             area = doc.world.modifier_rect(&doc.world.modifiers[k]);
         }
         let id = route.modifier.unwrap_or_else(|| doc.world.new_modifier_id());
-        let built = route.grade.then(|| gen::road_modifier(&doc.world.base, id, &route.name, &route.centerline, route.grade_width, route.grade_falloff)).flatten();
+        let built = route.grade.then(|| gen::road_modifier(&doc.world.base, id, &route.name, &route.centerline, route.grade_width, route.grade_falloff, &route.decks, &route.grading, &route.profile)).flatten();
         match (built, at) {
             (Some(m), Some(k)) => doc.world.modifiers[k] = m,
             (Some(m), None) => {
@@ -500,8 +509,9 @@ impl App {
         let Some(doc) = &self.doc else { return };
         let mut lite = doc.world.lite();
         let catalog = self.road_catalog.clone();
+        let db = self.db.clone();
         self.spawn(t("Building road"), move |job| {
-            let built = gen::build_route(&mut lite, &req, &catalog, job);
+            let built = gen::build_route(&mut lite, &db, &req, &catalog, job);
             let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
             Ok(Box::new(move |app: &mut App| match built {
                 Ok(road) => app.store_route(req, road, models, target, before, grade),
@@ -518,7 +528,6 @@ impl App {
     fn store_route(&mut self, req: gen::RouteRequest, road: gen::RoadResult, models: Vec<String>, target: Option<usize>, before: Option<Vec<[f32; 2]>>, grade: bool) {
         let Some(doc) = &mut self.doc else { return };
         let mut previous = doc.world.routes.clone();
-        let previous_lines = doc.world.lines.clone();
         let old = target.and_then(|i| doc.world.routes.get(i)).map(|r| r.objects.clone()).unwrap_or_default();
         let layer = old.first().and_then(|id| doc.world.objects.get(*id)).map(|o| o.layer()).unwrap_or_else(|| doc.world.target_layer());
         let mut change = Vec::with_capacity(old.len() + road.objects.len());
@@ -542,18 +551,23 @@ impl App {
                 if let (Some(p), Some(points)) = (previous.get_mut(i), before) { p.points = points; }
                 let r = &mut doc.world.routes[i];
                 (r.points, r.centerline, r.objects, r.family, r.terrain_route, r.settings) = (req.points, center.clone(), ids, req.family, req.terrain_route, req.settings);
+                r.grade |= !road.decks.is_empty();
+                r.decks = road.decks;
+                r.profile = road.profile;
                 i
             }
             None => {
                 let n = doc.world.routes.len() + 1;
                 let kind = if dayz_road_tool::rails::is_track_family(&req.family) { "Track" } else { "Road" };
-                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, terrain_route: req.terrain_route, settings: req.settings, grade, grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None });
+                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, id: dz_core::library::new_id(), grading: self.line.grading, profile: road.profile, decks: road.decks.clone(), terrain_route: req.terrain_route, settings: req.settings, grade: grade || !road.decks.is_empty(), grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None });
                 doc.world.routes.len() - 1
             }
         };
+        // A designed line stands on its earthworks.
+        if !doc.world.routes[index].profile.is_empty() { doc.world.routes[index].grade = true; }
         let label = t("Build road");
         doc.history.push(label.clone(), Change::Objects(change));
-        doc.history.push(label.clone(), Change::Routes(previous, previous_lines));
+        doc.history.push(label.clone(), Change::Routes(previous));
         doc.dirty.objects = true;
         self.line.selected_route = Some(index);
         let parts = match self.sync_route_modifier(index) {
@@ -581,11 +595,11 @@ impl App {
     pub fn delete_route(&mut self, i: usize) {
         let Some(doc) = &mut self.doc else { return };
         if i >= doc.world.routes.len() { return; }
-        let (previous, previous_lines) = (doc.world.routes.clone(), doc.world.lines.clone());
+        let previous = doc.world.routes.clone();
         let route = doc.world.routes.remove(i);
         let change = route.objects.iter().filter_map(|id| doc.world.objects.remove(*id).map(|o| (*id, Some(o), None))).collect();
         doc.history.push(t("Delete route"), Change::Objects(change));
-        doc.history.push(t("Delete route"), Change::Routes(previous, previous_lines));
+        doc.history.push(t("Delete route"), Change::Routes(previous));
         let mut parts = 2;
         if let Some(k) = route.modifier.and_then(|id| doc.world.modifiers.iter().position(|m| m.id == id)) {
             let before = doc.world.modifiers.clone();
@@ -605,70 +619,6 @@ impl App {
         self.line.selected_point = None;
         self.selection.retain(|id| self.doc.as_ref().is_some_and(|d| d.world.objects.get(*id).is_some()));
         self.selection_rev += 1;
-    }
-
-    /// Road parts lying on a line that no route owns.
-    fn parts_along(world: &World, line: &MapLine) -> Vec<u32> {
-        let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
-        for p in &line.points {
-            (x0, z0, x1, z1) = (x0.min(p[0]), z0.min(p[1]), x1.max(p[0]), z1.max(p[1]));
-        }
-        let distance = |x: f32, z: f32| line.points.windows(2).map(|w| {
-            let (dx, dz) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
-            let k = (((x - w[0][0]) * dx + (z - w[0][1]) * dz) / (dx * dx + dz * dz).max(1e-3)).clamp(0.0, 1.0);
-            ((w[0][0] + dx * k - x).powi(2) + (w[0][1] + dz * k - z).powi(2)).sqrt()
-        }).fold(f32::MAX, f32::min);
-        let taken: BTreeSet<u32> = world.routes.iter().flat_map(|r| r.objects.iter().copied()).collect();
-        let mut ids = Vec::new();
-        world.objects.for_each_in(x0 - 3.0, z0 - 3.0, x1 + 3.0, z1 + 3.0, |id, o| {
-            if !taken.contains(&id) && world.objects.model_path(o).contains("\\roads\\parts\\") && distance(o.x, o.z) < 1.5 {
-                ids.push(id);
-            }
-        });
-        ids
-    }
-
-    /// Deletes an imported road: its line and the parts lying on it.
-    pub fn delete_line(&mut self, i: usize) {
-        let Some(doc) = &mut self.doc else { return };
-        let Some(line) = doc.world.lines.get(i).cloned() else { return };
-        let ids = Self::parts_along(&doc.world, &line);
-        let (routes, lines) = (doc.world.routes.clone(), doc.world.lines.clone());
-        let change = ids.iter().filter_map(|id| doc.world.objects.remove(*id).map(|o| (*id, Some(o), None))).collect();
-        doc.world.lines.remove(i);
-        doc.history.push(t("Delete route"), Change::Objects(change));
-        doc.history.push(t("Delete route"), Change::Routes(routes, lines));
-        doc.history.group_last(2, t("Delete route"));
-        doc.dirty.objects = true;
-        self.selected_line = None;
-        self.selection.retain(|id| !ids.contains(id));
-        self.selection_rev += 1;
-    }
-
-    /// Turns an imported road line into an editable route that owns the parts lying on it.
-    /// The parts stay exactly as they are until a waypoint is changed.
-    pub fn line_to_route(&mut self, i: usize) {
-        let Some(doc) = &mut self.doc else { return };
-        let Some(line) = doc.world.lines.get(i).cloned() else { return };
-        let ids = Self::parts_along(&doc.world, &line);
-        let world = &doc.world;
-        let Some(first) = ids.first().and_then(|id| world.objects.get(*id)) else {
-            self.warn(t("No road parts lie along this line"));
-            return;
-        };
-        let family = dayz_road_tool::road_colors::family(world.objects.model_path(first));
-        let (previous, previous_lines) = (doc.world.routes.clone(), doc.world.lines.clone());
-        // Terrain Builder roads may turn tighter than new ones are allowed to.
-        let settings = dayz_road_tool::document::RoutingSettings { min_radius: 10.0, ..Default::default() };
-        doc.world.routes.push(dz_core::world::RoadRoute { name: line.name.clone(), family, points: gen::simplify_line(&line.points, 2.0), centerline: line.points, objects: ids, terrain_route: false, settings, grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None });
-        doc.world.lines.remove(i);
-        doc.history.push(t("Make editable route"), Change::Routes(previous, previous_lines));
-        doc.dirty.objects = true;
-        self.selected_line = None;
-        self.line.selected_route = Some(doc.world.routes.len() - 1);
-        self.line.selected_point = None;
-        self.line.action = LineAction::Edit;
-        self.mode = Mode::Lines;
     }
 
     /// Road types defined by the map's Terrain Builder project, when it has one.
@@ -851,6 +801,7 @@ impl App {
             let mut r = self.renderer.lock().unwrap();
             r.reset_terrain(&world.height);
             r.set_mask(&world.mask);
+            r.set_holes(&world.holes, world.height.cols, world.height.rows);
             r.set_satellite(world.satellite.as_ref());
         }
         self.loader.reset();
@@ -859,7 +810,6 @@ impl App {
         self.detail_center = [f32::MIN, f32::MIN];
         self.selection.clear();
         self.selected_modifier = None;
-        self.selected_line = None;
         self.selection_rev += 1;
         self.top_center = [side * 0.5, side * 0.5];
         self.top_mpp = side / 900.0;
@@ -1032,12 +982,11 @@ impl App {
     }
 
     /// Replaces the base heights with generator output.
-    pub fn apply_heights(&mut self, label: &str, data: Vec<f32>, lines: Vec<MapLine>) {
+    pub fn apply_heights(&mut self, label: &str, data: Vec<f32>) {
         let Some(doc) = &mut self.doc else { return };
         let mut old = data;
         std::mem::swap(&mut old, &mut doc.world.base.data);
         doc.world.recompose(None);
-        doc.world.lines.extend(lines);
         doc.history.push(label, Change::WholeHeight(old));
         self.whole_height_changed();
         self.info(label.to_string());
@@ -1052,7 +1001,46 @@ impl App {
         self.info(label.to_string());
     }
 
+    /// Sets the underground flag of the selected objects, or clears it when all have it.
+    pub fn toggle_underground(&mut self) {
+        use dz_core::objects::FLAG_UNDERGROUND;
+        let Some(doc) = &mut self.doc else { return };
+        let items: Vec<(u32, dz_core::objects::Obj)> = self.selection.iter().filter_map(|id| Some((*id, *doc.world.objects.get(*id)?))).collect();
+        if items.is_empty() {
+            return;
+        }
+        let on = items.iter().any(|(_, o)| o.flags & FLAG_UNDERGROUND == 0);
+        let mut change = Vec::with_capacity(items.len());
+        for (id, o) in items {
+            let mut n = o;
+            if on { n.flags |= FLAG_UNDERGROUND } else { n.flags &= !FLAG_UNDERGROUND }
+            if n != o {
+                doc.world.objects.update(id, n);
+                change.push((id, Some(o), Some(n)));
+            }
+        }
+        let count = change.len().to_string();
+        doc.history.push(t("Underground"), Change::Objects(change));
+        doc.dirty.objects = true;
+        self.status = tf(if on { "Underground flag set on {0} objects" } else { "Underground flag cleared on {0} objects" }, &[&count]);
+    }
+
     pub fn delete_selection(&mut self) {
+        match self.whole.take() {
+            Some(SelectedWhole::Route(id)) => {
+                if let Some(i) = self.doc.as_ref().and_then(|d| d.world.routes.iter().position(|r| r.id == id)) { self.delete_route(i); }
+                self.selection.clear();
+                self.selection_rev += 1;
+                return;
+            }
+            Some(SelectedWhole::Generator(id)) => {
+                crate::library_ui::delete_instance(self, id, true);
+                self.selection.clear();
+                self.selection_rev += 1;
+                return;
+            }
+            None => {}
+        }
         let Some(doc) = &mut self.doc else { return };
         let mut change = Vec::new();
         let mut area: Option<Rect> = None;
@@ -1176,10 +1164,15 @@ impl App {
             Ok(Box::new(move |app: &mut App| {
                 let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
                 let objects: Vec<Obj> = lite.objects.iter().map(|(_, o)| *o).collect();
+                let lite_ids: Vec<u32> = lite.objects.iter().map(|(id, _)| id).collect();
                 let count = objects.len();
-                app.merge_generated(&label2, models, objects);
+                let ids = app.merge_generated(&label2, models, objects);
+                let map: HashMap<u32, u32> = lite_ids.into_iter().zip(ids).collect();
                 if let Some(d) = &mut app.doc {
-                    d.world.lines.extend(lite.lines);
+                    for mut r in lite.routes {
+                        r.objects = r.objects.iter().filter_map(|i| map.get(i).copied()).collect();
+                        d.world.routes.push(r);
+                    }
                 }
                 for n in notes {
                     app.warn(n);
@@ -1529,7 +1522,7 @@ impl App {
                     app.error(tf("The heightmap has {0} columns, the project {1}", &[&g.map.cols.to_string(), &d.world.base.cols.to_string()]));
                     return;
                 }
-                app.apply_heights(&t("Import heightmap"), g.map.data, Vec::new());
+                app.apply_heights(&t("Import heightmap"), g.map.data);
             }) as Finish)
         });
     }

@@ -306,6 +306,7 @@ pub fn write_configs(w: &World, target: &Path, has_navmesh: bool) -> Result<()> 
     } else {
         "\t\tclass Navmesh: Navmesh\n\t\t{\n\t\t\tnavmeshName=\"\";\n\t\t};\n".to_string()
     };
+    let holes = if w.holes.is_empty() { String::new() } else { crate::holes::class_text(&w.holes, "\t\t") };
     let world = format!(
 "class CfgPatches
 {{
@@ -339,7 +340,7 @@ class CfgWorlds
 		centerPosition[]={{{cx:.1},{cz:.1},{sy:.1}}};
 		longitude={lon};
 		latitude={lat};
-{navmesh}		class Grid
+{navmesh}{holes}		class Grid
 		{{
 			offsetX=0;
 			offsetY={size:.0};
@@ -406,6 +407,10 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
     let id = w.meta.map_id.clone();
     ensure!(!id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'), "The map id may only contain letters, digits and underscores");
     ensure!(w.meta.terrain_size % w.meta.cells_per_tile == 0 && w.meta.land_size() % w.meta.cells_per_tile == 0, "Terrain size must be divisible by the land grid");
+    let over = crate::mask_limit::count_over(w, MAX_SLOTS);
+    if over > 0 {
+        job.log(format!("{over} tiles use more than {MAX_SLOTS} surfaces. The terrain material has room for {MAX_SLOTS}, so the rarest are replaced in the export."));
+    }
     ensure!(opts.root.is_dir(), "Work drive {} is not available", opts.root.display());
     let target = opts.root.join(&id);
     let mut report = ExportReport { folder: target.clone(), ..Default::default() };
@@ -505,6 +510,9 @@ pub fn write_source(w: &World, dir: &Path) -> Result<()> {
         s.save_png(&dir.join("satellite.png"))?;
     }
     atomic_write(&dir.join("layers.cfg"), crate::layers_cfg::write(&w.layers, "mapLegend.png").as_bytes())?;
+    if !w.holes.is_empty() {
+        atomic_write(&dir.join("holes.cfg"), crate::holes::class_text(&w.holes, "").as_bytes())?;
+    }
     use std::fmt::Write;
     let mut text = String::with_capacity(w.objects.len() * 80);
     for (_, o) in w.objects.iter().filter(|(_, o)| w.object_exported(o)) {
@@ -512,7 +520,7 @@ pub fn write_source(w: &World, dir: &Path) -> Result<()> {
         let stem = path.rsplit('\\').next().unwrap_or(path).trim_end_matches(".p3d");
         let (yaw, pitch, roll) = crate::objects::to_terrain_builder(o.yaw, o.pitch, o.roll);
         let _ = writeln!(text, "\"{stem}\";{:.6};{:.6};{:.6};{:.6};{:.6};{:.6};{:.6};{};",
-            o.x as f64 + w.meta.easting, o.z as f64 + w.meta.northing, yaw, pitch, roll, o.scale, o.elevation, u32::from(o.flags & FLAG_UNDERGROUND != 0));
+            o.x as f64 + w.meta.easting, o.z as f64 + w.meta.northing, yaw, pitch, roll, o.scale, crate::objects::ObjectStore::origin_y(o, &w.height) - w.height.sample(o.x, o.z), u32::from(o.flags & FLAG_UNDERGROUND != 0));
     }
     atomic_write(&dir.join("objects.txt"), text.as_bytes())
 }
@@ -581,6 +589,7 @@ mod tests {
         let mat = std::fs::read_to_string(target.join("data/layers").join(wrp.materials[0].rsplit('\\').next().unwrap())).unwrap();
         assert!(mat.contains("TerrainSNX") && mat.contains("Stage14") && mat.contains("en_grass1_ca.paa"));
         let cfg = std::fs::read_to_string(target.join("world/config.cpp")).unwrap();
+        assert_eq!(cfg.contains("class Holes"), !w.holes.is_empty());
         assert!(cfg.contains("class TestMap: Enoch") && cfg.contains("TestMap\\world\\testmap.wrp"));
         assert!(target.join("data/layers/M_000_000_lca.paa").is_file());
         assert!(d.path().join("TestMap_Source/heightmap.asc").is_file());

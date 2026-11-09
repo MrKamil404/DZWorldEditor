@@ -85,6 +85,8 @@ uniform sampler2D u_sat, u_detail, u_palette;
 uniform int u_has_sat;
 uniform vec4 u_detail_rect;
 uniform usampler2D u_mask;
+uniform usampler2D u_holes;
+uniform int u_has_holes;
 uniform vec2 u_mask_size;
 uniform sampler2DArray u_layers;
 uniform float u_tile;
@@ -127,6 +129,7 @@ vec3 ramp(float t){
 }
 
 void main(){
+  if (u_has_holes != 0 && texelFetch(u_holes, ivec2(floor(v_world.xz / u_cell)), 0).r > 0u) discard;
   vec2 uv = vec2(v_world.x, u_world - v_world.z) / u_world;
   vec3 n = normalAt(v_world.xz);
   float dist = distance(v_world, u_eye);
@@ -183,7 +186,7 @@ void main(){
       vec3 ta = ra.rgb, tb = rb.rgb, tc = rc.rgb, td = rd.rgb;
       // Taller parts of a surface (its alpha) show through first where two meet.
       vec4 lift = vec4(wa, wb, wc, wd) * (vec4(ra.a, rb.a, rc.a, rd.a) * 0.75 + 0.25);
-      lift = pow(lift, vec4(1.6));
+      lift = pow(lift, vec4(3.5));
       lift /= max(lift.x + lift.y + lift.z + lift.w, 1e-4);
       wa = lift.x; wb = lift.y; wc = lift.z; wd = lift.w;
       vec3 s = ta / max(avg(a), vec3(0.05)) * wa + tb / max(avg(b), vec3(0.05)) * wb + tc / max(avg(c), vec3(0.05)) * wc + td / max(avg(d), vec3(0.05)) * wd;
@@ -219,7 +222,10 @@ void main(){
   if (u_grid.z > 0.0) {
     float l = v_world.y / u_grid.z;
     float g = abs(fract(l - 0.5) - 0.5) / fwidth(l);
-    col = mix(col, vec3(0.2,0.1,0.05), (1.0 - clamp(g, 0.0, 1.0)) * 0.45);
+    // Lines too close together on screen would only darken the ground.
+    col = mix(col, vec3(0.2,0.1,0.05), (1.0 - clamp(g, 0.0, 1.0)) * 0.45 * (1.0 - smoothstep(0.15, 0.5, fwidth(l))));
+    float major = abs(fract(l / 5.0 - 0.5) - 0.5) / fwidth(l / 5.0);
+    col = mix(col, vec3(0.16,0.07,0.03), (1.0 - clamp(major * 0.6, 0.0, 1.0)) * 0.6 * (1.0 - smoothstep(0.15, 0.5, fwidth(l / 5.0))));
   }
   if (u_brush.z > 0.0) {
     vec2 bv = abs(v_world.xz - u_brush.xy);
@@ -729,6 +735,7 @@ pub struct Frame {
 }
 
 enum Upload {
+    Holes { width: i32, height: i32, data: Vec<u8> },
     Reset { cols: i32, rows: i32, cell: f32, data: Vec<f32> },
     Height { x: i32, y: i32, w: i32, h: i32, data: Vec<f32> },
     Mask { width: i32, height: i32, data: Vec<u8> },
@@ -769,6 +776,7 @@ pub struct Renderer {
     box_instances: Option<glow::Buffer>,
     height: Option<glow::Texture>,
     mask: Option<glow::Texture>,
+    holes: Option<glow::Texture>,
     sat: Option<glow::Texture>,
     detail: Option<glow::Texture>,
     detail_rect: [f32; 4],
@@ -878,6 +886,16 @@ impl Renderer {
             d
         };
         self.uploads.push(Upload::Mask { width: w as i32, height: h as i32, data });
+    }
+    pub fn set_holes(&mut self, holes: &dz_core::holes::Holes, cols: usize, rows: usize) {
+        let mut data = Vec::new();
+        if !holes.is_empty() {
+            data = vec![0u8; cols * rows];
+            for [x, y] in holes {
+                if let Some(cell) = data.get_mut(*y as usize * cols + *x as usize) { *cell = 1; }
+            }
+        }
+        self.uploads.push(Upload::Holes { width: cols as i32, height: rows as i32, data });
     }
     pub fn update_mask(&mut self, m: &dz_core::terrain::MaskMap, r: Rect) {
         if m.width.max(m.height) > 16384 {
@@ -1113,6 +1131,19 @@ impl Renderer {
                     if let Some(t) = self.height {
                         gl.bind_texture(glow::TEXTURE_2D, Some(t));
                         gl.tex_sub_image_2d(glow::TEXTURE_2D, 0, x, y, w, h, glow::RED, glow::FLOAT, glow::PixelUnpackData::Slice(Some(bytes(&data))));
+                    }
+                }
+                Upload::Holes { width, height, data } => {
+                    if let Some(t) = self.holes.take() {
+                        gl.delete_texture(t);
+                    }
+                    if !data.is_empty() {
+                        let t = gl.create_texture()?;
+                        gl.bind_texture(glow::TEXTURE_2D, Some(t));
+                        gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+                        gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::R8UI as i32, width, height, 0, glow::RED_INTEGER, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&data)));
+                        set_filter(gl, glow::TEXTURE_2D, glow::NEAREST, glow::NEAREST, glow::CLAMP_TO_EDGE);
+                        self.holes = Some(t);
                     }
                 }
                 Upload::Mask { width, height, data } => {
@@ -1458,6 +1489,8 @@ impl Renderer {
         bind(5, glow::TEXTURE_2D_ARRAY, self.layers, "u_layers");
         // Samplers of different types may not share a unit, so the shadow map always has its own.
         bind(6, glow::TEXTURE_2D, self.shadow_map, "u_shadow");
+        bind(7, glow::TEXTURE_2D, self.holes.or(Some(mask)), "u_holes");
+        gl.uniform_1_i32(u(terrain, "u_has_holes").as_ref(), self.holes.is_some() as i32);
         gl.uniform_1_i32(u(terrain, "u_has_shadow").as_ref(), self.shadow_valid as i32);
         gl.uniform_1_f32(u(terrain, "u_bias").as_ref(), f.shadow_bias);
         if let (Some(l), true) = (&active_light, self.shadow_valid) {

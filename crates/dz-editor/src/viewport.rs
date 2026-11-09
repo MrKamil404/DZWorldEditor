@@ -1,4 +1,5 @@
 //! Viewports: camera control, tools, draw lists and on-screen overlays.
+use crate::app::SelectedWhole;
 use crate::app::ShapeTool;
 use crate::app::{App, Finish, Gizmo, LineAction, Mode, ViewMode};
 use crate::camera::{add, dot, mul, norm, sub, View, V3};
@@ -27,7 +28,7 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
-    toggles: Option<(bool, bool, Shading, i32, bool)>,
+    toggles: Option<(bool, bool, Shading, i32, bool, u32)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -307,7 +308,7 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     // The top view lists more than is on screen, so panning needs no rebuild until it nears the edge.
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
     let shadow_range = app.settings.lighting.shadow_range;
-    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects);
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev);
     let toggled = cache.toggles != Some(toggles);
     let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
@@ -528,6 +529,9 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                     if wx < 0.0 || wz < 0.0 || wx >= size || wz >= size {
                         continue;
                     }
+                    if world.is_hole(wx, wz) {
+                        continue;
+                    }
                     let r = h.rotate_left(11).wrapping_mul(40503);
                     let pick = (r & 0xFFFF) as f32 / 65535.0;
                     let Some(list) = app.clutter_layers.get(world.mask.sample(wx, wz, size) as usize) else { continue };
@@ -623,13 +627,105 @@ fn finish_strokes(app: &mut App) {
     }
 }
 
-pub fn place_model(app: &mut App, model: &str, x: f32, z: f32) {
-    let (random, align, smin, smax, auto_pad, falloff) = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max, app.place.auto_pad, app.place.pad_falloff);
+/// Adds the terrain cells under the brush to the holes, or takes them away.
+fn paint_holes(app: &mut App, x: f32, z: f32, erase: bool) {
+    let radius = app.hole_radius;
     let Some(doc) = &mut app.doc else { return };
+    let world = &mut doc.world;
+    if app.hole_before.is_none() {
+        app.hole_before = Some(world.holes.clone());
+    }
+    let cell = world.height.cell;
+    let (cols, rows) = (world.height.cols as i64 - 1, world.height.rows as i64 - 1);
+    let span = |a: f32, limit: i64| (((a - radius) / cell).floor() as i64).clamp(0, limit)..=(((a + radius) / cell).floor() as i64).clamp(0, limit - 1).max(0);
+    let mut changed = false;
+    for j in span(z, rows) {
+        for i in span(x, cols) {
+            let tile = [i as u32, j as u32];
+            changed |= if erase { world.holes.remove(&tile) } else { world.holes.insert(tile) };
+        }
+    }
+    if changed {
+        world.holes_rev += 1;
+    }
+}
+
+/// One step of the placement brush: fills the circle up to the spacing, or empties it.
+fn brush_objects(app: &mut App, x: f32, z: f32, erase: bool) {
+    let (radius, spacing) = (app.place.brush_radius, app.place.brush_spacing.max(0.3));
+    if erase {
+        let Some(doc) = &mut app.doc else { return };
+        let mut found = Vec::new();
+        let world = &doc.world;
+        world.objects.for_each_in(x - radius, z - radius, x + radius, z + radius, |id, o| {
+            if world.object_interactive(o) && (o.x - x).powi(2) + (o.z - z).powi(2) <= radius * radius {
+                found.push(id);
+            }
+        });
+        for id in found {
+            if let Some(o) = doc.world.objects.remove(id) {
+                app.place_stroke.push((id, Some(o), None));
+            }
+        }
+        return;
+    }
+    let saved = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
+    for _ in 0..6 {
+        app.place_counter = app.place_counter.wrapping_add(1);
+        let h = app.place_counter.wrapping_mul(2654435761);
+        let angle = (h & 0xffff) as f32 / 65535.0 * std::f32::consts::TAU;
+        let distance = ((h >> 16) as f32 / 65535.0).sqrt() * radius;
+        let (px, pz) = (x + angle.cos() * distance, z + angle.sin() * distance);
+        let Some(doc) = &app.doc else { return };
+        let mut crowded = false;
+        doc.world.objects.for_each_in(px - spacing, pz - spacing, px + spacing, pz + spacing, |_, o| {
+            crowded |= (o.x - px).powi(2) + (o.z - pz).powi(2) < spacing * spacing;
+        });
+        if crowded {
+            continue;
+        }
+        let model = match app.place.preset {
+            Some(id) => match crate::library_ui::pick_from_preset(app, id, h) {
+                Some((m, s)) => {
+                    (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = s;
+                    m
+                }
+                None => return,
+            },
+            None => match app.place.model.clone() {
+                Some(m) => m,
+                None => {
+                    app.warn(t("Choose a model in the Content Browser first"));
+                    return;
+                }
+            },
+        };
+        if let Some(placed) = insert_placed(app, &model, px, pz) {
+            app.place_stroke.push((placed.0, None, Some(placed.1)));
+        }
+        (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = saved;
+    }
+}
+
+fn finish_place_stroke(app: &mut App) {
+    if app.place_stroke.is_empty() {
+        return;
+    }
+    let change = std::mem::take(&mut app.place_stroke);
+    if let Some(doc) = &mut app.doc {
+        doc.history.push(t("Place object"), Change::Objects(change));
+        doc.dirty.objects = true;
+    }
+}
+
+/// Adds an object with the placement options in force.
+fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj)> {
+    let (random, align, smin, smax) = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
+    let doc = app.doc.as_mut()?;
     let layer = doc.world.target_layer();
     if !doc.world.object_layers[layer as usize].interactive() {
         app.warn(t("The active layer is hidden or locked"));
-        return;
+        return None;
     }
     let model_id = doc.world.objects.intern(model);
     let seed = (x.to_bits() ^ z.to_bits().rotate_left(13)).wrapping_mul(2654435761);
@@ -639,7 +735,13 @@ pub fn place_model(app: &mut App, model: &str, x: f32, z: f32) {
     let (pitch, roll) = if align { gen::slope_angles(&doc.world.height, x, z, yaw) } else { (0.0, 0.0) };
     let mut o = Obj { x, z, elevation: 0.0, yaw, pitch, roll, scale, model: model_id, flags: 0 };
     o.set_layer(layer);
-    let id = doc.world.objects.insert(o);
+    Some((doc.world.objects.insert(o), o))
+}
+
+pub fn place_model(app: &mut App, model: &str, x: f32, z: f32) {
+    let (auto_pad, falloff) = (app.place.auto_pad, app.place.pad_falloff);
+    let Some((id, o)) = insert_placed(app, model, x, z) else { return };
+    let Some(doc) = &mut app.doc else { return };
     doc.history.push(t("Place object"), Change::Objects(vec![(id, None, Some(o))]));
     doc.dirty.objects = true;
     if auto_pad {
@@ -656,10 +758,10 @@ fn finish_line(app: &mut App) {
     let Some(doc) = &app.doc else { return };
     match action {
         LineAction::Plain => {
-            let d = app.doc.as_mut().unwrap();
-            let n = d.world.lines.len() + 1;
-            d.world.lines.push(dz_core::world::MapLine { name: format!("Line {n}"), family: "line".into(), points, width: 4.0 });
-            d.history.revision += 1;
+            app.shape.tool = ShapeTool::Polyline;
+            app.shape.points = points;
+            app.finish_shape();
+            app.shape.tool = ShapeTool::Edit;
         }
         LineAction::Fence => {
             if model.is_empty() {
@@ -688,6 +790,10 @@ fn finish_line(app: &mut App) {
 }
 
 fn selection_pivot(app: &App) -> Option<V3> {
+    // A road or generator is changed through its own settings, not by dragging its parts.
+    if app.whole.is_some() {
+        return None;
+    }
     let doc = app.doc.as_ref()?;
     let (mut s, mut n) = ([0.0f32; 3], 0.0);
     for id in app.selection.iter().take(2000) {
@@ -880,7 +986,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
     // Stay above the ground.
     if let Some(d) = &app.doc {
         let g = d.world.height.sample(app.camera.pos[0], app.camera.pos[2]);
-        app.camera.pos[1] = app.camera.pos[1].max(g + 0.6);
+        if !app.camera_under { app.camera.pos[1] = app.camera.pos[1].max(g + 0.6); }
     }
 }
 
@@ -913,10 +1019,14 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
     if let Some(p) = resp.dnd_release_payload::<crate::library_ui::LibDrag>() {
         if let Some(h) = hit {
             use crate::library_ui::LibDrag as L;
-            match *p {
+            match (*p).clone() {
                 L::Generator(id) => {
-                    let shape = app.doc.as_ref().and_then(|d| pick_shape(&d.world, v, mouse, hit));
-                    crate::library_ui::add_instance(app, id, Some((shape, [h[0], h[2]])));
+                    let (shape, route) = drop_targets(app, v, mouse, hit);
+                    crate::library_ui::add_instance(app, id, Some(crate::library_ui::Dropped { shape, route, at: [h[0], h[2]] }));
+                }
+                L::ForestPreset(name) => {
+                    let (shape, route) = drop_targets(app, v, mouse, hit);
+                    crate::library_ui::add_forest(app, &name, Some(crate::library_ui::Dropped { shape, route, at: [h[0], h[2]] }));
                 }
                 L::ObjectPreset(id) => crate::library_ui::place_preset(app, id, h[0], h[2]),
             }
@@ -933,6 +1043,16 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
     }
 
     match app.mode {
+        Mode::Landscape if app.hole_tool => {
+            if primary_down && !modifiers.alt && resp.contains_pointer() {
+                if let Some(h) = hit {
+                    paint_holes(app, h[0], h[2], modifiers.command);
+                    ctx.request_repaint();
+                }
+            } else if let Some(before) = app.hole_before.take() {
+                if let Some(d) = &mut app.doc { d.history.push(t("Terrain holes"), Change::Holes(before)); }
+            }
+        }
         Mode::Landscape | Mode::Paint => {
             // The eyedropper: the tool's button, or Alt+click while painting.
             if pressed && app.mode == Mode::Paint && (app.paint.picking || modifiers.alt) {
@@ -969,6 +1089,16 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     }
                     ctx.request_repaint();
                 }
+            }
+        }
+        Mode::Place if app.place.brush => {
+            if primary_down && !modifiers.alt && resp.contains_pointer() {
+                if let Some(h) = hit {
+                    brush_objects(app, h[0], h[2], modifiers.command);
+                    ctx.request_repaint();
+                }
+            } else {
+                finish_place_stroke(app);
             }
         }
         Mode::Place => {
@@ -1042,11 +1172,35 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
     }
 }
 
+/// The road or generator under a click, with all its objects.
+fn owner_of(world: &dz_core::world::World, id: u32) -> Option<(SelectedWhole, Vec<u32>)> {
+    if let Some(g) = world.generators.iter().find(|g| g.objects.contains(&id)) {
+        return Some((SelectedWhole::Generator(g.id), g.objects.clone()));
+    }
+    world.routes.iter().find(|r| r.objects.contains(&id)).map(|r| (SelectedWhole::Route(r.id), r.objects.clone()))
+}
+
+fn whole_at(app: &App, v: &View, m: Pos2, picked: Option<u32>) -> Option<(SelectedWhole, Vec<u32>)> {
+    let world = &app.doc.as_ref()?.world;
+    if let Some(id) = picked {
+        return owner_of(world, id);
+    }
+    // Road surfaces lie flat and are hard to hit, so their line counts too.
+    if app.show_lines {
+        if let RouteHit::Route(i) = route_hit(world, v, None, m) {
+            let r = &world.routes[i];
+            return Some((SelectedWhole::Route(r.id), r.objects.clone()));
+        }
+    }
+    None
+}
+
 fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
     if !add_mode {
         app.selection.clear();
         app.selected_modifier = None;
-        app.selected_line = None;
+        if let Some(SelectedWhole::Generator(_)) = app.whole { app.selected_generator = None; }
+        app.whole = None;
     }
     let r = Rect::from_two_pos(a, b);
     if r.width() < 4.0 && r.height() < 4.0 {
@@ -1054,7 +1208,13 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
             app.shape.selection.clear();
             app.shape.vertex = None;
         }
-        if let Some(id) = pick_object(app, v, b) {
+        let picked = pick_object(app, v, b);
+        let whole = if app.select_whole && !add_mode { whole_at(app, v, b, picked) } else { None };
+        if let Some((target, ids)) = whole {
+            app.selection.extend(ids);
+            app.whole = Some(target);
+            app.selected_generator = if let SelectedWhole::Generator(id) = target { Some(id) } else { None };
+        } else if let Some(id) = picked {
             if add_mode && app.selection.contains(&id) {
                 app.selection.remove(&id);
             } else {
@@ -1169,6 +1329,16 @@ fn pick_shape(world: &dz_core::world::World, v: &View, m: Pos2, hit: Option<V3>)
     inside
 }
 
+/// The shape and the route under the cursor, for what is dropped on the map.
+fn drop_targets(app: &App, v: &View, mouse: Pos2, hit: Option<V3>) -> (Option<(usize, usize)>, Option<u64>) {
+    let Some(doc) = &app.doc else { return (None, None) };
+    let route = match route_hit(&doc.world, v, None, mouse) {
+        RouteHit::Route(i) => doc.world.routes.get(i).map(|r| r.id),
+        _ => None,
+    };
+    (pick_shape(&doc.world, v, mouse, hit), route)
+}
+
 /// Picks a waypoint, a "+" handle between two waypoints, or a route.
 enum RouteHit {
     Point(usize),
@@ -1235,15 +1405,39 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         }
         return;
     }
+    let ctrl = ctx.input(|i| i.modifiers.command);
+    if resp.clicked() && selected.is_some() && (ctrl || app.line.extend.is_some()) {
+        // New road beyond either end; the models follow on "Fit again".
+        if let (Some(r), Some(h)) = (selected, hit) {
+            let points = &world.routes[r].points;
+            let at = [h[0], h[2]];
+            let distance = |p: [f32; 2]| (p[0] - at[0]).powi(2) + (p[1] - at[1]).powi(2);
+            let start = app.line.extend.unwrap_or_else(|| distance(points[0]) < distance(*points.last().unwrap()));
+            let previous = world.routes.clone();
+            let doc = app.doc.as_mut().unwrap();
+            let list = &mut doc.world.routes[r].points;
+            if start {
+                list.insert(0, at);
+                app.line.selected_point = Some(0);
+            } else {
+                list.push(at);
+                app.line.selected_point = Some(list.len() - 1);
+            }
+            doc.history.push(t("Edit route"), Change::Routes(previous));
+        }
+        return;
+    }
     if resp.clicked() {
         match route_hit(world, v, selected, mouse) {
             RouteHit::Point(i) => app.line.selected_point = Some(i),
             RouteHit::Between(i, at) if !busy => {
+                // A new point waits for "Fit again" or for being dragged.
                 let r = selected.unwrap();
-                let before = world.routes[r].points.clone();
-                app.doc.as_mut().unwrap().world.routes[r].points.insert(i + 1, at);
+                let previous = world.routes.clone();
+                let doc = app.doc.as_mut().unwrap();
+                doc.world.routes[r].points.insert(i + 1, at);
+                doc.history.push(t("Edit route"), Change::Routes(previous));
                 app.line.selected_point = Some(i + 1);
-                app.refit_route(r, before);
             }
             RouteHit::Between(..) => {}
             RouteHit::Route(i) => {
@@ -1269,9 +1463,58 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         }
     }
     if esc {
-        app.line.selected_route = None;
-        app.line.selected_point = None;
+        if app.line.extend.take().is_none() {
+            app.line.selected_route = None;
+            app.line.selected_point = None;
+        }
     }
+}
+
+/// A grip on the selected shapes.
+#[derive(Clone, Copy, PartialEq)]
+enum ShapeHandle {
+    Vertex(usize),
+    /// Adds a point after this one.
+    Edge(usize),
+    Move,
+}
+
+fn selection_center(world: &dz_core::world::World, selection: &std::collections::BTreeSet<(usize, usize)>) -> Option<[f32; 2]> {
+    let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+    for (l, s) in selection {
+        for p in &world.shape_layers.get(*l)?.shapes.get(*s)?.points {
+            b = [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])];
+        }
+    }
+    (b[0] <= b[2]).then(|| [(b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5])
+}
+
+/// (point after which one is added, its map position, on screen) for edges long enough to have a grip.
+fn edge_grips(world: &dz_core::world::World, v: &View, s: &dz_core::shapes::MapShape) -> Vec<(usize, [f32; 2], Pos2)> {
+    shape_segments(s).filter_map(|(a, b)| {
+        let (pa, pb) = (shape_screen(world, v, s.points[a])?, shape_screen(world, v, s.points[b])?);
+        if (pa - pb).length() < 44.0 {
+            return None;
+        }
+        let at = [(s.points[a][0] + s.points[b][0]) * 0.5, (s.points[a][1] + s.points[b][1]) * 0.5];
+        Some((a, at, shape_screen(world, v, at)?))
+    }).collect()
+}
+
+fn shape_handle(world: &dz_core::world::World, v: &View, selection: &std::collections::BTreeSet<(usize, usize)>, m: Pos2) -> Option<ShapeHandle> {
+    let single = (selection.len() == 1).then(|| *selection.iter().next().unwrap());
+    let shape = single.and_then(|(l, s)| world.shape_layers.get(l)?.shapes.get(s));
+    if let Some(s) = shape {
+        let near = s.points.iter().enumerate().filter_map(|(i, p)| Some((i, (shape_screen(world, v, *p)? - m).length()))).filter(|(_, d)| *d < 10.0).min_by(|a, b| a.1.total_cmp(&b.1));
+        if let Some((i, _)) = near {
+            return Some(ShapeHandle::Vertex(i));
+        }
+    }
+    if selection_center(world, selection).and_then(|c| shape_screen(world, v, c)).is_some_and(|c| (c - m).length() < 11.0) {
+        return Some(ShapeHandle::Move);
+    }
+    let s = shape?;
+    edge_grips(world, v, s).into_iter().find(|g| (g.2 - m).length() < 9.0).map(|g| ShapeHandle::Edge(g.0))
 }
 
 fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View, hit: Option<V3>, mouse: Pos2) {
@@ -1300,6 +1543,12 @@ fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
     let primary_down = ctx.input(|i| i.pointer.primary_down());
     // A drag in progress, whichever kind.
     if app.shape.drag_before.is_some() {
+        if esc {
+            // Puts everything back; nothing reaches the undo list.
+            if let Some(before) = app.shape.drag_before.take() { app.doc.as_mut().unwrap().world.shape_layers = before; }
+            app.shape.move_from = None;
+            return;
+        }
         if primary_down {
             if let Some(h) = hit {
                 let doc = app.doc.as_mut().unwrap();
@@ -1359,31 +1608,47 @@ fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
     let vertex_near = |m: Pos2| shape.and_then(|s| {
         s.points.iter().enumerate().filter_map(|(i, p)| Some((i, (shape_screen(world, v, *p)? - m).length()))).filter(|(_, d)| *d < 10.0).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(i, _)| i)
     });
+    if let Some(h) = resp.hover_pos().and_then(|m| shape_handle(world, v, &app.shape.selection, m)) {
+        ctx.set_cursor_icon(if h == ShapeHandle::Move { egui::CursorIcon::Move } else { egui::CursorIcon::Grab });
+    }
     if resp.drag_started_by(egui::PointerButton::Primary) {
+        // Only the grips move anything; a drag anywhere else draws a selection box.
         let origin = ctx.input(|i| i.pointer.press_origin()).unwrap_or(mouse);
-        if let Some(i) = vertex_near(origin) {
-            app.shape.vertex = Some(i);
-            app.shape.move_from = None;
-            app.shape.drag_before = Some(world.shape_layers.clone());
-            return;
-        }
         let (ro, rd) = v.ray(origin);
         let ground = pick_terrain(&world.height, ro, rd, v.ortho);
-        match (pick_shape(world, v, origin, ground), ground) {
-            (Some(picked), Some(g)) if app.shape.selection.contains(&picked) => {
-                app.shape.vertex = None;
-                app.shape.move_from = Some([g[0], g[2]]);
+        match (shape_handle(world, v, &app.shape.selection, origin), single) {
+            (Some(ShapeHandle::Vertex(i)), _) => {
+                app.shape.vertex = Some(i);
+                app.shape.move_from = None;
                 app.shape.drag_before = Some(world.shape_layers.clone());
             }
-            (Some(picked), Some(g)) if !modifiers.shift => {
-                app.shape.selection = std::collections::BTreeSet::from([picked]);
-                app.shape.vertex = None;
-                app.shape.move_from = Some([g[0], g[2]]);
-                app.shape.drag_before = Some(world.shape_layers.clone());
+            (Some(ShapeHandle::Edge(a)), Some((l, s))) => {
+                let before = world.shape_layers.clone();
+                let at = edge_grips(world, v, &world.shape_layers[l].shapes[s]).into_iter().find(|g| g.0 == a).map(|g| g.1);
+                if let Some(at) = at {
+                    app.doc.as_mut().unwrap().world.shape_layers[l].shapes[s].points.insert(a + 1, at);
+                    app.shape.vertex = Some(a + 1);
+                    app.shape.move_from = None;
+                    app.shape.drag_before = Some(before);
+                }
+            }
+            (Some(ShapeHandle::Move), _) => {
+                if let Some(g) = ground {
+                    app.shape.vertex = None;
+                    app.shape.move_from = Some([g[0], g[2]]);
+                    app.shape.drag_before = Some(world.shape_layers.clone());
+                }
             }
             _ => app.shape.boxing = Some((origin, mouse, modifiers.shift)),
         }
         return;
+    }
+    if resp.secondary_clicked() {
+        if let Some(ShapeHandle::Vertex(i)) = shape_handle(world, v, &app.shape.selection, mouse) {
+            app.shape.vertex = Some(i);
+            app.delete_shape_part();
+            return;
+        }
     }
     if resp.clicked() {
         if modifiers.command {
@@ -1401,6 +1666,16 @@ fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
             }
         } else if let Some(i) = vertex_near(mouse) {
             app.shape.vertex = Some(i);
+        } else if let (Some(ShapeHandle::Edge(a)), Some((l, s))) = (shape_handle(world, v, &app.shape.selection, mouse), single) {
+            let before = world.shape_layers.clone();
+            if let Some(g) = edge_grips(world, v, &world.shape_layers[l].shapes[s]).into_iter().find(|g| g.0 == a) {
+                let doc = app.doc.as_mut().unwrap();
+                doc.world.shape_layers[l].shapes[s].points.insert(a + 1, g.1);
+                doc.history.push(t("Edit shape"), Change::Shapes(before));
+                app.shape.vertex = Some(a + 1);
+            }
+        } else if shape_handle(world, v, &app.shape.selection, mouse) == Some(ShapeHandle::Move) {
+            // The square only moves things when dragged.
         } else {
             let picked = pick_shape(world, v, mouse, hit);
             app.shape.vertex = None;
@@ -1442,18 +1717,6 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     let Some(doc) = &app.doc else { return };
     let world = &doc.world;
     if app.show_lines {
-        for (i, l) in world.lines.iter().enumerate() {
-            let col = if app.selected_line == Some(i) {
-                Color32::from_rgb(255, 170, 40)
-            } else if l.family == "river" {
-                Color32::from_rgb(70, 140, 230)
-            } else {
-                Color32::from_rgb(235, 235, 120)
-            };
-            draw_polyline(&painter, v, world, &l.points, Stroke::new(1.6_f32, col));
-        }
-    }
-    if app.show_lines {
         for (i, r) in world.routes.iter().enumerate() {
             let selected = app.line.selected_route == Some(i);
             let col = if selected { Color32::from_rgb(255, 170, 40) } else if dayz_road_tool::rails::is_track_family(&r.family) { Color32::from_rgb(200, 150, 255) } else { Color32::from_rgb(120, 230, 150) };
@@ -1480,6 +1743,13 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     }
     if app.show_shapes {
         use dz_core::shapes::ShapeKind;
+        let grip = if app.mode == Mode::Shapes && app.shape.tool == ShapeTool::Edit { resp.hover_pos().and_then(|m| shape_handle(world, v, &app.shape.selection, m)) } else { None };
+        if app.mode == Mode::Shapes && app.shape.tool == ShapeTool::Edit {
+            if let Some(c) = selection_center(world, &app.shape.selection).and_then(|c| shape_screen(world, v, c)) {
+                let lit = grip == Some(ShapeHandle::Move);
+                painter.rect_filled(Rect::from_center_size(c, vec2(if lit { 16.0 } else { 12.0 }, if lit { 16.0 } else { 12.0 })), 1.0, if lit { Color32::WHITE } else { Color32::from_rgb(255, 200, 60) });
+            }
+        }
         for (li, l) in world.shape_layers.iter().enumerate().filter(|(_, l)| l.visible) {
             for (si, s) in l.shapes.iter().enumerate() {
                 let selected = app.shape.selection.contains(&(li, si));
@@ -1494,11 +1764,17 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
                         draw_polyline(&painter, v, world, &[*s.points.last().unwrap(), s.points[0]], Stroke::new(if selected { 2.6_f32 } else { 1.4 }, col));
                     }
                 }
-                if selected && app.mode == Mode::Shapes && app.shape.selection.len() == 1 {
+                if selected && app.mode == Mode::Shapes && app.shape.selection.len() == 1 && app.shape.tool == ShapeTool::Edit {
                     for (i, p) in s.points.iter().enumerate() {
                         if let Some(c) = shape_screen(world, v, *p) {
-                            painter.circle_filled(c, if app.shape.vertex == Some(i) { 6.0 } else { 4.0 }, if app.shape.vertex == Some(i) { Color32::WHITE } else { col });
+                            let lit = app.shape.vertex == Some(i) || grip == Some(ShapeHandle::Vertex(i));
+                            painter.circle_filled(c, if lit { 7.0 } else { 4.5 }, if lit { Color32::WHITE } else { col });
                         }
+                    }
+                    for (a, _, c) in edge_grips(world, v, s) {
+                        let lit = grip == Some(ShapeHandle::Edge(a));
+                        painter.circle_stroke(c, if lit { 8.0 } else { 6.0 }, Stroke::new(1.0_f32, if lit { Color32::WHITE } else { col }));
+                        painter.text(c, egui::Align2::CENTER_CENTER, "+", egui::FontId::proportional(12.0), if lit { Color32::WHITE } else { col });
                     }
                 }
             }
@@ -1629,9 +1905,10 @@ fn sun_matrix(v: &View, sun: V3, range: f32) -> [f32; 16] {
 fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
     let h = hit?;
     match app.mode {
+        Mode::Landscape if app.hole_tool => Some(BrushView { x: h[0], z: h[2], radius: app.hole_radius, falloff: 0.0, color: [1.0, 0.3, 0.3], shape: 1 }),
         Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: app.sculpt.falloff, color: [0.25, 0.65, 1.0], shape: app.sculpt.shape as i32 }),
         Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: app.paint.shape as i32 }),
-        Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: 2.0, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
+        Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: if app.place.brush { app.place.brush_radius } else { 2.0 }, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
         _ => None,
     }
 }
@@ -1773,7 +2050,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         shading: if top { app.shading2 } else { app.shading3 },
         wireframe: app.wireframe && !top,
         brush: brush_of(app, hover),
-        grid: [if app.show_land_grid { meta.land_cell() } else { 0.0 }, if app.show_tile_grid { meta.tile_step() } else { 0.0 }, if app.show_contours { 10.0 } else { 0.0 }],
+        grid: [if app.show_land_grid { meta.land_cell() } else { 0.0 }, if app.show_tile_grid { meta.tile_step() } else { 0.0 }, if app.show_contours { app.contour_interval } else { 0.0 }],
         sea: meta.sea_level,
         height_range: doc.height_range,
         objects,
@@ -1787,6 +2064,10 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         light: (!top && app.show_shadows && app.settings.lighting.elevation > 1.0).then(|| sun_matrix(&v, app.settings.lighting.sun_direction(), app.settings.lighting.shadow_range)),
         shadow_bias: shadow_bias(app.settings.lighting.shadow_range),
     };
+    // The sea moves on its own, also when nothing else makes the window redraw.
+    if !top && app.show_water && app.settings.sea_waves > 0.0 && doc.height_range[0] < meta.sea_level {
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+    }
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
     draw_overlays(app, ui, &v, &resp);
     view_header(app, ui, rect, top);
@@ -1833,6 +2114,18 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
             i.key_pressed(Key::Escape),
         )
     });
+    if app.selection.is_empty() { app.whole = None; }
+    if let Some(d) = &app.doc {
+        if app.holes_seen != d.world.holes_rev {
+            app.holes_seen = d.world.holes_rev;
+            app.renderer.lock().unwrap().set_holes(&d.world.holes, d.world.height.cols, d.world.height.rows);
+        }
+    }
+    if !looking && !ctx.wants_keyboard_input() {
+        let (under, below) = ctx.input(|i| (i.modifiers.is_none() && i.key_pressed(Key::U), i.modifiers.is_none() && i.key_pressed(Key::B)));
+        if under { app.toggle_underground(); }
+        if below { app.camera_under = !app.camera_under; }
+    }
     if undo { app.undo(); }
     if redo { app.redo(); }
     if save { app.save(None); }
@@ -1864,7 +2157,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                 if i.key_pressed(Key::Num3) { app.mode = Mode::Paint; }
                 if i.key_pressed(Key::Num4) { app.mode = Mode::Place; }
                 if i.key_pressed(Key::Num5) { app.mode = Mode::Lines; }
-                if i.key_pressed(Key::Num6) { app.mode = Mode::Generate; }
+                if i.key_pressed(Key::Num6) { app.bottom = crate::app::BottomTab::Generators; }
                 if i.key_pressed(Key::Num7) { app.mode = Mode::Shapes; }
                 let f = if i.key_pressed(Key::CloseBracket) { 1.25 } else if i.key_pressed(Key::OpenBracket) { 0.8 } else { 1.0 };
                 if f != 1.0 {
@@ -2068,7 +2361,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.shading2 = s;
         }
         "cam" if nums.len() >= 5 => {
-            app.camera.pos = [nums[0], nums[1], nums[2]];
+            let ground = if nums.get(5) == Some(&1.0) { app.doc.as_ref().map(|d| d.world.height.sample(nums[0], nums[2])).unwrap_or(0.0) } else { 0.0 };
+            app.camera.pos = [nums[0], nums[1] + ground, nums[2]];
             app.camera.yaw = nums[3].to_radians();
             app.camera.pitch = nums[4].to_radians();
         }
@@ -2082,7 +2376,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "shadowrange" if nums.len() == 1 => app.settings.lighting.shadow_range = nums[0],
         "lang" => app.sync_language(&arg),
-        "bottom" => app.bottom = if arg == "output" { crate::app::BottomTab::Output } else if arg == "build" { crate::app::BottomTab::Build } else { crate::app::BottomTab::Content },
+        "bottom" => app.bottom = if arg == "output" { crate::app::BottomTab::Output } else if arg == "generators" { crate::app::BottomTab::Generators } else if arg == "presets" { crate::app::BottomTab::Presets } else if arg == "build" { crate::app::BottomTab::Build } else { crate::app::BottomTab::Content },
         "sculpt" if nums.len() >= 2 => {
             let brush = Brush { radius: 200.0, falloff: 0.7, strength: 30.0 };
             let w = &mut app.doc.as_mut().unwrap().world;
@@ -2164,7 +2458,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 for r in &d.world.routes {
                     eprintln!("ROUTE {:?} family={} points={} center={} objects={} terrain={} alive={}", r.name, r.family, r.points.len(), r.centerline.len(), r.objects.len(), r.terrain_route, r.objects.iter().filter(|i| d.world.objects.get(**i).is_some()).count());
                 }
-                eprintln!("ROUTES total={} lines={} objects={} selected={:?} point={:?}", d.world.routes.len(), d.world.lines.len(), d.world.objects.len(), app.line.selected_route, app.line.selected_point);
+                eprintln!("ROUTES total={} objects={} selected={:?} point={:?}", d.world.routes.len(), d.world.objects.len(), app.line.selected_route, app.line.selected_point);
             }
         }
         "routemove" if nums.len() >= 4 => {
@@ -2174,10 +2468,6 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 route.points[p] = [nums[2], nums[3]];
                 app.refit_route(r, before);
             }
-        }
-        "routeconvert" => {
-            let lines = app.doc.as_ref().map(|d| d.world.lines.len()).unwrap_or(0);
-            app.line_to_route(nums.first().map(|v| *v as usize).unwrap_or(0).min(lines.saturating_sub(1)));
         }
         "routedelete" => app.delete_route(nums.first().map(|v| *v as usize).unwrap_or(0)),
         "routeroad" if nums.len() >= 4 => {
@@ -2189,7 +2479,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "genadd" => {
             let index: usize = arg.split_whitespace().next().and_then(|v| v.parse().ok()).unwrap_or(0);
             if let Some(id) = app.built_in.get(index).map(|g| g.id) {
-                let drop = nums.get(1..3).map(|p| (None, [p[0], p[1]]));
+                let drop = nums.get(1..3).map(|p| crate::library_ui::Dropped { shape: None, route: None, at: [p[0], p[1]] });
                 crate::library_ui::add_instance(app, id, drop);
             }
         }
@@ -2225,6 +2515,198 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.finish_shape();
             app.shape.tool = ShapeTool::Edit;
         }
+        "routewater" => {
+            // A short road over the narrowest water found, for trying out bridges.
+            let Some(d) = &app.doc else { return };
+            let (w, h, cell) = (d.world.base.cols, d.world.base.rows, d.world.base.cell);
+            let at = |i: usize, j: usize| d.world.base.at(i, j);
+            let bank = (20.0 / cell).ceil() as usize;
+            let mut found = None;
+            'scan: for j in (bank * 4..h - bank * 4).step_by(4) {
+                let mut i = bank * 4;
+                while i < w - bank * 4 {
+                    if at(i, j) > 2.0 && at(i + 1, j) <= 0.0 {
+                        let mut k = i + 1;
+                        while k < w - 1 && at(k, j) <= 0.0 { k += 1; }
+                        let span = (k - i) as f32 * cell;
+                        if (25.0..=90.0).contains(&span) && k + bank * 3 < w && at(k + bank * 2, j) > 2.0 && at(i - bank * 2, j) > 2.0 && at(i - bank * 2, j) < 25.0 && at(k + bank * 2, j) < 25.0 {
+                            found = Some(((i - bank * 3) as f32 * cell, j as f32 * cell, (k + bank * 3) as f32 * cell));
+                            break 'scan;
+                        }
+                        i = k;
+                    }
+                    i += 1;
+                }
+            }
+            eprintln!("WATER {found:?}");
+            if let Some((a, z, b)) = found {
+                app.mode = Mode::Lines;
+                app.line.action = LineAction::Road;
+                app.line.points = vec![[a, z], [b, z]];
+                finish_line(app);
+            }
+        }
+        "routebridge" => app.line.routing.bridge_over_forbidden = arg == "1",
+        "genstats" => {
+            if let Some(d) = &app.doc {
+                if let Some(g) = d.world.generators.last() {
+                    let road = d.world.routes.last().map(|r| r.centerline.clone()).unwrap_or_default();
+                    let dist = |x: f32, z: f32| road.windows(2).map(|s| {
+                        let (ax, az, bx, bz) = (s[0][0], s[0][1], s[1][0], s[1][1]);
+                        let l = (bx - ax).powi(2) + (bz - az).powi(2);
+                        let t = (((x - ax) * (bx - ax) + (z - az) * (bz - az)) / l.max(1e-6)).clamp(0.0, 1.0);
+                        ((x - ax - t * (bx - ax)).powi(2) + (z - az - t * (bz - az)).powi(2)).sqrt()
+                    }).fold(f32::MAX, f32::min);
+                    let mut near = f32::MAX;
+                    let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+                    for o in g.objects.iter().filter_map(|i| d.world.objects.get(*i)) {
+                        near = near.min(dist(o.x, o.z));
+                        b = [b[0].min(o.x), b[1].min(o.z), b[2].max(o.x), b[3].max(o.z)];
+                    }
+                    eprintln!("GENSTATS {} n={} road_min={near} bounds={b:?}", g.name, g.objects.len());
+                }
+            }
+        }
+        "genset" => {
+            use dz_core::library::GeneratorKind as K;
+            let models: Vec<(String, f32)> = arg.split(',').map(|m| (m.to_string(), 1.0)).collect();
+            if let Some(g) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()) {
+                match &mut g.kind {
+                    K::Area(x) => x.objects.models = models,
+                    K::Line(x) => x.objects.models = models,
+                    K::Fence(x) => { x.model = models[0].0.clone(); x.start_model = models[0].0.clone(); x.flip_end = true; x.end_model = models[0].0.clone(); }
+                    K::Scatter(x) => x.models = models,
+                    _ => {}
+                }
+            }
+        }
+        "fencegap" => {
+            if let Some(dz_core::library::GeneratorKind::Fence(x)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) { x.spacing = nums[0]; }
+        }
+        "wholeobj" => {
+            // What a click on the first object of a route or generator selects.
+            if let Some(d) = &app.doc {
+                let target = if arg == "route" { d.world.routes.last().and_then(|r| r.objects.first().copied()) } else { d.world.generators.last().and_then(|g| g.objects.first().copied()) };
+                let owner = target.and_then(|id| owner_of(&d.world, id));
+                if let Some((w, ids)) = owner {
+                    eprintln!("GENSTATS whole {w:?} n={}", ids.len());
+                    app.selection = ids.into_iter().collect();
+                    app.selected_generator = if let SelectedWhole::Generator(id) = w { Some(id) } else { None };
+                    app.whole = Some(w);
+                    app.selection_rev += 1;
+                }
+            }
+        }
+        "deletesel" => app.delete_selection(),
+        "underflag" => app.toggle_underground(),
+        "undercount" => {
+            if let Some(d) = &app.doc {
+                eprintln!("GENSTATS underground={}", d.world.objects.iter().filter(|(_, o)| o.flags & dz_core::objects::FLAG_UNDERGROUND != 0).count());
+            }
+        }
+        "holepaint" if nums.len() >= 2 => {
+            app.hole_radius = nums.get(2).copied().unwrap_or(8.0);
+            paint_holes(app, nums[0], nums[1], false);
+            if let Some(before) = app.hole_before.take() {
+                if let Some(d) = &mut app.doc { d.history.push(t("Terrain holes"), Change::Holes(before)); eprintln!("GENSTATS holes={}", d.world.holes.len()); }
+            }
+        }
+        "contours" => { app.show_contours = true; app.contour_interval = nums.first().copied().unwrap_or(10.0); }
+        "camunder" => app.camera_under = true,
+        "gradecfg" if nums.len() >= 4 => {
+            if let Some(i) = app.doc.as_ref().map(|d| d.world.routes.len() - 1) {
+                if let Some(r) = app.doc.as_mut().map(|d| &mut d.world.routes[i]) {
+                    r.grading.embankment = nums[0] != 0.0;
+                    r.grading.raise = nums[1];
+                    r.grading.ditch_depth = nums[2];
+                    r.grading.max_grade = nums[3];
+                }
+                app.route_grading_changed(i);
+            }
+        }
+        "profile" if nums.len() >= 2 => {
+            if let Some(d) = &app.doc {
+                let h: Vec<String> = (0..12).map(|k| format!("{:.2}", d.world.height.sample(nums[0], nums[1] + k as f32 * 4.0))).collect();
+                eprintln!("GENSTATS profile {}", h.join(" "));
+            }
+        }
+        "railcut" if nums.len() >= 2 => {
+            app.line.rail_routing.max_cut = nums[0] as f64;
+            app.line.rail_routing.max_fill = nums[1] as f64;
+        }
+        "routecheck" => {
+            if let Some(d) = &app.doc {
+                if let Some(r) = d.world.routes.last() {
+                    let w = &d.world;
+                    let (mut miss, mut cut, mut fill) = (0.0f32, 0.0f32, 0.0f32);
+                    for p in &r.profile {
+                        miss = miss.max((w.height.sample(p[0], p[1]) - p[2]).abs());
+                        cut = cut.max(w.base.sample(p[0], p[1]) - p[2]);
+                        fill = fill.max(p[2] - w.base.sample(p[0], p[1]));
+                    }
+                    let mut gap = 0.0f32;
+                    for o in r.objects.iter().filter_map(|i| w.objects.get(*i)) {
+                        gap = gap.max((ObjectStore::origin_y(o, &w.height) - w.height.sample(o.x, o.z)).abs());
+                    }
+                    eprintln!("GENSTATS check {:?} profile={} grade={} decks={} ground_miss={miss:.2} cut={cut:.2} fill={fill:.2} objects={} object_gap={gap:.2}", r.name, r.profile.len(), r.grade, r.decks.len(), r.objects.len());
+                    if let Some(p) = r.profile.get(r.profile.len() / 2) { eprintln!("GENSTATS mid {:?}", p); }
+                }
+            }
+        }
+        "routesel" => { app.line.selected_route = nums.first().map(|v| *v as usize); app.mode = Mode::Lines; app.line.action = LineAction::Edit; }
+        "routepush" if nums.len() >= 3 => {
+            if let Some(route) = app.doc.as_mut().and_then(|d| d.world.routes.get_mut(nums[0] as usize)) { route.points.push([nums[1], nums[2]]); }
+        }
+        "routefit" => {
+            let r = nums.first().map(|v| *v as usize).unwrap_or(0);
+            if let Some(before) = app.doc.as_ref().and_then(|d| d.world.routes.get(r)).map(|x| x.points.clone()) { app.refit_route(r, before); }
+        }
+        "routedecks" => {
+            if let Some(d) = &app.doc {
+                for r in &d.world.routes {
+                    for k in &r.decks {
+                        eprintln!("DECK {:?} from={:?} to={:?} height={}", r.name, k.from, k.to, k.height);
+                    }
+                }
+            }
+        }
+        "genline" if !nums.is_empty() => {
+            use dz_core::library::{GeneratorKind as K, LineMode};
+            if let Some(g) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()) {
+                let line = match &mut g.kind { K::Fence(x) => Some(&mut x.line), K::PowerLine(x) => Some(&mut x.line), K::River(x) => Some(&mut x.line), _ => None };
+                if let Some(l) = line { l.offset = nums[0]; l.mode = if nums.get(1) == Some(&1.0) { LineMode::Bezier } else { LineMode::Polyline }; }
+            }
+        }
+        "genmodels" => {
+            if let Some(dz_core::library::GeneratorKind::Scatter(s)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) {
+                s.models = arg.split(',').map(|m| (m.to_string(), 1.0)).collect();
+            }
+        }
+        "genpower" => {
+            if let (Some(dz_core::library::GeneratorKind::PowerLine(p)), Ok(text)) = (app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind), std::fs::read(&arg)) {
+                match dz_core::library::parse_powerlines(&String::from_utf8_lossy(&text), "test") { Ok(x) => *p = x, Err(e) => eprintln!("POWER {e}") }
+            }
+        }
+        "genskip" => {
+            let picked = arg.split_whitespace().next().unwrap_or("").to_string();
+            let picked = picked.strip_prefix('#').and_then(|i| i.parse::<usize>().ok()).and_then(|i| app.doc.as_ref()?.world.layers.get(i).map(|l| l.name.clone())).unwrap_or(picked);
+            let picked = if picked == "@" { app.doc.as_ref().and_then(|d| {
+                let (m, size) = (&d.world.mask, d.world.meta.size_m());
+                let (c, r) = ((nums[2] / size * m.width as f32) as usize, ((1.0 - nums[3] / size) * m.height as f32) as usize);
+                d.world.layers.get(m.data[r * m.width + c] as usize).map(|l| l.name.clone())
+            }).unwrap_or_default() } else { picked };
+            eprintln!("GENSTATS skip {picked}");
+            if let Some(dz_core::library::GeneratorKind::Forest(f)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) {
+                f.skip_surfaces = vec![(picked, 10.0)];
+                f.avoid_roads = nums.first().filter(|v| **v > 0.0).copied();
+                f.avoid_buildings = nums.get(1).filter(|v| **v > 0.0).copied();
+            }
+        }
+        "brushat" if nums.len() >= 2 => {
+            app.place.brush = true;
+            brush_objects(app, nums[0], nums[1], nums.get(2) == Some(&1.0));
+            finish_place_stroke(app);
+        }
         "report" => {
             let d = app.doc.as_ref();
             if let (Some(d), Some(id)) = (d, app.selection.iter().next()) {
@@ -2232,7 +2714,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     eprintln!("PICKED {}", d.world.objects.model_path(o));
                 }
             }
-            eprintln!("REPORT objects={} modifiers={} lines={} selection={} undo={:?} status={}", d.map(|d| d.world.objects.len()).unwrap_or(0), d.map(|d| d.world.modifiers.len()).unwrap_or(0), d.map(|d| d.world.lines.len()).unwrap_or(0), app.selection.len(), d.and_then(|d| d.history.undo_label().map(str::to_string)), app.status);
+            eprintln!("REPORT objects={} modifiers={} selection={} undo={:?} status={}", d.map(|d| d.world.objects.len()).unwrap_or(0), d.map(|d| d.world.modifiers.len()).unwrap_or(0), app.selection.len(), d.and_then(|d| d.history.undo_label().map(str::to_string)), app.status);
         }
         "quit" => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
         _ => {}

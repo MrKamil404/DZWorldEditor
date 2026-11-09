@@ -438,7 +438,9 @@ pub struct ViewFit {
 
 /// Renderuje miniaturę RGBA `size`×`size` z przezroczystym tłem: ujęcie 3/4 lekko z góry.
 pub fn render_thumbnail(mesh: &ModelMesh, size: u32) -> Vec<u8> {
-    render_view(mesh, size, 35f32.to_radians(), 8f32.to_radians()).0
+    // Flat models, such as road parts, would be a thin line from the side.
+    let flat = mesh.max[1] - mesh.min[1] < 0.15 * (mesh.max[0] - mesh.min[0]).max(mesh.max[2] - mesh.min[2]);
+    render_view(mesh, size, 35f32.to_radians(), if flat { 55f32 } else { 8f32 }.to_radians()).0
 }
 
 /// Renderuje widok z boku do billboardu oraz jego dopasowanie do wymiarów modelu.

@@ -54,7 +54,7 @@ impl WorldMeta {
         let map_id = if map_id.is_empty() { "NewMap".to_string() } else { map_id };
         let side = size as f32 * cell;
         Self {
-            max_tile_surfaces: 5, name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
+            max_tile_surfaces: 6, name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
             sea_level: 0.0, easting: 200000.0, northing: 0.0, tile_px: 512, cells_per_tile: 8,
             spawn: [side / 2.0, side / 2.0], latitude: 54.0, longitude: 23.0, write_underground_flag: true,
         }
@@ -97,7 +97,17 @@ pub enum ModShape {
     /// Half extents in metres, rotated by the modifier's yaw.
     Rect { half_x: f32, half_z: f32 },
     /// A strip along a polyline, levelled to `heights` at its points.
-    Line { points: Vec<[f32; 2]>, heights: Vec<f32>, half_width: f32 },
+    Line {
+        points: Vec<[f32; 2]>,
+        heights: Vec<f32>,
+        half_width: f32,
+        /// Segments left alone, such as the gap under a bridge.
+        #[serde(default)]
+        gaps: Vec<u32>,
+        /// Slopes for the sides; without it they follow the blend distance.
+        #[serde(default)]
+        bank: Option<LineBank>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -169,7 +179,7 @@ impl TerrainModifier {
 }
 
 fn default_tile_surfaces() -> u8 {
-    5
+    6
 }
 
 /// Distance from a point to a segment, and how far along the segment its nearest point is.
@@ -182,13 +192,16 @@ fn segment_distance(a: [f32; 2], b: [f32; 2], x: f32, z: f32) -> (f32, f32) {
 /// Levels the terrain along a strip. Walks the segments, so a long road costs no more than
 /// the ground it actually covers.
 fn apply_line(height: &mut Heightmap, m: &TerrainModifier, area: Rect) {
-    let ModShape::Line { points, heights, half_width } = &m.shape else { return };
+    let ModShape::Line { points, heights, half_width, gaps, bank } = &m.shape else { return };
     let (x0, y0) = (area.x0, area.y0);
     let (w, h) = (area.x1 - x0 + 1, area.y1 - y0 + 1);
     let mut best = vec![(f32::MAX, 0.0f32); w * h];
     let cell = height.cell;
     let reach = half_width + m.falloff;
-    for (seg, profile) in points.windows(2).zip(heights.windows(2)) {
+    for (index, (seg, profile)) in points.windows(2).zip(heights.windows(2)).enumerate() {
+        if gaps.contains(&(index as u32)) {
+            continue;
+        }
         let bounds = |lo: f32, hi: f32, min: usize, max: usize| (((lo - reach) / cell).floor().max(min as f32) as usize, ((hi + reach) / cell).ceil().min(max as f32) as usize);
         let (i0, i1) = bounds(seg[0][0].min(seg[1][0]), seg[0][0].max(seg[1][0]), area.x0, area.x1);
         let (j0, j1) = bounds(seg[0][1].min(seg[1][1]), seg[0][1].max(seg[1][1]), area.y0, area.y1);
@@ -208,10 +221,73 @@ fn apply_line(height: &mut Heightmap, m: &TerrainModifier, area: Rect) {
             if d >= reach {
                 continue;
             }
+            if let Some(b) = bank {
+                let v = height.at(x0 + i, y0 + j);
+                let level = goal + m.amount;
+                let bed = half_width + b.shoulder;
+                // A ditch only makes sense where the road does not stand above the ground.
+                let width = if b.ditch_depth > 0.0 && v >= level - 0.3 { b.ditch_width } else { 0.0 };
+                let new = if d <= bed {
+                    level
+                } else if d < bed + width {
+                    level - b.ditch_depth * (std::f32::consts::PI * (d - bed) / width).sin()
+                } else {
+                    let run = d - bed - width;
+                    let side = if v < level { (level - b.fill * run).max(v) } else { (level + b.cut * run).min(v) };
+                    // Far banks fade out instead of ending in a step.
+                    let fade = ((reach - d) / (0.3 * (reach - bed - width)).max(0.01)).clamp(0.0, 1.0);
+                    v + (side - v) * fade
+                };
+                height.set(x0 + i, y0 + j, new);
+                continue;
+            }
             let k = if d <= *half_width || m.falloff <= 0.0 { 1.0 } else { let t = 1.0 - (d - half_width) / m.falloff; t * t * (3.0 - 2.0 * t) };
             let v = height.at(x0 + i, y0 + j);
             height.set(x0 + i, y0 + j, v + (goal + m.amount - v) * k);
         }
+    }
+}
+
+/// The sides of a road bed, set by slopes instead of a blend distance.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct LineBank {
+    /// Level strip beside the road, in metres.
+    pub shoulder: f32,
+    /// Tangent of the slope of an embankment.
+    pub fill: f32,
+    /// Tangent of the slope of a cutting.
+    pub cut: f32,
+    pub ditch_depth: f32,
+    pub ditch_width: f32,
+}
+
+/// How the terrain is shaped under a road.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct RoadGrading {
+    /// Level strip on each side of the road, in metres.
+    pub shoulder: f32,
+    /// Shape the sides as embankments and cuttings instead of a plain blend.
+    pub embankment: bool,
+    /// Steepest embankment, in degrees.
+    pub fill_slope: f32,
+    /// Steepest cutting, in degrees.
+    pub cut_slope: f32,
+    /// How far banks may reach from the road bed, in metres.
+    pub max_bank: f32,
+    pub ditch_depth: f32,
+    pub ditch_width: f32,
+    /// How far heights along the road are evened out, in metres.
+    pub smooth: f32,
+    /// Steepest climb along the road in percent; 0 for no limit.
+    pub max_grade: f32,
+    /// Raises or lowers the whole road bed, in metres.
+    pub raise: f32,
+}
+
+impl Default for RoadGrading {
+    fn default() -> Self {
+        Self { shoulder: 1.0, embankment: true, fill_slope: 33.0, cut_slope: 40.0, max_bank: 40.0, ditch_depth: 0.0, ditch_width: 2.0, smooth: 28.0, max_grade: 0.0, raise: 0.0 }
     }
 }
 
@@ -233,6 +309,17 @@ pub struct RoadPart {
     pub path: String,
 }
 
+/// The driving surface of a bridge: level, from one bank to the other.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct BridgeDeck {
+    pub from: [f32; 2],
+    pub to: [f32; 2],
+    pub height: f32,
+    /// Only the gap in the terrain matters: the heights around it are designed already.
+    #[serde(default)]
+    pub free: bool,
+}
+
 /// A road or track that stays editable: its waypoints and the objects fitted to them.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RoadRoute {
@@ -244,6 +331,12 @@ pub struct RoadRoute {
     pub centerline: Vec<[f32; 2]>,
     /// Ids of the models that make up the route.
     pub objects: Vec<u32>,
+    /// Stable identity, for the generators that follow this route.
+    #[serde(default)]
+    pub id: u64,
+    /// Bridges of the route, kept so the terrain can be ramped up to them.
+    #[serde(default)]
+    pub decks: Vec<BridgeDeck>,
     /// Searched across the terrain, or fitted straight along the waypoints.
     pub terrain_route: bool,
     pub settings: dayz_road_tool::document::RoutingSettings,
@@ -254,6 +347,11 @@ pub struct RoadRoute {
     pub grade_width: f32,
     #[serde(default = "default_grade_falloff")]
     pub grade_falloff: f32,
+    #[serde(default)]
+    pub grading: RoadGrading,
+    /// (x, z, height) of the designed line, when cut and fill limits or rigid track decide it.
+    #[serde(default)]
+    pub profile: Vec<[f32; 3]>,
     /// The modifier that levels the terrain under this route.
     #[serde(default)]
     pub modifier: Option<u64>,
@@ -311,7 +409,6 @@ pub struct World {
     pub satellite: Option<RgbImage>,
     pub objects: ObjectStore,
     pub modifiers: Vec<TerrainModifier>,
-    pub lines: Vec<MapLine>,
     /// Never empty; layer 0 cannot be deleted.
     pub object_layers: Vec<ObjectLayer>,
     /// Layer that receives new objects.
@@ -326,6 +423,10 @@ pub struct World {
     /// Terrain Builder project whose road types are used for new roads.
     pub road_project: Option<std::path::PathBuf>,
     pub routes: Vec<RoadRoute>,
+    /// Terrain cells the game does not draw.
+    pub holes: crate::holes::Holes,
+    /// Goes up whenever `holes` changes, so the view can follow.
+    pub holes_rev: u32,
     next_modifier: u64,
 }
 
@@ -354,6 +455,8 @@ impl World {
         let base = Heightmap::new(n, n, meta.terrain_cell, base_height);
         let mask_px = (meta.size_m().round() as usize).clamp(1024, 20480);
         Self {
+            holes: Default::default(),
+            holes_rev: 0,
             height: base.clone(),
             base,
             mask: MaskMap::new(mask_px, mask_px, 0),
@@ -361,7 +464,6 @@ impl World {
             satellite: None,
             objects: ObjectStore::default(),
             modifiers: Vec::new(),
-            lines: Vec::new(),
             object_layers: default_object_layers(),
             active_layer: 0,
             shape_layers: Vec::new(),
@@ -375,9 +477,9 @@ impl World {
             next_modifier: 1,
         }
     }
-    pub fn from_parts(meta: WorldMeta, base: Heightmap, mask: MaskMap, layers: Vec<SurfaceLayer>, satellite: Option<RgbImage>, objects: ObjectStore, modifiers: Vec<TerrainModifier>, lines: Vec<MapLine>) -> Self {
+    pub fn from_parts(meta: WorldMeta, base: Heightmap, mask: MaskMap, layers: Vec<SurfaceLayer>, satellite: Option<RgbImage>, objects: ObjectStore, modifiers: Vec<TerrainModifier>) -> Self {
         let next_modifier = modifiers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
-        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, objects, modifiers, lines, object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier };
+        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, objects, modifiers, holes: Default::default(), holes_rev: 0, object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier };
         w.recompose(None);
         w
     }
@@ -389,7 +491,7 @@ impl World {
         }
         World {
             meta: self.meta.clone(), base: self.base.clone(), height: self.height.clone(), mask: self.mask.clone(),
-            layers: self.layers.clone(), satellite: None, objects, modifiers: Vec::new(), lines: Vec::new(), object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier: self.next_modifier,
+            layers: self.layers.clone(), satellite: None, objects, modifiers: Vec::new(), holes: Default::default(), holes_rev: 0, object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier: self.next_modifier,
         }
     }
     #[inline]
@@ -501,6 +603,10 @@ impl World {
         }
         area
     }
+    /// The terrain is not drawn here.
+    pub fn is_hole(&self, x: f32, z: f32) -> bool {
+        !self.holes.is_empty() && x >= 0.0 && z >= 0.0 && self.holes.contains(&[(x / self.height.cell) as u32, (z / self.height.cell) as u32])
+    }
     pub fn layer_index(&self, name: &str) -> Option<usize> {
         self.layers.iter().position(|l| l.name.eq_ignore_ascii_case(name))
     }
@@ -521,6 +627,14 @@ mod tests {
     }
     fn modifier(mode: ModMode, target: Option<f32>, amount: f32) -> TerrainModifier {
         TerrainModifier { id: 1, name: "m".into(), enabled: true, x: 400.0, z: 400.0, yaw: 0.0, shape: ModShape::Circle { radius: 40.0 }, mode, target, amount, falloff: 40.0, attached: None }
+    }
+    #[test]
+    fn a_hole_covers_exactly_one_terrain_cell() {
+        let mut w = world();
+        assert!(!w.is_hole(84.0, 92.0));
+        w.holes.insert([10, 11]);
+        assert!(w.is_hole(80.0, 88.0) && w.is_hole(87.9, 95.9));
+        assert!(!w.is_hole(79.9, 88.0) && !w.is_hole(88.0, 88.0) && !w.is_hole(80.0, 96.0));
     }
     #[test]
     fn flatten_levels_inside_and_blends_out() {

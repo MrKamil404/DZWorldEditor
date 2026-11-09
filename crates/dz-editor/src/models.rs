@@ -328,14 +328,45 @@ fn thumb_path(dir: &Path, model: &str) -> PathBuf {
 
 const THUMB: u32 = 128;
 
+/// Road parts are kept as editable MLOD files, which the ODOL reader does not take.
+fn thumbnail_mesh(file: &Path, cache: &dayz_road_tool::mesh3d::Cache) -> Option<model3d::ModelMesh> {
+    let m = cache.mesh(file)?;
+    let mut out = model3d::ModelMesh::default();
+    let (mut min, mut max) = ([f32::MAX; 3], [f32::MIN; 3]);
+    for s in &m.surfaces {
+        let first_index = out.indices.len() as u32;
+        for (tri, uv) in s.positions.chunks_exact(3).zip(s.uvs.chunks_exact(3)) {
+            let (a, b) = ([tri[1][0] - tri[0][0], tri[1][1] - tri[0][1], tri[1][2] - tri[0][2]], [tri[2][0] - tri[0][0], tri[2][1] - tri[0][1], tri[2][2] - tri[0][2]]);
+            let normal = crate::camera::norm(crate::camera::cross(a, b));
+            for k in 0..3 {
+                out.indices.push(out.vertices.len() as u32);
+                out.vertices.push(model3d::Vertex { pos: tri[k], normal, uv: uv[k], uv2: uv[k] });
+                for axis in 0..3 {
+                    min[axis] = min[axis].min(tri[k][axis]);
+                    max[axis] = max[axis].max(tri[k][axis]);
+                }
+            }
+        }
+        let texture = cache.texture(&s.texture, file).map(|t| {
+            out.textures.push(model3d::TextureImage { width: t.width, height: t.height, rgba: t.rgba.clone() });
+            out.texture_names.push(s.texture.to_ascii_lowercase());
+            out.textures.len() - 1
+        });
+        out.batches.push(model3d::Batch { first_index, index_count: out.indices.len() as u32 - first_index, texture, shading: None });
+    }
+    (out.min, out.max) = (min, max);
+    (!out.indices.is_empty()).then_some(out)
+}
+
 impl Thumbnails {
     pub fn new(db: ModelDb, dir: PathBuf, ctx: eframe::egui::Context) -> Self {
         let queue: Arc<Queue<(String, u64)>> = Arc::new(Queue::new());
         let (tx, done): (Sender<_>, _) = channel();
         let generation = Arc::new(std::sync::atomic::AtomicU64::new(1));
         let _ = std::fs::create_dir_all(&dir);
+        let sources = dayz_road_tool::mesh3d::Cache::default();
         for _ in 0..3 {
-            let (q, tx, db, dir, ctx, gens) = (queue.clone(), tx.clone(), db.clone(), dir.clone(), ctx.clone(), generation.clone());
+            let (q, tx, db, dir, ctx, gens, sources) = (queue.clone(), tx.clone(), db.clone(), dir.clone(), ctx.clone(), generation.clone(), sources.clone());
             std::thread::spawn(move || loop {
                 let (model, gen) = q.pop();
                 if gen != gens.load(std::sync::atomic::Ordering::Relaxed) {
@@ -344,7 +375,8 @@ impl Thumbnails {
                 }
                 let path = thumb_path(&dir, &model);
                 let pixels = image::open(&path).ok().map(|i| i.into_rgba8().into_raw()).or_else(|| {
-                    let mesh = model3d::load_model_lod(&db.file(&model), db.root(), 256, 1).ok()?;
+                    let file = db.file(&model);
+                    let mesh = model3d::load_model_lod(&file, db.root(), 256, 1).ok().or_else(|| thumbnail_mesh(&file, &sources))?;
                     let px = model3d::render_thumbnail(&mesh, THUMB);
                     let _ = image::save_buffer(&path, &px, THUMB, THUMB, image::ColorType::Rgba8);
                     Some(px)
@@ -375,6 +407,63 @@ pub struct LayerTexture {
     pub index: usize,
     pub rgba: Vec<u8>,
     pub average: [u8; 3],
+}
+
+/// Puts a height worked out from the surface's normal map into the alpha channel, which is
+/// what decides where one surface shows through another.
+fn apply_relief(root: &Path, texture: &str, rgba: &mut [u8]) {
+    let lower = texture.to_ascii_lowercase();
+    let Some(at) = lower.rfind("_co.paa").or_else(|| lower.rfind("_ca.paa")) else { return };
+    // Terrain surfaces of the game use _nopx maps, with a height in their alpha channel.
+    let read = |suffix: &str| std::fs::read(root.join(format!("{}{suffix}", &texture[..at]).replace('\\', "/"))).ok().and_then(|b| forest_core::paa::decode(&b, 512).ok());
+    let Some(t) = read("_nopx.paa").or_else(|| read("_nohq.paa")) else { return };
+    const N: usize = 512;
+    let (w, h) = (t.width as usize, t.height as usize);
+    let at_pixel = |x: usize, y: usize| (y * h / N * w + x * w / N) * 4;
+    let alpha: Vec<f32> = (0..N * N).map(|i| t.rgba[at_pixel(i % N, i / N) + 3] as f32).collect();
+    let alpha_mean = alpha.iter().sum::<f32>() / alpha.len() as f32;
+    let alpha_spread = (alpha.iter().map(|v| (v - alpha_mean).powi(2)).sum::<f32>() / alpha.len() as f32).sqrt();
+    let red_mean: u64 = (0..N).map(|i| t.rgba[at_pixel(i, i)] as u64).sum::<u64>() / N as u64;
+    if red_mean <= 240 && alpha_spread > 4.0 {
+        for (pixel, v) in rgba.chunks_exact_mut(4).zip(&alpha) {
+            pixel[3] = (((v - alpha_mean) / (2.5 * alpha_spread)).clamp(-1.0, 1.0) * 127.0 + 128.0) as u8;
+        }
+        return;
+    }
+    // Some normal maps keep X in alpha, with red left full.
+    let channel = if red_mean > 240 { 3 } else { 0 };
+    let slope = |x: usize, y: usize, c: usize| t.rgba[at_pixel(x, y) + c] as f32 / 127.5 - 1.0;
+    // Each direction is summed up with a leak, so only the local relief stays.
+    const LEAK: f32 = 0.94;
+    let mut relief = vec![0.0f32; N * N];
+    for y in 0..N {
+        let (mut a, mut b) = (0.0, 0.0);
+        for x in 0..N {
+            a = a * LEAK + slope(x, y, channel);
+            relief[y * N + x] += a;
+            let k = N - 1 - x;
+            b = b * LEAK - slope(k, y, channel);
+            relief[y * N + k] += b;
+        }
+    }
+    for x in 0..N {
+        let (mut a, mut b) = (0.0, 0.0);
+        for y in 0..N {
+            a = a * LEAK + slope(x, y, 1);
+            relief[y * N + x] += a;
+            let k = N - 1 - y;
+            b = b * LEAK - slope(x, k, 1);
+            relief[k * N + x] += b;
+        }
+    }
+    let mean = relief.iter().sum::<f32>() / relief.len() as f32;
+    let spread = (relief.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / relief.len() as f32).sqrt();
+    if spread < 1e-3 {
+        return;
+    }
+    for (pixel, v) in rgba.chunks_exact_mut(4).zip(&relief) {
+        pixel[3] = (((v - mean) / (2.5 * spread)).clamp(-1.0, 1.0) * 127.0 + 128.0) as u8;
+    }
 }
 
 /// Reads the terrain textures of all layers on a worker thread.
@@ -408,6 +497,7 @@ pub fn load_layer_textures(root: PathBuf, layers: Vec<(usize, String, [u8; 3])>,
                     }
                 }
             }
+            apply_relief(&root, &tex, &mut rgba);
             let n = 512 * 512;
             let _ = tx.send(LayerTexture { index, rgba, average: [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8] });
             ctx.request_repaint();

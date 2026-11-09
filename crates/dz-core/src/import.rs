@@ -3,7 +3,7 @@ use crate::assets::AssetIndex;
 use crate::model_info::ModelDb;
 use crate::objects::{angles, from_terrain_builder, Obj, ObjectStore, FLAG_ABSOLUTE, FLAG_UNDERGROUND};
 use crate::terrain::{parse_asc, Heightmap, MaskMap, RgbImage};
-use crate::world::{default_layers, MapLine, SurfaceLayer, World, WorldMeta};
+use crate::world::{default_layers, MapLine, RoadRoute, SurfaceLayer, World, WorldMeta};
 use crate::wrp::Wrp;
 use crate::Job;
 use anyhow::{bail, ensure, Context, Result};
@@ -295,6 +295,8 @@ pub struct ImportPlan {
     pub layers: Vec<LayerFile>,
     pub lists: Vec<(PathBuf, bool)>,
     pub shapes: Vec<ShapeFile>,
+    /// Most surfaces one texture tile may use.
+    pub max_tile_surfaces: u8,
 }
 
 impl ImportPlan {
@@ -316,6 +318,7 @@ impl ImportPlan {
             tv4p: scan.tv4p.first().cloned(),
             libraries: scan.libraries.clone(),
             layers: scan.layers.clone(),
+            max_tile_surfaces: 6,
             shapes: scan.shapes.clone(),
             // Lists are usually exports of the same layers.
             lists: scan.objects.iter().map(|p| (p.clone(), !has_layers)).collect(),
@@ -485,7 +488,7 @@ pub fn import_wrp(path: &Path, tile_dir: Option<&Path>, db: &ModelDb, job: &Job)
     };
     job.stage(format!("Placing {} objects", wrp.objects.len()));
     let objects = objects_from_wrp(&wrp, &height, 0.0, db);
-    Ok(World::from_parts(meta, height, mask, layers, satellite, objects, Vec::new(), Vec::new()))
+    Ok(World::from_parts(meta, height, mask, layers, satellite, objects, Vec::new()))
 }
 
 fn world_from_asc(asc: &Path, plan: &ImportPlan, job: &Job) -> Result<World> {
@@ -499,13 +502,16 @@ fn world_from_asc(asc: &Path, plan: &ImportPlan, job: &Job) -> Result<World> {
     meta.northing = asc.yll;
     let px = (meta.size_m() as usize).clamp(1024, 20480);
     let base = asc.map;
-    let w = World::from_parts(meta, base, MaskMap::new(px, px, 0), default_layers(), None, ObjectStore::default(), Vec::new(), Vec::new());
+    let w = World::from_parts(meta, base, MaskMap::new(px, px, 0), default_layers(), None, ObjectStore::default(), Vec::new());
     Ok(w)
 }
 
 /// Replaces satellite, mask and surfaces with the pictures chosen in the plan.
 fn apply_pictures(w: &mut World, plan: &ImportPlan, job: &Job) -> Result<()> {
     if let Some(p) = &plan.layers_cfg {
+        if let Ok(text) = std::fs::read(p.with_file_name("holes.cfg")) {
+            w.holes = crate::holes::parse(&String::from_utf8_lossy(&text));
+        }
         if plan.asc.is_some() || plan.mask.is_some() {
             w.layers = crate::layers_cfg::parse(&String::from_utf8_lossy(&std::fs::read(p)?))?;
         }
@@ -610,7 +616,12 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
         }
         (None, None) => bail!("Choose a heightmap (.asc) or a world (.wrp)"),
     };
+    w.meta.max_tile_surfaces = plan.max_tile_surfaces.clamp(1, 6);
     apply_pictures(&mut w, plan, job)?;
+    let over = crate::mask_limit::scan(&w).len();
+    if over > 0 {
+        job.log(format!("{over} texture tiles use more than {} surfaces; Project settings can check and fix them", w.meta.max_tile_surfaces));
+    }
     if plan.objects_from_wrp {
         if let Some(path) = &plan.wrp {
             job.stage("Reading WRP objects");
@@ -646,7 +657,7 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
         // A built world already holds the road parts as objects.
         let layer = (!plan.objects_from_wrp).then(|| w.add_object_layer("Roads"));
         match import_tv4p(p, &mut w, layer) {
-            Ok(n) => job.log(format!("{}: {n} road parts", p.display())),
+            Ok(n) => job.log(format!("{}: {n} roads", p.display())),
             Err(e) => job.log(format!("{}: {e:#}", p.display())),
         }
     }
@@ -677,8 +688,91 @@ pub fn import_folder(root: &Path, assets: &AssetIndex, db: &ModelDb, job: &Job) 
     import_plan(&plan, assets, db, job)
 }
 
-/// Roads of a Terrain Builder project: centre lines, and the road parts as objects on
-/// `layer` when one is given. Returns the number of parts placed.
+/// Road parts lying on a line that no route owns.
+pub fn parts_along(w: &World, points: &[[f32; 2]]) -> Vec<u32> {
+    let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for p in points {
+        (x0, z0, x1, z1) = (x0.min(p[0]), z0.min(p[1]), x1.max(p[0]), z1.max(p[1]));
+    }
+    let distance = |x: f32, z: f32| points.windows(2).map(|s| {
+        let (dx, dz) = (s[1][0] - s[0][0], s[1][1] - s[0][1]);
+        let k = (((x - s[0][0]) * dx + (z - s[0][1]) * dz) / (dx * dx + dz * dz).max(1e-3)).clamp(0.0, 1.0);
+        ((s[0][0] + dx * k - x).powi(2) + (s[0][1] + dz * k - z).powi(2)).sqrt()
+    }).fold(f32::MAX, f32::min);
+    let taken: std::collections::BTreeSet<u32> = w.routes.iter().flat_map(|r| r.objects.iter().copied()).collect();
+    let mut ids = Vec::new();
+    w.objects.for_each_in(x0 - 3.0, z0 - 3.0, x1 + 3.0, z1 + 3.0, |id, o| {
+        if !taken.contains(&id) && w.objects.model_path(o).contains("\\roads\\parts\\") && distance(o.x, o.z) < 1.5 {
+            ids.push(id);
+        }
+    });
+    ids
+}
+
+/// Joins pieces of line that touch end to end, carrying what belongs to each piece.
+fn chain_pieces(pieces: Vec<(Vec<[f32; 2]>, Vec<u32>)>) -> Vec<(Vec<[f32; 2]>, Vec<u32>)> {
+    const TOUCH: f32 = 0.6;
+    let near = |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).abs() < TOUCH && (a[1] - b[1]).abs() < TOUCH;
+    let mut chains: Vec<(Vec<[f32; 2]>, Vec<u32>)> = Vec::new();
+    for (mut line, ids) in pieces {
+        if line.len() < 2 {
+            continue;
+        }
+        let mut placed = false;
+        for (chain, owned) in chains.iter_mut() {
+            let (start, end) = (chain[0], *chain.last().unwrap());
+            let (a, b) = (line[0], *line.last().unwrap());
+            if near(end, a) || near(end, b) {
+                if near(end, b) { line.reverse(); }
+                chain.extend(line.iter().skip(1));
+            } else if near(start, a) || near(start, b) {
+                if near(start, a) { line.reverse(); }
+                let mut joined = line.clone();
+                joined.extend(chain.iter().skip(1));
+                *chain = joined;
+            } else {
+                continue;
+            }
+            owned.extend(&ids);
+            placed = true;
+            break;
+        }
+        if !placed {
+            chains.push((line, ids));
+        }
+    }
+    chains
+}
+
+fn road_route(name: String, family: String, centerline: Vec<[f32; 2]>, objects: Vec<u32>) -> RoadRoute {
+    // Terrain Builder roads may turn tighter than new ones are allowed to.
+    let settings = dayz_road_tool::document::RoutingSettings { min_radius: 10.0, ..Default::default() };
+    RoadRoute { name, family, points: crate::gen::simplify_line(&centerline, 2.0), centerline, objects, id: crate::library::new_id(), decks: Vec::new(), grading: Default::default(), profile: Vec::new(), terrain_route: false, settings, grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None }
+}
+
+/// Turns the road lines of projects saved by older versions into routes, and other lines
+/// into polylines.
+pub fn adopt_old_lines(w: &mut World, lines: Vec<MapLine>) {
+    use crate::shapes::{MapShape, ShapeKind, ShapeLayer};
+    if lines.is_empty() {
+        return;
+    }
+    let (roads, plain): (Vec<_>, Vec<_>) = lines.into_iter().partition(|l| !parts_along(w, &l.points).is_empty());
+    let pieces = roads.into_iter().map(|l| (l.points, Vec::new())).collect();
+    for (k, (points, _)) in chain_pieces(pieces).into_iter().enumerate() {
+        let objects = parts_along(w, &points);
+        let family = objects.first().and_then(|id| w.objects.get(*id)).map(|o| dayz_road_tool::road_colors::family(w.objects.model_path(o))).unwrap_or_default();
+        w.routes.push(road_route(format!("Road {}", k + 1), family, points, objects));
+    }
+    if !plain.is_empty() {
+        let shapes = plain.into_iter().filter(|l| l.points.len() >= 2).map(|l| MapShape { kind: ShapeKind::Polyline, points: l.points, attributes: vec![("NAME".to_string(), l.name)] }).collect();
+        w.shape_layers.push(ShapeLayer { name: "Lines".into(), visible: true, shapes });
+    }
+}
+
+/// Roads of a Terrain Builder project as editable routes. With `layer` the road parts are
+/// placed as objects on it; without, the routes take over parts already on the map.
+/// Returns the number of routes.
 pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usize> {
     use dayz_road_tool::{geometry::Library, tv4p};
     let mut lib = Library::new(PathBuf::from("P:\\dz\\structures\\roads\\parts"));
@@ -686,22 +780,31 @@ pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usi
     let (ex, ey) = (w.meta.easting, w.meta.northing);
     let mut n = 0;
     for road in &project.roads {
-        for line in &road.shape.lines {
-            if line.len() < 2 {
-                continue;
+        let lines: Vec<Vec<[f32; 2]>> = road.shape.lines.iter().map(|l| l.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect()).collect();
+        let mut placed = Vec::with_capacity(road.shape.placements.len());
+        if let Some(layer) = layer {
+            for (file, angle, at) in &road.shape.placements {
+                let path = ObjectStore::normalize_path(&file.to_string_lossy());
+                let path = path.strip_prefix("p:\\").unwrap_or(&path).to_string();
+                let model = w.objects.intern(&path);
+                let mut o = Obj { x: (at[0] - ex) as f32, z: (at[1] - ey) as f32, elevation: 0.0, yaw: (-angle.to_degrees()).rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 };
+                o.set_layer(layer);
+                placed.push(w.objects.insert(o));
             }
-            let points: Vec<[f32; 2]> = line.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect();
-            let family = dayz_road_tool::road_colors::family(&road.model);
-            w.lines.push(MapLine { name: format!("Road {}", road.id), family, points, width: 6.0 });
         }
-        let Some(layer) = layer else { continue };
-        for (file, angle, at) in &road.shape.placements {
-            let path = ObjectStore::normalize_path(&file.to_string_lossy());
-            let path = path.strip_prefix("p:\\").unwrap_or(&path).to_string();
-            let model = w.objects.intern(&path);
-            let mut o = Obj { x: (at[0] - ex) as f32, z: (at[1] - ey) as f32, elevation: 0.0, yaw: (-angle.to_degrees()).rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 };
-            o.set_layer(layer);
-            w.objects.insert(o);
+        let matched = lines.len() == placed.len();
+        let pieces: Vec<_> = lines.into_iter().enumerate().map(|(i, l)| (l, if matched { vec![placed[i]] } else { Vec::new() })).collect();
+        let chains = chain_pieces(pieces);
+        let many = chains.len() > 1;
+        let family = dayz_road_tool::road_colors::family(&road.model).to_ascii_lowercase();
+        for (k, (points, mut objects)) in chains.into_iter().enumerate() {
+            if layer.is_none() {
+                objects = parts_along(w, &points);
+            } else if !matched && k == 0 {
+                objects = placed.clone();
+            }
+            let name = if many { format!("Road {} ({})", road.id, k + 1) } else { format!("Road {}", road.id) };
+            w.routes.push(road_route(name, family.clone(), points, objects));
             n += 1;
         }
     }
@@ -735,14 +838,15 @@ pub fn import_road_document(path: &Path, w: &mut World) -> Result<usize> {
     let mut n = 0;
     for route in &doc.routes {
         let points: Vec<[f32; 2]> = route.points.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect();
-        if points.len() >= 2 {
-            w.lines.push(MapLine { name: route.name.clone(), family: route.family.clone(), points, width: 6.0 });
-        }
+        let mut objects = Vec::new();
         for p in route.parts.iter().chain(&route.extras) {
             let file = p.model.rsplit(['\\', '/']).next().unwrap_or(&p.model).to_string();
             let model = w.objects.intern(&format!("{prefix}\\{file}"));
-            w.objects.insert(Obj { x: (p.position[0] - ex) as f32, z: (p.position[1] - ey) as f32, elevation: 0.0, yaw: p.rotation.rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 });
+            objects.push(w.objects.insert(Obj { x: (p.position[0] - ex) as f32, z: (p.position[1] - ey) as f32, elevation: 0.0, yaw: p.rotation.rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 }));
             n += 1;
+        }
+        if points.len() >= 2 {
+            w.routes.push(road_route(route.name.clone(), route.family.clone(), points, objects));
         }
     }
     Ok(n)

@@ -88,6 +88,13 @@ impl TileGuard {
     }
 }
 
+/// How many tiles use more surfaces than `limit`.
+pub fn count_over(w: &World, limit: usize) -> usize {
+    let g = Grid::of(w);
+    let mask = &w.mask;
+    (0..g.tiles).into_par_iter().map(|row| (0..g.tiles).filter(|col| histogram(mask, &g, *col, row).iter().filter(|v| **v > 0).count() > limit).count()).sum()
+}
+
 /// Tiles with too many surfaces: (column, row counted from the north, surfaces).
 pub fn scan(w: &World) -> Vec<(u32, u32, u32)> {
     let g = Grid::of(w);

@@ -69,6 +69,8 @@ pub struct Settings {
     pub asset_roots: Vec<String>,
     pub camera_speed: f32,
     pub fov: f32,
+    /// Size of the entries in the libraries, in pixels.
+    pub library_tile: f32,
     /// Width over which surfaces meet, in metres.
     pub surface_blend: f32,
     /// Height of the sea swell in metres.
@@ -81,7 +83,7 @@ impl Default for Settings {
         Self {
             language: "pl".into(), ui_scale: 1.0, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10,
-            check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, surface_blend: 3.0, sea_waves: 0.6, camera_speed: 60.0, lighting: Lighting::default(),
+            check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_blend: 3.0, sea_waves: 0.6, camera_speed: 60.0, lighting: Lighting::default(),
         }
     }
 }

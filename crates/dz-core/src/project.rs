@@ -16,6 +16,8 @@ struct ProjectFile {
     meta: WorldMeta,
     layers: Vec<SurfaceLayer>,
     modifiers: Vec<TerrainModifier>,
+    /// Road lines of older projects; they are turned into routes on load.
+    #[serde(default, skip_serializing)]
     lines: Vec<MapLine>,
     mask_size: [usize; 2],
     satellite_size: Option<[usize; 2]>,
@@ -37,6 +39,8 @@ struct ProjectFile {
     road_project: Option<PathBuf>,
     #[serde(default)]
     routes: Vec<crate::world::RoadRoute>,
+    #[serde(default)]
+    holes: crate::holes::Holes,
 }
 
 /// Which parts need rewriting; rasters are large, so unchanged ones are skipped.
@@ -92,12 +96,13 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         meta: w.meta.clone(),
         layers: w.layers.clone(),
         modifiers,
-        lines: w.lines.clone(),
+        lines: Vec::new(),
         mask_size: [w.mask.width, w.mask.height],
         satellite_size: w.satellite.as_ref().map(|s| [s.width, s.height]),
         object_layers: w.object_layers.clone(),
         active_layer: w.active_layer,
         shape_layers: w.shape_layers.clone(),
+        holes: w.holes.clone(),
         active_shape_layer: w.active_shape_layer,
         generators,
         road_removed: w.road_removed.clone(),
@@ -129,7 +134,7 @@ pub fn load(dir: &Path) -> Result<World> {
         None => None,
     };
     let objects = ObjectStore::from_bytes(&std::fs::read(dir.join("objects.dzob")).context("objects.dzob")?)?;
-    let mut w = World::from_parts(file.meta, base, mask, file.layers, satellite, objects, file.modifiers, file.lines);
+    let mut w = World::from_parts(file.meta, base, mask, file.layers, satellite, objects, file.modifiers);
     if !file.object_layers.is_empty() {
         w.object_layers = file.object_layers;
         w.active_layer = file.active_layer.min(w.object_layers.len() as u16 - 1);
@@ -141,6 +146,13 @@ pub fn load(dir: &Path) -> Result<World> {
     w.road_added = file.road_added;
     w.road_project = file.road_project;
     w.routes = file.routes;
+    w.holes = file.holes;
+    for r in &mut w.routes {
+        if r.id == 0 {
+            r.id = crate::library::new_id();
+        }
+    }
+    crate::import::adopt_old_lines(&mut w, file.lines);
     Ok(w)
 }
 
@@ -193,7 +205,7 @@ mod tests {
         let gone = w.objects.insert(o);
         let kept = w.objects.insert(Obj { x: 9.0, ..o });
         w.objects.remove(gone);
-        w.routes.push(crate::world::RoadRoute { name: "r".into(), family: "asf2".into(), points: vec![], centerline: vec![], objects: vec![kept], terrain_route: true, settings: Default::default(), grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None });
+        w.routes.push(crate::world::RoadRoute { name: "r".into(), family: "asf2".into(), points: vec![], centerline: vec![], objects: vec![kept], id: 1, grading: Default::default(), profile: Vec::new(), decks: vec![], terrain_route: true, settings: Default::default(), grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None });
         save(&w, d.path(), SaveParts::ALL).unwrap();
         let r = load(d.path()).unwrap();
         assert_eq!(r.objects.get(r.routes[0].objects[0]).unwrap().x, 9.0);

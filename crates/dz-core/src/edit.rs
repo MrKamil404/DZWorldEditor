@@ -116,7 +116,8 @@ pub enum Change {
     Modifiers(Vec<TerrainModifier>),
     ObjectLayers(Vec<crate::world::ObjectLayer>),
     Shapes(Vec<crate::shapes::ShapeLayer>),
-    Routes(Vec<crate::world::RoadRoute>, Vec<crate::world::MapLine>),
+    Routes(Vec<crate::world::RoadRoute>),
+    Holes(crate::holes::Holes),
     Generators(Vec<crate::library::GeneratorInstance>),
     /// A whole-raster change produced by a generator.
     WholeHeight(Vec<f32>),
@@ -191,9 +192,10 @@ impl Change {
             }
             Change::Shapes(prev) => std::mem::swap(prev, &mut w.shape_layers),
             Change::Generators(prev) => std::mem::swap(prev, &mut w.generators),
-            Change::Routes(routes, lines) => {
-                std::mem::swap(routes, &mut w.routes);
-                std::mem::swap(lines, &mut w.lines);
+            Change::Routes(routes) => std::mem::swap(routes, &mut w.routes),
+            Change::Holes(holes) => {
+                std::mem::swap(holes, &mut w.holes);
+                w.holes_rev += 1;
             }
             Change::WholeHeight(v) => {
                 std::mem::swap(v, &mut w.base.data);
@@ -222,7 +224,8 @@ impl Change {
             Change::Objects(l) => l.len() * 80,
             Change::Modifiers(l) => l.len() * 96,
             Change::ObjectLayers(l) => l.len() * 64,
-            Change::Routes(r, l) => r.iter().map(|x| x.points.len() * 8 + x.centerline.len() * 8 + x.objects.len() * 4).sum::<usize>() + l.iter().map(|x| x.points.len() * 8).sum::<usize>(),
+            Change::Routes(r) => r.iter().map(|x| x.points.len() * 8 + x.centerline.len() * 8 + x.objects.len() * 4).sum(),
+            Change::Holes(h) => h.len() * 8,
             Change::Generators(l) => l.iter().map(|g| g.objects.len() * 4 + 4096).sum(),
             Change::Shapes(l) => l.iter().map(|s| s.shapes.iter().map(|x| x.points.len() * 8 + 64).sum::<usize>()).sum(),
             Change::WholeHeight(v) => v.len() * 4,
