@@ -384,6 +384,10 @@ pub struct App {
     /// Shape layers opened in the outliner.
     pub shape_open: BTreeSet<usize>,
     pub last_autosave: Instant,
+    pub last_backup: Instant,
+    /// Edit count of the project when the last backup was made.
+    pub backup_revision: u64,
+    pub backup_job: Option<std::sync::mpsc::Receiver<Result<PathBuf, String>>>,
     pub session: Option<dz_core::build::Session>,
     pub close_confirmed: bool,
     pub frame_ms: f32,
@@ -430,7 +434,7 @@ impl App {
             impostor_fits: HashMap::new(), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
             task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
-            last_autosave: Instant::now(), session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
+            last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
         app.rescan_assets();
@@ -825,6 +829,66 @@ impl App {
                 self.save(None);
             }
         }
+        if let Some(rx) = &self.backup_job {
+            match rx.try_recv() {
+                Ok(Ok(path)) => {
+                    self.backup_job = None;
+                    self.info(tf("Backup saved: {0}", &[&path.display().to_string()]));
+                }
+                Ok(Err(e)) => {
+                    self.backup_job = None;
+                    self.error(tf("Backup failed: {0}", &[&e]));
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(_) => self.backup_job = None,
+            }
+        }
+        if self.settings.backup_enabled && self.last_backup.elapsed() > Duration::from_secs(self.settings.backup_minutes.max(1) as u64 * 60) {
+            self.last_backup = Instant::now();
+            if self.doc.as_ref().is_some_and(|d| d.dir.is_some() && d.history.revision != self.backup_revision) && self.stroke.is_none() {
+                self.start_backup(false);
+            }
+        }
+    }
+
+    /// Where the backups of the open project go.
+    pub fn backup_root(&self) -> Option<PathBuf> {
+        let dir = self.doc.as_ref()?.dir.clone()?;
+        Some(if self.settings.backup_folder.is_empty() {
+            dir.join("backups")
+        } else {
+            PathBuf::from(&self.settings.backup_folder).join(dir.file_name().unwrap_or_default())
+        })
+    }
+
+    /// Copies the project in the background, so that work can go on meanwhile.
+    pub fn start_backup(&mut self, by_hand: bool) {
+        if self.backup_job.is_some() {
+            return;
+        }
+        let (Some(root), keep) = (self.backup_root(), self.settings.backup_keep.max(1) as usize) else {
+            if by_hand { self.warn(t("Save the project first")); }
+            return;
+        };
+        let Some(doc) = &mut self.doc else { return };
+        let dir = doc.dir.clone().unwrap_or_default();
+        // The satellite image is large and rarely changes: when it is on disk it is not copied.
+        let on_disk = dir.join("satellite.rgb");
+        let satellite_file = (!doc.dirty.satellite && doc.world.satellite.is_some() && on_disk.is_file()).then_some(on_disk);
+        let image = if satellite_file.is_some() { doc.world.satellite.take() } else { None };
+        let mut copy = doc.world.clone();
+        if let Some(s) = image {
+            copy.satellite = Some(dz_core::terrain::RgbImage { width: s.width, height: s.height, data: Vec::new() });
+            doc.world.satellite = Some(s);
+        }
+        self.backup_revision = doc.history.revision;
+        let name = crate::settings::timestamp();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.backup_job = Some(rx);
+        std::thread::spawn(move || {
+            let result = project::write_backup(&copy, &root, &name, keep, satellite_file.as_deref()).map_err(|e| format!("{e:#}"));
+            let _ = tx.send(result);
+        });
     }
 
     pub fn push_palette(&mut self) {

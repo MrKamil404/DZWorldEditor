@@ -152,7 +152,7 @@ fn toolbar(app: &mut App, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             if ui.button(t("Save")).on_hover_text("Ctrl+S").clicked() { app.save(None); }
             ui.separator();
-            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Shapes, "Shapes", "7"), (Mode::KeyPoints, "Key points", "8")] {
+            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Shapes, "Shapes", "6"), (Mode::KeyPoints, "Key points", "7")] {
                 if tool_button(ui, app.mode == m, &t(name)).on_hover_text(key).clicked() { app.mode = m; }
             }
             ui.separator();
@@ -1427,6 +1427,35 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
         section(ui, &t("General"), true, |ui| {
             row(ui, &t("Autosave every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
             ui.checkbox(&mut app.settings.check_updates, t("Check for updates at start"));
+        });
+        section(ui, &t("Backups"), true, |ui| {
+            ui.checkbox(&mut app.settings.backup_enabled, t("Make backups automatically"));
+            ui.add_enabled_ui(app.settings.backup_enabled, |ui| {
+                row(ui, &t("Back up every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.backup_minutes, 5..=240).suffix(" min")); });
+                row(ui, &t("Backups to keep"), |ui| { ui.add(egui::Slider::new(&mut app.settings.backup_keep, 1..=100)); });
+            });
+            ui.weak(t("A backup is only made when the project has changed. Files that did not change are shared between backups, so they take no extra space."));
+            row(ui, &t("Folder"), |ui| {
+                let shown = if app.settings.backup_folder.is_empty() { t("backups in the project folder") } else { app.settings.backup_folder.clone() };
+                ui.add(egui::Label::new(shown).truncate());
+            });
+            ui.horizontal(|ui| {
+                if ui.button(t("Choose...")).clicked() {
+                    if let Some(d) = rfd::FileDialog::new().pick_folder() { app.settings.backup_folder = d.display().to_string(); }
+                }
+                if ui.add_enabled(!app.settings.backup_folder.is_empty(), egui::Button::new(t("Use the project folder"))).clicked() { app.settings.backup_folder.clear(); }
+            });
+            ui.horizontal(|ui| {
+                let saved = app.doc.as_ref().is_some_and(|d| d.dir.is_some());
+                if ui.add_enabled(saved && app.backup_job.is_none(), egui::Button::new(t("Back up now"))).clicked() { app.start_backup(true); }
+                if ui.add_enabled(saved, egui::Button::new(t("Open backups folder"))).clicked() {
+                    if let Some(root) = app.backup_root() {
+                        let _ = std::fs::create_dir_all(&root);
+                        app.open_folder(&root);
+                    }
+                }
+            });
+            ui.weak(t("To restore a backup, open the project.dzwe inside it and use Save as."));
         });
     });
     if !*open { app.settings.save(); }

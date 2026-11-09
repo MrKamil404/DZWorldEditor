@@ -63,6 +63,11 @@ pub struct Settings {
     pub draw_distance: f32,
     pub near_detail: f32,
     pub autosave_minutes: u32,
+    pub backup_enabled: bool,
+    pub backup_minutes: u32,
+    pub backup_keep: u32,
+    /// Where backups go; empty keeps them in the project folder.
+    pub backup_folder: String,
     pub check_updates: bool,
     pub extra_mods: String,
     pub with_client: bool,
@@ -84,10 +89,24 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             language: "pl".into(), ui_scale: 1.0, tools: ToolPaths::default(), recent: Vec::new(),
-            terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10,
+            terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
             check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_blend: 3.0, surface_range: 190.0, sea_waves: 0.6, camera_speed: 60.0, lighting: Lighting::default(),
         }
     }
+}
+
+/// The local time as a folder name, `2026-11-09_18-30-05`.
+pub fn timestamp() -> String {
+    #[repr(C)]
+    #[derive(Default)]
+    struct Time { year: u16, month: u16, weekday: u16, day: u16, hour: u16, minute: u16, second: u16, ms: u16 }
+    extern "system" {
+        fn GetLocalTime(time: *mut Time);
+    }
+    let mut t = Time::default();
+    // SAFETY: the structure has the layout of SYSTEMTIME and the call only fills it in.
+    unsafe { GetLocalTime(&mut t) };
+    format!("{:04}-{:02}-{:02}_{:02}-{:02}-{:02}", t.year, t.month, t.day, t.hour, t.minute, t.second)
 }
 
 pub fn data_dir() -> PathBuf {

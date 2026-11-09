@@ -116,6 +116,79 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
     atomic_write(&dir.join(PROJECT_FILE), &serde_json::to_vec_pretty(&file)?)
 }
 
+/// Writes `bytes` to `to`, or links the same file of an earlier backup when nothing changed.
+fn share_or_write(earlier: Option<PathBuf>, to: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Read;
+    if let Some(from) = earlier.filter(|p| p.metadata().is_ok_and(|m| m.len() == bytes.len() as u64)) {
+        let mut file = std::io::BufReader::with_capacity(1 << 20, std::fs::File::open(&from)?);
+        let mut buffer = vec![0u8; 1 << 20];
+        let mut at = 0;
+        let same = loop {
+            let n = file.read(&mut buffer)?;
+            if n == 0 { break true; }
+            if buffer[..n] != bytes[at..at + n] { break false; }
+            at += n;
+        };
+        if same && std::fs::hard_link(&from, to).is_ok() {
+            return Ok(());
+        }
+    }
+    atomic_write(to, bytes)
+}
+
+/// Whether a folder name is one this program gave a backup: `2026-11-09_18-30-05`.
+fn is_backup_name(name: &str) -> bool {
+    let b = name.as_bytes();
+    b.len() == 19 && b.iter().enumerate().all(|(i, c)| match i {
+        4 | 7 | 13 | 16 => *c == b'-',
+        10 => *c == b'_',
+        _ => c.is_ascii_digit(),
+    })
+}
+
+/// Backups in `root`, oldest first.
+pub fn backups_in(root: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = std::fs::read_dir(root).into_iter().flatten().flatten().map(|e| e.path())
+        .filter(|p| p.is_dir() && p.file_name().is_some_and(|n| is_backup_name(&n.to_string_lossy()))).collect();
+    out.sort();
+    out
+}
+
+/// Writes a complete copy of the project to `root\<name>` and keeps the newest `keep` copies.
+/// `satellite_file` is the image on disk when it has not changed, so it need not be written.
+pub fn write_backup(w: &World, root: &Path, name: &str, keep: usize, satellite_file: Option<&Path>) -> Result<PathBuf> {
+    std::fs::create_dir_all(root)?;
+    for e in std::fs::read_dir(root)?.flatten() {
+        if e.path().extension().is_some_and(|x| x == "tmp") {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+    let previous = backups_in(root).pop();
+    let earlier = |file: &str| previous.as_ref().map(|p| p.join(file));
+    let tmp = root.join(format!("{name}.tmp"));
+    std::fs::create_dir_all(&tmp)?;
+    save(w, &tmp, SaveParts { height: false, mask: false, satellite: false, objects: true })?;
+    share_or_write(earlier("height.f32"), &tmp.join("height.f32"), &f32s_to_bytes(&w.base.data))?;
+    share_or_write(earlier("mask.u8"), &tmp.join("mask.u8"), &w.mask.data)?;
+    match (satellite_file, &w.satellite) {
+        (Some(file), _) => {
+            let to = tmp.join("satellite.rgb");
+            if std::fs::hard_link(file, &to).is_err() {
+                std::fs::copy(file, &to).with_context(|| format!("{}", file.display()))?;
+            }
+        }
+        (None, Some(s)) => share_or_write(earlier("satellite.rgb"), &tmp.join("satellite.rgb"), &s.data)?,
+        (None, None) => {}
+    }
+    let done = root.join(name);
+    std::fs::rename(&tmp, &done)?;
+    let all = backups_in(root);
+    for old in &all[..all.len().saturating_sub(keep.max(1))] {
+        std::fs::remove_dir_all(old)?;
+    }
+    Ok(done)
+}
+
 pub fn load(dir: &Path) -> Result<World> {
     let path = dir.join(PROJECT_FILE);
     let file: ProjectFile = serde_json::from_slice(&std::fs::read(&path).with_context(|| format!("{}", path.display()))?)
@@ -178,6 +251,40 @@ mod tests {
     use super::*;
     use crate::objects::Obj;
     use crate::world::{ModMode, ModShape};
+    #[test]
+    fn backups_open_share_what_is_unchanged_and_are_pruned() {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("My Map", 64, 8.0), 50.0);
+        w.base.set(3, 4, 77.0);
+        w.satellite = Some(RgbImage::new(16, 16, [1, 2, 3]));
+        let root = d.path().join("backups");
+        std::fs::create_dir_all(root.join("my own folder")).unwrap();
+        let first = write_backup(&w, &root, "2026-01-01_10-00-00", 2, None).unwrap();
+        let second = write_backup(&w, &root, "2026-01-01_10-30-00", 2, None).unwrap();
+        assert_eq!(std::fs::read(first.join("height.f32")).unwrap(), std::fs::read(second.join("height.f32")).unwrap());
+        w.base.set(5, 5, 12.0);
+        let third = write_backup(&w, &root, "2026-01-01_11-00-00", 2, None).unwrap();
+        assert!(!first.exists() && second.exists() && third.exists());
+        assert!(root.join("my own folder").exists(), "only backups are ever removed");
+        assert_eq!(load(&second).unwrap().base.at(5, 5), 50.0);
+        let r = load(&third).unwrap();
+        assert_eq!((r.base.at(5, 5), r.base.at(3, 4)), (12.0, 77.0));
+        assert_eq!(r.satellite.as_ref().unwrap().data[1], 2);
+        assert_eq!(backups_in(&root).len(), 2);
+    }
+
+    #[test]
+    fn a_backup_can_take_the_satellite_image_from_the_project() {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("Sat", 64, 8.0), 50.0);
+        w.satellite = Some(RgbImage::new(16, 16, [9, 8, 7]));
+        save(&w, d.path(), SaveParts::ALL).unwrap();
+        // The copy handed to the backup keeps only the size of the image.
+        w.satellite.as_mut().unwrap().data = Vec::new();
+        let done = write_backup(&w, &d.path().join("b"), "2026-01-01_10-00-00", 3, Some(&d.path().join("satellite.rgb"))).unwrap();
+        assert_eq!(load(&done).unwrap().satellite.unwrap().data[0], 9);
+    }
+
     #[test]
     fn save_and_load_keep_everything() {
         let d = tempfile::tempdir().unwrap();

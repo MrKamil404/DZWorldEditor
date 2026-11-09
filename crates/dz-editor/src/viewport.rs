@@ -2296,9 +2296,8 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                 if i.key_pressed(Key::Num3) { app.mode = Mode::Paint; }
                 if i.key_pressed(Key::Num4) { app.mode = Mode::Place; }
                 if i.key_pressed(Key::Num5) { app.mode = Mode::Lines; }
-                if i.key_pressed(Key::Num6) { app.bottom = crate::app::BottomTab::Generators; }
-                if i.key_pressed(Key::Num7) { app.mode = Mode::Shapes; }
-                if i.key_pressed(Key::Num8) { app.mode = Mode::KeyPoints; }
+                if i.key_pressed(Key::Num6) { app.mode = Mode::Shapes; }
+                if i.key_pressed(Key::Num7) { app.mode = Mode::KeyPoints; }
                 let f = if i.key_pressed(Key::CloseBracket) { 1.25 } else if i.key_pressed(Key::OpenBracket) { 0.8 } else { 1.0 };
                 if f != 1.0 {
                     app.sculpt.radius = (app.sculpt.radius * f).clamp(2.0, 3000.0);
@@ -2669,6 +2668,10 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "keypointadd" if nums.len() >= 2 => app.add_keypoint(nums[0], nums[1]),
+        "saveto" => app.save(Some(std::path::PathBuf::from(arg.trim()))),
+        "backupnow" => app.start_backup(true),
+        "showset" if arg.starts_with("shapes") => app.show_shapes = nums.first().is_some_and(|v| *v > 0.0),
+        "showset" if arg.starts_with("lines") => app.show_lines = nums.first().is_some_and(|v| *v > 0.0),
         "riverjoin" => {
             if let Some(dz_core::library::GeneratorKind::River(x)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) { x.join_offset = nums[0]; }
         }

@@ -19,6 +19,10 @@
   "de": "3. Erstellen und starten",
   "pl": "3. Zbuduj i uruchom"
  },
+ "A backup is only made when the project has changed. Files that did not change are shared between backups, so they take no extra space.": {
+  "de": "Eine Sicherung entsteht nur, wenn sich das Projekt geändert hat. Unveränderte Dateien werden zwischen Sicherungen geteilt und belegen keinen zusätzlichen Platz.",
+  "pl": "Kopia powstaje tylko wtedy, gdy projekt się zmienił. Niezmienione pliki są współdzielone między kopiami, więc nie zajmują dodatkowego miejsca."
+ },
  "A built-in generator. Duplicate it to make your own version, or drop it on the map.": {
   "de": "Eingebauter Generator. Dupliziere ihn für eine eigene Version oder lege ihn auf der Karte ab.",
   "pl": "Generator wbudowany. Zduplikuj go, aby zrobić własną wersję, albo upuść na mapę."
@@ -182,6 +186,30 @@
  "Autosave every": {
   "de": "Automatisch speichern alle",
   "pl": "Autozapis co"
+ },
+ "Back up every": {
+  "de": "Sicherung alle",
+  "pl": "Kopia co"
+ },
+ "Back up now": {
+  "de": "Jetzt sichern",
+  "pl": "Utwórz kopię teraz"
+ },
+ "Backup failed: {0}": {
+  "de": "Sicherung fehlgeschlagen: {0}",
+  "pl": "Nie udało się zapisać kopii: {0}"
+ },
+ "Backup saved: {0}": {
+  "de": "Sicherung gespeichert: {0}",
+  "pl": "Zapisano kopię: {0}"
+ },
+ "Backups": {
+  "de": "Sicherungen",
+  "pl": "Kopie zapasowe"
+ },
+ "Backups to keep": {
+  "de": "Anzahl aufbewahrter Sicherungen",
+  "pl": "Liczba zachowanych kopii"
  },
  "Bank reach": {
   "de": "Böschungsreichweite",
@@ -358,6 +386,10 @@
  "Choose at least one model": {
   "de": "Wähle mindestens ein Modell",
   "pl": "Wybierz co najmniej jeden model"
+ },
+ "Choose...": {
+  "de": "Auswählen...",
+  "pl": "Wybierz..."
  },
  "Clear project areas": {
   "de": "Projektgebiete löschen",
@@ -1231,6 +1263,10 @@
   "de": "Senken",
   "pl": "Obniż"
  },
+ "Make backups automatically": {
+  "de": "Sicherungen automatisch erstellen",
+  "pl": "Twórz kopie automatycznie"
+ },
  "Make editable route": {
   "de": "In bearbeitbare Route umwandeln",
   "pl": "Zamień na edytowalną trasę"
@@ -1518,6 +1554,10 @@
  "Only these names": {
   "de": "Nur diese Namen",
   "pl": "Tylko te nazwy"
+ },
+ "Open backups folder": {
+  "de": "Sicherungsordner öffnen",
+  "pl": "Otwórz folder kopii"
  },
  "Open language folder": {
   "de": "Sprachordner öffnen",
@@ -1926,6 +1966,10 @@
  "Save as...": {
   "de": "Speichern unter...",
   "pl": "Zapisz jako..."
+ },
+ "Save the project first": {
+  "de": "Speichere zuerst das Projekt",
+  "pl": "Najpierw zapisz projekt"
  },
  "Save to TV4P...": {
   "de": "In TV4P speichern...",
@@ -2371,6 +2415,10 @@
   "de": "Kachelgröße",
   "pl": "Rozmiar kafla"
  },
+ "To restore a backup, open the project.dzwe inside it and use Save as.": {
+  "de": "Um eine Sicherung wiederherzustellen, öffne die darin enthaltene project.dzwe und verwende „Speichern unter“.",
+  "pl": "Aby przywrócić kopię, otwórz znajdujący się w niej plik project.dzwe i użyj „Zapisz jako”."
+ },
  "Tolerance": {
   "de": "Toleranz",
   "pl": "Tolerancja"
@@ -2442,6 +2490,10 @@
  "Use selected shape": {
   "de": "Ausgewählte Form verwenden",
   "pl": "Użyj zaznaczonego kształtu"
+ },
+ "Use the project folder": {
+  "de": "Projektordner verwenden",
+  "pl": "Użyj folderu projektu"
  },
  "Version": {
   "de": "Version",
@@ -2550,6 +2602,10 @@
  "Zones from the mask": {
   "de": "Zonen aus der Maske",
   "pl": "Strefy z maski"
+ },
+ "backups in the project folder": {
+  "de": "backups im Projektordner",
+  "pl": "backups w folderze projektu"
  },
  "copy": {
   "de": "Kopie",
