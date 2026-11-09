@@ -297,6 +297,8 @@ pub struct App {
     pub show_land_grid: bool,
     pub show_tile_grid: bool,
     pub show_contours: bool,
+    /// Keys held down by the test script.
+    pub synthetic_modifiers: egui::Modifiers,
     /// Metres of height between two contour lines.
     pub contour_interval: f32,
     /// The camera may go below the terrain.
@@ -357,6 +359,8 @@ pub struct App {
     /// Library entries being edited.
     pub edit_generator: Option<u64>,
     pub edit_object: Option<u64>,
+    /// Name of the forest preset being looked at.
+    pub edit_forest: Option<String>,
     pub gen_folder: Option<String>,
     pub preset_folder: Option<String>,
     pub new_folder: String,
@@ -406,7 +410,7 @@ impl App {
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
-            show_land_grid: false, show_tile_grid: false, show_contours: false, contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
+            show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), only_on: None, picking: false },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0 },
@@ -416,7 +420,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
+            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
@@ -474,7 +478,8 @@ impl App {
             area = doc.world.modifier_rect(&doc.world.modifiers[k]);
         }
         let id = route.modifier.unwrap_or_else(|| doc.world.new_modifier_id());
-        let built = route.grade.then(|| gen::road_modifier(&doc.world.base, id, &route.name, &route.centerline, route.grade_width, route.grade_falloff, &route.decks, &route.grading, &route.profile)).flatten();
+        let decks = route_decks(&doc.world, i);
+        let built = route.grade.then(|| gen::road_modifier(&doc.world.base, id, &route.name, &route.centerline, route.grade_width, route.grade_falloff, &decks, &route.grading, &route.profile)).flatten();
         match (built, at) {
             (Some(m), Some(k)) => doc.world.modifiers[k] = m,
             (Some(m), None) => {
@@ -496,9 +501,39 @@ impl App {
         Some(before)
     }
 
+    /// Also makes the roads that cross route `i` meet it, and keeps tracks under roads.
+    fn sync_route_and_crossings(&mut self, i: usize) -> Option<Vec<dz_core::world::TerrainModifier>> {
+        use dayz_road_tool::rails::is_track_family as track;
+        let mut before = self.sync_route_modifier(i);
+        let doc = self.doc.as_ref()?;
+        let routes = &doc.world.routes;
+        let (rail, line) = (track(&routes.get(i)?.family), routes.get(i)?.centerline.clone());
+        let flat: Vec<[f32; 3]> = line.iter().map(|p| [p[0], p[1], 0.0]).collect();
+        // Roads give way to tracks, and later roads to earlier ones.
+        let crossing: Vec<usize> = (0..routes.len())
+            .filter(|j| *j != i && !track(&routes[*j].family) && (rail || *j > i) && !gen::crossing_decks(&routes[*j].centerline, &flat, &[], 0.0, &[]).is_empty())
+            .collect();
+        for j in crossing {
+            let b = self.sync_route_modifier(j);
+            before = before.or(b);
+        }
+        let doc = self.doc.as_mut()?;
+        let is_track = |m: &dz_core::world::TerrainModifier| doc.world.routes.iter().any(|r| r.modifier == Some(m.id) && track(&r.family));
+        let tracks: Vec<bool> = doc.world.modifiers.iter().map(is_track).collect();
+        let first_road = tracks.iter().position(|t| !*t).unwrap_or(tracks.len());
+        if tracks[first_road..].iter().any(|t| *t) {
+            before.get_or_insert_with(|| doc.world.modifiers.clone());
+            let (rails, others): (Vec<_>, Vec<_>) = std::mem::take(&mut doc.world.modifiers).into_iter().zip(tracks).partition(|(_, t)| *t);
+            doc.world.modifiers = rails.into_iter().chain(others).map(|(m, _)| m).collect();
+            doc.world.recompose(None);
+            self.whole_height_changed();
+        }
+        before
+    }
+
     /// Width, blend or on/off of a route's levelling changed.
     pub fn route_grading_changed(&mut self, i: usize) {
-        self.sync_route_modifier(i);
+        self.sync_route_and_crossings(i);
         if let Some(d) = &mut self.doc { d.history.revision += 1; }
     }
 
@@ -545,6 +580,19 @@ impl App {
             change.push((id, None, Some(o)));
             ids.push(id);
         }
+        // A road drawn over a track that is already there gets its deck here.
+        let mut no_deck = 0;
+        if !dayz_road_tool::rails::is_track_family(&req.family) {
+            let (decks, skipped) = gen::decks_over_tracks(&doc.world, &self.db, &road.centerline, &road.decks);
+            no_deck = skipped;
+            for (path, mut o) in decks {
+                o.model = doc.world.objects.intern(&path);
+                o.set_layer(layer);
+                let id = doc.world.objects.insert(o);
+                change.push((id, None, Some(o)));
+                ids.push(id);
+            }
+        }
         let center = road.centerline;
         let index = match target.filter(|i| *i < doc.world.routes.len()) {
             Some(i) => {
@@ -570,7 +618,7 @@ impl App {
         doc.history.push(label.clone(), Change::Routes(previous));
         doc.dirty.objects = true;
         self.line.selected_route = Some(index);
-        let parts = match self.sync_route_modifier(index) {
+        let parts = match self.sync_route_and_crossings(index) {
             Some(before) => {
                 self.doc.as_mut().unwrap().history.push(label.clone(), Change::Modifiers(before));
                 3
@@ -578,6 +626,9 @@ impl App {
             None => 2,
         };
         self.doc.as_mut().unwrap().history.group_last(parts, label);
+        if no_deck > 0 {
+            self.warn(t("The road crosses a track on a bend or too obliquely, so no level crossing was laid there"));
+        }
     }
 
     /// Fits the models of a route again after its waypoints or settings changed.
@@ -1345,12 +1396,13 @@ impl App {
         let Some(files) = rfd::FileDialog::new().add_filter("Terrain Builder", &["tv4l"]).pick_files() else { return };
         let Some(doc) = &self.doc else { return };
         let mut lite = doc.world.lite();
+        let db = self.db.clone();
         self.spawn(t("Import Terrain Builder layers"), move |job| {
             let layers: Vec<dz_core::import::LayerFile> = files.iter().filter_map(|p| dz_core::tv4l::read_info(p).ok().map(|info| dz_core::import::LayerFile { path: p.clone(), info, import: true })).collect();
             let libraries = files.first().map(|f| dz_core::import::libraries_near(f)).unwrap_or_default();
             anyhow::ensure!(!libraries.is_empty(), "No TemplateLibs folder next to the layers");
             let before = lite.object_layers.len();
-            dz_core::import::add_tb_layers(&mut lite, &layers, &libraries, job)?;
+            dz_core::import::add_tb_layers(&mut lite, &layers, &libraries, &db, job)?;
             Ok(Box::new(move |app: &mut App| app.merge_layers(lite, before)) as Finish)
         });
     }
@@ -1585,9 +1637,10 @@ impl App {
 
     pub fn import_objects_txt(&mut self) {
         let Some(f) = rfd::FileDialog::new().add_filter("Terrain Builder", &["txt"]).pick_file() else { return };
+        let db = self.db.clone();
         self.import_into_project(t("Import objects"), move |w, a, _| {
             let text = String::from_utf8_lossy(&std::fs::read(&f)?).into_owned();
-            let (list, missing) = dz_core::import::parse_tb_objects(&text, w, a, false);
+            let (list, missing) = dz_core::import::parse_tb_objects(&text, w, a, &db, false);
             for o in list {
                 w.objects.insert(o);
             }
@@ -1731,4 +1784,34 @@ impl App {
         self.settings.language = code.to_string();
         self.settings.save();
     }
+}
+
+/// Bridges of a road, and the points where it has to meet what it crosses.
+fn route_decks(world: &dz_core::world::World, i: usize) -> Vec<dz_core::world::BridgeDeck> {
+    use dayz_road_tool::rails::is_track_family as track;
+    use dz_core::world::ModShape;
+    let route = &world.routes[i];
+    let mut decks = route.decks.clone();
+    if track(&route.family) {
+        return decks;
+    }
+    for (j, other) in world.routes.iter().enumerate() {
+        let rail = track(&other.family);
+        if j == i || (!rail && j > i) {
+            continue;
+        }
+        let shaped = other.modifier.and_then(|id| world.modifiers.iter().find(|m| m.id == id)).and_then(|m| match &m.shape {
+            ModShape::Line { points, heights, gaps, .. } => Some((points.iter().zip(heights).map(|(p, h)| [p[0], p[1], *h]).collect::<Vec<_>>(), gaps.clone())),
+            _ => None,
+        });
+        let graded = shaped.is_some();
+        let (line, gaps) = shaped.unwrap_or_else(|| (other.centerline.iter().map(|p| [p[0], p[1], world.base.sample(p[0], p[1])]).collect(), Vec::new()));
+        let lift = match (rail, graded) {
+            (true, true) => gen::RAIL_CROSSING_LIFT,
+            (true, false) => gen::RAIL_CROSSING_LIFT_UNGRADED,
+            _ => 0.0,
+        };
+        decks.extend(gen::crossing_decks(&route.centerline, &line, &gaps, lift, &route.decks));
+    }
+    decks
 }

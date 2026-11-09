@@ -10,7 +10,7 @@ use crate::mask::Rgb8;
 use crate::preset::ZoneDef;
 use crate::species::{vanilla_library, SpeciesDef, ZonePreset};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct UserPreset {
     pub group: String,
     pub name: String,

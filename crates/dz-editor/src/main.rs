@@ -34,6 +34,9 @@ impl eframe::App for Host {
     }
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         raw.events.append(&mut self.app.synthetic);
+        if self.app.autoscript.is_some() {
+            raw.modifiers = self.app.synthetic_modifiers;
+        }
     }
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.app.settings.save();

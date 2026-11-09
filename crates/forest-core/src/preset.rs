@@ -237,6 +237,36 @@ pub struct EdgeSettings {
     /// na tej głębokości od krawędzi (otwarte, naturalne obrzeża). 0 = wył.
     #[serde(default = "default_blend_inside")]
     pub blend_inside_m: f64,
+    /// Jak daleko pas wychodzi poza obrys [m]. None = po obu stronach po `band_width_m`.
+    /// Ustawione: pas wnika w las na `band_width_m + blend_inside_m`, a las w tym samym
+    /// paśmie narasta od zera, więc jedno przechodzi w drugie.
+    #[serde(default)]
+    pub outside_m: Option<f64>,
+    /// Wielkość placków, w jakich rośnie pas [m]. 0 = równy pas.
+    #[serde(default)]
+    pub patch_size_m: f64,
+    /// Udział pasa zajęty przez placki (0..1).
+    #[serde(default = "default_patch_cover")]
+    pub patch_cover: f64,
+}
+
+fn default_patch_cover() -> f64 {
+    0.5
+}
+
+impl EdgeSettings {
+    /// Jak głęboko w las sięga pas [m].
+    pub fn inner_reach(&self) -> f64 {
+        if self.outside_m.is_some() { self.band_width_m + self.blend_inside_m.max(0.0) } else { self.band_width_m }
+    }
+    /// Głębokość narastania gęstości lasu od krawędzi [m].
+    pub fn fill_blend(&self) -> f64 {
+        if self.outside_m.is_some() && self.enabled && self.blend_inside_m > 0.0 { self.inner_reach() } else { self.blend_inside_m.max(0.0) }
+    }
+    /// Jaka część pasa zostaje przy sadzeniu plackami.
+    pub fn patch_share(&self) -> f64 {
+        if self.patch_size_m > 0.0 { self.patch_cover.clamp(0.02, 1.0) } else { 1.0 }
+    }
 }
 
 fn default_jagged() -> f64 {
@@ -261,6 +291,9 @@ impl Default for EdgeSettings {
             blend: true,
             jagged_m: 25.0,
             blend_inside_m: 40.0,
+            outside_m: None,
+            patch_size_m: 0.0,
+            patch_cover: 0.5,
         }
     }
 }

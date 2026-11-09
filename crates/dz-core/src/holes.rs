@@ -70,6 +70,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hand_written_files_are_read() {
+        let text = "class Holes\n{\n\tclass Set1\n\t{\n\t\ttiles[] =\n\t\t{\n\t\t\t{ 1714, 184 },\n            { 1709, 174 },\n\t\t\t{ 1714, 184 }\n\t\t};\n\t};\n};\n";
+        assert_eq!(parse(text), Holes::from([[1714, 184], [1709, 174]]));
+    }
+
+    #[test]
     fn holes_survive_writing_and_reading() {
         let holes = Holes::from([[10, 20], [11, 20], [11, 21], [500, 7]]);
         let text = class_text(&holes, "");

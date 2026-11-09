@@ -668,6 +668,8 @@ pub struct Hit {
 }
 /// Minimum angle between a track and a road it crosses.
 pub const MIN_CROSSING_ANGLE: f64 = 60.;
+/// How far from the middle of a crossing piece, where its deck lies, a road may cross it.
+const DECK_TOLERANCE: f64 = 2.;
 /// Extra length of a level crossing beyond the road, along the track.
 const CROSSING_MARGIN: f64 = 1.;
 /// A deck block: model path, length along the track and centre offset along it.
@@ -682,6 +684,35 @@ enum Kit {
     Blocks { blocks: Vec<(String, f64, f64)>, tile: bool },
     None,
 }
+/// A deck block found next to the tracks: model path, length along the track, centre offset.
+fn deck_block(tracks: &Path, name: &str) -> Option<(String, f64, f64)> {
+    let dirs = [tracks.to_path_buf(), tracks.parent().map(|p| p.join("Misc")).unwrap_or_default()];
+    let path = dirs.iter().map(|d| d.join(name)).find(|p| p.exists())?;
+    let model = object_model(&std::fs::read(&path).ok()?).ok()?;
+    let (z0, z1) = model.triangles.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), p| (a.min(p[1]), b.max(p[1])));
+    Some((path.to_string_lossy().into_owned(), z1 - z0, (z0 + z1) / 2.))
+}
+
+/// Deck blocks that cover `span` metres of an existing track of this family. They lie over
+/// the track as it is, so a road can cross it anywhere along a straight.
+pub fn deck_blocks(family: &str, tracks: &Path, span: f64) -> Option<Vec<(String, f64, f64)>> {
+    if family.eq_ignore_ascii_case("Rail_TrackSmall") {
+        let b = deck_block(tracks, "Rail_Crossing_Block_Small.p3d")?;
+        return Some(vec![b.clone(); (span / b.1).ceil().max(1.) as usize]);
+    }
+    let mut blocks: Vec<_> = ["Rail_Crossing_Block_10.p3d", "Rail_Crossing_Block_25.p3d"].into_iter().filter_map(|n| deck_block(tracks, n)).collect();
+    blocks.sort_by(|a, b| a.1.total_cmp(&b.1));
+    blocks.into_iter().find(|b| b.1 >= span).map(|b| vec![b])
+}
+
+/// Whether a model is a plain straight piece of track, which a road may cross.
+pub fn is_straight_piece(stem: &str) -> bool {
+    let Some((_, piece)) = split(stem) else { return false };
+    let piece = piece.to_lowercase();
+    let digits = piece.strip_suffix('m').unwrap_or(&piece);
+    !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit())
+}
+
 /// Roads near tracks and how to build crossings for one track family.
 pub struct Crossings {
     roads: Vec<RoadLine>,
@@ -751,13 +782,7 @@ impl Crossings {
     }
     fn kit(family: &str, catalog: &[CatalogPart], tracks: &Path) -> Kit {
         let lower = family.to_lowercase();
-        let block = |name: &str| -> Option<(String, f64, f64)> {
-            let dirs = [tracks.to_path_buf(), tracks.parent().map(|p| p.join("Misc")).unwrap_or_default()];
-            let path = dirs.iter().map(|d| d.join(name)).find(|p| p.exists())?;
-            let model = object_model(&std::fs::read(&path).ok()?).ok()?;
-            let (z0, z1) = model.triangles.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), p| (a.min(p[1]), b.max(p[1])));
-            Some((path.to_string_lossy().into_owned(), z1 - z0, (z0 + z1) / 2.))
-        };
+        let block = |name: &str| deck_block(tracks, name);
         if lower == "rail_track" {
             let find = |stem: &str| catalog.iter().find(|c| {
                 c.family == family && Path::new(&c.path).file_stem().is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case(stem))
@@ -858,8 +883,10 @@ impl Crossings {
         {
             return false;
         }
+        let on_deck = |h: &Hit| !matches!(self.kit, Kit::Piece { .. }) || (h.along - item.model.length / 2.).abs() <= DECK_TOLERANCE;
         hits.iter().all(|h| {
             h.angle >= MIN_CROSSING_ANGLE.to_radians() - 1e-9
+                && on_deck(h)
                 && self.need(h).is_some_and(|(span, _)| {
                     // The neighbouring pieces must also stay out of the road's corridor.
                     let end = (span / 2.).max((h.half_width + clearance) / h.angle.sin() + 0.5);
@@ -925,6 +952,16 @@ impl Crossings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_plain_straights_can_carry_a_later_crossing() {
+        for piece in ["Rail_Track_25", "Rail_Track_10m", "Rail_TrackE_40"] {
+            assert!(is_straight_piece(piece), "{piece}");
+        }
+        for piece in ["Rail_Track_L25_10", "Rail_Track_Passing_25", "Rail_Track_TurnOutL", "bridge_25"] {
+            assert!(!is_straight_piece(piece), "{piece}");
+        }
+    }
 
     #[test]
     fn routable_pieces_and_families() {

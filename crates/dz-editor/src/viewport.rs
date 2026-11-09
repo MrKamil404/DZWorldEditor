@@ -39,9 +39,15 @@ enum Handle {
     Z,
     Ring,
     Scale,
+    /// Turning with the mouse held on the object itself.
+    Spin,
 }
 
 pub struct ObjectDrag {
+    /// Object a press would have unselected, had the mouse not moved.
+    toggle: Option<u32>,
+    /// The mouse moved far enough to count as a drag.
+    started: bool,
     handle: Handle,
     before: Vec<(u32, Obj)>,
     pivot: V3,
@@ -62,6 +68,10 @@ fn pick_terrain(h: &Heightmap, o: V3, d: V3, ortho: bool) -> Option<V3> {
     let inside = |x: f32, z: f32| x >= 0.0 && z >= 0.0 && x <= w && z <= depth;
     if ortho {
         return inside(o[0], o[2]).then(|| [o[0], h.sample(o[0], o[2]), o[2]]);
+    }
+    // From below the terrain there is no ground to point at.
+    if inside(o[0], o[2]) && o[1] <= h.sample(o[0], o[2]) {
+        return None;
     }
     let mut t = 0.0f32;
     let mut prev = 0.0f32;
@@ -175,7 +185,8 @@ fn ray_in_model(o: &V3, d: &V3, ob: &Obj, ground: f32) -> (V3, V3) {
 fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
     let doc = app.doc.as_ref()?;
     let (o, d) = v.ray(s);
-    let ground_hit = pick_terrain(&doc.world.height, o, d, v.ortho);
+    // A hole lets the ray through to what is underneath.
+    let ground_hit = pick_terrain(&doc.world.height, o, d, v.ortho).filter(|p| !doc.world.is_hole(p[0], p[2]));
     let limit = ground_hit.map(|p| dot(sub(p, o), d) + 1.0).unwrap_or(4000.0).min(6000.0);
     let mut seen = std::collections::HashSet::new();
     // Whatever the ray's box test lets through, nearest first.
@@ -272,6 +283,20 @@ fn category_tint(path: &str) -> [f32; 4] {
         [0.75, 0.3, 0.7]
     };
     [c[0], c[1], c[2], 0.5]
+}
+
+/// The orientation an object is drawn with, sheared over the terrain as the game does.
+#[inline]
+fn placed_matrix(o: &Obj, info: &ModelInfo, height: &dz_core::terrain::Heightmap, y: f32) -> ([[f32; 3]; 3], f32) {
+    match dz_core::model_info::skew(o, info, height) {
+        Some(s) => {
+            let mut m = rotation(o.yaw, 0.0, 0.0, o.scale);
+            m[0][1] = s.along_x;
+            m[2][1] = s.along_z;
+            (m, y + s.lift)
+        }
+        None => (rotation(o.yaw, o.pitch, o.roll, o.scale), y + dz_core::model_info::tilted_lift(o, info, height)),
+    }
 }
 
 #[inline]
@@ -410,13 +435,14 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                     }
                     let sel = selection.contains(&id);
                     let tint = if sel { SELECT_TINT } else { [1.0, 1.0, 1.0, 0.0] };
+                    let (placed_m, y) = placed_matrix(o, &infos[o.model as usize], &world.height, y);
                     let (m0, m1) = (o.model, renderer.impostor_layers.get(&o.model));
                     if d < near {
                         if let Some(n) = renderer.model_triangles((m0, LOD_NEAR)).filter(|_| triangles_left > 0) {
                             triangles_left -= n as i64;
-                            write_instance(instances.entry((m0, LOD_NEAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                            write_instance(instances.entry((m0, LOD_NEAR)).or_default(), &placed_m, [o.x, y, o.z], tint);
                             let key = if renderer.model_triangles((m0, LOD_FAR)).is_some() { (m0, LOD_FAR) } else { (m0, LOD_NEAR) };
-                            write_instance(shadow.entry(key).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                            write_instance(shadow.entry(key).or_default(), &placed_m, [o.x, y, o.z], tint);
                             continue;
                         }
                     }
@@ -428,9 +454,9 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                             } else {
                                 no_billboard_left -= n as i64;
                             }
-                            write_instance(instances.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                            write_instance(instances.entry((m0, LOD_FAR)).or_default(), &placed_m, [o.x, y, o.z], tint);
                             if d < shadow_range {
-                                write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                                write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &placed_m, [o.x, y, o.z], tint);
                             }
                             if d < near {
                                 requests.push((m0, LOD_NEAR));
@@ -445,7 +471,7 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                     if d < shadow_range && app.show_shadows {
                         if let Some(n) = renderer.model_triangles((m0, LOD_FAR)).filter(|_| shadow_triangles > 0) {
                             shadow_triangles -= n as i64;
-                            write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &rotation(o.yaw, o.pitch, o.roll, o.scale), [o.x, y, o.z], tint);
+                            write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &placed_m, [o.x, y, o.z], tint);
                         }
                     }
                     if let Some(layer) = m1 {
@@ -721,6 +747,7 @@ fn finish_place_stroke(app: &mut App) {
 /// Adds an object with the placement options in force.
 fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj)> {
     let (random, align, smin, smax) = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
+    let info = app.db.get(model);
     let doc = app.doc.as_mut()?;
     let layer = doc.world.target_layer();
     if !doc.world.object_layers[layer as usize].interactive() {
@@ -732,8 +759,12 @@ fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj
     let yaw = if random { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
     let k = ((seed >> 3) & 1023) as f32 / 1023.0;
     let scale = smin + (smax - smin) * k;
-    let (pitch, roll) = if align { gen::slope_angles(&doc.world.height, x, z, yaw) } else { (0.0, 0.0) };
-    let mut o = Obj { x, z, elevation: 0.0, yaw, pitch, roll, scale, model: model_id, flags: 0 };
+    // Models with a placement property are fitted to the ground by the game; tilting them too
+    // would make them lean.
+    let (pitch, roll) = if align && !info.placement.skews() { gen::slope_angles(&doc.world.height, x, z, yaw) } else { (0.0, 0.0) };
+    // The model rests on its land contact points.
+    let elevation = if info.contact_count > 0 { -info.contact_y * scale } else { 0.0 };
+    let mut o = Obj { x, z, elevation, yaw, pitch, roll, scale, model: model_id, flags: 0 };
     o.set_layer(layer);
     Some((doc.world.objects.insert(o), o))
 }
@@ -844,20 +875,30 @@ fn gizmo_handle(app: &App, v: &View, p: V3, mouse: Pos2) -> Option<(Handle, egui
 }
 
 fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
-    let Some(drag) = app.drag.take() else { return };
-    let Some(doc) = &mut app.doc else { return };
+    let Some(mut drag) = app.drag.take() else { return };
     let delta = mouse - drag.start;
+    if !drag.started {
+        if delta.length() < 3.0 {
+            app.drag = Some(drag);
+            return;
+        }
+        drag.started = true;
+    }
+    let Some(doc) = &mut app.doc else { return };
     let world = &mut doc.world;
     let mut area: Option<dz_core::terrain::Rect> = None;
     let (mut dx, mut dy, mut dz, mut dyaw, mut factor) = (0.0, 0.0, 0.0, 0.0, 1.0);
     match drag.handle {
         Handle::Plane => {
             let (o, d) = v.ray(mouse);
-            if let Some(p) = pick_terrain(&world.height, o, d, v.ortho) {
+            // Without ground under the cursor the object slides at its own height.
+            let on_level = (d[1].abs() > 1e-4).then(|| (drag.pivot[1] - o[1]) / d[1]).filter(|t| *t > 0.0).map(|t| add(o, mul(d, t)));
+            if let Some(p) = pick_terrain(&world.height, o, d, v.ortho).or(on_level) {
                 dx = p[0] + drag.grab_offset[0] - drag.pivot[0];
                 dz = p[2] + drag.grab_offset[1] - drag.pivot[2];
             }
         }
+        Handle::Spin => dyaw = delta.x * 0.5,
         Handle::X | Handle::Y | Handle::Z => {
             let along = delta.dot(drag.axis.0) * drag.axis.2;
             let along = if snap { (along).round() } else { along };
@@ -908,6 +949,11 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
 
 fn end_object_drag(app: &mut App) {
     let Some(drag) = app.drag.take() else { return };
+    if let (Some(id), false) = (drag.toggle, drag.started) {
+        app.selection.remove(&id);
+        app.selection_rev += 1;
+        return;
+    }
     let Some(doc) = &mut app.doc else { return };
     let change: Vec<_> = drag.before.iter().filter_map(|(id, b)| {
         let now = doc.world.objects.get(*id).copied()?;
@@ -1145,7 +1191,17 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let grab = hit.map(|h| [p[0] - h[0], p[2] - h[2]]).unwrap_or([0.0, 0.0]);
-                        app.drag = Some(ObjectDrag { handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab });
+                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab });
+                        return;
+                    }
+                }
+                // Held on a selected object, Shift turns it and Ctrl scales it.
+                if modifiers.shift || modifiers.ctrl {
+                    if let (Some(p), Some(id)) = (pivot, pick_object(app, v, mouse).filter(|id| app.selection.contains(id))) {
+                        let doc = app.doc.as_ref().unwrap();
+                        let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
+                        let handle = if modifiers.shift { Handle::Spin } else { Handle::Scale };
+                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] });
                         return;
                     }
                 }
@@ -1153,7 +1209,8 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
             }
             if app.drag.is_some() {
                 if primary_down {
-                    apply_object_drag(app, v, mouse, modifiers.ctrl);
+                    let snap = modifiers.ctrl && app.drag.as_ref().is_some_and(|d| d.toggle.is_none());
+                    apply_object_drag(app, v, mouse, snap);
                     ctx.request_repaint();
                 } else {
                     end_object_drag(app);
@@ -1241,6 +1298,10 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
             z0 = z0.min(p[2]);
             x1 = x1.max(p[0]);
             z1 = z1.max(p[2]);
+        }
+        // Rays that meet no ground end far away, so what is near the camera counts too.
+        if !v.ortho {
+            (x0, z0, x1, z1) = (x0.min(v.eye[0]), z0.min(v.eye[2]), x1.max(v.eye[0]), z1.max(v.eye[2]));
         }
         let mut found = Vec::new();
         world.objects.for_each_in(x0, z0, x1, z1, |id, o| {
@@ -1937,7 +1998,7 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
 }
 
 fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
-    ui.menu_button(t("Camera"), |ui| {
+    ui.menu_button(t("Camera"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
         ui.set_min_width(280.0);
         let row = |ui: &mut egui::Ui, label: String, v: &mut f32, range: std::ops::RangeInclusive<f32>| {
             ui.add(egui::Slider::new(v, range).text(label));
@@ -1947,19 +2008,20 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         row(ui, t("Movement speed"), &mut app.settings.camera_speed, 1.0..=4000.0);
         app.camera.speed = app.settings.camera_speed;
         row(ui, t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0);
-        row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=500.0);
+        row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0);
+        row(ui, t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0);
         row(ui, t("Surface transition m"), &mut app.settings.surface_blend, 0.0..=10.0);
         row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=3.0);
     });
 }
 
 fn show_menu(app: &mut App, ui: &mut egui::Ui) {
-    ui.menu_button(t("Show"), |ui| crate::panels::visibility_toggles(app, ui));
+    ui.menu_button(t("Show"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); crate::panels::visibility_toggles(app, ui) });
 }
 
 fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
     use crate::settings::Lighting;
-    ui.menu_button(t("Lighting"), |ui| {
+    ui.menu_button(t("Lighting"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
         ui.set_min_width(260.0);
         let l = &mut app.settings.lighting;
         ui.horizontal_wrapped(|ui| {
@@ -2056,6 +2118,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         objects,
         show_water: app.show_water,
         surface_blend: app.settings.surface_blend,
+        surface_range: app.settings.surface_range,
         sea_waves: app.settings.sea_waves,
         world: meta.size_m(),
         tile: 10.0 / meta.land_cell(),
@@ -2071,7 +2134,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
     draw_overlays(app, ui, &v, &resp);
     view_header(app, ui, rect, top);
-    resp.context_menu(|ui| {
+    resp.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
         let Some(m) = ctx.input(|i| i.pointer.latest_pos()) else { return };
         let _ = m;
         if ui.button(t("Set player start here")).clicked() {
@@ -2401,6 +2464,24 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 app.synthetic.push(egui::Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::NONE });
             }
         }
+        "mods" => {
+            app.synthetic_modifiers = egui::Modifiers { shift: arg == "shift", ctrl: arg == "ctrl", command: arg == "ctrl", ..Default::default() };
+        }
+        "mmove" if nums.len() >= 2 => app.synthetic.push(egui::Event::PointerMoved(pos2(nums[0], nums[1]))),
+        "mbutton" if nums.len() >= 2 => {
+            // "mbutton l 1 x y": which button, pressed or released, where.
+            let button = if arg.starts_with('r') { PointerButton::Secondary } else { PointerButton::Primary };
+            let at = pos2(nums[1], nums[2]);
+            app.synthetic.push(egui::Event::PointerMoved(at));
+            app.synthetic.push(egui::Event::PointerButton { pos: at, button, pressed: nums[0] != 0.0, modifiers: app.synthetic_modifiers });
+        }
+        "winsize" if nums.len() >= 2 => ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(nums[0], nums[1]))),
+        "selinfo" => {
+            if let Some(d) = &app.doc {
+                let first = app.selection.iter().next().and_then(|i| d.world.objects.get(*i));
+                eprintln!("GENSTATS selection n={} whole={:?} first={:?}", app.selection.len(), app.whole, first.map(|o| (d.world.objects.model_path(o).rsplit('\\').next().unwrap_or("").to_string(), o.yaw, o.scale)));
+            }
+        }
         "model" => app.place.model = Some(arg),
         "undo" => app.undo(),
         "pad" => { let f = app.place.pad_falloff; app.add_pads_for_selection(f); }
@@ -2489,6 +2570,32 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     eprintln!("GEN {} {:?} kind={} target={:?} objects={} alive={}", g.id, g.name, g.kind.type_name(), g.target, g.objects.len(), g.objects.iter().filter(|i| d.world.objects.get(**i).is_some()).count());
                 }
                 eprintln!("GENS total={} objects={}", d.world.generators.len(), d.world.objects.len());
+            }
+        }
+        "genfill" => {
+            let name = dz_core::gen::forest_preset_names().into_iter().nth(nums.first().map_or(1, |v| *v as usize)).unwrap_or_default();
+            if let Some(dz_core::library::GeneratorKind::Forest(x)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) { x.layers = vec![dz_core::library::ForestLayer { preset: name, density_per_ha: nums.get(1).copied().unwrap_or(0.0), ..Default::default() }]; }
+        }
+        "exportto" => {
+            if let Some(d) = &app.doc {
+                let opts = dz_core::export::ExportOptions { root: std::path::PathBuf::from(arg.trim()), layers: true, world: true, config: false, source: false };
+                match dz_core::export::run(&d.world, &app.db, &opts, &dz_core::Job::default()) {
+                    Ok(r) => eprintln!("GENSTATS export tiles={} rvmats={}", r.tiles, r.rvmats),
+                    Err(e) => eprintln!("GENSTATS export failed {e:#}"),
+                }
+            }
+        }
+        "riverjoin" => {
+            if let Some(dz_core::library::GeneratorKind::River(x)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) { x.join_offset = nums[0]; }
+        }
+        "gencount" => {
+            if let Some(d) = &app.doc {
+                if let Some(g) = d.world.generators.last() {
+                    let mut c = std::collections::BTreeMap::<String, usize>::new();
+                    for o in g.objects.iter().filter_map(|i| d.world.objects.get(*i)) { *c.entry(d.world.objects.model_path(o).rsplit('\\').next().unwrap_or("").to_string()).or_default() += 1; }
+                    eprintln!("GENSTATS models {c:?} removed={} objects_total={} modifier={:?}", g.removed.len(), d.world.objects.len(), g.modifier);
+                    for o in g.objects.iter().take(14).filter_map(|i| d.world.objects.get(*i)) { eprintln!("GENSTATS obj {} at {} {} y {} yaw {} pitch {} s {}", d.world.objects.model_path(o).rsplit('\\').next().unwrap_or(""), o.x, o.z, o.elevation, o.yaw, o.pitch, o.scale); }
+                }
             }
         }
         "genrun" => {
@@ -2721,3 +2828,17 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
     }
 }
 
+#[cfg(test)]
+mod picking_tests {
+    use super::*;
+
+    #[test]
+    fn terrain_is_only_found_from_above() {
+        let h = Heightmap::new(64, 64, 4.0, 10.0);
+        let down = [0.0, -1.0, 0.0];
+        let hit = pick_terrain(&h, [100.0, 30.0, 100.0], down, false).unwrap();
+        assert!((hit[1] - 10.0).abs() < 0.01);
+        assert!(pick_terrain(&h, [100.0, 5.0, 100.0], down, false).is_none());
+        assert!(pick_terrain(&h, [100.0, 5.0, 100.0], [0.0, 1.0, 0.0], false).is_none());
+    }
+}

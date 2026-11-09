@@ -39,18 +39,24 @@ struct KindContext {
     model: Option<String>,
     has_satellite: bool,
     object_presets: Vec<(u64, String)>,
+    /// Presets read from files while drawing, kept for the library.
+    loaded: std::cell::RefCell<Vec<forest_core::user_presets::UserPreset>>,
 }
 
 fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindContext {
     let doc = app.doc.as_ref();
     let mut presets: Vec<String> = user.iter().map(|p| p.name.clone()).collect();
+    presets.extend(app.library.all_forest_presets().into_iter().map(|p| p.name));
     presets.extend(gen::forest_preset_names());
+    let mut seen = std::collections::HashSet::new();
+    presets.retain(|n| seen.insert(n.clone()));
     KindContext {
         layers: doc.map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default(),
         presets,
         model: app.place.model.clone(),
         has_satellite: doc.is_some_and(|d| d.world.satellite.is_some()),
         object_presets: app.library.objects.iter().map(|p| (p.id, p.name.clone())).collect(),
+        loaded: Default::default(),
     }
 }
 
@@ -163,7 +169,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 }
                 if ui.button(t("Load zone presets...")).on_hover_text("zones.json, presets_user.json").clicked() {
                     if let Some(f) = rfd::FileDialog::new().add_filter("DayZForests", &["json"]).pick_file() {
-                        if let Ok(l) = forest_core::user_presets::UserPresetLibrary::load(&f) { g.user_presets = l.presets; }
+                        if let Ok(l) = forest_core::user_presets::UserPresetLibrary::load(&f) { cx.loaded.borrow_mut().extend(l.presets.iter().cloned()); g.user_presets = l.presets; }
                     }
                 }
             });
@@ -180,6 +186,33 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number64(ui, t("Max slope"), &mut slope, 5.0..=90.0);
             p.max_slope_deg = (slope < 90.0).then_some(slope);
             number64(ui, t("Edge padding m"), &mut p.edge_padding_m, 0.0..=200.0);
+            ui.separator();
+            ui.strong(t("More presets in shapes"));
+            ui.weak(t("Each one fills the whole shape as well, for example undergrowth under the trees."));
+            let mut remove = None;
+            for (i, l) in g.layers.iter_mut().enumerate() {
+                ui.push_id(("layer", i), |ui| {
+                    ui.horizontal(|ui| {
+                        preset_combo(ui, "preset", &mut l.preset, &cx.presets);
+                        if ui.small_button("✖").clicked() { remove = Some(i); }
+                    });
+                    number(ui, t("Density per ha (0 = from the preset)"), &mut l.density_per_ha, 0.0..=5000.0);
+                    row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut l.seed)); });
+                    number64(ui, t("Spacing"), &mut l.spacing, 0.3..=4.0);
+                    number(ui, t("Min scale"), &mut l.scale_min, 0.1..=3.0);
+                    number(ui, t("Max scale"), &mut l.scale_max, 0.1..=3.0);
+                    number64(ui, t("Clearings"), &mut l.clearing_strength, 0.0..=0.95);
+                    number64(ui, t("Clearing size m"), &mut l.clearing_scale_m, 0.0..=1500.0);
+                    number64(ui, t("Max slope"), &mut l.max_slope_deg, 5.0..=90.0);
+                    number64(ui, t("Edge padding m"), &mut l.edge_padding_m, 0.0..=200.0);
+                    number(ui, t("Distance from earlier presets m"), &mut l.gap, 0.0..=20.0);
+                    ui.add_space(4.0);
+                });
+            }
+            if let Some(i) = remove { g.layers.remove(i); }
+            if ui.button(format!("+ {}", t("Add preset"))).clicked() {
+                g.layers.push(dz_core::library::ForestLayer { preset: cx.presets.first().cloned().unwrap_or_default(), ..Default::default() });
+            }
             ui.separator();
             ui.strong(t("Zones from the mask"));
             let mut remove = None;
@@ -203,9 +236,34 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 number(ui, t("Edge density"), &mut g.project.edges.density_per_ha, 0.0..=600.0);
                 number64(ui, t("Jagged edge m"), &mut g.project.edges.jagged_m, 0.0..=120.0);
                 number64(ui, t("Blend inward m"), &mut g.project.edges.blend_inside_m, 0.0..=150.0);
-                ui.weak(t("Edge presets"));
+                let mut outside = g.project.edges.outside_m.unwrap_or(0.0);
+                number64(ui, t("Beyond the outline m"), &mut outside, 0.0..=80.0);
+                g.project.edges.outside_m = Some(outside);
+                number64(ui, t("Edge patch size m"), &mut g.project.edges.patch_size_m, 0.0..=200.0);
+                if g.project.edges.patch_size_m > 0.0 {
+                    number64(ui, t("Patch coverage"), &mut g.project.edges.patch_cover, 0.05..=1.0);
+                } else {
+                    ui.weak(t("0 makes the edge an even band."));
+                }
+                let from_project = t("From the project species");
+                let mut main = g.edge_presets.first().map(|e| e.0.clone()).unwrap_or_default();
+                let chosen = main.clone();
+                row(ui, &t("Edge preset"), |ui| {
+                    egui::ComboBox::from_id_salt("edge main").width(170.0).selected_text(if main.is_empty() { from_project.clone() } else { main.clone() }).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut main, String::new(), from_project.as_str());
+                        for p in &cx.presets { ui.selectable_value(&mut main, p.clone(), p); }
+                    });
+                });
+                if main != chosen {
+                    match (main.is_empty(), g.edge_presets.first_mut()) {
+                        (true, _) => g.edge_presets.clear(),
+                        (false, Some(e)) => e.0 = main,
+                        (false, None) => g.edge_presets.push((main, 1.0)),
+                    }
+                }
+                if g.edge_presets.len() > 1 { ui.weak(t("Further edge presets, with their share")); }
                 let mut remove = None;
-                for (i, e) in g.edge_presets.iter_mut().enumerate() {
+                for (i, e) in g.edge_presets.iter_mut().enumerate().skip(1) {
                     ui.push_id(("edge", i), |ui| ui.horizontal(|ui| {
                         preset_combo(ui, "preset", &mut e.0, &cx.presets);
                         ui.add(egui::DragValue::new(&mut e.1).speed(0.01).range(0.01..=1.0));
@@ -213,7 +271,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     }));
                 }
                 if let Some(i) = remove { g.edge_presets.remove(i); }
-                if ui.button(format!("+ {}", t("Add edge preset"))).clicked() {
+                if !g.edge_presets.is_empty() && ui.button(format!("+ {}", t("Add edge preset"))).clicked() {
                     g.edge_presets.push((cx.presets.first().cloned().unwrap_or_default(), 0.5));
                 }
             }
@@ -428,8 +486,32 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Depth"), &mut g.depth, 0.3..=20.0);
             number(ui, t("Blend"), &mut g.falloff, 0.0..=80.0);
             model_field(ui, t("Water model"), &mut g.model, &cx.model);
+            number(ui, t("Overlap of the water models m"), &mut g.join_offset, -6.0..=12.0);
+            number(ui, t("Water height m"), &mut g.water_offset, -5.0..=5.0);
+            ui.checkbox(&mut g.reverse_flow, t("Current runs the other way"));
             ui.weak(t("The river runs from the first point of the line to the last."));
+            ui.weak(t("Bends of the same family are used where the line turns. The bed and its blend stay within the width of the water."));
             line_ui(ui, &mut g.line);
+        }
+        GeneratorKind::LineTerrain(g) => {
+            crate::panels::grading_ui(ui, &mut g.grading, &mut g.width, &mut g.falloff, false);
+            line_ui(ui, &mut g.line);
+        }
+        GeneratorKind::Remove(g) => {
+            ui.strong(t("What to remove"));
+            ui.checkbox(&mut g.trees, t("Trees"));
+            ui.checkbox(&mut g.bushes, t("Bushes"));
+            ui.checkbox(&mut g.rocks, t("Rocks"));
+            ui.checkbox(&mut g.buildings, t("Buildings and structures"));
+            ui.checkbox(&mut g.other, t("Other objects"));
+            row(ui, &t("Only these names"), |ui| { ui.text_edit_singleline(&mut g.names); });
+            ui.weak(t("Parts of model names, separated by commas. When filled in, they replace the categories above."));
+            row(ui, &t("Always keep"), |ui| { ui.text_edit_singleline(&mut g.keep); });
+            number(ui, t("Margin m"), &mut g.margin, 0.0..=500.0);
+            ui.weak(t("How far beyond a polygon, or to each side of a line."));
+            number(ui, t("Part removed"), &mut g.share, 0.0..=1.0);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+            ui.weak(t("Objects of roads and generators stay. Running again or deleting this generator with its objects brings the removed ones back."));
         }
         GeneratorKind::Terrain(g) => {
             row(ui, &t("Type"), |ui| {
@@ -492,6 +574,8 @@ fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::Area(_) => ("A", Color32::from_rgb(70, 104, 66)),
         GeneratorKind::Line(_) => ("L", Color32::from_rgb(92, 84, 112)),
         GeneratorKind::River(_) => ("R", Color32::from_rgb(40, 96, 130)),
+        GeneratorKind::LineTerrain(_) => ("G", Color32::from_rgb(112, 96, 62)),
+        GeneratorKind::Remove(_) => ("X", Color32::from_rgb(132, 56, 52)),
         GeneratorKind::Terrain(_) => ("T", Color32::from_rgb(96, 110, 70)),
         GeneratorKind::Erosion(_) => ("E", Color32::from_rgb(110, 92, 70)),
         GeneratorKind::ThermalErosion { .. } => ("E", Color32::from_rgb(120, 100, 76)),
@@ -507,6 +591,17 @@ enum Preview {
     Nothing,
 }
 
+/// Forest presets read from a file become available everywhere.
+fn keep_forest_presets(library: &mut Library, dirty: &mut bool, loaded: Vec<forest_core::user_presets::UserPreset>) {
+    for p in loaded {
+        match library.forest_presets.iter_mut().find(|x| x.name == p.name) {
+            Some(x) => *x = p,
+            None => library.forest_presets.push(p),
+        }
+        *dirty = true;
+    }
+}
+
 fn preset_model(app: &App, preset: &str, user: &[forest_core::user_presets::UserPreset]) -> Option<String> {
     use forest_core::user_presets::UserPreset;
     let weights = user.iter().find(|p| p.name == preset).cloned().or_else(|| forest_core::species::zone_presets().iter().find(|p| p.name == preset).map(UserPreset::from_builtin))?.weights;
@@ -516,7 +611,7 @@ fn preset_model(app: &App, preset: &str, user: &[forest_core::user_presets::User
 
 fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
     let model = match kind {
-        GeneratorKind::Forest(f) => preset_model(app, &f.preset, &f.user_presets),
+        GeneratorKind::Forest(f) => preset_model(app, &f.preset, &f.user_presets).or_else(|| preset_model(app, &f.preset, &app.library.all_forest_presets())),
         GeneratorKind::Scatter(s) => s.preset.and_then(|id| app.library.objects.iter().find(|p| p.id == id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| s.models.first().map(|m| m.0.clone())),
         GeneratorKind::Area(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
         GeneratorKind::Line(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
@@ -639,7 +734,7 @@ pub fn generators_tab(app: &mut App, ui: &mut egui::Ui) {
     let (mut current, mut new_name) = (app.gen_folder.clone(), std::mem::take(&mut app.new_folder));
     let mut result = (None, None);
     egui::SidePanel::left("gen_folders").resizable(true).default_width(180.0).frame(egui::Frame::new()).show_inside(ui, |ui| {
-        ui.menu_button(format!("+ {}", t("New generator")), |ui| {
+        ui.menu_button(format!("+ {}", t("New generator")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
             for b in &app.built_in {
                 if ui.button(t(b.kind.type_name())).clicked() {
                     let folder = current.clone().filter(|f| f != BUILT_IN).unwrap_or_default();
@@ -680,10 +775,10 @@ pub fn generators_tab(app: &mut App, ui: &mut egui::Ui) {
                 for (id, name, letter, color, built_in, preview) in chunk {
                     let image = preview_texture(app, ui.ctx(), preview);
                     let r = tile(ui, side, name, letter, *color, app.edit_generator == Some(*id), image);
-                    if r.clicked() { app.edit_generator = Some(*id); app.selected_generator = None; }
+                    if r.clicked() { app.edit_generator = Some(*id); app.selected_generator = None; app.edit_forest = None; app.edit_object = None; }
                     if r.double_clicked() { add = Some(*id); }
                     r.dnd_set_drag_payload(LibDrag::Generator(*id));
-                    r.context_menu(|ui| {
+                    r.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                         if ui.button(t("Add to the project")).clicked() { add = Some(*id); ui.close_menu(); }
                         if ui.button(t("Duplicate")).clicked() { copy = Some(*id); ui.close_menu(); }
                         if ui.add_enabled(!*built_in, egui::Button::new(t("Delete"))).clicked() { delete = Some(*id); ui.close_menu(); }
@@ -744,7 +839,7 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
     let columns = grid_columns(ui, side);
     let show_roads = current.as_deref().is_none_or(|f| f == roads_label);
     let show_forests = current.as_deref().is_none_or(|f| f == forests_label);
-    let forests: Vec<(String, Option<String>)> = if show_forests { gen::forest_preset_names().into_iter().map(|n| { let m = preset_model(app, &n, &[]).map(|m| ObjectStore::normalize_path(&m)); (n, m) }).collect() } else { Vec::new() };
+    let forests: Vec<(String, Option<String>)> = if show_forests { let own = app.library.forest_presets.clone(); own.iter().map(|p| p.name.clone()).chain(gen::forest_preset_names()).map(|n| { let m = preset_model(app, &n, &own).map(|m| ObjectStore::normalize_path(&m)); (n, m) }).collect() } else { Vec::new() };
     let road_model = |app: &App, family: &str| app.road_catalog.iter().filter(|c| c.family == family && c.category == 3).min_by_key(|c| c.path.len()).map(|c| {
         let path = ObjectStore::normalize_path(&c.path);
         if path.contains('\\') { path.strip_prefix("p:\\").unwrap_or(&path).to_string() } else { format!("dz\\structures\\roads\\parts\\{path}") }
@@ -754,6 +849,8 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
     enum Entry { Road(String, Option<String>), Forest(String, Option<String>), Preset(u64, String, Option<String>) }
     let entries: Vec<Entry> = families.into_iter().map(|f| { let m = road_model(app, &f); Entry::Road(f, m) }).chain(forests.into_iter().map(|(n, m)| Entry::Forest(n, m))).chain(shown.into_iter().map(|(a, b, c)| Entry::Preset(a, b, c))).collect();
     let mut add_forest_now = None;
+    let (mut copy_forest, mut delete_forest, mut copy_object) = (None, None, None);
+    let own_forests: Vec<String> = app.library.forest_presets.iter().map(|p| p.name.clone()).collect();
     let mut delete = None;
     egui::ScrollArea::vertical().id_salt("presets").auto_shrink([false, false]).show(ui, |ui| {
         for chunk in entries.chunks(columns) {
@@ -762,10 +859,16 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
                     match e {
                         Entry::Forest(name, model) => {
                             let image = model.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
-                            let r = tile(ui, side, name, "F", Color32::from_rgb(44, 96, 56), false, image);
+                            let r = tile(ui, side, name, "F", Color32::from_rgb(44, 96, 56), app.edit_forest.as_ref() == Some(name), image);
+                            if r.clicked() {
+                                app.edit_forest = Some(name.clone());
+                                app.edit_object = None;
+                                app.edit_generator = None;
+                                app.selected_generator = None;
+                            }
                             if r.double_clicked() { add_forest_now = Some(name.clone()); }
                             r.dnd_set_drag_payload(LibDrag::ForestPreset(name.clone()));
-                            r.context_menu(|ui| { if ui.button(t("Add to the project")).clicked() { add_forest_now = Some(name.clone()); ui.close_menu(); } });
+                            r.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Add to the project")).clicked() { add_forest_now = Some(name.clone()); ui.close_menu(); } if ui.button(t("Duplicate")).clicked() { copy_forest = Some(name.clone()); ui.close_menu(); } if ui.add_enabled(own_forests.contains(name), egui::Button::new(t("Delete"))).clicked() { delete_forest = Some(name.clone()); ui.close_menu(); } });
                         }
                         Entry::Road(family, model) => {
                             let image = model.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
@@ -775,7 +878,7 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
                                 app.line.action = LineAction::Road;
                                 app.mode = Mode::Lines;
                             }
-                            r.context_menu(|ui| { if ui.button(t("Road catalog...")).clicked() { app.line.family = family.clone(); app.dialog = Dialog::RoadCatalog; ui.close_menu(); } });
+                            r.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Road catalog...")).clicked() { app.line.family = family.clone(); app.dialog = Dialog::RoadCatalog; ui.close_menu(); } });
                         }
                         Entry::Preset(id, name, first) => {
                             let image = first.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
@@ -784,6 +887,7 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
                                 app.edit_object = Some(*id);
                                 app.selected_generator = None;
                                 app.edit_generator = None;
+                                app.edit_forest = None;
                                 app.place.preset = Some(*id);
                                 if app.mode == Mode::Select { app.mode = Mode::Place; }
                             }
@@ -793,7 +897,7 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
                                 }
                             }
                             r.dnd_set_drag_payload(LibDrag::ObjectPreset(*id));
-                            r.context_menu(|ui| { if ui.button(t("Delete")).clicked() { delete = Some(*id); ui.close_menu(); } });
+                            r.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Duplicate")).clicked() { copy_object = Some(*id); ui.close_menu(); } if ui.button(t("Delete")).clicked() { delete = Some(*id); ui.close_menu(); } });
                         }
                     }
                 }
@@ -801,6 +905,9 @@ pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
         }
     });
     if let Some(name) = add_forest_now { add_forest(app, &name, None); }
+    if let Some(name) = copy_forest { duplicate_forest_preset(app, &name); }
+    if let Some(name) = delete_forest { remove_forest_preset(app, &name); }
+    if let Some(id) = copy_object { duplicate_object_preset(app, id); }
     if let Some(id) = delete {
         app.library.objects.retain(|p| p.id != id);
         if app.edit_object == Some(id) { app.edit_object = None; }
@@ -845,6 +952,10 @@ pub fn details(app: &mut App, ui: &mut egui::Ui) -> bool {
         instance_details(app, ui, id);
         return true;
     }
+    if let Some(name) = app.edit_forest.clone() {
+        forest_preset_details(app, ui, &name);
+        return true;
+    }
     if let Some(id) = app.edit_object {
         object_preset_details(app, ui, id);
         return true;
@@ -856,7 +967,92 @@ pub fn details(app: &mut App, ui: &mut egui::Ui) -> bool {
     false
 }
 
+fn unused_name(base: &str, taken: impl Fn(&str) -> bool) -> String {
+    let copy = t("copy");
+    (1..).map(|n| if n == 1 { format!("{base} ({copy})") } else { format!("{base} ({copy} {n})") }).find(|n| !taken(n)).unwrap()
+}
+
+fn duplicate_object_preset(app: &mut App, id: u64) {
+    let Some(mut p) = app.library.objects.iter().find(|p| p.id == id).cloned() else { return };
+    p.id = new_id();
+    p.name = unused_name(&p.name, |n| app.library.objects.iter().any(|x| x.name == n));
+    app.edit_object = Some(p.id);
+    app.edit_forest = None;
+    app.library.objects.push(p);
+    app.lib_dirty = true;
+}
+
+/// A forest preset as it stands now, from the library or the ones the program comes with.
+fn forest_preset(app: &App, name: &str) -> Option<forest_core::user_presets::UserPreset> {
+    use forest_core::user_presets::UserPreset;
+    app.library.forest_presets.iter().find(|p| p.name == name).cloned().or_else(|| forest_core::species::zone_presets().iter().find(|p| p.name == name).map(UserPreset::from_builtin))
+}
+
+fn duplicate_forest_preset(app: &mut App, name: &str) {
+    let Some(mut p) = forest_preset(app, name) else { return };
+    p.name = unused_name(&p.name, |n| app.library.forest_presets.iter().any(|x| x.name == n) || gen::forest_preset_names().iter().any(|x| x == n));
+    app.edit_forest = Some(p.name.clone());
+    app.library.forest_presets.push(p);
+    app.lib_dirty = true;
+}
+
+fn remove_forest_preset(app: &mut App, name: &str) {
+    app.library.forest_presets.retain(|p| p.name != name);
+    if app.edit_forest.as_deref() == Some(name) { app.edit_forest = None; }
+    app.lib_dirty = true;
+}
+
+fn forest_preset_details(app: &mut App, ui: &mut egui::Ui, name: &str) {
+    let Some(current) = forest_preset(app, name) else { app.edit_forest = None; return };
+    let index = app.library.forest_presets.iter().position(|p| p.name == name);
+    let Some(index) = index else {
+        // The presets that come with the program stay as they are.
+        ui.strong(name);
+        ui.weak(t("A built-in preset. Duplicate it to make your own version."));
+        ui.label(format!("{}: {:.0}", t("Per hectare"), current.density_per_ha));
+        for (m, k) in current.weights.iter().take(30) { ui.label(format!("{k:.2}  {m}")); }
+        ui.horizontal_wrapped(|ui| {
+            if ui.button(t("Duplicate")).clicked() { duplicate_forest_preset(app, name); }
+            if ui.button(t("Add to the project")).clicked() { add_forest(app, name, None); }
+        });
+        return;
+    };
+    let model = app.place.model.clone();
+    let taken: Vec<String> = app.library.forest_presets.iter().map(|p| p.name.clone()).chain(gen::forest_preset_names()).filter(|n| n != name).collect();
+    let p = &mut app.library.forest_presets[index];
+    let before = p.clone();
+    row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut p.name); });
+    if p.name.trim().is_empty() || taken.contains(&p.name) { p.name = before.name.clone(); }
+    number(ui, t("Per hectare"), &mut p.density_per_ha, 1.0..=1500.0);
+    let mut remove = None;
+    let list = ui.vertical(|ui| {
+        for (i, (m, k)) in p.weights.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.add(egui::DragValue::new(k).speed(0.05).range(0.01..=100.0));
+                ui.label(m.as_str());
+                if ui.small_button("✖").clicked() { remove = Some(i); }
+            });
+        }
+    }).response;
+    let stem = |m: &str| m.rsplit('\\').next().unwrap_or(m).trim_end_matches(".p3d").to_string();
+    if let Some(m) = list.dnd_release_payload::<String>() { let s = stem(&m); if !p.weights.iter().any(|w| w.0 == s) { p.weights.push((s, 1.0)); } }
+    if let Some(i) = remove { p.weights.remove(i); }
+    if ui.button(format!("+ {}", t("Add selected model"))).on_hover_text(t("Models can also be dropped here.")).clicked() {
+        if let Some(m) = &model { let s = stem(m); if !p.weights.iter().any(|w| w.0 == s) { p.weights.push((s, 1.0)); } }
+    }
+    let changed = *p != before;
+    let renamed = (p.name != before.name).then(|| p.name.clone());
+    if changed { app.lib_dirty = true; }
+    if let Some(n) = renamed { app.edit_forest = Some(n); }
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(t("Duplicate")).clicked() { let n = app.library.forest_presets[index].name.clone(); duplicate_forest_preset(app, &n); }
+        if ui.button(t("Add to the project")).clicked() { let n = app.library.forest_presets[index].name.clone(); add_forest(app, &n, None); }
+        if ui.button(t("Delete")).clicked() { let n = app.library.forest_presets[index].name.clone(); remove_forest_preset(app, &n); }
+    });
+}
+
 fn object_preset_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
+    if ui.button(t("Duplicate")).clicked() { duplicate_object_preset(app, id); return; }
     let selected = app.place.model.clone();
     let Some(p) = app.library.objects.iter_mut().find(|p| p.id == id) else { app.edit_object = None; return };
     let before = p.clone();
@@ -898,6 +1094,7 @@ fn generator_preset_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut g.name); });
     ui.weak(t(g.kind.type_name()));
     let sample = kind_ui(ui, &mut g.kind, &cx);
+    keep_forest_presets(&mut app.library, &mut app.lib_dirty, cx.loaded.take());
     if sample { app.sampling = Some(id); }
     let released = !ui.ctx().input(|i| i.pointer.any_down());
     app.lib_dirty |= released;
@@ -918,6 +1115,7 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut g.name); });
     ui.weak(t(g.kind.type_name()));
     ui.label(tf("{0} objects", &[&g.objects.len().to_string()]));
+    if !g.removed.is_empty() { ui.label(tf("{0} objects removed", &[&g.removed.len().to_string()])); }
     match g.kind.target_kind() {
         TargetKind::Point => {
             if let GenTarget::Point(p) = &mut g.target {
@@ -936,14 +1134,14 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
             };
             row(ui, &t("Works on"), |ui| {
                 egui::ComboBox::from_id_salt("target").selected_text(shown).show_ui(ui, |ui| {
-                    if kind == TargetKind::Area { ui.selectable_value(&mut g.target, GenTarget::Map, t("Whole map")); }
+                    if matches!(kind, TargetKind::Area | TargetKind::Any) { ui.selectable_value(&mut g.target, GenTarget::Map, t("Whole map")); }
                     for l in &shape_layers { ui.selectable_value(&mut g.target, GenTarget::Layer(l.clone()), l); }
-                    if kind == TargetKind::Line {
+                    if matches!(kind, TargetKind::Line | TargetKind::Any) {
                         for (id, name) in &routes { ui.selectable_value(&mut g.target, GenTarget::Route(*id), name); }
                     }
                 });
             });
-            if kind == TargetKind::Line && ui.add_enabled(selected_route.is_some(), egui::Button::new(t("Use selected route"))).clicked() {
+            if matches!(kind, TargetKind::Line | TargetKind::Any) && ui.add_enabled(selected_route.is_some(), egui::Button::new(t("Use selected route"))).clicked() {
                 if let Some(id) = selected_route { g.target = GenTarget::Route(id); }
             }
             if ui.add_enabled(selected_shape.is_some(), egui::Button::new(t("Use selected shape"))).clicked() {
@@ -953,6 +1151,7 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     }
     ui.separator();
     if kind_ui(ui, &mut g.kind, &cx) { app.sampling = Some(id); }
+    keep_forest_presets(&mut app.library, &mut app.lib_dirty, cx.loaded.take());
     if let Some(d) = &mut app.doc { d.history.revision += ui.ctx().input(|i| u64::from(i.pointer.any_released())); }
     ui.separator();
     ui.horizontal_wrapped(|ui| {
@@ -974,7 +1173,7 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
     for (id, name, kind, count) in rows.iter().filter(|r| r.1.to_ascii_lowercase().contains(filter)) {
         let row = ui.selectable_label(app.selected_generator == Some(*id), format!("{name}  [{}]  ({count})", t(kind)));
         if row.clicked() { action = Some((*id, 0)); }
-        row.context_menu(|ui| {
+        row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
             for (code, label) in [(1u8, "Generate"), (2, "Select objects"), (3, "Duplicate"), (4, "Save as preset"), (5, "Delete generator"), (6, "Delete generator, keep objects")] {
                 if ui.button(t(label)).clicked() { action = Some((*id, code)); ui.close_menu(); }
             }
@@ -1031,7 +1230,12 @@ pub fn delete_instance(app: &mut App, id: u64, with_objects: bool) {
     let label = t("Delete generator");
     doc.history.push(label.clone(), Change::Generators(before));
     if with_objects {
-        let change: Vec<_> = g.objects.iter().filter_map(|id| doc.world.objects.remove(*id).map(|o| (*id, Some(o), None))).collect();
+        let mut change: Vec<_> = g.objects.iter().filter_map(|id| doc.world.objects.remove(*id).map(|o| (*id, Some(o), None))).collect();
+        for saved in &g.removed {
+            let model = doc.world.objects.intern(&saved.model);
+            let o = saved.object(model);
+            change.push((doc.world.objects.insert(o), None, Some(o)));
+        }
         doc.history.push(label.clone(), Change::Objects(change));
         doc.history.group_last(2, label);
         doc.dirty.objects = true;
@@ -1069,19 +1273,19 @@ fn add_kind(app: &mut App, kind: GeneratorKind, name: String, drop: Option<Dropp
         let shape = layer.shapes.get(s)?;
         let fits = match wants {
             TargetKind::Area => shape.kind == ShapeKind::Polygon,
-            TargetKind::Line => shape.kind != ShapeKind::Point,
+            TargetKind::Line | TargetKind::Any => shape.kind != ShapeKind::Point,
             _ => false,
         };
         fits.then(|| GenTarget::Shape { layer: layer.name.clone(), index: s })
     });
-    let on_route = drop.and_then(|d| d.route).or(selected_route).filter(|_| wants == TargetKind::Line).map(GenTarget::Route);
+    let on_route = drop.and_then(|d| d.route).or(selected_route).filter(|_| matches!(wants, TargetKind::Line | TargetKind::Any)).map(GenTarget::Route);
     // Dropped on a road, the road wins over a shape that merely happens to be selected.
     let usable = if drop.is_some_and(|d| d.route.is_some() && d.shape.is_none()) { on_route.clone().or(usable) } else { usable.or(on_route) };
     let target = match (wants, usable, drop) {
         (_, Some(t), _) => t,
         (TargetKind::Point, _, Some(d)) => GenTarget::Point(d.at),
         (TargetKind::Point, _, None) => { let s = doc.world.meta.size_m(); GenTarget::Point([s * 0.5, s * 0.5]) }
-        (TargetKind::Area | TargetKind::Map, _, _) => GenTarget::Map,
+        (TargetKind::Area | TargetKind::Map | TargetKind::Any, _, _) => GenTarget::Map,
         (TargetKind::Line, _, _) => {
             app.warn(t("Drop this generator on a line or a road, or select one first"));
             return;
@@ -1097,7 +1301,7 @@ fn add_kind(app: &mut App, kind: GeneratorKind, name: String, drop: Option<Dropp
         GeneratorKind::Fence(g) => !g.model.is_empty() || g.preset.is_some(),
         _ => true,
     };
-    doc.world.generators.push(GeneratorInstance { id, name, kind, target, objects: Vec::new(), modifier: None });
+    doc.world.generators.push(GeneratorInstance { id, name, kind, target, objects: Vec::new(), modifier: None, removed: Vec::new() });
     doc.history.push(t("Add generator"), Change::Generators(before));
     app.selected_generator = Some(id);
     app.selected_modifier = None;
@@ -1135,6 +1339,7 @@ pub fn run_generator(app: &mut App, id: u64) {
     let db = app.db.clone();
     let assets = app.assets.clone();
     let presets = app.library.objects.clone();
+    let library_forest = app.library.all_forest_presets();
     let world = &doc.world;
     let polygons = target_shapes(world, &g.target, ShapeKind::Polygon);
     let lines = target_lines(world, &g.target);
@@ -1152,8 +1357,13 @@ pub fn run_generator(app: &mut App, id: u64) {
                 shapes.push(MapShape { kind: ShapeKind::Polygon, points: vec![[0.0, 0.0], [s, 0.0], [s, s], [0.0, s]], attributes: Vec::new() });
             }
             let areas = if shapes.is_empty() { Vec::new() } else { vec![(ShapeLayer { name: g.name.clone(), visible: true, shapes }, f.preset.clone())] };
+            let layer_shapes = areas.first().map(|a: &(ShapeLayer, String)| a.0.clone());
+            let layers = f.layers.clone();
             let satellite = world.satellite.as_ref().filter(|_| wants_filter || gen::forest_needs_satellite(&f.project)).map(gen::satellite_for_forest);
-            let forest = *f;
+            let mut forest = *f;
+            for p in library_forest {
+                if !forest.user_presets.iter().any(|x| x.name == p.name) { forest.user_presets.push(p); }
+            }
             let skip_surfaces: Vec<(usize, f32)> = forest.skip_surfaces.iter().filter_map(|(l, m)| Some((world.layers.iter().position(|x| x.name == *l)?, *m))).collect();
             let keep_out = (forest.avoid_roads.is_some() || forest.avoid_buildings.is_some()).then(|| {
                 let buildings = forest.avoid_buildings.map(|_| world.objects.iter().filter_map(|(_, o)| {
@@ -1165,9 +1375,9 @@ pub fn run_generator(app: &mut App, id: u64) {
                 }).collect()).unwrap_or_default();
                 gen::KeepOut { roads: if forest.avoid_roads.is_some() { world.routes.iter().map(|r| r.centerline.clone()).collect() } else { Vec::new() }, road_margin: forest.avoid_roads.unwrap_or(0.0), buildings, building_margin: forest.avoid_buildings.unwrap_or(0.0) }
             });
-            let req = gen::ForestRequest { project: forest.project, zones, areas, satellite, color_filter: forest.color_filter, edge_presets: forest.edge_presets, user_presets: forest.user_presets, skip_surfaces, keep_out };
+            let req = gen::ForestRequest { project: forest.project, zones, areas, area_density: None, satellite, color_filter: forest.color_filter, edge_presets: forest.edge_presets, user_presets: forest.user_presets, skip_surfaces, keep_out };
             app.spawn(label, move |job| {
-                let (objects, notes) = gen::generate_forest(&mut lite, &assets, req, job)?;
+                let (objects, notes) = gen::generate_forest_layers(&mut lite, &assets, req, layer_shapes, &layers, job)?;
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| {
                     store_generated(a, id, models, objects);
@@ -1257,8 +1467,14 @@ pub fn run_generator(app: &mut App, id: u64) {
         GeneratorKind::River(r) => {
             let Some(line) = lines.first().map(|l| gen::prepare_line(l, &r.line)) else { return };
             app.spawn(label, move |_| {
-                let (modifier, surface) = gen::river_modifier(&lite.base, 0, &lite.meta.name.clone(), &line, &r).ok_or_else(|| anyhow::anyhow!("The line is too short"))?;
-                let objects = gen::river_objects(&mut lite, &db, &modifier, &surface, &r);
+                // The bed is cut along the models, wherever they ended up.
+                let chain = gen::fit_river(&line, &r);
+                let center = chain.as_ref().map_or(&line, |c| &c.center);
+                let (modifier, surface) = gen::river_modifier(&lite.base, 0, &lite.meta.name.clone(), center, &r).ok_or_else(|| anyhow::anyhow!("The line is too short"))?;
+                let objects = match &chain {
+                    Some(c) => gen::river_chain_objects(&mut lite, &modifier, &surface, &r, c),
+                    None => gen::river_objects(&mut lite, &db, &modifier, &surface, &r),
+                };
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| {
                     store_generated(a, id, models, objects);
@@ -1266,11 +1482,64 @@ pub fn run_generator(app: &mut App, id: u64) {
                 }) as Finish)
             });
         }
+        GeneratorKind::LineTerrain(g) => {
+            let Some(line) = lines.first().map(|l| gen::prepare_line(l, &g.line)) else { return };
+            app.spawn(label, move |_| {
+                let modifier = gen::road_modifier(&lite.base, 0, &lite.meta.name.clone(), &line, g.width, g.falloff, &[], &g.grading, &[]).ok_or_else(|| anyhow::anyhow!("The line is too short"))?;
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, Vec::new(), Vec::new());
+                    store_modifier(a, id, modifier);
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Remove(r) => remove_objects(app, id, &r, polygons, lines),
         GeneratorKind::Terrain(p) => height_job(app, label, move |h, job| gen::generate_terrain(h, &p, job)),
         GeneratorKind::Erosion(p) => height_job(app, label, move |h, job| gen::hydraulic_erosion(h, &p, job)),
         GeneratorKind::ThermalErosion { iterations, talus } => height_job(app, label, move |h, job| gen::thermal_erosion(h, iterations, talus, job)),
         GeneratorKind::Terraces { step, sharpness } => height_job(app, label, move |h, _| gen::terrace(h, step, sharpness)),
     }
+}
+
+/// Takes objects off the map, after putting back what the last run took.
+fn remove_objects(app: &mut App, id: u64, r: &dz_core::library::RemoveGen, polygons: Vec<MapShape>, lines: Vec<Vec<[f32; 2]>>) {
+    let Some(doc) = &mut app.doc else { return };
+    let Some(index) = doc.world.generators.iter().position(|g| g.id == id) else { return };
+    let name = doc.world.generators[index].name.clone();
+    let before = doc.world.generators.clone();
+    let world = &mut doc.world;
+    let mut change = Vec::new();
+    let mut back = std::collections::HashSet::new();
+    for saved in std::mem::take(&mut world.generators[index].removed) {
+        let model = world.objects.intern(&saved.model);
+        let o = saved.object(model);
+        let new = world.objects.insert(o);
+        back.insert(new);
+        change.push((new, None, Some(o)));
+    }
+    let mut owned: std::collections::HashSet<u32> = world.generators.iter().flat_map(|g| g.objects.iter().copied()).collect();
+    owned.extend(world.routes.iter().flat_map(|r| r.objects.iter().copied()));
+    let candidates: Vec<(u32, (f32, f32, u32))> = world.objects.iter().filter(|(i, o)| !owned.contains(i) && o.flags & dz_core::objects::FLAG_LOCKED == 0).map(|(i, o)| (i, (o.x, o.z, o.model))).collect();
+    let items: Vec<(f32, f32, u32)> = candidates.iter().map(|c| c.1).collect();
+    let area = (!polygons.is_empty()).then(|| dz_core::shapes::PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: polygons }));
+    let models = model_list(world);
+    let hits = gen::remove_hits(&items, &models, r, area.as_ref(), &lines);
+    let mut removed = Vec::new();
+    for ((i, _), _) in candidates.iter().zip(&hits).filter(|(_, hit)| **hit) {
+        let Some(o) = world.objects.remove(*i) else { continue };
+        removed.push(dz_core::library::RemovedObject::new(&models[o.model as usize], &o));
+        // Back and away again in one run is no change at all.
+        if back.remove(i) { change.retain(|c: &(u32, Option<Obj>, Option<Obj>)| c.0 != *i); } else { change.push((*i, Some(o), None)); }
+    }
+    let count = removed.len();
+    world.generators[index].removed = removed;
+    doc.history.push(name.clone(), Change::Generators(before));
+    doc.history.push(name.clone(), Change::Objects(change));
+    doc.history.group_last(2, name);
+    doc.dirty.objects = true;
+    let doc = app.doc.as_ref().unwrap();
+    app.selection.retain(|i| doc.world.objects.get(*i).is_some());
+    app.selection_rev += 1;
+    app.info(tf("{0} objects removed", &[&count.to_string()]));
 }
 
 /// What a generator fills: its polygons, or the whole map without any.

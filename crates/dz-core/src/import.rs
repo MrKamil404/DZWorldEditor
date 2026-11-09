@@ -54,8 +54,19 @@ pub fn mask_from_image(img: &RgbImage, layers: &mut Vec<SurfaceLayer>, job: &Job
     Ok(mask)
 }
 
+/// Where a Terrain Builder object has its ground origin. Terrain Builder keeps the centre of a
+/// tilted model over its position only horizontally, so what the model's height above its
+/// origin leans away is not part of the position it stores.
+pub fn tb_origin(x: f32, z: f32, yaw: f32, pitch: f32, roll: f32, scale: f32, center_y: f32) -> (f32, f32) {
+    if pitch == 0.0 && roll == 0.0 {
+        return (x, z);
+    }
+    let up = crate::objects::rotation(yaw, pitch, roll, scale)[1];
+    (x - up[0] * center_y, z - up[2] * center_y)
+}
+
 /// Parses a Terrain Builder object list.
-pub fn parse_tb_objects(text: &str, w: &mut World, assets: &AssetIndex, absolute: bool) -> (Vec<Obj>, Vec<String>) {
+pub fn parse_tb_objects(text: &str, w: &mut World, assets: &AssetIndex, db: &ModelDb, absolute: bool) -> (Vec<Obj>, Vec<String>) {
     let (ex, ey) = (w.meta.easting as f32, w.meta.northing as f32);
     let mut out = Vec::new();
     let mut missing: BTreeMap<String, usize> = BTreeMap::new();
@@ -87,7 +98,9 @@ pub fn parse_tb_objects(text: &str, w: &mut World, assets: &AssetIndex, absolute
             flags |= FLAG_UNDERGROUND;
         }
         let (yaw, pitch, roll) = from_terrain_builder(v(3), v(4), v(5));
-        out.push(Obj { x: v(1) - shift.0, z: v(2) - shift.1, yaw, pitch, roll, scale: if v(6) > 0.0 { v(6) } else { 1.0 }, elevation: v(7), model, flags });
+        let scale = if v(6) > 0.0 { v(6) } else { 1.0 };
+        let (x, z) = tb_origin(v(1) - shift.0, v(2) - shift.1, yaw, pitch, roll, scale, db.get(&path).center[1]);
+        out.push(Obj { x, z, yaw, pitch, roll, scale, elevation: v(7), model, flags });
     }
     (out, missing.into_iter().map(|(k, n)| format!("{k} ({n})")).collect())
 }
@@ -126,6 +139,7 @@ pub struct FolderScan {
     pub satellite: Vec<PathBuf>,
     pub mask: Vec<PathBuf>,
     pub layers_cfg: Vec<PathBuf>,
+    pub holes_cfg: Vec<PathBuf>,
     pub objects: Vec<PathBuf>,
     pub tv4p: Vec<PathBuf>,
     pub tile_dir: Option<PathBuf>,
@@ -171,6 +185,8 @@ fn walk(root: &Path, s: &mut FolderScan, found: &mut HashMap<PathBuf, (usize, u6
                 &mut s.asc
             } else if name == "layers.cfg" {
                 &mut s.layers_cfg
+            } else if name == "holes.cfg" {
+                &mut s.holes_cfg
             } else if name.ends_with(".tv4p") {
                 &mut s.tv4p
             } else if name.ends_with(".tml") {
@@ -217,6 +233,36 @@ fn walk(root: &Path, s: &mut FolderScan, found: &mut HashMap<PathBuf, (usize, u6
     }
 }
 
+/// How many neighbouring raised objects of one kind end up level with each other on a
+/// heightmap. Elevations in layers are relative to the terrain, so deck after deck of a bridge
+/// only lines up on the terrain the project was really built on.
+fn level_pairs(raised: &[(u32, i32, f64, f64, f32)], asc: &crate::terrain::AscGrid) -> usize {
+    let height = |o: &(u32, i32, f64, f64, f32)| asc.map.sample((o.2 - asc.xll) as f32, (o.3 - asc.yll) as f32) + o.4;
+    raised.windows(2).filter(|w| {
+        let (a, b) = (&w[0], &w[1]);
+        a.0 == b.0 && a.1 == b.1 && (a.2 - b.2).hypot(a.3 - b.3) < 60.0 && (height(a) - height(b)).abs() < 0.05
+    }).count()
+}
+
+/// Puts first the heightmap the objects of the layers fit, when several lie side by side.
+fn choose_heightmap(s: &mut FolderScan) {
+    if s.asc.len() < 2 {
+        return;
+    }
+    let mut raised = Vec::new();
+    for l in s.layers.iter().filter(|l| l.import) {
+        let Ok(layer) = crate::tv4l::load(&l.path) else { continue };
+        raised.extend(layer.objects.iter().filter(|o| o.elevation.abs() >= 0.5).map(|o| (o.template, (o.yaw * 10.0).round() as i32, o.x, o.z, o.elevation)));
+    }
+    raised.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)).then(a.2.total_cmp(&b.2)));
+    let scores: Vec<usize> = s.asc.iter().map(|p| read_asc(p).map_or(0, |a| level_pairs(&raised, &a))).collect();
+    let best = (0..scores.len()).max_by_key(|i| (scores[*i], std::cmp::Reverse(*i))).unwrap_or(0);
+    if scores[best] > scores[0] {
+        let chosen = s.asc.remove(best);
+        s.asc.insert(0, chosen);
+    }
+}
+
 /// Looks through a project folder (or the folder of a `.tv4p`). Files may be anywhere below
 /// it: they are recognised by content and name, not by where the program expects them.
 pub fn scan_folder(root: &Path) -> FolderScan {
@@ -236,6 +282,7 @@ pub fn scan_folder(root: &Path) -> FolderScan {
                 s.satellite.extend(wider.satellite.into_iter().filter(|p| !p.starts_with(root)));
                 s.mask.extend(wider.mask.into_iter().filter(|p| !p.starts_with(root)));
                 s.layers_cfg.extend(wider.layers_cfg.into_iter().filter(|p| !p.starts_with(root)));
+                s.holes_cfg.extend(wider.holes_cfg.into_iter().filter(|p| !p.starts_with(root)));
                 s.wrp.extend(wider.wrp.into_iter().filter(|p| !p.starts_with(root)));
                 if s.libraries.is_empty() {
                     s.libraries = wider.libraries;
@@ -259,11 +306,20 @@ pub fn scan_folder(root: &Path) -> FolderScan {
             }
         }
     }
+    // Holes belong to the built map, whether or not its WRP was already found.
+    if s.holes_cfg.is_empty() {
+        let name = root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let built = name.strip_suffix("Source").or(name.strip_suffix("source")).and_then(|b| Some(root.parent()?.join(b.trim_end_matches(['_', '-', ' ']))));
+        let beside_wrp = s.wrp.iter().map(|p| p.with_file_name("holes.cfg"));
+        let in_built = built.iter().flat_map(|b| [b.join("world").join("holes.cfg"), b.join("holes.cfg")]);
+        s.holes_cfg = beside_wrp.chain(in_built).filter(|p| p.is_file()).take(1).collect();
+    }
     // Closest to the root first, then the largest.
     let rank = |p: &PathBuf| found.get(p).map(|(d, n)| (*d, std::cmp::Reverse(*n))).unwrap_or((usize::MAX, std::cmp::Reverse(0)));
-    for list in [&mut s.wrp, &mut s.asc, &mut s.satellite, &mut s.mask, &mut s.layers_cfg, &mut s.tv4p] {
+    for list in [&mut s.wrp, &mut s.asc, &mut s.satellite, &mut s.mask, &mut s.layers_cfg, &mut s.holes_cfg, &mut s.tv4p] {
         list.sort_by_key(rank);
     }
+    choose_heightmap(&mut s);
     // The project that owns the layers is the one with a `<name>.Layers` folder beside it.
     s.tv4p.sort_by_key(|p| !p.with_extension("Layers").is_dir());
     s.objects.sort();
@@ -290,6 +346,7 @@ pub struct ImportPlan {
     pub satellite: Option<PathBuf>,
     pub mask: Option<PathBuf>,
     pub layers_cfg: Option<PathBuf>,
+    pub holes_cfg: Option<PathBuf>,
     pub tv4p: Option<PathBuf>,
     pub libraries: Vec<PathBuf>,
     pub layers: Vec<LayerFile>,
@@ -315,6 +372,7 @@ impl ImportPlan {
             satellite: scan.satellite.first().filter(|_| source).cloned(),
             mask: scan.mask.first().filter(|_| source).cloned(),
             layers_cfg: scan.layers_cfg.first().cloned(),
+            holes_cfg: scan.holes_cfg.first().cloned(),
             tv4p: scan.tv4p.first().cloned(),
             libraries: scan.libraries.clone(),
             layers: scan.layers.clone(),
@@ -357,6 +415,7 @@ fn stitch_tiles(wrp: &Wrp, dir: &Path, job: &Job) -> Result<(RgbImage, MaskMap, 
         }
     }
     let mat_text = std::fs::read_to_string(sample_rvmat.context("Built map has no materials")?)?;
+    let six = mat_text.contains("\"TerrainX\"");
     let num_after = |key: &str| -> Option<f32> {
         let line = mat_text.lines().find(|l| l.contains(key))?;
         line.split('{').nth(1)?.split(',').next()?.trim().parse().ok()
@@ -424,7 +483,8 @@ fn stitch_tiles(wrp: &Wrp, dir: &Path, job: &Job) -> Result<(RgbImage, MaskMap, 
                 let mp = (ty * m.0 + tx) * 4;
                 let p = &m.1[mp..mp + 4];
                 // The strongest channel selects the slot.
-                let slot = if p[3] < 200 && count >= 5 && p[0].max(p[1]).max(p[2]) < 128 { 4 }
+                let slot = if six && p[2] >= 128 && p[2] >= p[0] && p[2] >= p[1] { if p[3] >= 192 { 3 } else if p[3] >= 64 { 4 } else { 5 } }
+                    else if !six && p[3] < 200 && count >= 5 && p[0].max(p[1]).max(p[2]) < 128 { 4 }
                     else if p[0] >= 128 && p[0] >= p[1] && p[0] >= p[2] { 1 }
                     else if p[1] >= 128 && p[1] >= p[2] { 2 }
                     else if p[2] >= 128 { 3 } else { 0 };
@@ -509,9 +569,6 @@ fn world_from_asc(asc: &Path, plan: &ImportPlan, job: &Job) -> Result<World> {
 /// Replaces satellite, mask and surfaces with the pictures chosen in the plan.
 fn apply_pictures(w: &mut World, plan: &ImportPlan, job: &Job) -> Result<()> {
     if let Some(p) = &plan.layers_cfg {
-        if let Ok(text) = std::fs::read(p.with_file_name("holes.cfg")) {
-            w.holes = crate::holes::parse(&String::from_utf8_lossy(&text));
-        }
         if plan.asc.is_some() || plan.mask.is_some() {
             w.layers = crate::layers_cfg::parse(&String::from_utf8_lossy(&std::fs::read(p)?))?;
         }
@@ -543,7 +600,7 @@ fn frame_offset(all: &[crate::tv4l::TbObject], meta: &WorldMeta) -> Option<(f64,
 }
 
 /// Adds Terrain Builder layers to the world, each as an object layer of its own.
-pub fn add_tb_layers(w: &mut World, files: &[LayerFile], libraries: &[PathBuf], job: &Job) -> Result<usize> {
+pub fn add_tb_layers(w: &mut World, files: &[LayerFile], libraries: &[PathBuf], db: &ModelDb, job: &Job) -> Result<usize> {
     job.stage("Reading template libraries");
     let templates = crate::tv4l::read_libraries(libraries);
     job.log(format!("{} templates in {} libraries", templates.len(), libraries.len()));
@@ -585,7 +642,10 @@ pub fn add_tb_layers(w: &mut World, files: &[LayerFile], libraries: &[PathBuf], 
                 continue;
             };
             let (yaw, pitch, roll) = from_terrain_builder(o.yaw, o.pitch, o.roll);
-            let mut obj = Obj { x: (o.x - ex) as f32, z: (o.z - ey) as f32, elevation: o.elevation, yaw, pitch, roll, scale: if o.scale > 0.0 { o.scale } else { 1.0 }, model, flags: 0 };
+            let scale = if o.scale > 0.0 { o.scale } else { 1.0 };
+            let center_y = if pitch == 0.0 && roll == 0.0 { 0.0 } else { db.get(&w.objects.models[model as usize].path).center[1] };
+            let (x, z) = tb_origin((o.x - ex) as f32, (o.z - ey) as f32, yaw, pitch, roll, scale, center_y);
+            let mut obj = Obj { x, z, elevation: o.elevation, yaw, pitch, roll, scale, model, flags: 0 };
             obj.set_layer(layer);
             w.objects.insert(obj);
         }
@@ -618,6 +678,12 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
     };
     w.meta.max_tile_surfaces = plan.max_tile_surfaces.clamp(1, 6);
     apply_pictures(&mut w, plan, job)?;
+    if let Some(p) = &plan.holes_cfg {
+        let text = std::fs::read(p).with_context(|| format!("{}", p.display()))?;
+        let (cols, rows) = (w.height.cols as u32, w.height.rows as u32);
+        w.holes = crate::holes::parse(&String::from_utf8_lossy(&text)).into_iter().filter(|t| t[0] < cols && t[1] < rows).collect();
+        job.log(format!("{}: {} terrain holes", p.display(), w.holes.len()));
+    }
     let over = crate::mask_limit::scan(&w).len();
     if over > 0 {
         job.log(format!("{over} texture tiles use more than {} surfaces; Project settings can check and fix them", w.meta.max_tile_surfaces));
@@ -632,7 +698,7 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
     }
     let chosen: Vec<LayerFile> = plan.layers.iter().filter(|l| l.import).cloned().collect();
     if !chosen.is_empty() {
-        add_tb_layers(&mut w, &chosen, &plan.libraries, job)?;
+        add_tb_layers(&mut w, &chosen, &plan.libraries, db, job)?;
     }
     for (p, on) in &plan.lists {
         if !*on {
@@ -640,7 +706,7 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
         }
         job.stage(format!("Reading objects {}", p.display()));
         let text = String::from_utf8_lossy(&std::fs::read(p)?).into_owned();
-        let (list, missing) = parse_tb_objects(&text, &mut w, assets, false);
+        let (list, missing) = parse_tb_objects(&text, &mut w, assets, db, false);
         job.log(format!("{}: {} objects", p.display(), list.len()));
         if !missing.is_empty() {
             job.log(format!("Unknown models: {}", missing.join(", ")));
@@ -783,11 +849,16 @@ pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usi
         let lines: Vec<Vec<[f32; 2]>> = road.shape.lines.iter().map(|l| l.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect()).collect();
         let mut placed = Vec::with_capacity(road.shape.placements.len());
         if let Some(layer) = layer {
-            for (file, angle, at) in &road.shape.placements {
+            let is_cap = |k: usize| road.shape.placements[k].0.to_string_lossy().to_ascii_lowercase().contains("konec");
+            for (k, (file, angle, at)) in road.shape.placements.iter().enumerate() {
                 let path = ObjectStore::normalize_path(&file.to_string_lossy());
                 let path = path.strip_prefix("p:\\").unwrap_or(&path).to_string();
                 let model = w.objects.intern(&path);
-                let mut o = Obj { x: (at[0] - ex) as f32, z: (at[1] - ey) as f32, elevation: 0.0, yaw: (-angle.to_degrees()).rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 };
+                // A road closes with a cap facing the other way than the one it opens with.
+                let closes = is_cap(k) && k > 0 && !is_cap(k - 1);
+                let (at, yaw) = if closes { crate::gen::closing_cap(*at, -angle.to_degrees()) } else { (*at, -angle.to_degrees()) };
+                let yaw = yaw.rem_euclid(360.0) as f32;
+                let mut o = Obj { x: (at[0] - ex) as f32, z: (at[1] - ey) as f32, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 };
                 o.set_layer(layer);
                 placed.push(w.objects.insert(o));
             }
@@ -839,10 +910,11 @@ pub fn import_road_document(path: &Path, w: &mut World) -> Result<usize> {
     for route in &doc.routes {
         let points: Vec<[f32; 2]> = route.points.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect();
         let mut objects = Vec::new();
-        for p in route.parts.iter().chain(&route.extras) {
+        for (k, p) in route.parts.iter().chain(&route.extras).enumerate() {
             let file = p.model.rsplit(['\\', '/']).next().unwrap_or(&p.model).to_string();
             let model = w.objects.intern(&format!("{prefix}\\{file}"));
-            objects.push(w.objects.insert(Obj { x: (p.position[0] - ex) as f32, z: (p.position[1] - ey) as f32, elevation: 0.0, yaw: p.rotation.rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 }));
+            let (at, yaw) = if k < route.parts.len() { crate::gen::road_part_pose(&route.parts, k) } else { (p.position, p.rotation.rem_euclid(360.0) as f32) };
+            objects.push(w.objects.insert(Obj { x: (at[0] - ex) as f32, z: (at[1] - ey) as f32, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 }));
             n += 1;
         }
         if points.len() >= 2 {
@@ -859,10 +931,34 @@ mod tests {
     use crate::export::{run, ExportOptions};
 
     #[test]
+    fn the_heightmap_is_the_one_that_levels_a_bridge() {
+        use crate::terrain::{AscGrid, Heightmap};
+        let grid = |slope: f32| {
+            let mut map = Heightmap::new(32, 32, 10.0, 5.0);
+            for j in 0..32 { for i in 0..32 { map.set(i, j, 5.0 + i as f32 * slope); } }
+            AscGrid { map, xll: 0.0, yll: 0.0 }
+        };
+        // Three decks 30 m apart, raised so their tops are level over ground rising 1 in 10.
+        let raised = [(1, 0, 50.0, 50.0, 20.0f32), (1, 0, 80.0, 50.0, 17.0), (1, 0, 110.0, 50.0, 14.0)];
+        assert_eq!(level_pairs(&raised, &grid(1.0)), 2);
+        assert_eq!(level_pairs(&raised, &grid(0.0)), 0);
+    }
+
+    #[test]
+    fn a_tilted_model_keeps_its_centre_over_the_stored_position() {
+        // On its side, with the centre of the model 20 m above its origin.
+        let (x, z) = tb_origin(100.0, 50.0, 0.0, 0.0, 90.0, 1.0, 20.0);
+        let up = crate::objects::rotation(0.0, 0.0, 90.0, 1.0)[1];
+        assert!((x + up[0] * 20.0 - 100.0).abs() < 1e-3 && (z + up[2] * 20.0 - 50.0).abs() < 1e-3);
+        assert!((x - 100.0).abs() > 15.0);
+        assert_eq!(tb_origin(100.0, 50.0, 33.0, 0.0, 0.0, 2.0, 20.0), (100.0, 50.0));
+    }
+
+    #[test]
     fn tb_list_with_easting_is_shifted() {
         let mut w = World::new(WorldMeta::new("A", 256, 8.0), 0.0);
         let a = from_paths(vec!["dz\\t_a.p3d".into()]);
-        let (o, missing) = parse_tb_objects("\"t_a\";200100.5;50.0;10;0;0;1.5;0.0;1;\n\"nope\";200000;0;0;0;0;1;0;0;\n", &mut w, &a, false);
+        let (o, missing) = parse_tb_objects("\"t_a\";200100.5;50.0;10;0;0;1.5;0.0;1;\n\"nope\";200000;0;0;0;0;1;0;0;\n", &mut w, &a, &ModelDb::new("Z:/none"), false);
         assert_eq!(o.len(), 1);
         assert_eq!(missing, vec!["nope (1)".to_string()]);
         assert!((o[0].x - 100.5).abs() < 1e-2 && o[0].scale == 1.5);
@@ -873,7 +969,7 @@ mod tests {
     fn tb_list_without_easting_stays_put() {
         let mut w = World::new(WorldMeta::new("A", 256, 8.0), 0.0);
         let a = from_paths(vec!["dz\\t_a.p3d".into()]);
-        let (o, _) = parse_tb_objects("\"t_a\";100.5;50.0;10;0;0;1;0;\n", &mut w, &a, false);
+        let (o, _) = parse_tb_objects("\"t_a\";100.5;50.0;10;0;0;1;0;\n", &mut w, &a, &ModelDb::new("Z:/none"), false);
         assert_eq!(o[0].x, 100.5);
     }
 
@@ -908,6 +1004,28 @@ mod tests {
         let size = r.meta.size_m();
         assert_eq!(r.layers[r.mask.sample(600.0, 1500.0, size) as usize].name, "en_forest_con");
         assert_eq!(r.layers[r.mask.sample(2500.0, 1500.0, size) as usize].name, "en_grass1");
+    }
+
+    #[test]
+    fn six_surfaces_on_a_tile_come_back_from_the_export() {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("SixRound", 512, 6.0), 40.0);
+        while w.layers.len() < 6 {
+            let k = w.layers.len();
+            w.layers.push(SurfaceLayer { name: format!("s{k}"), texture: format!("dz\\s{k}_ca.paa"), material: format!("dz\\s{k}.rvmat"), color: [k as u8 * 40, 0, 0] });
+        }
+        let (width, per) = (w.mask.width, w.mask.width as f32 / w.meta.size_m());
+        for y in 0..w.mask.height { for x in 0..width { w.mask.data[y * width + x] = ((x as f32 / per / 64.0) as usize % 6) as u8; } }
+        let db = ModelDb::new(d.path());
+        run(&w, &db, &ExportOptions { root: d.path().to_path_buf(), layers: true, world: true, config: true, source: false }, &Job::default()).unwrap();
+        let wrp = Wrp::parse(&std::fs::read(d.path().join("SixRound/world/sixround.wrp")).unwrap()).unwrap();
+        assert!(wrp.materials.iter().all(|m| m.matches("_L").count() + m.matches("_N").count() == 6), "{:?}", &wrp.materials[..2]);
+        let r = import_wrp(&d.path().join("SixRound/world/sixround.wrp"), None, &db, &Job::default()).unwrap();
+        let size = r.meta.size_m();
+        for k in 0..6 {
+            let got = &r.layers[r.mask.sample(32.0 + 64.0 * k as f32, 1500.0, size) as usize];
+            assert!(got.texture.eq_ignore_ascii_case(&w.layers[k].texture), "{k}: {} {}", got.texture, w.layers[k].texture);
+        }
     }
 
     /// Every object of a real Terrain Builder world must come back where the game expects it.

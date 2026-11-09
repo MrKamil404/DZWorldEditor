@@ -1,4 +1,4 @@
-//! Reader and writer of unbinarised WRP worlds (`8WVR` and the newer `1WZD`).
+//! Reader and writer of unbinarised WRP worlds (`8WVR`, `0WZD` and the newer `1WZD`).
 //!
 //! Layout, verified against worlds written by Terrain Builder:
 //! header `sig, land_x, land_y, terrain_x, terrain_y, land_cell: f32`;
@@ -32,6 +32,8 @@ pub struct Wrp {
     pub materials: Vec<String>,
     pub objects: Vec<WrpObject>,
     pub newer_format: bool,
+    /// Signature `0WZD`: objects are laid out as in `8WVR`.
+    pub zd_signature: bool,
 }
 
 struct Cursor<'a> {
@@ -60,10 +62,11 @@ impl Wrp {
     pub fn parse(b: &[u8]) -> Result<Wrp> {
         let newer_format = match b.get(..4) {
             Some(b"1WZD") => true,
-            Some(b"8WVR") => false,
+            Some(b"8WVR") | Some(b"0WZD") => false,
             Some(b"OPRW") => bail!("This WRP is binarised (OPRW); only source worlds (8WVR, 1WZD) can be opened"),
             _ => bail!("Not a WRP file"),
         };
+        let zd_signature = b.starts_with(b"0WZD");
         let mut c = Cursor { b, p: 4 };
         let (land_x, land_y, terrain_x, terrain_y) = (c.u32()?, c.u32()?, c.u32()?, c.u32()?);
         let land_cell = c.f32()?;
@@ -97,11 +100,11 @@ impl Wrp {
             let model = String::from_utf8_lossy(c.take(len)?).into_owned();
             objects.push(WrpObject { matrix, id, model, underground });
         }
-        Ok(Wrp { land_x, land_y, terrain_x, terrain_y, land_cell, elevations, material_index, materials, objects, newer_format })
+        Ok(Wrp { land_x, land_y, terrain_x, terrain_y, land_cell, elevations, material_index, materials, objects, newer_format, zd_signature })
     }
 
     pub fn write(&self, out: &mut impl Write) -> Result<()> {
-        out.write_all(if self.newer_format { b"1WZD" } else { b"8WVR" })?;
+        out.write_all(if self.newer_format { b"1WZD" } else if self.zd_signature { b"0WZD" } else { b"8WVR" })?;
         for v in [self.land_x, self.land_y, self.terrain_x, self.terrain_y] {
             out.write_all(&v.to_le_bytes())?;
         }
@@ -145,7 +148,7 @@ mod tests {
     use super::*;
 
     fn sample(newer: bool) -> Wrp {
-        Wrp {
+        Wrp { zd_signature: false,
             land_x: 2, land_y: 2, terrain_x: 16, terrain_y: 16, land_cell: 48.0,
             elevations: (0..256).map(|v| v as f32).collect(),
             material_index: vec![1, 1, 2, 2],

@@ -63,10 +63,10 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
     egui::TopBottomPanel::top("menu").show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
             let has = app.doc.is_some();
-            ui.menu_button(t("File"), |ui| {
+            ui.menu_button(t("File"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 if ui.button(t("New project...")).clicked() { app.dialog = new_project_dialog(); ui.close_menu(); }
                 if ui.button(t("Open project...")).clicked() { ui.close_menu(); app.pick_and_open(); }
-                ui.menu_button(t("Recent projects"), |ui| {
+                ui.menu_button(t("Recent projects"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                     for d in app.settings.recent.clone() {
                         if ui.button(d.display().to_string()).clicked() { ui.close_menu(); app.open_project(d); }
                     }
@@ -75,7 +75,7 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                 if ui.add_enabled(has, egui::Button::new(t("Save")).shortcut_text("Ctrl+S")).clicked() { ui.close_menu(); app.save(None); }
                 if ui.add_enabled(has, egui::Button::new(t("Save as..."))).clicked() { ui.close_menu(); app.save_as(); }
                 ui.separator();
-                ui.menu_button(t("Import"), |ui| {
+                ui.menu_button(t("Import"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                     if ui.button(t("Terrain Builder or built map folder...")).clicked() { ui.close_menu(); app.import_folder(); }
                     if ui.button(t("WRP world...")).clicked() { ui.close_menu(); app.import_wrp(); }
                     ui.separator();
@@ -97,7 +97,7 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                 if ui.button(t("Project settings...")).clicked() { app.dialog = Dialog::ProjectSettings; ui.close_menu(); }
                 if ui.button(t("Exit")).clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
             });
-            ui.menu_button(t("Edit"), |ui| {
+            ui.menu_button(t("Edit"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 let (u, r) = app.doc.as_ref().map(|d| (d.history.undo_label().map(str::to_string), d.history.redo_label().map(str::to_string))).unwrap_or((None, None));
                 if ui.add_enabled(u.is_some(), egui::Button::new(format!("{} {}", t("Undo"), u.unwrap_or_default())).shortcut_text("Ctrl+Z")).clicked() { app.undo(); ui.close_menu(); }
                 if ui.add_enabled(r.is_some(), egui::Button::new(format!("{} {}", t("Redo"), r.unwrap_or_default())).shortcut_text("Ctrl+Y")).clicked() { app.redo(); ui.close_menu(); }
@@ -107,13 +107,13 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                 ui.separator();
                 if ui.button(t("Settings...")).clicked() { app.dialog = Dialog::Settings; ui.close_menu(); }
             });
-            ui.menu_button(t("View"), |ui| {
+            ui.menu_button(t("View"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 visibility_toggles(app, ui);
                 ui.separator();
                 ui.checkbox(&mut app.show_land_grid, t("Land grid"));
                 ui.checkbox(&mut app.show_tile_grid, t("Texture tiles"));
             });
-            ui.menu_button(t("Build"), |ui| {
+            ui.menu_button(t("Build"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 ui.add_enabled_ui(has, |ui| {
                     if ui.button(t("Export files for the PBO")).clicked() { ui.close_menu(); app.export_map(false); }
                     if ui.button(t("Export with Terrain Builder sources")).clicked() { ui.close_menu(); app.export_map(true); }
@@ -123,7 +123,7 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                     if ui.button(t("Generate navmesh...")).clicked() { ui.close_menu(); app.generate_navmesh(); }
                 });
             });
-            ui.menu_button(t("Language"), |ui| {
+            ui.menu_button(t("Language"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 let cur = crate::i18n::current();
                 for (code, name) in crate::i18n::languages() {
                     if ui.selectable_label(cur == code, name).clicked() { app.sync_language(&code); ui.close_menu(); }
@@ -136,7 +136,7 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                     ui.close_menu();
                 }
             });
-            ui.menu_button(t("Help"), |ui| {
+            ui.menu_button(t("Help"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 if ui.button(t("About")).clicked() { app.dialog = Dialog::About; ui.close_menu(); }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -229,6 +229,7 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &t("Selection"), true, |ui| {
         ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
         ui.weak(t("Click to select, drag for a box, Shift adds. W, E, R change the gizmo. F frames the selection."));
+        ui.weak(t("Shift or Ctrl held while dragging a selected object rotates or scales it."));
         ui.checkbox(&mut app.select_whole, t("Select whole roads and generators"));
         ui.weak(t("U sets the underground flag of the selection, B lets the camera below the terrain."));
         ui.add_space(4.0);
@@ -267,7 +268,7 @@ fn brush_shape_row(ui: &mut egui::Ui, shape: &mut dz_core::edit::BrushShape) {
 }
 
 /// The sides, level and height profile of the ground under a road.
-fn grading_ui(ui: &mut egui::Ui, g: &mut dz_core::world::RoadGrading, width: &mut f32, blend: &mut f32, designed: bool) {
+pub(crate) fn grading_ui(ui: &mut egui::Ui, g: &mut dz_core::world::RoadGrading, width: &mut f32, blend: &mut f32, designed: bool) {
     slider(ui, &t("Width"), width, 1.0..=80.0, false);
     slider(ui, &t("Shoulder"), &mut g.shoulder, 0.0..=12.0, false);
     ui.checkbox(&mut g.embankment, t("Embankments and cuttings"));
@@ -353,7 +354,7 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             let surfaces = app.surfaces.clone();
-            ui.menu_button(format!("+ {}", t("Add layer")), |ui| {
+            ui.menu_button(format!("+ {}", t("Add layer")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                     for s in surfaces {
                         let name = s.rsplit('\\').next().unwrap_or(&s).trim_end_matches("_ca.paa").to_string();
@@ -752,7 +753,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
             for (i, name, family) in routes.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
                 let row = ui.selectable_label(app.line.selected_route == Some(*i), format!("{name}  ({family})"));
                 if row.clicked() { select_route = Some(*i); }
-                row.context_menu(|ui| { if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); } });
+                row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); } });
             }
         });
         egui::CollapsingHeader::new(tf("Shape layers ({0})", &[&shape_rows.len().to_string()])).default_open(true).show(ui, |ui| {
@@ -774,7 +775,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                     let row = ui.selectable_label(active_shape == *i, if *visible { label } else { label.weak() });
                     if row.clicked() { shape_action = Some(ShapeAction::Active(*i)); }
                     if let Some(p) = row.dnd_release_payload::<(usize, usize)>() { shape_move = Some((p.0, p.1, *i)); }
-                    row.context_menu(|ui| {
+                    row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                         if ui.button(t("Rename")).clicked() { start_shape_rename = Some((*i, name.clone())); ui.close_menu(); }
                         if ui.button(t("Delete layer")).clicked() { shape_action = Some(ShapeAction::Delete(*i)); ui.close_menu(); }
                     });
@@ -824,7 +825,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                     if row.clicked() {
                         layer_action = Some(if ui.input(|i| i.modifiers.command) { LayerAction::Editable(id) } else { LayerAction::Active(id) });
                     }
-                    row.context_menu(|ui| {
+                    row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                         if ui.button(t("Edit only this layer")).clicked() { layer_action = Some(LayerAction::Solo(id)); ui.close_menu(); }
                         if ui.button(t("Select objects")).clicked() { layer_action = Some(LayerAction::Select(id)); ui.close_menu(); }
                         if ui.add_enabled(has_selection, egui::Button::new(t("Move selection here"))).clicked() { layer_action = Some(LayerAction::MoveSelection(id)); ui.close_menu(); }
@@ -1078,7 +1079,24 @@ fn build_tab(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         ui.checkbox(&mut app.settings.with_client, t("Start the game client too"));
-        row(ui, &t("Additional mods"), |ui| { ui.text_edit_singleline(&mut app.settings.extra_mods); });
+        ui.label(t("Additional mods"));
+        let mut mods: Vec<String> = app.settings.extra_mods.split(';').map(str::trim).filter(|m| !m.is_empty()).map(String::from).collect();
+        let mut remove = None;
+        for (i, m) in mods.iter().enumerate() {
+            ui.push_id(("mod", i), |ui| ui.horizontal(|ui| {
+                if ui.small_button("✖").clicked() { remove = Some(i); }
+                ui.label(m);
+            }));
+        }
+        let mut changed = false;
+        if let Some(i) = remove { mods.remove(i); changed = true; }
+        if ui.button(format!("+ {}", t("Add mod folder"))).clicked() {
+            for dir in rfd::FileDialog::new().set_title(t("Add mod folder")).pick_folders().unwrap_or_default() {
+                let path = dir.display().to_string();
+                if !mods.contains(&path) { mods.push(path); changed = true; }
+            }
+        }
+        if changed { app.settings.extra_mods = mods.join(";"); }
         let ui = &mut c[1];
         ui.label(t("Log"));
         egui::ScrollArea::vertical().id_salt("b").stick_to_bottom(true).auto_shrink([false, false]).show_rows(ui, 14.0, app.log.len(), |ui, range| {
@@ -1176,6 +1194,7 @@ fn import_window(app: &mut App, ui: &mut egui::Ui, d: &mut ImportDialog, close: 
     path_choice(ui, &t("Satellite"), &mut plan.satellite, &scan.satellite, file("Image", &["bmp", "png", "tif"]));
     path_choice(ui, &t("Mask"), &mut plan.mask, &scan.mask, file("Image", &["bmp", "png", "tif"]));
     path_choice(ui, &t("Surfaces (layers.cfg)"), &mut plan.layers_cfg, &scan.layers_cfg, file("layers.cfg", &["cfg"]));
+    path_choice(ui, &t("Terrain holes (holes.cfg)"), &mut plan.holes_cfg, &scan.holes_cfg, file("holes.cfg", &["cfg"]));
     path_choice(ui, &t("Roads (TV4P)"), &mut plan.tv4p, &scan.tv4p, file("Terrain Builder", &["tv4p"]));
     ui.weak(if plan.asc.is_some() { t("Terrain comes from the heightmap.") } else if plan.wrp.is_some() { t("Terrain comes from the WRP.") } else { t("Choose a heightmap or a WRP.") });
     row(ui, &t("Surfaces per tile"), |ui| { ui.add(egui::Slider::new(&mut plan.max_tile_surfaces, 1..=6)); });
@@ -1337,7 +1356,8 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
             if before != app.settings.ui_scale { theme::apply(ctx, app.settings.ui_scale); }
             slider(ui, &t("Terrain detail"), &mut app.settings.terrain_quality, 0.6..=3.0, false);
             slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
-            slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 30.0..=500.0, false);
+            slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0, true);
+            slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
         });
         section(ui, &t("General"), true, |ui| {
             row(ui, &t("Autosave every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
@@ -1367,6 +1387,7 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
             });
         });
         row(ui, &t("Surfaces per tile"), |ui| { ui.add(egui::Slider::new(&mut m.max_tile_surfaces, 1..=6)); });
+        ui.weak(t("When a tile really uses 6, the whole map is exported like Terrain Builder's 6-material mode (TerrainX), without satellite normal maps."));
         ui.horizontal(|ui| {
             check = ui.button(t("Check tiles")).clicked();
             fix = ui.button(t("Fix tiles")).on_hover_text(t("Replaces the rarest surfaces of a tile with its main surface.")).clicked();

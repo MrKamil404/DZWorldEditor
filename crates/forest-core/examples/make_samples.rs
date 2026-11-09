@@ -163,7 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             species_weights: vec![(152, 3.0), (154, 3.0), (143, 2.0), (156, 1.0)],
             blend: true,
             jagged_m: 30.0,
-            blend_inside_m: 45.0,
+            blend_inside_m: 45.0, outside_m: None, patch_size_m: 0.0, patch_cover: 0.5,
             preset_mix: Vec::new(),
         },
         paths: ProjectPaths {

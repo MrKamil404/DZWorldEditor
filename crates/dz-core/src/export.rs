@@ -12,7 +12,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-pub const MAX_SLOTS: usize = 5;
+/// Surfaces a tile can hold: six in Terrain Builder's six-material mode, without normals.
+pub const MAX_SLOTS: usize = 6;
+/// Surfaces of a tile that also has a satellite normal map (`TerrainSNX`).
+const SNX_SLOTS: usize = 5;
 
 /// Grid of satellite and mask tiles.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -96,13 +99,43 @@ fn synthetic_rgb(w: &World, wx: f32, wz: f32) -> [u8; 3] {
 
 /// RGBA of mask slot `slot` (0-based), as Terrain Builder encodes it.
 #[inline]
-fn slot_rgba(slot: usize) -> [u8; 4] {
-    match slot {
-        0 => [0, 0, 0, 255],
-        1 => [255, 0, 0, 255],
-        2 => [0, 255, 0, 255],
-        3 => [0, 0, 255, 255],
+fn slot_rgba(slot: usize, six: bool) -> [u8; 4] {
+    match (slot, six) {
+        (0, _) => [0, 0, 0, 255],
+        (1, _) => [255, 0, 0, 255],
+        (2, _) => [0, 255, 0, 255],
+        (3, _) => [0, 0, 255, 255],
+        (4, true) => [0, 0, 255, 128],
+        (_, true) => [0, 0, 255, 0],
         _ => [0, 0, 0, 128],
+    }
+}
+
+/// In six-material masks the blue channel holds three surfaces, told apart by alpha. Terrain
+/// Builder spreads a lowered alpha 8 pixels into the other surfaces around them, so that
+/// filtering at their border does not fall through to the wrong blue surface.
+fn spread_blue_alpha(mask: &mut [u8], px: usize) {
+    const REACH: usize = 8;
+    let blue = |m: &[u8], i: usize| m[i * 4 + 2] == 255;
+    if !(0..px * px).any(|i| blue(mask, i) && mask[i * 4 + 3] < 255) {
+        return;
+    }
+    let mut low: Vec<u8> = (0..px * px).map(|i| if blue(mask, i) { mask[i * 4 + 3] } else { 255 }).collect();
+    for _pass in 0..2 {
+        let horizontal = _pass == 0;
+        let source = low.clone();
+        for a in 0..px {
+            for b in 0..px {
+                let at = |k: usize| if horizontal { a * px + k } else { k * px + a };
+                let (from, to) = (b.saturating_sub(REACH), (b + REACH).min(px - 1));
+                low[at(b)] = (from..=to).map(|k| source[at(k)]).min().unwrap_or(255);
+            }
+        }
+    }
+    for (i, v) in low.iter().enumerate() {
+        if !blue(mask, i) {
+            mask[i * 4 + 3] = *v;
+        }
     }
 }
 
@@ -118,7 +151,7 @@ fn nopx_of(root: &Path, texture: &str) -> String {
 
 /// Text of one tile material, matching what Terrain Builder generates.
 #[allow(clippy::too_many_arguments)]
-pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots: usize, used: &[Option<(String, String)>]) -> String {
+pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots: usize, used: &[Option<(String, String)>], six: bool) -> String {
     let tile = format!("{name_col:03}_{name_row:03}");
     let id_lc = id.to_ascii_lowercase();
     let scale = 1.0 / layout.tile_m;
@@ -130,7 +163,8 @@ pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots:
         "class TexGen{n}\n{{\n\tuvSource=\"tex\";\n\tclass uvTransform\n\t{{\n\t\taside[]={{{k},0,0}};\n\t\tup[]={{0,{k},0}};\n\t\tdir[]={{0,0,{k}}};\n\t\tpos[]={{0,0,0}};\n\t}};\n}};\n"
     );
     let mut s = String::with_capacity(2048);
-    s += "ambient[]={0.89999998,0.89999998,0.89999998,1};\ndiffuse[]={0.89999998,0.89999998,0.89999998,1};\nforcedDiffuse[]={0.02,0.02,0.02,1};\nemmisive[]={0,0,0,0};\nspecular[]={0,0,0,0};\nspecularPower=0;\n";
+    s += if six { "ambient[]={1,1,1,1};\ndiffuse[]={1,1,1,1};\n" } else { "ambient[]={0.89999998,0.89999998,0.89999998,1};\ndiffuse[]={0.89999998,0.89999998,0.89999998,1};\n" };
+    s += "forcedDiffuse[]={0.02,0.02,0.02,1};\nemmisive[]={0,0,0,0};\nspecular[]={0,0,0,0};\nspecularPower=0;\n";
     s += &format!("class Stage0\n{{\n\ttexture=\"{id_lc}\\data\\layers\\s_{tile}_lco.paa\";\n\ttexGen=3;\n}};\n");
     s += &format!("class Stage1\n{{\n\ttexture=\"{id_lc}\\data\\layers\\m_{tile}_lca.paa\";\n\ttexGen=4;\n}};\n");
     s += &world_gen(3);
@@ -138,7 +172,7 @@ pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots:
     s += &tex_gen(0, 1);
     s += &tex_gen(1, 10);
     s += &tex_gen(2, 10);
-    s += "PixelShaderID=\"TerrainSNX\";\nVertexShaderID=\"Terrain\";\n";
+    s += if six { "PixelShaderID=\"TerrainX\";\nVertexShaderID=\"Terrain\";\n" } else { "PixelShaderID=\"TerrainSNX\";\nVertexShaderID=\"Terrain\";\n" };
     s += "class Stage2\n{\n\ttexture=\"#(rgb,1,1,1)color(0.5,0.5,0.5,1,cdt)\";\n\ttexGen=0;\n};\n";
     for k in 0..slots {
         let (nopx, ca) = match &used[k] {
@@ -148,7 +182,9 @@ pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots:
         s += &format!("class Stage{}\n{{\n\ttexture=\"{nopx}\";\n\ttexGen=1;\n}};\n", 3 + k * 2);
         s += &format!("class Stage{}\n{{\n\ttexture=\"{ca}\";\n\ttexGen=2;\n}};\n", 4 + k * 2);
     }
-    s += &format!("class Stage14\n{{\n\ttexture=\"{id_lc}\\data\\layers\\n_{tile}_nohq.paa\";\n\ttexGen=3;\n}};\n");
+    if !six {
+        s += &format!("class Stage14\n{{\n\ttexture=\"{id_lc}\\data\\layers\\n_{tile}_nohq.paa\";\n\ttexGen=3;\n}};\n");
+    }
     s
 }
 
@@ -158,7 +194,7 @@ struct TileOutput {
     rvmats: BTreeMap<String, String>,
 }
 
-fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path, col: u32, row: u32, layer_tex: &[(String, String)]) -> Result<TileOutput> {
+fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path, col: u32, row: u32, layer_tex: &[(String, String)], six: bool) -> Result<TileOutput> {
     let px = layout.px as usize;
     let size = w.meta.size_m();
     let id = &w.meta.map_id;
@@ -180,10 +216,10 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
             count[l as usize] += 1;
         }
     }
-    // The most used surfaces of the tile; the game shader takes at most five.
+    // The most used surfaces of the tile, as many as the material can take.
     let mut order: Vec<usize> = (0..256).filter(|l| count[*l] > 0).collect();
     order.sort_by_key(|l| std::cmp::Reverse(count[*l]));
-    order.truncate(MAX_SLOTS.min(w.meta.max_tile_surfaces.max(1) as usize));
+    order.truncate((if six { MAX_SLOTS } else { SNX_SLOTS }).min(w.meta.max_tile_surfaces.max(1) as usize));
     order.sort();
     let slots = order.len();
     let mut slot_of = [0u8; 256];
@@ -199,7 +235,10 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
     }
     let mut mask = vec![0u8; px * px * 4];
     for (i, l) in indices.iter().enumerate() {
-        mask[i * 4..i * 4 + 4].copy_from_slice(&slot_rgba(slot_of[*l as usize] as usize));
+        mask[i * 4..i * 4 + 4].copy_from_slice(&slot_rgba(slot_of[*l as usize] as usize, six));
+    }
+    if six {
+        spread_blue_alpha(&mut mask, px);
     }
     // Normal map from the heightmap.
     let mut normal = vec![255u8; px * px * 4];
@@ -216,7 +255,9 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
     let tile = format!("{col:03}_{row:03}");
     atomic_write(&dir.join(format!("S_{tile}_lco.paa")), &paa_write::encode(&sat, px, px, Format::Dxt1))?;
     atomic_write(&dir.join(format!("M_{tile}_lca.paa")), &paa_write::encode(&mask, px, px, Format::Dxt5))?;
-    atomic_write(&dir.join(format!("N_{tile}_nohq.paa")), &paa_write::encode(&normal, px, px, Format::Dxt5))?;
+    if !six {
+        atomic_write(&dir.join(format!("N_{tile}_nohq.paa")), &paa_write::encode(&normal, px, px, Format::Dxt5))?;
+    }
 
     // One material per set of surfaces actually present in a land cell.
     let cells_per = w.meta.cells_per_tile;
@@ -253,7 +294,7 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
             }
             name += ".rvmat";
             if !out.rvmats.contains_key(&name) {
-                out.rvmats.insert(name.clone(), rvmat(id, col, row, layout, slots, &used));
+                out.rvmats.insert(name.clone(), rvmat(id, col, row, layout, slots, &used, six));
             }
             out.cells.push(((i, j), name));
         }
@@ -407,9 +448,16 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
     let id = w.meta.map_id.clone();
     ensure!(!id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'), "The map id may only contain letters, digits and underscores");
     ensure!(w.meta.terrain_size % w.meta.cells_per_tile == 0 && w.meta.land_size() % w.meta.cells_per_tile == 0, "Terrain size must be divisible by the land grid");
-    let over = crate::mask_limit::count_over(w, MAX_SLOTS);
+    let limit = MAX_SLOTS.min(w.meta.max_tile_surfaces.max(1) as usize);
+    let over = crate::mask_limit::count_over(w, limit);
     if over > 0 {
-        job.log(format!("{over} tiles use more than {MAX_SLOTS} surfaces. The terrain material has room for {MAX_SLOTS}, so the rarest are replaced in the export."));
+        job.log(format!("{over} tiles use more than {limit} surfaces, so the rarest are replaced in the export."));
+    }
+    // One shader for the whole map, as Terrain Builder does: the mode costs the satellite
+    // normals, so it is only used when a tile really needs it.
+    let six = limit == MAX_SLOTS && crate::mask_limit::count_over(w, SNX_SLOTS) > 0;
+    if six {
+        job.log("Some tiles use six surfaces: exporting with TerrainX, without satellite normal maps.".to_string());
     }
     ensure!(opts.root.is_dir(), "Work drive {} is not available", opts.root.display());
     let target = opts.root.join(&id);
@@ -439,7 +487,7 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
         let outputs = Mutex::new(Vec::with_capacity(list.len()));
         list.par_iter().try_for_each(|&(c, r)| -> Result<()> {
             job.check()?;
-            let o = export_tile(w, opts, &layout, &layers_dir, c, r, &layer_tex).with_context(|| format!("Tile {c}/{r}"))?;
+            let o = export_tile(w, opts, &layout, &layers_dir, c, r, &layer_tex, six).with_context(|| format!("Tile {c}/{r}"))?;
             outputs.lock().unwrap().push(o);
             let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             job.set_progress(n as f32 / tiles.pow(2) as f32 * 0.85);
@@ -476,6 +524,7 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
             land_x: land, land_y: land, terrain_x: w.meta.terrain_size, terrain_y: w.meta.terrain_size,
             land_cell: w.meta.land_cell(), elevations, material_index, materials: names, objects,
             newer_format: w.meta.write_underground_flag,
+            zd_signature: false,
         };
         let mut buf = Vec::with_capacity(wrp.elevations.len() * 4 + wrp.objects.len() * 110 + (1 << 20));
         wrp.write(&mut buf)?;
@@ -491,14 +540,14 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
     }
     if opts.source {
         job.stage("Writing Terrain Builder source files");
-        write_source(w, &opts.root.join(format!("{id}_Source")))?;
+        write_source(w, db, &opts.root.join(format!("{id}_Source")))?;
     }
     job.set_progress(1.0);
     Ok(report)
 }
 
 /// Files to continue the work in Terrain Builder.
-pub fn write_source(w: &World, dir: &Path) -> Result<()> {
+pub fn write_source(w: &World, db: &ModelDb, dir: &Path) -> Result<()> {
     std::fs::create_dir_all(dir)?;
     crate::terrain::write_asc(&w.height, w.meta.easting, w.meta.northing, &dir.join("heightmap.asc"))?;
     let mut mask = RgbImage::new(w.mask.width, w.mask.height, [0, 0, 0]);
@@ -519,8 +568,11 @@ pub fn write_source(w: &World, dir: &Path) -> Result<()> {
         let path = w.objects.model_path(o);
         let stem = path.rsplit('\\').next().unwrap_or(path).trim_end_matches(".p3d");
         let (yaw, pitch, roll) = crate::objects::to_terrain_builder(o.yaw, o.pitch, o.roll);
+        // Inverse of `tb_origin`.
+        let up = rotation(o.yaw, o.pitch, o.roll, o.scale)[1];
+        let center_y = if o.pitch == 0.0 && o.roll == 0.0 { 0.0 } else { db.get(path).center[1] };
         let _ = writeln!(text, "\"{stem}\";{:.6};{:.6};{:.6};{:.6};{:.6};{:.6};{:.6};{};",
-            o.x as f64 + w.meta.easting, o.z as f64 + w.meta.northing, yaw, pitch, roll, o.scale, crate::objects::ObjectStore::origin_y(o, &w.height) - w.height.sample(o.x, o.z), u32::from(o.flags & FLAG_UNDERGROUND != 0));
+            o.x as f64 + (up[0] * center_y) as f64 + w.meta.easting, o.z as f64 + (up[2] * center_y) as f64 + w.meta.northing, yaw, pitch, roll, o.scale, crate::objects::ObjectStore::origin_y(o, &w.height) - w.height.sample(o.x, o.z), u32::from(o.flags & FLAG_UNDERGROUND != 0));
     }
     atomic_write(&dir.join("objects.txt"), text.as_bytes())
 }
@@ -594,6 +646,18 @@ mod tests {
         assert!(target.join("data/layers/M_000_000_lca.paa").is_file());
         assert!(d.path().join("TestMap_Source/heightmap.asc").is_file());
         assert!(r.warnings.iter().any(|w| w.contains("navmesh")));
+    }
+
+    #[test]
+    fn holes_go_into_the_world_config() {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("A", 64, 8.0), 10.0);
+        w.holes.insert([3, 4]);
+        std::fs::create_dir_all(d.path().join("world")).unwrap();
+        std::fs::create_dir_all(d.path().join("data")).unwrap();
+        write_configs(&w, d.path(), false).unwrap();
+        let cfg = std::fs::read_to_string(d.path().join("world/config.cpp")).unwrap();
+        assert!(cfg.contains("class Holes") && cfg.contains("tiles[]={{3,4}};"), "{cfg}");
     }
 
     #[test]

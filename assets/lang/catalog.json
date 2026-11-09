@@ -3,6 +3,10 @@
   "de": "(keine)",
   "pl": "(brak)"
  },
+ "0 makes the edge an even band.": {
+  "de": "0 ergibt einen gleichmäßigen Streifen.",
+  "pl": "0 oznacza równy pas."
+ },
  "1. Export files": {
   "de": "1. Dateien exportieren",
   "pl": "1. Eksportuj pliki"
@@ -18,6 +22,10 @@
  "A built-in generator. Duplicate it to make your own version, or drop it on the map.": {
   "de": "Eingebauter Generator. Dupliziere ihn für eine eigene Version oder lege ihn auf der Karte ab.",
   "pl": "Generator wbudowany. Zduplikuj go, aby zrobić własną wersję, albo upuść na mapę."
+ },
+ "A built-in preset. Duplicate it to make your own version.": {
+  "de": "Ein eingebautes Preset. Dupliziere es für eine eigene Version.",
+  "pl": "Preset wbudowany. Zduplikuj go, aby zrobić własną wersję."
  },
  "A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched.": {
   "de": "Ein Modifikator ebnet das Gelände unter dem Objekt und folgt ihm. Das modellierte Gelände bleibt unverändert.",
@@ -47,9 +55,17 @@
   "de": "Ebenen hinzufügen...",
   "pl": "Dodaj warstwy..."
  },
+ "Add mod folder": {
+  "de": "Mod-Ordner hinzufügen",
+  "pl": "Dodaj folder moda"
+ },
  "Add modifier to selection": {
   "de": "Modifikator zur Auswahl hinzufügen",
   "pl": "Dodaj modyfikator do zaznaczenia"
+ },
+ "Add preset": {
+  "de": "Preset hinzufügen",
+  "pl": "Dodaj preset"
  },
  "Add rule": {
   "de": "Regel hinzufügen",
@@ -94,6 +110,10 @@
  "Along the line": {
   "de": "Entlang der Linie",
   "pl": "Po linii"
+ },
+ "Always keep": {
+  "de": "Immer behalten",
+  "pl": "Zawsze zostaw"
  },
  "Ambient": {
   "de": "Umgebungslicht",
@@ -159,6 +179,14 @@
   "de": "Grundhöhe",
   "pl": "Wysokość bazowa"
  },
+ "Bends of the same family are used where the line turns. The bed and its blend stay within the width of the water.": {
+  "de": "Wo die Linie abbiegt, werden Kurven derselben Familie verwendet. Das Bett samt Übergang bleibt innerhalb der Wasserbreite.",
+  "pl": "Tam, gdzie linia skręca, używane są zakręty z tej samej rodziny. Koryto razem z przejściem mieści się w szerokości wody."
+ },
+ "Beyond the outline m": {
+  "de": "Über den Umriss hinaus m",
+  "pl": "Wyjście poza obrys m"
+ },
  "Bezier curve": {
   "de": "Bézierkurve",
   "pl": "Krzywa Beziera"
@@ -219,6 +247,10 @@
   "de": "Gebäude",
   "pl": "Budynki"
  },
+ "Buildings and structures": {
+  "de": "Gebäude und Bauwerke",
+  "pl": "Budynki i konstrukcje"
+ },
  "Buildings: pick in the Content Browser and press Add, or drop them here.": {
   "de": "Gebäude: im Browser wählen und Hinzufügen klicken oder hier ablegen.",
   "pl": "Budynki: wybierz w przeglądarce i kliknij Dodaj albo upuść je tutaj."
@@ -234,6 +266,10 @@
  "Built world (WRP)": {
   "de": "Erstellte Welt (WRP)",
   "pl": "Zbudowany świat (WRP)"
+ },
+ "Bushes": {
+  "de": "Büsche",
+  "pl": "Krzewy"
  },
  "Camera": {
   "de": "Kamera",
@@ -403,6 +439,10 @@
   "de": "Strg kehrt Heben und Senken um, Shift glättet. [ und ] oder Shift+Rad ändern die Größe.",
   "pl": "Ctrl odwraca podnoszenie i obniżanie, Shift wygładza. [ i ] lub Shift+kółko zmieniają rozmiar."
  },
+ "Current runs the other way": {
+  "de": "Strömung in die andere Richtung",
+  "pl": "Nurt w przeciwną stronę"
+ },
  "Curves": {
   "de": "Kurven",
   "pl": "Łuki"
@@ -471,6 +511,10 @@
   "de": "Form löschen",
   "pl": "Usuń kształt"
  },
+ "Density per ha (0 = from the preset)": {
+  "de": "Dichte pro ha (0 = aus dem Preset)",
+  "pl": "Gęstość na ha (0 = z presetu)"
+ },
  "Deposition": {
   "de": "Ablagerung",
   "pl": "Osadzanie"
@@ -498,6 +542,10 @@
  "Display": {
   "de": "Anzeige",
   "pl": "Wyświetlanie"
+ },
+ "Distance from earlier presets m": {
+  "de": "Abstand zu früheren Presets m",
+  "pl": "Odstęp od wcześniejszych presetów m"
  },
  "Distance from street": {
   "de": "Abstand zur Straße",
@@ -547,6 +595,10 @@
   "de": "Objekte duplizieren",
   "pl": "Powiel obiekty"
  },
+ "Each one fills the whole shape as well, for example undergrowth under the trees.": {
+  "de": "Jedes füllt ebenfalls die ganze Form, z. B. Unterholz unter den Bäumen.",
+  "pl": "Każdy z nich też wypełnia cały kształt, np. ściółka pod drzewami."
+ },
  "Earthwork penalty": {
   "de": "Erdarbeiten-Malus",
   "pl": "Kara za roboty ziemne"
@@ -566,6 +618,14 @@
  "Edge padding m": {
   "de": "Kartenrand m",
   "pl": "Margines od krawędzi mapy m"
+ },
+ "Edge patch size m": {
+  "de": "Größe der Randflecken m",
+  "pl": "Wielkość placków granicy m"
+ },
+ "Edge preset": {
+  "de": "Rand-Preset",
+  "pl": "Preset granicy"
  },
  "Edge presets": {
   "de": "Rand-Presets",
@@ -791,9 +851,17 @@
   "de": "Wälder, Oberflächen, Siedlungen, Zäune und Stromleitungen sind unten im Tab Generatoren.",
   "pl": "Lasy, powierzchnie, osady, płoty i linie energetyczne są w zakładce Generatory poniżej."
  },
+ "From the project species": {
+  "de": "Aus den Arten des Projekts",
+  "pl": "Z gatunków projektu"
+ },
  "Full detail distance": {
   "de": "Distanz volle Details",
   "pl": "Odległość pełnych detali"
+ },
+ "Further edge presets, with their share": {
+  "de": "Weitere Rand-Presets und ihr Anteil",
+  "pl": "Kolejne presety granicy i ich udział"
  },
  "Furthest from the line": {
   "de": "Am weitesten von der Linie",
@@ -906,6 +974,10 @@
  "Hold the button to paint objects, Ctrl to remove them.": {
   "de": "Taste halten, um Objekte zu setzen, mit Strg zum Entfernen.",
   "pl": "Przytrzymaj przycisk, aby malować obiekty, z Ctrl, aby je usuwać."
+ },
+ "How far beyond a polygon, or to each side of a line.": {
+  "de": "Wie weit über ein Polygon hinaus oder zu jeder Seite einer Linie.",
+  "pl": "Jak daleko poza wielokątem albo po każdej stronie linii."
  },
  "Hydraulic erosion": {
   "de": "Wassererosion",
@@ -1127,6 +1199,10 @@
   "de": "Rand",
   "pl": "Margines"
  },
+ "Margin m": {
+  "de": "Abstand m",
+  "pl": "Margines m"
+ },
  "Mask": {
   "de": "Maske",
   "pl": "Maska"
@@ -1214,6 +1290,10 @@
  "Models: pick in the Content Browser and press Add.": {
   "de": "Modelle: im Inhaltsbrowser wählen und Hinzufügen drücken.",
   "pl": "Modele: wybierz w bibliotece i naciśnij Dodaj."
+ },
+ "More presets in shapes": {
+  "de": "Weitere Presets in Formen",
+  "pl": "Kolejne presety w kształtach"
  },
  "Morning": {
   "de": "Morgen",
@@ -1351,6 +1431,10 @@
   "de": "Objekte pro Gruppe",
   "pl": "Obiektów w skupisku"
  },
+ "Objects of roads and generators stay. Running again or deleting this generator with its objects brings the removed ones back.": {
+  "de": "Objekte von Straßen und Generatoren bleiben. Erneutes Ausführen oder Löschen dieses Generators mit seinen Objekten bringt die entfernten zurück.",
+  "pl": "Obiekty dróg i generatorów zostają. Ponowne uruchomienie albo usunięcie generatora razem z obiektami przywraca usunięte."
+ },
  "Offset": {
   "de": "Versatz",
   "pl": "Przesunięcie"
@@ -1366,6 +1450,10 @@
  "Only on surfaces": {
   "de": "Nur auf Oberflächen",
   "pl": "Tylko na powierzchniach"
+ },
+ "Only these names": {
+  "de": "Nur diese Namen",
+  "pl": "Tylko te nazwy"
  },
  "Open language folder": {
   "de": "Sprachordner öffnen",
@@ -1391,6 +1479,10 @@
   "de": "Öffnet das Straßenwerkzeug mit diesen Punkten.",
   "pl": "Otwiera narzędzie Drogi z tymi punktami."
  },
+ "Other objects": {
+  "de": "Andere Objekte",
+  "pl": "Inne obiekty"
+ },
  "Outliner": {
   "de": "Gliederung",
   "pl": "Hierarchia"
@@ -1402,6 +1494,10 @@
  "Overcast": {
   "de": "Bedeckt",
   "pl": "Pochmurno"
+ },
+ "Overlap of the water models m": {
+  "de": "Überlappung der Wassermodelle m",
+  "pl": "Zakładka modeli wody m"
  },
  "Package the map": {
   "de": "Karte packen",
@@ -1431,6 +1527,14 @@
   "de": "Mit Pinsel setzen",
   "pl": "Maluj pędzlem"
  },
+ "Part removed": {
+  "de": "Entfernter Anteil",
+  "pl": "Usuwana część"
+ },
+ "Parts of model names, separated by commas. When filled in, they replace the categories above.": {
+  "de": "Teile von Modellnamen, durch Kommas getrennt. Wenn ausgefüllt, ersetzen sie die Kategorien oben.",
+  "pl": "Fragmenty nazw modeli rozdzielone przecinkami. Jeśli je podasz, zastępują powyższe kategorie."
+ },
  "Passes": {
   "de": "Durchläufe",
   "pl": "Przebiegi"
@@ -1438,6 +1542,10 @@
  "Patch blending m": {
   "de": "Fleckenübergang m",
   "pl": "Mieszanie płatów m"
+ },
+ "Patch coverage": {
+  "de": "Fleckenanteil",
+  "pl": "Pokrycie plackami"
  },
  "Patches per hectare": {
   "de": "Flecken pro Hektar",
@@ -1583,6 +1691,10 @@
   "de": "Modifikator entfernen",
   "pl": "Usuń modyfikator"
  },
+ "Remove objects": {
+  "de": "Objekte entfernen",
+  "pl": "Usuwanie obiektów"
+ },
  "Removes the generator and what it made.": {
   "de": "Entfernt den Generator und was er erzeugt hat.",
   "pl": "Usuwa generator i to, co stworzył."
@@ -1682,6 +1794,10 @@
  "Roads from TV4P...": {
   "de": "Straßen aus TV4P...",
   "pl": "Drogi z TV4P..."
+ },
+ "Rocks": {
+  "de": "Felsen",
+  "pl": "Skały"
  },
  "Roll": {
   "de": "Rollen",
@@ -1875,6 +1991,10 @@
   "de": "Schärfe",
   "pl": "Ostrość"
  },
+ "Shift or Ctrl held while dragging a selected object rotates or scales it.": {
+  "de": "Ziehen eines ausgewählten Objekts mit Umschalt dreht es, mit Strg skaliert es.",
+  "pl": "Przeciąganie zaznaczonego obiektu z Shift obraca go, a z Ctrl skaluje."
+ },
  "Shift+wheel: size. Ctrl+wheel: edge noise.": {
   "de": "Umschalt+Rad: Größe. Strg+Rad: Randrauschen.",
   "pl": "Shift+kółko: rozmiar. Ctrl+kółko: szum krawędzi."
@@ -1991,6 +2111,10 @@
   "de": "Oberflächen malen",
   "pl": "Malowanie powierzchni"
  },
+ "Surface texture range m": {
+  "de": "Reichweite der Oberflächentexturen m",
+  "pl": "Zasięg tekstur z maski m"
+ },
  "Surface transition m": {
   "de": "Oberflächenübergang m",
   "pl": "Przejście powierzchni m"
@@ -2043,6 +2167,10 @@
   "de": "Terrain-Processor-Konfiguration (XML)",
   "pl": "Konfiguracja Terrain Processora (XML)"
  },
+ "Terrain along a line": {
+  "de": "Gelände entlang einer Linie",
+  "pl": "Teren wzdłuż linii"
+ },
  "Terrain comes from the WRP.": {
   "de": "Das Gelände stammt aus der WRP.",
   "pl": "Teren zostanie wczytany z WRP."
@@ -2058,6 +2186,10 @@
  "Terrain holes": {
   "de": "Geländelöcher",
   "pl": "Dziury w terenie"
+ },
+ "Terrain holes (holes.cfg)": {
+  "de": "Geländelöcher (holes.cfg)",
+  "pl": "Dziury w terenie (holes.cfg)"
  },
  "Terrain modifier": {
   "de": "Geländemodifikator",
@@ -2131,6 +2263,10 @@
   "de": "Der Fluss fließt vom ersten zum letzten Punkt der Linie.",
   "pl": "Rzeka płynie od pierwszego do ostatniego punktu linii."
  },
+ "The road crosses a track on a bend or too obliquely, so no level crossing was laid there": {
+  "de": "Die Straße kreuzt ein Gleis in einer Kurve oder zu schräg, daher wurde dort kein Bahnübergang gelegt",
+  "pl": "Droga przecina tor na łuku lub pod zbyt małym kątem, więc nie położono tam przejazdu"
+ },
  "The shape this generator works on no longer exists": {
   "de": "Die Form dieses Generators existiert nicht mehr",
   "pl": "Kształt, na którym działa generator, już nie istnieje"
@@ -2170,6 +2306,10 @@
  "Transform objects": {
   "de": "Objekte transformieren",
   "pl": "Transformuj obiekty"
+ },
+ "Trees": {
+  "de": "Bäume",
+  "pl": "Drzewa"
  },
  "Turn": {
   "de": "Drehung",
@@ -2247,9 +2387,21 @@
   "de": "Wasser",
   "pl": "Woda"
  },
+ "Water height m": {
+  "de": "Wasserhöhe m",
+  "pl": "Wysokość wody m"
+ },
  "Water model": {
   "de": "Wassermodell",
   "pl": "Model wody"
+ },
+ "What to remove": {
+  "de": "Was entfernt wird",
+  "pl": "Co usuwać"
+ },
+ "When a tile really uses 6, the whole map is exported like Terrain Builder's 6-material mode (TerrainX), without satellite normal maps.": {
+  "de": "Wenn eine Kachel wirklich 6 verwendet, wird die ganze Karte wie im 6-Material-Modus des Terrain Builders (TerrainX) exportiert, ohne Satelliten-Normalenkarten.",
+  "pl": "Gdy jakiś kafel naprawdę używa 6, cała mapa jest eksportowana jak w trybie 6 materiałów z Terrain Buildera (TerrainX), bez normalnych z satelity."
  },
  "Whole map": {
   "de": "Ganze Karte",
@@ -2307,6 +2459,10 @@
   "de": "Zonen aus der Maske",
   "pl": "Strefy z maski"
  },
+ "copy": {
+  "de": "Kopie",
+  "pl": "kopia"
+ },
  "hidden in Terrain Builder": {
   "de": "in Terrain Builder ausgeblendet",
   "pl": "ukryta w Terrain Builderze"
@@ -2338,6 +2494,10 @@
  "{0} objects": {
   "de": "{0} Objekte",
   "pl": "Obiekty: {0}"
+ },
+ "{0} objects removed": {
+  "de": "{0} Objekte entfernt",
+  "pl": "Usunięto obiektów: {0}"
  },
  "{0} objects selected": {
   "de": "{0} Objekte ausgewählt",

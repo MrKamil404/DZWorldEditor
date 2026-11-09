@@ -100,7 +100,7 @@ uniform sampler2DShadow u_shadow;
 uniform mat4 u_light;
 uniform int u_has_shadow;
 uniform vec3 u_sun, u_sun_col, u_amb;
-uniform float u_fog, u_exposure, u_bias, u_transition;
+uniform float u_fog, u_exposure, u_bias, u_transition, u_surface_range;
 uniform int u_brush_shape;
 vec3 tone(vec3 c){
   // Linear up to 0.7, then a soft shoulder so bright surfaces keep their detail.
@@ -177,7 +177,7 @@ void main(){
 
   if (u_mode == 0) { // lit, like in the game
     vec3 alb = sat;
-    float near = 1.0 - smoothstep(u_ortho != 0 ? 0.0 : 40.0, u_ortho != 0 ? 700.0 : 190.0, dist);
+    float near = 1.0 - smoothstep(u_ortho != 0 ? 0.0 : u_surface_range * 0.21, u_ortho != 0 ? u_surface_range * 3.7 : u_surface_range, dist);
     if (near > 0.002) {
       vec2 t = v_world.xz * u_tile;
       vec2 dx = dFdx(t), dy = dFdy(t);
@@ -722,6 +722,7 @@ pub struct Frame {
     pub objects: ObjectDraw,
     pub show_water: bool,
     pub surface_blend: f32,
+    pub surface_range: f32,
     pub sea_waves: f32,
     pub world: f32,
     pub tile: f32,
@@ -1453,6 +1454,7 @@ impl Renderer {
         light_uniforms(terrain);
         gl.uniform_matrix_4_f32_slice(u(terrain, "u_vp").as_ref(), false, &f.view.vp);
         gl.uniform_1_f32(u(terrain, "u_transition").as_ref(), f.surface_blend);
+        gl.uniform_1_f32(u(terrain, "u_surface_range").as_ref(), f.surface_range);
         gl.uniform_2_f32(u(terrain, "u_size").as_ref(), self.size[0], self.size[1]);
         gl.uniform_1_f32(u(terrain, "u_cell").as_ref(), self.cell);
         gl.uniform_1_f32(u(terrain, "u_world").as_ref(), f.world);

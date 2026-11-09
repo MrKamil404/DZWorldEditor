@@ -515,12 +515,15 @@ pub fn slope_angles(h: &Heightmap, x: f32, z: f32, yaw: f32) -> (f32, f32) {
 }
 
 /// Forest generation through the DayZForests engine, with a whole DayZForests project.
+#[derive(Clone)]
 pub struct ForestRequest {
     pub project: forest_core::preset::ForestProject,
     /// (mask layer, forest preset name)
     pub zones: Vec<(usize, String)>,
     /// (polygons, forest preset name)
     pub areas: Vec<(crate::shapes::ShapeLayer, String)>,
+    /// Density of the areas in place of what their preset says.
+    pub area_density: Option<f32>,
     /// Needed by areas that follow the colours of the satellite image.
     pub satellite: Option<forest_core::mask::MaskImage>,
     /// Applied to the areas made from shapes.
@@ -634,6 +637,50 @@ pub fn forest_needs_satellite(p: &forest_core::preset::ForestProject) -> bool {
     p.areas.iter().any(|a| a.color_filter.as_ref().is_some_and(|f| !f.samples.is_empty()) || a.preset_mix.iter().any(|m| m.color_filter.as_ref().is_some_and(|f| !f.samples.is_empty())))
 }
 
+/// A forest and the further passes over its shapes, each with settings of its own.
+pub fn generate_forest_layers(w: &mut World, assets: &AssetIndex, req: ForestRequest, shapes: Option<crate::shapes::ShapeLayer>, layers: &[crate::library::ForestLayer], job: &Job) -> Result<(Vec<Obj>, Vec<String>)> {
+    let base = (!layers.is_empty()).then(|| req.clone());
+    let (mut objects, mut notes) = generate_forest(w, assets, req, job)?;
+    let (Some(base), Some(shapes)) = (base, shapes) else { return Ok((objects, notes)) };
+    for l in layers {
+        job.check()?;
+        let mut r = base.clone();
+        let p = &mut r.project;
+        p.areas.clear();
+        p.zones.clear();
+        p.generation_order.clear();
+        p.edges.enabled = false;
+        p.edges.preset_mix.clear();
+        (p.seed, p.spacing_multiplier, p.scale_min, p.scale_max) = (l.seed, l.spacing, l.scale_min, l.scale_max);
+        (p.clearing_strength, p.clearing_scale_m, p.edge_padding_m) = (l.clearing_strength, l.clearing_scale_m, l.edge_padding_m);
+        p.max_slope_deg = (l.max_slope_deg < 90.0).then_some(l.max_slope_deg);
+        r.zones.clear();
+        r.edge_presets.clear();
+        r.areas = vec![(shapes.clone(), l.preset.clone())];
+        r.area_density = (l.density_per_ha > 0.0).then_some(l.density_per_ha);
+        let (more, n) = generate_forest(w, assets, r, job)?;
+        notes.extend(n);
+        objects.extend(keep_apart(&objects, more, l.gap));
+    }
+    Ok((objects, notes))
+}
+
+/// What is at least `gap` metres from everything already planted.
+fn keep_apart(planted: &[Obj], new: Vec<Obj>, gap: f32) -> Vec<Obj> {
+    if gap <= 0.0 {
+        return new;
+    }
+    let key = |o: &Obj| ((o.x / gap).floor() as i32, (o.z / gap).floor() as i32);
+    let mut grid: std::collections::HashMap<(i32, i32), Vec<[f32; 2]>> = std::collections::HashMap::new();
+    for o in planted {
+        grid.entry(key(o)).or_default().push([o.x, o.z]);
+    }
+    new.into_iter().filter(|o| {
+        let (cx, cz) = key(o);
+        !(cz - 1..=cz + 1).any(|z| (cx - 1..=cx + 1).any(|x| grid.get(&(x, z)).is_some_and(|c| c.iter().any(|p| (p[0] - o.x).hypot(p[1] - o.z) < gap))))
+    }).collect()
+}
+
 pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, job: &Job) -> Result<(Vec<Obj>, Vec<String>)> {
     use forest_core::mask::{MaskImage, Rgb8};
     use forest_core::preset::{AreaDef, GenStep, MixEntry, ZoneDef};
@@ -641,6 +688,13 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, j
     let vanilla = forest_core::species::vanilla_library();
     let mut project = req.project;
     project.map_size_m = size;
+    // Without an edge a forest fills its whole shape, right up to the outline.
+    if project.edges.enabled {
+        project.edges.outside_m.get_or_insert(0.0);
+    } else {
+        project.edges.jagged_m = 0.0;
+        project.edges.blend_inside_m = 0.0;
+    }
     project.easting_offset = 0.0;
     project.northing_offset = 0.0;
     for (layer, name) in &req.zones {
@@ -653,7 +707,7 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, j
         let preset = find_preset(name, &req.user_presets).with_context(|| format!("Unknown forest preset {name}"))?;
         let species_weights = preset_weights(&mut project, &preset, &vanilla);
         for (i, s) in layer.shapes.iter().enumerate().filter(|(_, s)| s.kind == crate::shapes::ShapeKind::Polygon) {
-            project.areas.push(AreaDef { label: format!("{} {}", layer.name, i + 1), density_per_ha: preset.density_per_ha, species_weights: species_weights.clone(), polygon: s.points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect(), color_filter: req.color_filter.clone(), ..Default::default() });
+            project.areas.push(AreaDef { label: format!("{} {}", layer.name, i + 1), density_per_ha: req.area_density.unwrap_or(preset.density_per_ha), species_weights: species_weights.clone(), polygon: s.points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect(), color_filter: req.color_filter.clone(), ..Default::default() });
             project.generation_order.push(GenStep::Area(project.areas.len() - 1));
         }
     }
@@ -669,7 +723,7 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, j
         for (name, share) in &req.edge_presets {
             let preset = find_preset(name, &req.user_presets).with_context(|| format!("Unknown forest preset {name}"))?;
             let species_weights = preset_weights(&mut project, &preset, &vanilla);
-            project.edges.preset_mix.push(MixEntry { name: name.clone(), share: *share, spatial: false, color_filter: None, density_per_ha: preset.density_per_ha, species_weights });
+            project.edges.preset_mix.push(MixEntry { name: name.clone(), share: *share, spatial: false, color_filter: None, density_per_ha: project.edges.density_per_ha, species_weights });
         }
     }
     project.sanitize();
@@ -715,7 +769,25 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, j
         let (i, j) = (((x / 2.0).round().max(0.0) as usize).min(side - 1), ((z / 2.0).round().max(0.0) as usize).min(side - 1));
         !grid[j * side + i]
     });
-    let inside: Vec<_> = placed.into_iter().filter(|p| areas.contains(p.x as f32, p.y as f32) || in_zone(p.x as f32, p.y as f32)).collect();
+    let beyond = if project.edges.enabled { project.edges.outside_m.unwrap_or(0.0) as f32 } else { 0.0 };
+    let near_area = |x: f32, z: f32| project.areas.iter().filter(|a| a.enabled && !a.cutting).any(|a| {
+        let n = a.polygon.len();
+        (0..n).any(|i| {
+            let (p, q) = (a.polygon[i], a.polygon[(i + 1) % n]);
+            let (ax, az, dx, dz) = (p[0] as f32, p[1] as f32, (q[0] - p[0]) as f32, (q[1] - p[1]) as f32);
+            let t = (((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
+            (ax + dx * t - x).powi(2) + (az + dz * t - z).powi(2) <= beyond * beyond
+        })
+    });
+    let near_zone = |x: f32, z: f32| [1.0f32, 0.5].iter().any(|r| (0..8).any(|k| {
+        let a = k as f32 * std::f32::consts::FRAC_PI_4;
+        let (px, pz) = (x + a.cos() * beyond * r, z + a.sin() * beyond * r);
+        (0.0..size as f32).contains(&px) && (0.0..size as f32).contains(&pz) && in_zone(px, pz)
+    }));
+    let inside: Vec<_> = placed.into_iter().filter(|p| {
+        let (x, z) = (p.x as f32, p.y as f32);
+        areas.contains(x, z) || in_zone(x, z) || (beyond > 0.0 && (near_area(x, z) || near_zone(x, z)))
+    }).collect();
     let total = inside.len();
     let placed: Vec<_> = inside.into_iter().filter(|p| free(p.x as f32, p.y as f32)).collect();
     let kept_away = total - placed.len();
@@ -921,6 +993,24 @@ pub struct RoadResult {
     pub profile: Vec<[f32; 3]>,
 }
 
+/// Length of the end pieces of roads, which are all `*_6konec`.
+const CAP_LENGTH: f64 = 6.25;
+
+/// Where a road's closing cap stands: `position` and `yaw` are given as for the cap that opens
+/// a road, the way road tools record both. Its origin is its outer end, so it moves there and
+/// faces back along the road.
+pub fn closing_cap(position: [f64; 2], yaw: f64) -> ([f64; 2], f64) {
+    let (s, c) = yaw.to_radians().sin_cos();
+    ([position[0] + s * CAP_LENGTH, position[1] + c * CAP_LENGTH], yaw + 180.0)
+}
+
+/// Position and yaw of a piece of a road as an object.
+pub fn road_part_pose(parts: &[dayz_road_tool::roads::PlacedPart], k: usize) -> ([f64; 2], f32) {
+    let is_cap = |i: usize| parts[i].model.to_ascii_lowercase().contains("konec");
+    let (position, yaw) = if k > 0 && is_cap(k) && !is_cap(k - 1) { closing_cap(parts[k].position, parts[k].rotation) } else { (parts[k].position, parts[k].rotation) };
+    (position, yaw.rem_euclid(360.0) as f32)
+}
+
 pub fn build_road(w: &mut World, points: &[[f32; 2]], family: &str, catalog: &[dayz_road_tool::roads::CatalogPart], models_prefix: &str, min_radius: f64) -> Result<RoadResult> {
     use dayz_road_tool::{document::RoutingSettings, roads};
     let settings = RoutingSettings { min_radius, ..Default::default() };
@@ -928,9 +1018,10 @@ pub fn build_road(w: &mut World, points: &[[f32; 2]], family: &str, catalog: &[d
     let parts = roads::fit(&line, family, catalog, &settings, |_, _| true)?;
     let center = roads::centerline(&parts, catalog);
     let mut objects = Vec::with_capacity(parts.len());
-    for p in &parts {
+    for (k, p) in parts.iter().enumerate() {
         let model = w.objects.intern(&format!("{models_prefix}\\{}", p.model));
-        objects.push(Obj { x: p.position[0] as f32, z: p.position[1] as f32, elevation: 0.0, yaw: p.rotation.rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 });
+        let (at, yaw) = road_part_pose(&parts, k);
+        objects.push(Obj { x: at[0] as f32, z: at[1] as f32, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 });
     }
     Ok(RoadResult { objects, centerline: center.iter().map(|p| [p[0] as f32, p[1] as f32]).collect(), decks: Vec::new(), profile: Vec::new() })
 }
@@ -952,6 +1043,12 @@ fn road_model_path(model: &str, models_prefix: &str) -> String {
 
 /// The bed under a track lies this far below its sleepers, so the ground cannot show through.
 const RAIL_BED_SINK: f32 = 0.25;
+/// Height of the running surface of a track above the origin of its models.
+const RAIL_TOP: f32 = 0.23;
+/// How much higher a road has to be than the terrain under a graded track to meet its rails.
+pub const RAIL_CROSSING_LIFT: f32 = RAIL_BED_SINK + RAIL_TOP;
+/// The same over terrain the track simply lies on.
+pub const RAIL_CROSSING_LIFT_UNGRADED: f32 = RAIL_TOP;
 
 /// Heights along a road or track within its limits of grade, cut and fill. Where the limits
 /// cannot be met on the finer samples used here they are widened as little as it takes.
@@ -1058,8 +1155,25 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
         let _ = std::fs::remove_dir_all(&dir);
         result?
     } else {
-        let mut parts = roads::fit(&line, &req.family, catalog, &req.settings, |_, _| true)?;
-        let extras = crossings.apply(&mut parts, catalog)?;
+        // A crossing has to land inside one straight, so a track that puts a joint on a road
+        // starts a little later and tries again.
+        let attempt = |points: &[[f64; 2]]| -> Result<(Vec<_>, Vec<_>)> {
+            let mut parts = roads::fit(points, &req.family, catalog, &req.settings, |_, _| true)?;
+            let extras = crossings.apply(&mut parts, catalog)?;
+            Ok((parts, extras))
+        };
+        let mut result = attempt(&line);
+        let (dx, dz) = (line[1][0] - line[0][0], line[1][1] - line[0][1]);
+        let first = dx.hypot(dz);
+        for shift in (1..=12).map(|k| k as f64 * 2.0) {
+            if result.is_ok() || crossings.is_empty() || shift + 1.0 >= first {
+                break;
+            }
+            let mut later = line.clone();
+            later[0] = [line[0][0] + dx / first * shift, line[0][1] + dz / first * shift];
+            result = attempt(&later);
+        }
+        let (parts, extras) = result?;
         Planned { parts, extras, ..Default::default() }
     };
     let route = Route { name: String::new(), family: req.family.clone(), points: line, parts: planned.parts, replaces: None, rail, extras: planned.extras, grading: None, bridges: planned.bridges };
@@ -1132,7 +1246,10 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
                 let off = |k: usize| m[0][k] * c[0] + m[2][k] * c[2];
                 Obj { x: pose.origin[0] as f32 - off(0), z: pose.origin[1] as f32 - off(2), elevation: elevation - off(1), yaw, pitch, roll, scale: 1.0, model, flags }
             }
-            None => Obj { x: p.position[0] as f32, z: p.position[1] as f32, elevation: 0.0, yaw: p.rotation.rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 },
+            None => {
+                let (at, yaw) = if i < route.parts.len() { road_part_pose(&route.parts, i) } else { (p.position, p.rotation.rem_euclid(360.0) as f32) };
+                Obj { x: at[0] as f32, z: at[1] as f32, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 }
+            }
         };
         objects.push(obj);
     }
@@ -1225,14 +1342,14 @@ pub fn prepare_line(points: &[[f32; 2]], o: &crate::library::LineOptions) -> Vec
 /// Objects at regular steps along a line. Walls and fences have their pieces joined at corners.
 pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[f32; 2]], g: &crate::library::FenceGen) -> Vec<Obj> {
     use crate::library::LineMode;
-    struct Piece { model: u32, length: f32, along_x: bool, shift: f32, weight: f32 }
+    struct Piece { model: u32, length: f32, along_x: bool, shift: f32, weight: f32, skews: bool }
     let piece_of = |w: &mut World, path: &str, weight: f32| {
         let info = db.get(&crate::objects::ObjectStore::normalize_path(path));
         let (lx, lz) = if info.known { (info.max[0] - info.min[0], info.max[2] - info.min[2]) } else { (0.0, 4.0) };
         let along_x = lx > lz;
         // Where the model's own middle sits relative to its origin, along its length.
         let (cx, cz) = if info.known { ((info.min[0] + info.max[0]) * 0.5, (info.min[2] + info.max[2]) * 0.5) } else { (0.0, 0.0) };
-        Piece { model: w.objects.intern(path), length: lx.max(lz).max(0.5), along_x, shift: if along_x { -cx } else { cz }, weight }
+        Piece { model: w.objects.intern(path), length: lx.max(lz).max(0.5), along_x, shift: if along_x { -cx } else { cz }, weight, skews: info.placement.skews() }
     };
     let list: Vec<(String, f32)> = if g.resolved.is_empty() { vec![(g.model.clone(), 1.0)] } else { g.resolved.clone() };
     let pieces: Vec<Piece> = list.iter().filter(|m| !m.0.is_empty() && m.1 > 0.0).map(|(m, k)| piece_of(w, m, *k)).collect();
@@ -1266,9 +1383,11 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         let heading = ux.atan2(uz).to_degrees();
         let (x, z) = ((a[0] + b[0]) * 0.5 - ux * p.shift, (a[1] + b[1]) * 0.5 - uz * p.shift);
         let (ga, gb) = (w.height.sample(a[0], a[1]), w.height.sample(b[0], b[1]));
-        let tilt = if g.follow_slope { ((gb - ga) / span).atan().to_degrees() } else { 0.0 };
+        // The game fits models with a placement property to the ground by itself.
+        let follow = g.follow_slope && !p.skews;
+        let tilt = if follow { ((gb - ga) / span).atan().to_degrees() } else { 0.0 };
         let (yaw, pitch, roll) = if p.along_x { (heading + 90.0, 0.0, -tilt) } else { (heading, -tilt, 0.0) };
-        let elevation = if g.follow_slope { (ga + gb) * 0.5 - w.height.sample(x, z) } else { 0.0 };
+        let elevation = if follow { (ga + gb) * 0.5 - w.height.sample(x, z) } else { 0.0 };
         let spin = if g.random_rotation { rng.gen_range(0.0..360.0) } else { 0.0 };
         out.push(Obj { x, z, elevation, yaw: yaw + g.yaw_offset + spin, pitch, roll, scale: 1.0, model: p.model, flags: 0 });
     }
@@ -1492,11 +1611,14 @@ pub fn river_modifier(base: &Heightmap, id: u64, name: &str, line: &[[f32; 2]], 
         surface[k] = surface[k].min(surface[k - 1]);
     }
     let heights: Vec<f32> = surface.iter().map(|h| h - g.depth).collect();
+    // The whole cut, banks included, stays under the water model.
+    let half = g.width * 0.5;
+    let blend = g.falloff.clamp(0.0, half * 0.75);
     let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for p in &points {
         (x0, z0, x1, z1) = (x0.min(p[0]), z0.min(p[1]), x1.max(p[0]), z1.max(p[1]));
     }
-    Some((TerrainModifier { id, name: name.to_string(), enabled: true, x: (x0 + x1) * 0.5, z: (z0 + z1) * 0.5, yaw: 0.0, shape: ModShape::Line { points, heights, half_width: g.width * 0.5, gaps: Vec::new(), bank: None }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: g.falloff, attached: None }, surface))
+    Some((TerrainModifier { id, name: name.to_string(), enabled: true, x: (x0 + x1) * 0.5, z: (z0 + z1) * 0.5, yaw: 0.0, shape: ModShape::Line { points, heights, half_width: half - blend, gaps: Vec::new(), bank: None }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: blend, attached: None }, surface))
 }
 
 /// Water models along a river bed, at a fixed height so they do not follow the carved ground.
@@ -1510,8 +1632,8 @@ pub fn river_objects(w: &mut World, db: &crate::model_info::ModelDb, modifier: &
     let length = lx.max(lz).max(2.0);
     let width = lx.min(lz).max(1.0);
     let model = w.objects.intern(&g.model);
-    let scale = (g.width + g.falloff * 0.5) / width;
-    let step = length * scale * 0.95;
+    let scale = g.width / width;
+    let step = (length * scale - g.join_offset).max(1.0);
     let (mut out, mut run, mut next) = (Vec::new(), 0.0f32, 0.0f32);
     for k in 0..points.len() - 1 {
         let (a, b) = (points[k], points[k + 1]);
@@ -1520,15 +1642,257 @@ pub fn river_objects(w: &mut World, db: &crate::model_info::ModelDb, modifier: &
             let t = (next - run) / seg;
             let (x, z) = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
             // The water stands a little under the banks.
-            let h = surface[k] + (surface[k + 1] - surface[k]) * t - g.depth * 0.4;
-            let tilt = ((surface[k + 1] - surface[k]) / seg).atan().to_degrees();
+            let h = surface[k] + (surface[k + 1] - surface[k]) * t - g.depth * 0.4 + g.water_offset;
             let heading = (b[0] - a[0]).atan2(b[1] - a[1]).to_degrees();
+            let tilt = ((surface[k + 1] - surface[k]) / seg).clamp(-0.5, 0.5).asin().to_degrees();
             out.push(Obj { x, z, elevation: h, yaw: heading, pitch: -tilt, roll: 0.0, scale, model, flags: crate::objects::FLAG_ABSOLUTE });
             next += step;
         }
         run += seg;
     }
     out
+}
+
+/// The water models of the game, with their two open ends as `[x, z, outward x, outward z]`.
+const WATER_PIECES: &[(&str, [f32; 4], [f32; 4])] = &[
+    ("river_24_6", [0.000, -3.136, 0.0, -1.0], [0.000, 2.894, 0.0, 1.0]),
+    ("river_24_12", [0.000, -5.787, 0.0, -1.0], [0.000, 6.223, 0.0, 1.0]),
+    ("river_24_24", [0.000, -12.000, 0.0, -1.0], [0.000, 12.000, 0.0, 1.0]),
+    ("river_24_24_L10", [-0.097, -4.395, 0.0960, -0.9954], [0.223, 5.408, 0.1883, 0.9821]),
+    ("river_24_24_L30", [-2.160, -10.841, 0.0960, -0.9954], [1.610, 8.992, 0.5235, 0.8520]),
+    ("river_24_24_R10", [-0.345, -4.567, -0.0960, -0.9954], [-0.665, 5.236, -0.1883, 0.9821]),
+    ("river_24_24_R30", [0.000, -10.841, -0.0960, -0.9954], [-3.770, 8.992, -0.5235, 0.8520]),
+    ("stream_14_6", [0.000, -3.136, 0.0, -1.0], [0.000, 2.894, 0.0, 1.0]),
+    ("stream_14_12", [0.000, -5.787, 0.0, -1.0], [0.000, 6.223, 0.0, 1.0]),
+    ("stream_14_24", [0.000, -12.000, 0.0, -1.0], [0.000, 12.000, 0.0, 1.0]),
+    ("stream_14_16_L45", [0.002, -9.273, 0.0, -1.0], [-6.293, 7.055, -0.6815, 0.7318]),
+    ("stream_14_16_L90", [1.796, -8.780, 0.0, -1.0], [-9.507, 2.552, -1.0, 0.0028]),
+    ("stream_14_16_R45", [-1.119, -9.273, 0.0, -1.0], [5.176, 7.055, 0.6815, 0.7318]),
+    ("stream_14_16_R90", [-1.639, -8.823, 0.0, -1.0], [9.671, 2.515, 1.0, 0.0028]),
+    ("stream_14_24_L10", [-0.120, -5.727, -0.0992, -0.9951], [-0.412, 6.305, -0.1830, 0.9831]),
+    ("stream_14_24_L30", [-0.148, -11.496, -0.0992, -0.9951], [-5.166, 11.779, -0.4694, 0.8830]),
+    ("stream_14_24_L45", [-0.001, -15.096, 0.0, -1.0], [-9.878, 10.714, -0.6815, 0.7318]),
+    ("stream_14_24_R10", [-0.015, -5.703, 0.0992, -0.9951], [0.435, 6.695, 0.1754, 0.9845]),
+    ("stream_14_24_R30", [-0.765, -11.498, 0.0992, -0.9951], [4.258, 11.759, 0.4871, 0.8734]),
+    ("stream_14_24_R45", [-1.577, -15.096, 0.0, -1.0], [8.300, 10.714, 0.6815, 0.7318]),
+];
+
+/// One water model of a river, joined end to end with the next.
+#[derive(Clone, Debug)]
+pub struct RiverPiece {
+    pub model: String,
+    pub x: f32,
+    pub z: f32,
+    pub yaw: f32,
+    pub from: [f32; 2],
+    pub to: [f32; 2],
+}
+
+/// Water models following a line, and the line they really make.
+#[derive(Clone, Debug)]
+pub struct RiverChain {
+    pub pieces: Vec<RiverPiece>,
+    pub center: Vec<[f32; 2]>,
+    pub scale: f32,
+}
+
+struct RiverFit<'a> {
+    line: &'a [[f32; 2]],
+    run: Vec<f32>,
+    options: Vec<(usize, [f32; 4], [f32; 4])>,
+    scale: f32,
+    overlap: f32,
+}
+
+impl RiverFit<'_> {
+    /// Where the next model starts after one that ended at `exit`.
+    fn next_start(&self, exit: [f32; 2], out: [f32; 2]) -> [f32; 2] {
+        [exit[0] - out[0] * self.overlap, exit[1] - out[1] * self.overlap]
+    }
+
+    /// Whether a model got far enough along the line to be worth placing.
+    fn advances(&self, reached: f32, s: f32, chord: f32) -> bool {
+        reached >= s + ((chord - self.overlap) * 0.4).max(1.0)
+    }
+
+    /// Distance to the line near `from` along it, the place reached and the way the line goes.
+    fn near(&self, p: [f32; 2], from: f32) -> (f32, f32, [f32; 2]) {
+        let start = self.run.partition_point(|r| *r < from - 8.0).saturating_sub(1);
+        let mut best = (f32::MAX, from, [0.0, 1.0]);
+        for k in start..self.line.len() - 1 {
+            if self.run[k] > from + 90.0 * self.scale.max(1.0) {
+                break;
+            }
+            let (a, b) = (self.line[k], self.line[k + 1]);
+            let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+            let len = (dx * dx + dz * dz).sqrt().max(1e-4);
+            let t = (((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / (len * len)).clamp(0.0, 1.0);
+            let d = (a[0] + dx * t - p[0]).hypot(a[1] + dz * t - p[1]);
+            if d < best.0 {
+                best = (d, self.run[k] + len * t, [dx / len, dz / len]);
+            }
+        }
+        best
+    }
+
+    /// Where a model entered by `a` and left by `b` stands: origin, yaw, exit and heading.
+    fn place(&self, at: [f32; 2], heading: [f32; 2], a: &[f32; 4], b: &[f32; 4]) -> ([f32; 2], f32, [f32; 2], [f32; 2]) {
+        let yaw = (-heading[0]).atan2(-heading[1]) - a[2].atan2(a[3]);
+        let (s, c) = yaw.sin_cos();
+        let turn = |x: f32, z: f32| [c * x + s * z, -s * x + c * z];
+        let (pa, pb) = (turn(a[0], a[1]), turn(b[0], b[1]));
+        let origin = [at[0] - pa[0] * self.scale, at[1] - pa[1] * self.scale];
+        (origin, yaw, [origin[0] + pb[0] * self.scale, origin[1] + pb[1] * self.scale], turn(b[2], b[3]))
+    }
+
+    fn cost_ahead(&self, at: [f32; 2], heading: [f32; 2], s: f32, depth: u32, sum: f32, len: f32, count: f32) -> f32 {
+        let total = *self.run.last().unwrap();
+        let mut best = f32::MAX;
+        if depth > 0 && s < total {
+            for (_, a, b) in &self.options {
+                let (_, _, exit, out) = self.place(at, heading, a, b);
+                let (d, reached, _) = self.near(exit, s);
+                let chord = (exit[0] - at[0]).hypot(exit[1] - at[1]);
+                if self.advances(reached, s, chord) {
+                    best = best.min(self.cost_ahead(self.next_start(exit, out), out, reached, depth - 1, sum + d * d * chord, len + chord, count + 1.0));
+                }
+            }
+        }
+        if best < f32::MAX {
+            return best;
+        }
+        let way = self.near(at, s).2;
+        let off = (heading[0] * way[1] - heading[1] * way[0]).atan2(heading[0] * way[0] + heading[1] * way[1]);
+        sum / len.max(1.0) + (off * 10.0).powi(2) + 16.0 * count / len.max(1.0)
+    }
+}
+
+/// Joins water models end to end along a line, bends included. `None` for a model that is
+/// not one of the game's rivers or streams.
+pub fn fit_river(line: &[[f32; 2]], g: &crate::library::RiverGen) -> Option<RiverChain> {
+    if line.len() < 2 || g.model.is_empty() {
+        return None;
+    }
+    let path = g.model.replace('/', "\\");
+    let (folder, file) = path.rsplit_once('\\').unwrap_or(("", &path));
+    let file = file.to_ascii_lowercase();
+    let (family, native) = if file.starts_with("river_24") { ("river_24", 24.0) } else if file.starts_with("stream_14") { ("stream_14", 14.0) } else { return None };
+    let mut options = Vec::new();
+    // Every model has a current, so all of them are entered from the same end.
+    for (k, (_, a, b)) in WATER_PIECES.iter().enumerate().filter(|(_, p)| p.0.starts_with(family)) {
+        options.push(if g.reverse_flow { (k, *b, *a) } else { (k, *a, *b) });
+    }
+    let mut run = vec![0.0f32];
+    for w in line.windows(2) {
+        run.push(run.last().unwrap() + (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]));
+    }
+    let total = *run.last().unwrap();
+    let scale = (g.width / native).max(0.05);
+    let fit = RiverFit { line, run, options, scale, overlap: g.join_offset };
+    let (mut at, mut s) = (line[0], 0.0f32);
+    let first = fit.near(at, 0.0).2;
+    let mut heading = first;
+    let mut pieces = Vec::new();
+    let mut center = vec![at];
+    while s < total - 3.0 * scale && pieces.len() < 40_000 {
+        let mut best: Option<(f32, usize, [f32; 2], f32, [f32; 2], [f32; 2], f32)> = None;
+        for (k, a, b) in &fit.options {
+            let (origin, yaw, exit, out) = fit.place(at, heading, a, b);
+            let (d, reached, _) = fit.near(exit, s);
+            let chord = (exit[0] - at[0]).hypot(exit[1] - at[1]);
+            if !fit.advances(reached, s, chord) {
+                continue;
+            }
+            let cost = fit.cost_ahead(fit.next_start(exit, out), out, reached, 2, d * d * chord, chord, 1.0);
+            if best.as_ref().is_none_or(|b| cost < b.0) {
+                best = Some((cost, *k, origin, yaw, exit, out, reached));
+            }
+        }
+        let Some((_, k, origin, yaw, exit, out, reached)) = best else { break };
+        pieces.push(RiverPiece { model: if folder.is_empty() { format!("{}.p3d", WATER_PIECES[k].0) } else { format!("{folder}\\{}.p3d", WATER_PIECES[k].0) }, x: origin[0], z: origin[1], yaw: yaw.to_degrees().rem_euclid(360.0), from: at, to: exit });
+        let chord = (exit[0] - at[0]).hypot(exit[1] - at[1]);
+        for q in 1..4 {
+            // Along the curve of the piece, which a straight chord would cut.
+            let t = q as f32 / 4.0;
+            let (h00, h10, h01, h11) = (2.0 * t * t * t - 3.0 * t * t + 1.0, t * t * t - 2.0 * t * t + t, -2.0 * t * t * t + 3.0 * t * t, t * t * t - t * t);
+            let point = [0, 1].map(|i| h00 * at[i] + h10 * chord * heading[i] + h01 * exit[i] + h11 * chord * out[i]);
+            let last = *center.last().unwrap();
+            // The part reaching back over the model before must not fold the line.
+            if (point[0] - last[0]) * (exit[0] - at[0]) + (point[1] - last[1]) * (exit[1] - at[1]) > 0.25 * chord {
+                center.push(point);
+            }
+        }
+        center.push(exit);
+        at = fit.next_start(exit, out);
+        heading = out;
+        s = reached;
+    }
+    (!pieces.is_empty()).then_some(RiverChain { pieces, center, scale })
+}
+
+/// The water models of a fitted river, at the level of its bed.
+pub fn river_chain_objects(w: &mut World, modifier: &TerrainModifier, surface: &[f32], g: &crate::library::RiverGen, chain: &RiverChain) -> Vec<Obj> {
+    let ModShape::Line { points, .. } = &modifier.shape else { return Vec::new() };
+    let level = |p: [f32; 2]| {
+        let k = (0..points.len()).min_by(|a, b| (points[*a][0] - p[0]).hypot(points[*a][1] - p[1]).total_cmp(&(points[*b][0] - p[0]).hypot(points[*b][1] - p[1]))).unwrap_or(0);
+        surface[k]
+    };
+    chain.pieces.iter().map(|p| {
+        let (a, b) = (level(p.from), level(p.to));
+        let (s, c) = p.yaw.to_radians().sin_cos();
+        // How far along the model's own length its two ends are from its origin.
+        let along = |q: [f32; 2]| s * (q[0] - p.x) + c * (q[1] - p.z);
+        let (from, to) = (along(p.from), along(p.to));
+        // Only tipped along the current, so that its ends meet those of its neighbours.
+        let slope = if (to - from).abs() > 1.0 { ((b - a) / (to - from)).clamp(-0.5, 0.5) } else { 0.0 };
+        let elevation = a - slope * from - g.depth * 0.4 + g.water_offset;
+        Obj { x: p.x, z: p.z, elevation, yaw: p.yaw, pitch: -slope.asin().to_degrees(), roll: 0.0, scale: chain.scale, model: w.objects.intern(&p.model), flags: crate::objects::FLAG_ABSOLUTE }
+    }).collect()
+}
+
+/// Which objects a removing generator takes: `items` are (x, z, model).
+pub fn remove_hits(items: &[(f32, f32, u32)], models: &[String], g: &crate::library::RemoveGen, area: Option<&crate::shapes::PolygonIndex>, lines: &[Vec<[f32; 2]>]) -> Vec<bool> {
+    let list = |s: &str| s.split(',').map(|n| n.trim().to_ascii_lowercase()).filter(|n| !n.is_empty()).collect::<Vec<_>>();
+    let (names, keep) = (list(&g.names), list(&g.keep));
+    let wanted: Vec<bool> = models.iter().map(|m| {
+        let p = m.to_ascii_lowercase();
+        let file = p.rsplit('\\').next().unwrap_or(&p);
+        if keep.iter().any(|n| p.contains(n.as_str())) {
+            return false;
+        }
+        if !names.is_empty() {
+            return names.iter().any(|n| p.contains(n.as_str()));
+        }
+        if p.contains("\\tree\\") || file.starts_with("t_") {
+            g.trees
+        } else if p.contains("\\bush\\") || file.starts_with("b_") {
+            g.bushes
+        } else if p.contains("\\rock") || file.starts_with("rock") || file.starts_with("stone") {
+            g.rocks
+        } else if p.contains("\\structures") {
+            g.buildings
+        } else {
+            g.other
+        }
+    }).collect();
+    // A line has no inside, so something has to count as being on it.
+    let reach = if area.is_some() { g.margin } else { g.margin.max(1.0) };
+    let boxes: Vec<[f32; 4]> = lines.iter().map(|l| l.iter().fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, p| [b[0].min(p[0] - reach), b[1].min(p[1] - reach), b[2].max(p[0] + reach), b[3].max(p[1] + reach)])).collect();
+    let near = |x: f32, z: f32| lines.iter().zip(&boxes).any(|(l, b)| {
+        x >= b[0] && z >= b[1] && x <= b[2] && z <= b[3] && l.windows(2).any(|w| {
+            let (dx, dz) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
+            let t = (((x - w[0][0]) * dx + (z - w[0][1]) * dz) / (dx * dx + dz * dz).max(1e-4)).clamp(0.0, 1.0);
+            (w[0][0] + dx * t - x).hypot(w[0][1] + dz * t - z) <= reach
+        })
+    });
+    let everywhere = area.is_none() && lines.is_empty();
+    items.par_iter().map(|(x, z, model)| {
+        if !wanted.get(*model as usize).copied().unwrap_or(false) {
+            return false;
+        }
+        let dice = (x.to_bits() ^ z.to_bits().rotate_left(13) ^ g.seed).wrapping_mul(2_654_435_761) as f32 / u32::MAX as f32;
+        dice <= g.share && (everywhere || area.is_some_and(|a| a.contains(*x, *z)) || (reach > 0.0 && near(*x, *z)))
+    }).collect()
 }
 
 /// Applies the user's changes to a road catalog read from a project.
@@ -1544,6 +1908,107 @@ pub fn apply_catalog_edits(catalog: &mut Vec<dayz_road_tool::roads::CatalogPart>
         let road_type_index = catalog.iter().find(|c| c.family == a.family).map(|c| c.road_type_index).unwrap_or(0);
         catalog.push(dayz_road_tool::roads::CatalogPart { path: a.path.clone(), family: a.family.clone(), category: a.category, index: catalog.len() as u32, road_type_index, model });
     }
+}
+
+/// Blocks of a level crossing laid over the track `piece` where a road crosses at `at`. Track
+/// geometry runs through the middle of a model; objects are placed by their own origin.
+fn deck_objects(piece: &Obj, piece_center: [f32; 3], origin_y: f32, at: [f32; 2], blocks: &[(String, f64, f64)], block_center: impl Fn(&str) -> [f32; 3]) -> Vec<(String, Obj)> {
+    let m = crate::objects::rotation(piece.yaw, piece.pitch, piece.roll, 1.0);
+    let off = |c: [f32; 3], k: usize| m[0][k] * c[0] + m[2][k] * c[2];
+    let middle = [piece.x + off(piece_center, 0), origin_y + off(piece_center, 1), piece.z + off(piece_center, 2)];
+    let flat = m[2][0].hypot(m[2][2]).max(1e-4);
+    let (fx, fz) = (m[2][0] / flat, m[2][2] / flat);
+    let total: f32 = blocks.iter().map(|b| b.1 as f32).sum();
+    let mut from = -total * 0.5;
+    let mut out = Vec::with_capacity(blocks.len());
+    for (path, length, offset) in blocks {
+        let shift = from + *length as f32 * 0.5 - *offset as f32;
+        let (x, z) = (at[0] + fx * shift, at[1] + fz * shift);
+        let y = middle[1] + m[2][1] / flat * ((x - middle[0]) * fx + (z - middle[2]) * fz);
+        let model = road_model_path(path, "");
+        let c = block_center(&model);
+        out.push((model, Obj { x: x - off(c, 0), z: z - off(c, 2), elevation: y - off(c, 1), yaw: piece.yaw, pitch: piece.pitch, roll: piece.roll, scale: 1.0, model: 0, flags: crate::objects::FLAG_ABSOLUTE }));
+        from += *length as f32;
+    }
+    out
+}
+
+/// Level crossings for a new road over the tracks already on the map, and how many crossings
+/// could not get one because the track bends there or the road is too oblique.
+pub fn decks_over_tracks(w: &World, db: &crate::model_info::ModelDb, center: &[[f32; 2]], road_decks: &[crate::world::BridgeDeck]) -> (Vec<(String, Obj)>, usize) {
+    use dayz_road_tool::rails;
+    const HALF_WIDTH: f32 = 4.0;
+    const MARGIN: f32 = 1.0;
+    let (mut out, mut skipped) = (Vec::new(), 0);
+    for track in w.routes.iter().filter(|r| rails::is_track_family(&r.family)) {
+        let line: Vec<[f32; 3]> = track.centerline.iter().map(|p| [p[0], p[1], 0.0]).collect();
+        let spans: Vec<_> = road_decks.iter().chain(&track.decks).cloned().collect();
+        for hit in crossing_decks(center, &line, &[], 0.0, &spans) {
+            let at = hit.from;
+            let mid = |o: &Obj| {
+                let c = db.get(w.objects.model_path(o)).center;
+                let m = crate::objects::rotation(o.yaw, o.pitch, o.roll, 1.0);
+                [o.x + m[0][0] * c[0] + m[2][0] * c[2], o.z + m[0][2] * c[0] + m[2][2] * c[2]]
+            };
+            let nearest = track.objects.iter().filter_map(|i| w.objects.get(*i)).min_by(|a, b| {
+                let d = |o: &Obj| { let p = mid(o); (p[0] - at[0]).hypot(p[1] - at[1]) };
+                d(a).total_cmp(&d(b))
+            });
+            let Some(piece) = nearest else { continue };
+            let path = w.objects.model_path(piece);
+            let stem = path.rsplit('\\').next().unwrap_or(path).trim_end_matches(".p3d");
+            if stem.contains("passing") {
+                continue; // The track was built with a crossing here.
+            }
+            let road = center.windows(2).min_by(|a, b| {
+                let d = |s: &[[f32; 2]]| ((s[0][0] + s[1][0]) * 0.5 - at[0]).hypot((s[0][1] + s[1][1]) * 0.5 - at[1]);
+                d(a).total_cmp(&d(b))
+            });
+            let m = crate::objects::rotation(piece.yaw, piece.pitch, piece.roll, 1.0);
+            let sin = road.map_or(0.0, |s| {
+                let (rx, rz) = (s[1][0] - s[0][0], s[1][1] - s[0][1]);
+                ((m[2][0] * rz - m[2][2] * rx) / (rx.hypot(rz) * m[2][0].hypot(m[2][2])).max(1e-4)).abs()
+            });
+            let blocks = (rails::is_straight_piece(stem) && sin >= (rails::MIN_CROSSING_ANGLE as f32).to_radians().sin() - 1e-3)
+                .then(|| rails::deck_blocks(&track.family, Path::new(rails::DEFAULT_FOLDER), f64::from(2.0 * HALF_WIDTH / sin + 2.0 * MARGIN)))
+                .flatten();
+            let Some(blocks) = blocks else { skipped += 1; continue };
+            let (center_of, ground) = (db.get(path).center, crate::objects::ObjectStore::origin_y(piece, &w.height));
+            out.extend(deck_objects(piece, center_of, ground, at, &blocks, |p| db.get(p).center));
+        }
+    }
+    (out, skipped)
+}
+
+/// Where `other`, given as (x, z, height), crosses `line`, as points the road has to meet.
+/// Segments in `gaps` are spans in the air, and spans of the road itself pass over anything.
+pub fn crossing_decks(line: &[[f32; 2]], other: &[[f32; 3]], gaps: &[u32], lift: f32, own: &[crate::world::BridgeDeck]) -> Vec<crate::world::BridgeDeck> {
+    let mut out = Vec::new();
+    for w in line.windows(2) {
+        for (_, s) in other.windows(2).enumerate().filter(|(k, _)| !gaps.contains(&(*k as u32))) {
+            let (rx, rz) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
+            let (sx, sz) = (s[1][0] - s[0][0], s[1][1] - s[0][1]);
+            let cross = rx * sz - rz * sx;
+            if cross.abs() < 1e-6 {
+                continue;
+            }
+            let (qx, qz) = (s[0][0] - w[0][0], s[0][1] - w[0][1]);
+            let (t, u) = ((qx * sz - qz * sx) / cross, (qx * rz - qz * rx) / cross);
+            if !(0.0..1.0).contains(&t) || !(0.0..1.0).contains(&u) {
+                continue;
+            }
+            let at = [w[0][0] + rx * t, w[0][1] + rz * t];
+            let on_own_span = own.iter().any(|d| {
+                let (dx, dz) = (d.to[0] - d.from[0], d.to[1] - d.from[1]);
+                let v = ((at[0] - d.from[0]) * dx + (at[1] - d.from[1]) * dz) / (dx * dx + dz * dz).max(1e-3);
+                (0.0..=1.0).contains(&v) && (d.from[0] + dx * v - at[0]).hypot(d.from[1] + dz * v - at[1]) < 2.0
+            });
+            if !on_own_span {
+                out.push(crate::world::BridgeDeck { from: at, to: at, height: s[0][2] + (s[1][2] - s[0][2]) * u + lift, free: false });
+            }
+        }
+    }
+    out
 }
 
 /// A modifier that levels a strip along a road to a smooth profile of the sculpted terrain.
@@ -1711,6 +2176,141 @@ mod tests {
         assert!(l.len() > 20);
         assert!(l.iter().any(|p| (p[0] - 40.0).abs() < 0.01 && (p[1] - 10.0).abs() < 0.01));
         assert_eq!(*l.last().unwrap(), [80.0, 0.0]);
+    }
+
+    #[test]
+    fn a_river_follows_a_bend_with_bend_models() {
+        use crate::library::RiverGen;
+        let line: Vec<[f32; 2]> = (0..=60).map(|k| { let a = k as f32 / 60.0 * 1.57; [300.0 - 150.0 * a.cos(), 300.0 + 150.0 * a.sin()] }).collect();
+        let g = RiverGen { join_offset: 0.0, ..Default::default() };
+        let chain = fit_river(&line, &g).unwrap();
+        assert!(chain.pieces.iter().any(|p| p.model.contains("_L") || p.model.contains("_R")));
+        assert!(chain.pieces.iter().all(|p| p.model.starts_with("dz\\water\\streams\\river_24")));
+        for w in chain.pieces.windows(2) {
+            assert!((w[0].to[0] - w[1].from[0]).abs() < 1e-3 && (w[0].to[1] - w[1].from[1]).abs() < 1e-3);
+        }
+        let worst = chain.pieces.iter().map(|p| line.iter().map(|q| (q[0] - p.to[0]).hypot(q[1] - p.to[1])).fold(f32::MAX, f32::min)).fold(0.0, f32::max);
+        assert!(worst < 9.0, "{worst}");
+        let end = chain.pieces.last().unwrap().to;
+        assert!((end[0] - line[60][0]).hypot(end[1] - line[60][1]) < 30.0);
+    }
+
+    #[test]
+    fn each_water_model_reaches_back_over_the_one_before() {
+        use crate::library::RiverGen;
+        let line = [[100.0, 100.0], [100.0, 500.0]];
+        let chain = fit_river(&line, &RiverGen { join_offset: 3.0, ..Default::default() }).unwrap();
+        for w in chain.pieces.windows(2) {
+            assert!(((w[0].to[0] - w[1].from[0]).hypot(w[0].to[1] - w[1].from[1]) - 3.0).abs() < 0.01);
+        }
+        assert!(chain.center.windows(2).all(|w| w[1][1] > w[0][1]));
+    }
+
+    #[test]
+    fn a_later_forest_layer_keeps_its_distance() {
+        let at = |x: f32| Obj { x, z: 0.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        let kept = keep_apart(&[at(10.0)], vec![at(10.5), at(11.5), at(30.0)], 1.0);
+        assert_eq!(kept.iter().map(|o| o.x).collect::<Vec<_>>(), [11.5, 30.0]);
+    }
+
+    #[test]
+    fn a_river_bed_stays_within_its_water_model() {
+        use crate::library::RiverGen;
+        let h = Heightmap::new(64, 64, 8.0, 50.0);
+        for g in [RiverGen::default(), RiverGen { width: 14.0, falloff: 14.0, ..Default::default() }] {
+            let (m, _) = river_modifier(&h, 1, "r", &[[10.0, 160.0], [400.0, 160.0]], &g).unwrap();
+            let ModShape::Line { half_width, .. } = m.shape else { panic!() };
+            assert!(half_width > 0.0 && half_width + m.falloff <= g.width * 0.5 + 1e-3);
+        }
+    }
+
+    #[test]
+    fn removing_takes_only_what_was_asked() {
+        use crate::library::RemoveGen;
+        let models = ["dz\\plants\\tree\\t_a.p3d", "dz\\plants\\bush\\b_a.p3d", "dz\\rocks\\stone.p3d", "dz\\structures\\house.p3d"].map(String::from);
+        let items = [(10.0, 0.0, 0), (10.0, 1.0, 1), (10.0, 2.0, 2), (10.0, 3.0, 3), (50.0, 0.0, 0)];
+        let line = vec![vec![[0.0, 0.0], [20.0, 0.0]]];
+        let g = RemoveGen { margin: 5.0, ..Default::default() };
+        assert_eq!(remove_hits(&items, &models, &g, None, &line), [true, true, false, false, false]);
+        let names = RemoveGen { margin: 5.0, names: "house".into(), ..Default::default() };
+        assert_eq!(remove_hits(&items, &models, &names, None, &line), [false, false, false, true, false]);
+        let kept = RemoveGen { margin: 5.0, keep: "b_a".into(), ..Default::default() };
+        assert_eq!(remove_hits(&items, &models, &kept, None, &line), [true, false, false, false, false]);
+        assert_eq!(remove_hits(&items, &models, &RemoveGen::default(), None, &[]), [true, true, false, false, true]);
+    }
+
+    #[test]
+    fn only_the_closing_cap_of_a_road_is_turned() {
+        use dayz_road_tool::roads::PlacedPart;
+        let part = |m: &str, z: f64| PlacedPart { model: m.into(), reverse: false, position: [10.0, z], rotation: 0.0 };
+        let road = [part("asf2_6konec.p3d", 0.0), part("asf2_25.p3d", 6.25), part("asf2_6konec.p3d", 31.25)];
+        assert_eq!(road_part_pose(&road, 0), ([10.0, 0.0], 0.0));
+        assert_eq!(road_part_pose(&road, 1), ([10.0, 6.25], 0.0));
+        // Its outer end is the end of the road and it looks back along it.
+        assert_eq!(road_part_pose(&road, 2), ([10.0, 37.5], 180.0));
+    }
+
+    #[test]
+    fn every_water_model_runs_the_same_way_and_follows_the_slope() {
+        use crate::library::RiverGen;
+        let line: Vec<[f32; 2]> = (0..=60).map(|k| { let a = k as f32 / 60.0 * 3.0; [300.0 - 150.0 * a.cos(), 300.0 + 150.0 * a.sin()] }).collect();
+        let g = RiverGen::default();
+        let chain = fit_river(&line, &g).unwrap();
+        // The way from the entry to the exit of a model is always towards its own +Z.
+        for p in &chain.pieces {
+            let (s, c) = p.yaw.to_radians().sin_cos();
+            assert!(s * (p.to[0] - p.from[0]) + c * (p.to[1] - p.from[1]) > 0.0, "{p:?}");
+        }
+        let flipped = fit_river(&line, &RiverGen { reverse_flow: true, ..Default::default() }).unwrap();
+        for p in &flipped.pieces {
+            let (s, c) = p.yaw.to_radians().sin_cos();
+            assert!(s * (p.to[0] - p.from[0]) + c * (p.to[1] - p.from[1]) < 0.0, "{p:?}");
+        }
+        let mut h = Heightmap::new(128, 128, 8.0, 50.0);
+        for j in 0..128 { for i in 0..128 { h.set(i, j, 150.0 - i as f32 * 0.5); } }
+        let (m, surface) = river_modifier(&h, 1, "r", &chain.center, &g).unwrap();
+        let mut w = World::new(crate::world::WorldMeta::new("t", 128, 8.0), 50.0);
+        let objects = river_chain_objects(&mut w, &m, &surface, &g, &chain);
+        assert!(objects.iter().all(|o| o.roll == 0.0));
+        assert!(objects.iter().any(|o| o.pitch.abs() > 0.05), "no model follows the slope");
+        // Where one model ends the next one starts, at the same height.
+        let height = |o: &Obj, q: [f32; 2]| {
+            let (s, c) = o.yaw.to_radians().sin_cos();
+            o.elevation - o.pitch.to_radians().sin() * (s * (q[0] - o.x) + c * (q[1] - o.z))
+        };
+        for k in 0..objects.len() - 1 {
+            let (end, start) = (height(&objects[k], chain.pieces[k].to), height(&objects[k + 1], chain.pieces[k].to));
+            assert!((end - start).abs() < 0.1, "{k}: {end} {start}");
+        }
+    }
+
+    #[test]
+    fn a_deck_lies_on_the_track_under_the_road() {
+        // A track running north and climbing 1 in 10, with its middle 10 m ahead of its origin.
+        let pitch = -(0.1f32).asin().to_degrees();
+        let piece = Obj { x: 50.0, z: 100.0, elevation: 20.0, yaw: 0.0, pitch, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        let blocks = [(r"P:\dz\misc\block.p3d".to_string(), 10.0, 1.0)];
+        let decks = deck_objects(&piece, [0.0, 0.0, 10.0], 20.0, [50.0, 112.0], &blocks, |_| [0.0, 0.0, 2.0]);
+        let (path, o) = &decks[0];
+        assert_eq!(path, r"dz\misc\block.p3d");
+        // Block origin: the road's point, minus the offset of the block, minus its own centre.
+        assert!((o.x - 50.0).abs() < 1e-3 && (o.z - (112.0 - 1.0 - 2.0 * pitch.to_radians().cos())).abs() < 0.01, "{o:?}");
+        let track_there = 20.0 + 0.1 * (112.0 - 1.0 - 100.0);
+        assert!((o.elevation + 0.1 * 2.0 - track_there).abs() < 0.03, "{o:?}");
+        assert_eq!((o.yaw, o.pitch, o.flags), (0.0, pitch, crate::objects::FLAG_ABSOLUTE));
+    }
+
+    #[test]
+    fn a_road_meets_what_it_crosses_except_under_a_span() {
+        let road = [[0.0, 50.0], [100.0, 50.0]];
+        let other = [[40.0, 0.0, 10.0], [40.0, 100.0, 20.0]];
+        let d = crossing_decks(&road, &other, &[], 0.5, &[]);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].from, [40.0, 50.0]);
+        assert!((d[0].height - 15.5).abs() < 1e-3);
+        assert!(crossing_decks(&road, &other, &[0], 0.5, &[]).is_empty());
+        let span = crate::world::BridgeDeck { from: [30.0, 50.0], to: [50.0, 50.0], height: 30.0, free: false };
+        assert!(crossing_decks(&road, &other, &[], 0.5, &[span]).is_empty());
     }
 
     #[test]

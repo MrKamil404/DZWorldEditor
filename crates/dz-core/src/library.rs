@@ -22,6 +22,8 @@ pub struct ForestGen {
     pub color_filter: Option<ColorFilter>,
     /// (preset, share) planted along the edges of zones.
     pub edge_presets: Vec<(String, f32)>,
+    /// Further passes over the same shapes, such as undergrowth under the trees.
+    pub layers: Vec<ForestLayer>,
     pub user_presets: Vec<UserPreset>,
     /// (surface layer name, margin in metres) kept free of trees.
     pub skip_surfaces: Vec<(String, f32)>,
@@ -34,11 +36,13 @@ pub struct ForestGen {
 impl Default for ForestGen {
     fn default() -> Self {
         Self {
-            project: ForestProject::default(),
+            // Clearings are a choice: by default a forest fills the whole shape.
+            project: ForestProject { clearing_strength: 0.0, ..Default::default() },
             preset: crate::gen::forest_preset_names().into_iter().next().unwrap_or_default(),
             zones: Vec::new(),
             color_filter: None,
             edge_presets: Vec::new(),
+            layers: Vec::new(),
             user_presets: Vec::new(),
             skip_surfaces: Vec::new(),
             avoid_roads: None,
@@ -307,21 +311,120 @@ pub fn parse_powerlines(text: &str, config: &str) -> anyhow::Result<PowerGen> {
     Ok(PowerGen { config: config.to_string(), poles, wires, spacing: 0.0, line: LineOptions::default() })
 }
 
+/// Grading of a strip along a line, done as under a road.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct LineTerrainGen {
+    pub width: f32,
+    pub falloff: f32,
+    pub grading: crate::world::RoadGrading,
+    pub line: LineOptions,
+}
+
+impl Default for LineTerrainGen {
+    fn default() -> Self {
+        Self { width: 8.0, falloff: 20.0, grading: Default::default(), line: LineOptions::default() }
+    }
+}
+
+/// Takes objects off the map.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct RemoveGen {
+    pub trees: bool,
+    pub bushes: bool,
+    pub rocks: bool,
+    pub buildings: bool,
+    pub other: bool,
+    /// Parts of model names, separated by commas; when given they replace the categories.
+    pub names: String,
+    /// Parts of model names that always stay.
+    pub keep: String,
+    /// Reach beyond a polygon, or to each side of a line, in metres.
+    pub margin: f32,
+    /// Part of the matching objects that goes, from 0 to 1.
+    pub share: f32,
+    pub seed: u32,
+}
+
+impl Default for RemoveGen {
+    fn default() -> Self {
+        Self { trees: true, bushes: true, rocks: false, buildings: false, other: false, names: String::new(), keep: String::new(), margin: 0.0, share: 1.0, seed: 1 }
+    }
+}
+
+/// An object a generator took off the map, kept so it can be put back.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RemovedObject {
+    pub model: String,
+    pub x: f32,
+    pub z: f32,
+    pub elevation: f32,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub roll: f32,
+    pub scale: f32,
+    pub flags: u32,
+}
+
+impl RemovedObject {
+    pub fn new(model: &str, o: &crate::objects::Obj) -> Self {
+        Self { model: model.to_string(), x: o.x, z: o.z, elevation: o.elevation, yaw: o.yaw, pitch: o.pitch, roll: o.roll, scale: o.scale, flags: o.flags }
+    }
+    pub fn object(&self, model: u32) -> crate::objects::Obj {
+        crate::objects::Obj { x: self.x, z: self.z, elevation: self.elevation, yaw: self.yaw, pitch: self.pitch, roll: self.roll, scale: self.scale, model, flags: self.flags }
+    }
+}
+
 /// A river cut along a line, with water models in its bed.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct RiverGen {
+    /// Width of the water models; the bed with its blend stays within it.
     pub width: f32,
     pub depth: f32,
     pub falloff: f32,
     /// Water model laid along the bed; empty leaves the bed dry.
     pub model: String,
+    /// How far each water model reaches back over the one before it, in metres.
+    pub join_offset: f32,
+    /// Raises or lowers the water models, in metres.
+    pub water_offset: f32,
+    /// Lays the models the other way round, for a current running against the line.
+    pub reverse_flow: bool,
     pub line: LineOptions,
 }
 
+/// Enough to close the seam; more shows as a dark band where the water doubles up.
+const JOIN: f32 = 0.5;
+
 impl Default for RiverGen {
     fn default() -> Self {
-        Self { width: 14.0, depth: 3.0, falloff: 14.0, model: r"dz\water\streams\river_24_24.p3d".into(), line: LineOptions { mode: LineMode::Bezier, offset: 0.0 } }
+        Self { width: 24.0, depth: 3.0, falloff: 8.0, model: r"dz\water\streams\river_24_24.p3d".into(), join_offset: JOIN, water_offset: 0.0, reverse_flow: false, line: LineOptions { mode: LineMode::Bezier, offset: 0.0 } }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ForestLayer {
+    pub preset: String,
+    /// Plants per hectare; 0 takes the density of the preset.
+    pub density_per_ha: f32,
+    pub seed: u64,
+    pub spacing: f64,
+    pub scale_min: f32,
+    pub scale_max: f32,
+    pub clearing_strength: f64,
+    pub clearing_scale_m: f64,
+    pub max_slope_deg: f64,
+    pub edge_padding_m: f64,
+    /// Distance kept from what the passes before planted, in metres.
+    pub gap: f32,
+}
+
+impl Default for ForestLayer {
+    fn default() -> Self {
+        Self { preset: String::new(), density_per_ha: 0.0, seed: 2337, spacing: 1.0, scale_min: 1.0, scale_max: 1.0, clearing_strength: 0.0, clearing_scale_m: 350.0, max_slope_deg: 90.0, edge_padding_m: 0.0, gap: 1.0 }
     }
 }
 
@@ -336,6 +439,8 @@ pub enum GeneratorKind {
     Area(AreaGen),
     Line(LineGen),
     River(RiverGen),
+    LineTerrain(LineTerrainGen),
+    Remove(RemoveGen),
     Terrain(TerrainParams),
     Erosion(ErosionParams),
     ThermalErosion { iterations: u32, talus: f32 },
@@ -348,6 +453,8 @@ pub enum TargetKind {
     Area,
     Line,
     Point,
+    /// A polygon, a line, a road or the whole map.
+    Any,
     /// Works on the terrain of the whole map.
     Map,
 }
@@ -357,7 +464,8 @@ impl GeneratorKind {
         match self {
             GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) => TargetKind::Area,
             GeneratorKind::Settlement(_) => TargetKind::Point,
-            GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::River(_) | GeneratorKind::Line(_) => TargetKind::Line,
+            GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::River(_) | GeneratorKind::Line(_) | GeneratorKind::LineTerrain(_) => TargetKind::Line,
+            GeneratorKind::Remove(_) => TargetKind::Any,
             GeneratorKind::Terrain(_) | GeneratorKind::Erosion(_) | GeneratorKind::ThermalErosion { .. } | GeneratorKind::Terraces { .. } => TargetKind::Map,
         }
     }
@@ -383,6 +491,8 @@ impl GeneratorKind {
                 LineMethod::Nodes => "Line: Nodes Objects",
             },
             GeneratorKind::River(_) => "River",
+            GeneratorKind::LineTerrain(_) => "Terrain along a line",
+            GeneratorKind::Remove(_) => "Remove objects",
             GeneratorKind::Terrain(_) => "Terrain shape",
             GeneratorKind::Erosion(_) => "Hydraulic erosion",
             GeneratorKind::ThermalErosion { .. } => "Thermal erosion",
@@ -418,11 +528,25 @@ pub struct ObjectPreset {
 pub struct Library {
     pub generators: Vec<GeneratorPreset>,
     pub objects: Vec<ObjectPreset>,
+    /// Forest presets read from DayZForests files.
+    pub forest_presets: Vec<UserPreset>,
     pub generator_folders: Vec<String>,
     pub object_folders: Vec<String>,
 }
 
 impl Library {
+    /// Everything in the library a forest can be planted with.
+    pub fn all_forest_presets(&self) -> Vec<UserPreset> {
+        let mut out = self.forest_presets.clone();
+        for p in &self.objects {
+            if p.items.is_empty() || out.iter().any(|x| x.name == p.name) {
+                continue;
+            }
+            let weights = p.items.iter().map(|(m, k)| (m.rsplit('\\').next().unwrap_or(m).trim_end_matches(".p3d").to_string(), *k)).collect();
+            out.push(UserPreset { group: p.folder.clone(), name: p.name.clone(), density_per_ha: 300.0, weights });
+        }
+        out
+    }
     pub fn load(path: &Path) -> Self {
         std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
     }
@@ -459,6 +583,8 @@ pub fn built_in_generators() -> Vec<GeneratorPreset> {
         make(18, "Line: Regular", GeneratorKind::Fence(FenceGen { model: String::new(), spacing: 10.0, follow_slope: false, join_corners: false, ..Default::default() })),
         make(19, "Line: Sparse Cluster", GeneratorKind::Line(LineGen { method: LineMethod::SparseCluster, ..Default::default() })),
         make(20, "Line: Nodes Objects", GeneratorKind::Line(LineGen { method: LineMethod::Nodes, ..Default::default() })),
+        make(21, "Terrain along a line", GeneratorKind::LineTerrain(LineTerrainGen::default())),
+        make(22, "Remove objects", GeneratorKind::Remove(RemoveGen::default())),
     ]
 }
 
@@ -485,6 +611,9 @@ pub struct GeneratorInstance {
     /// The terrain modifier this generator made, if any.
     #[serde(default)]
     pub modifier: Option<u64>,
+    /// What this generator took off the map.
+    #[serde(default)]
+    pub removed: Vec<RemovedObject>,
 }
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -520,7 +649,7 @@ mod tests {
     #[test]
     fn built_ins_cover_every_kind() {
         let names: Vec<&str> = built_in_generators().iter().map(|g| g.kind.type_name()).collect();
-        assert_eq!(names.len(), 20);
+        assert_eq!(names.len(), 22);
         assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects"));
     }
 

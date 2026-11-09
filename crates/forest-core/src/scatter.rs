@@ -569,6 +569,13 @@ fn make_wob(jag: f64, wl: f64, seed: u64) -> std::sync::Arc<dyn Fn(f64, f64) -> 
     })
 }
 
+/// Szum decydujący, które miejsca pasa granicznego należą do placków.
+fn make_patch(size: f64, cover: f64, seed: u64) -> std::sync::Arc<dyn Fn(f64, f64) -> bool> {
+    std::sync::Arc::new(move |x: f64, y: f64| {
+        size <= 0.0 || cover >= 0.99 || fbm2(x / size, y / size, seed ^ 0x51A7) < 0.5 + (cover - 0.5) * 0.4
+    })
+}
+
 fn sat_color_ok(
     sat: Option<&MaskImage>,
     size: f64,
@@ -1071,7 +1078,7 @@ pub fn generate(
 
     // mapa głębokości od krawędzi (wtapianie pasa w głąb stref z maski)
     // blend_inside_m działa niezależnie od edges.enabled
-    let blend_inside = project.edges.blend_inside_m.max(0.0);
+    let blend_inside = project.edges.fill_blend();
     let blend_depth: Option<HashMap<u32, u8>> = if blend_inside > 0.0 {
         mask.map(|m| {
             let max_px = ((blend_inside / ps).ceil() as usize).clamp(1, 255);
@@ -1165,7 +1172,7 @@ pub fn generate(
             let jag_a = eff_edges.jagged_m.max(0.0);
             let wl_a = (eff_edges.band_width_m * 3.0).max(80.0);
             let wob_a = make_wob(jag_a, wl_a, jag_seed);
-            let blend_in_a = eff_edges.blend_inside_m.max(0.0);
+            let blend_in_a = eff_edges.fill_blend();
 
             let (bmin_x, bmin_y, bmax_x, bmax_y) = bbox_of(ring);
             let (min_x, min_y, max_x, max_y) = (
@@ -1307,8 +1314,9 @@ pub fn generate(
     // --- Źródło: pas graniczny ------------------------------------------------------
     // (puste wagi odrzuca validate(); guard na wypadek obejścia walidacji)
     if project.edges.enabled {
-        let band = project.edges.band_width_m;
+        let band = project.edges.inner_reach().max(project.edges.outside_m.unwrap_or(0.0));
         let band_px = ((band / ps).ceil() as usize).clamp(1, 128);
+        let patch_mask = make_patch(project.edges.patch_size_m, project.edges.patch_cover, jag_seed);
         // miks presetów (blend) albo ręczna lista
         let (edge_dens, edge_w) = edge_effective(&project.edges);
         if edge_w.is_empty() {
@@ -1338,7 +1346,7 @@ pub fn generate(
         for (zi, band_set) in &edge_bands {
             let total_area = band_set.len() as f64 * pixel_area;
             let base_target =
-                (total_area / 10_000.0 * f64::from(edge_dens)).round() as usize;
+                (total_area / 10_000.0 * f64::from(edge_dens) * project.edges.patch_share()).round() as usize;
             if base_target == 0 {
                 continue;
             }
@@ -1370,6 +1378,7 @@ pub fn generate(
                 let set: &[(u32, u8)] = band_set;
                 let width = m.width;
                     let wob = wob.clone();
+                    let patch = patch_mask.clone();
                     jobs_mask.push(Job {
                         label: format!(
                             "Granica – {} ({}/{})",
@@ -1392,7 +1401,7 @@ pub fn generate(
                         let wx = (px + 0.5 + rng.gen_range(-0.5..0.5)) * ps;
                         let wy = size - (row + 0.5 + rng.gen_range(-0.5..0.5)) * ps;
                         let s = (f64::from(lvl) + rng.gen_range(0.0..1.0)) * ps + wob(wx, wy);
-                        if s >= s_lo && s < s_hi {
+                        if s >= s_lo && s < s_hi && patch(wx, wy) {
                             Some((wx, wy))
                         } else {
                             None
@@ -1419,9 +1428,11 @@ pub fn generate(
                 if ring.len() < 3 {
                     continue;
                 }
-                let band_a = eff.band_width_m;
+                let band_a = eff.inner_reach();
+                let outside_a = eff.outside_m;
                 let jag_a = eff.jagged_m.max(0.0);
                 let wob_a = make_wob(jag_a, (band_a * 3.0).max(80.0), jag_seed);
+                let patch_a = make_patch(eff.patch_size_m, eff.patch_cover, jag_seed);
                 // miks presetów zamiast ręcznej listy (blend udziałów)
                 let (eff_dens, eff_w) = edge_effective(eff);
                 if eff_w.is_empty() {
@@ -1431,12 +1442,12 @@ pub fn generate(
 
                 let perim = polygon_perimeter(ring);
                 let inner = polygon_area(ring);
-                let area_m2 = (perim * 2.0 * band_a).min(inner * 1.5);
+                let area_m2 = (perim * (band_a + outside_a.unwrap_or(band_a))).min(inner * 1.5);
                 if area_m2 <= 0.0 {
                     continue;
                 }
                 let base_target =
-                    (area_m2 / 10_000.0 * f64::from(eff_dens)).round() as usize;
+                    (area_m2 / 10_000.0 * f64::from(eff_dens) * eff.patch_share()).round() as usize;
                 if base_target == 0 {
                     continue;
                 }
@@ -1444,7 +1455,7 @@ pub fn generate(
                     .map(|k| strip_weight(k, EDGE_STRIPS, eff.blend))
                     .sum();
                 let (min_x, min_y, max_x, max_y) = bbox_of(ring);
-                let margin = band_a + jag_a;
+                let margin = band_a.max(outside_a.unwrap_or(0.0)) + jag_a;
                 let (min_x, min_y, max_x, max_y) = (
                     (min_x - margin).max(0.0),
                     (min_y - margin).max(0.0),
@@ -1512,6 +1523,7 @@ pub fn generate(
                         },
                     };
                     let wob_a = wob_a.clone();
+                    let patch_a = patch_a.clone();
                     let cf_samples = cf_samples.clone();
                     jobs_per_area[ai].push(Job {
                         label: format!(
@@ -1533,8 +1545,17 @@ pub fn generate(
                                 let w = wob_a(x, y);
                                 let signed =
                                     if point_in_polygon(&poly_c, x, y) { dist } else { -dist };
-                                let s = (signed - w).abs();
-                                if s >= s_lo && s < s_hi {
+                                // Na zewnątrz pas ma własną szerokość, sprowadzaną do skali warstw.
+                                let s = match outside_a {
+                                    Some(o) if signed < w => {
+                                        if o <= 0.0 {
+                                            continue;
+                                        }
+                                        (signed - w).abs() * band_a / o
+                                    }
+                                    _ => (signed - w).abs(),
+                                };
+                                if s >= s_lo && s < s_hi && patch_a(x, y) {
                                     // inteligentne generowanie: piksel podkładu musi
                                     // pasować do próbek (albo ICH UNIKAĆ przy invert)
                                     if use_cf {
@@ -2425,6 +2446,9 @@ mod tests {
             blend: false,
             jagged_m: 0.0, // deterministyczny pas do testów odległości
             blend_inside_m: 0.0,
+            outside_m: None,
+            patch_size_m: 0.0,
+            patch_cover: 0.5,
             preset_mix: Vec::new(),
         };
 
@@ -2494,6 +2518,9 @@ mod tests {
             blend: false,
             jagged_m: 0.0,
             blend_inside_m: 0.0,
+            outside_m: None,
+            patch_size_m: 0.0,
+            patch_cover: 0.5,
             preset_mix: Vec::new(),
         };
         let (objs, stats) = generate(&proj, None, None, None, None, &|_| {}).unwrap();
@@ -2527,6 +2554,9 @@ mod tests {
                 blend: false,
                 jagged_m: 0.0,
                 blend_inside_m: 0.0,
+            outside_m: None,
+            patch_size_m: 0.0,
+            patch_cover: 0.5,
                 preset_mix: Vec::new(),
                 }),
             color_filter: None,
@@ -2560,6 +2590,9 @@ mod tests {
             blend: false,
             jagged_m: 0.0,
             blend_inside_m: 0.0,
+            outside_m: None,
+            patch_size_m: 0.0,
+            patch_cover: 0.5,
         };
         let mask = mask_with_rect(100, 100, (10, 10, 80, 80), green);
         let (objs, stats) = generate(&proj, Some(&mask), None, None, None, &|_| {}).unwrap();
@@ -2746,6 +2779,9 @@ mod tests {
             blend: true,
             jagged_m: 0.0,
             blend_inside_m: 0.0,
+            outside_m: None,
+            patch_size_m: 0.0,
+            patch_cover: 0.5,
             preset_mix: Vec::new(),
         };
         let mask = mask_with_rect(100, 100, (10, 10, 80, 80), green);
@@ -2802,6 +2838,9 @@ mod tests {
                     blend: false,
                     jagged_m: 0.0,
                     blend_inside_m: 0.0,
+            outside_m: None,
+            patch_size_m: 0.0,
+            patch_cover: 0.5,
                     preset_mix: Vec::new(),
                     })
             } else {

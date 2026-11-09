@@ -116,40 +116,60 @@ fn stream(mut cmd: Command, job: &Job) -> Result<i32> {
 }
 
 pub fn mod_folder(paths: &ToolPaths, id: &str) -> PathBuf {
-    paths.dayz.join(format!("@{id}"))
+    paths.work_drive.join("Mods").join(format!("@{id}"))
 }
 
-/// Binarises `P:\<id>` with AddonBuilder into `@<id>\addons` of the game folder.
+/// Folders of a map the export writes; each becomes a PBO of its own.
+const MAP_PARTS: [&str; 3] = ["world", "data", "navmesh"];
+
+fn has_files(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|mut d| d.next().is_some())
+}
+
+/// Binarises what the export wrote in `P:\<id>` with AddonBuilder, one PBO per folder, into
+/// `P:\Mods\@<id>\Addons`. Anything else in `P:\<id>` belongs to the mod and is
+/// left alone: AddonBuilder crashes on models that are binarised already.
 pub fn build_pbo(paths: &ToolPaths, id: &str, job: &Job) -> Result<PathBuf> {
     ensure!(paths.addon_builder().is_file(), "AddonBuilder.exe not found");
-    let source = paths.work_drive.join(id);
-    ensure!(source.is_dir(), "Export the map first: {} does not exist", source.display());
-    let target = mod_folder(paths, id).join("addons");
+    let root = paths.work_drive.join(id);
+    ensure!(root.join("world").is_dir(), "Export the map first: {} does not exist", root.join("world").display());
+    let target = mod_folder(paths, id).join("Addons");
     std::fs::create_dir_all(&target)?;
     let temp = paths.work_drive.join("temp").join(format!("dzwe_{id}"));
     std::fs::create_dir_all(&temp)?;
     // AddonBuilder only copies listed extensions.
     let include = temp.join("include.lst");
     std::fs::write(&include, "*.paa;*.rvmat;*.wrp;*.nm;*.xml;*.bin;*.cfg;*.hpp;*.csv;*.json;*.txt;*.layout;*.emat;*.edds;*.ptc;*.bisurf")?;
-    job.stage("Binarising with AddonBuilder");
-    let mut c = Command::new(paths.addon_builder());
-    c.current_dir(&paths.work_drive)
-        .arg(&source)
-        .arg(&target)
-        .arg(format!("-prefix={id}"))
-        .arg(format!("-temp={}", temp.display()))
-        .arg(format!("-project={}", paths.work_drive.display()))
-        .arg(format!("-include={}", include.display()))
-        .arg("-clear");
-    let code = stream(c, job)?;
-    if job.cancelled() {
-        bail!("Cancelled");
+    // Earlier versions packed the whole map into one PBO, which would now load twice.
+    let _ = std::fs::remove_file(target.join(format!("{id}.pbo")));
+    let mut first = None;
+    for part in MAP_PARTS {
+        let source = root.join(part);
+        if !has_files(&source) {
+            continue;
+        }
+        let pbo = target.join(format!("{part}.pbo"));
+        // A failed build must leave the last good PBO in place.
+        let started = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
+        job.stage(format!("Binarising {part} with AddonBuilder"));
+        let mut c = Command::new(paths.addon_builder());
+        c.current_dir(&paths.work_drive)
+            .arg(&source)
+            .arg(&target)
+            .arg(format!("-prefix={id}\\{part}"))
+            .arg(format!("-temp={}", temp.display()))
+            .arg(format!("-project={}", paths.work_drive.display()))
+            .arg(format!("-include={}", include.display()))
+            .arg("-clear");
+        let code = stream(c, job)?;
+        if job.cancelled() {
+            bail!("Cancelled");
+        }
+        ensure!(pbo.metadata().and_then(|m| m.modified()).is_ok_and(|t| t >= started), "AddonBuilder finished with code {code} and produced no new {part}.pbo; see the log above");
+        job.log(format!("{} ({:.1} MB)", pbo.display(), pbo.metadata()?.len() as f64 / 1_048_576.0));
+        first.get_or_insert(pbo);
     }
-    let pbo = target.join(format!("{id}.pbo"));
-    ensure!(pbo.is_file(), "AddonBuilder finished with code {code} and produced no PBO; see the log above");
-    let size = pbo.metadata()?.len();
-    job.log(format!("{} ({:.1} MB)", pbo.display(), size as f64 / 1_048_576.0));
-    Ok(pbo)
+    first.context("Nothing to pack")
 }
 
 /// Prepares `mpmissions/dayzOffline.<id>` from a vanilla mission with a spawn on the new map.
@@ -245,7 +265,8 @@ pub fn launch(paths: &ToolPaths, id: &str, session_dir: &Path, with_client: bool
     let (server_profile, client_profile) = (session_dir.join("server"), session_dir.join("client"));
     std::fs::create_dir_all(&server_profile)?;
     std::fs::create_dir_all(&client_profile)?;
-    let mods = if extra_mods.trim().is_empty() { format!("@{id}") } else { format!("{};@{id}", extra_mods.trim().trim_end_matches(';')) };
+    let map_mod = mod_folder(paths, id).display().to_string();
+    let mods = if extra_mods.trim().is_empty() { map_mod } else { format!("{};{map_mod}", extra_mods.trim().trim_end_matches(';')) };
     job.stage("Starting local server");
     let server = Command::new(paths.diag())
         .current_dir(&paths.dayz)
@@ -295,7 +316,7 @@ pub fn launch_navmesh(paths: &ToolPaths, id: &str, session_dir: &Path, job: &Job
         .arg(format!("-config={}", cfg.display()))
         .arg(format!("-profiles={}", profile.display()))
         .arg(format!("-mission={}", mission.display()))
-        .arg(format!("-mod=@{id}"))
+        .arg(format!("-mod={}", mod_folder(paths, id).display()))
         .arg("-port=2302")
         .arg("-newErrorsAreWarnings=1")
         .spawn()
