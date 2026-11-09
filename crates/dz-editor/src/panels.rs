@@ -16,6 +16,11 @@ pub fn new_project_dialog() -> Dialog {
 
 pub fn ui(app: &mut App, ctx: &egui::Context) {
     guard_close(app, ctx);
+    crate::library_ui::handle_file_drop(app, ctx);
+    if app.lib_dirty && !ctx.input(|i| i.pointer.any_down()) {
+        app.lib_dirty = false;
+        if let Err(e) = app.library.save(&crate::library_ui::library_path()) { app.error(format!("{e:#}")); }
+    }
     menu_bar(app, ctx);
     toolbar(app, ctx);
     status_bar(app, ctx);
@@ -27,6 +32,17 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
     egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::DARK)).show(ctx, |ui| viewport::central(app, ui));
     dialogs(app, ctx);
     app.updater.window(ctx);
+}
+
+/// What the viewports draw; shared by the View menu and the viewport toolbar.
+pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
+    ui.checkbox(&mut app.show_objects, t("Objects"));
+    ui.checkbox(&mut app.show_grass, t("Grass"));
+    ui.add_enabled(app.show_grass, egui::Checkbox::new(&mut app.grass_under_objects, t("Grass under objects")));
+    ui.checkbox(&mut app.show_shadows, t("Shadows"));
+    ui.checkbox(&mut app.show_water, t("Water"));
+    ui.checkbox(&mut app.show_lines, t("Roads and lines"));
+    ui.checkbox(&mut app.show_shapes, t("Shapes"));
 }
 
 fn guard_close(app: &mut App, ctx: &egui::Context) {
@@ -69,8 +85,10 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                         if ui.button(t("DayZForests project...")).clicked() { ui.close_menu(); app.import_forest(); }
                         if ui.button(t("Road Studio project...")).clicked() { ui.close_menu(); app.import_road_project(); }
                         if ui.button(t("Roads from TV4P...")).clicked() { ui.close_menu(); app.import_tv4p(); }
+                        if ui.button(t("Shapes (SHP, TV4S)...")).clicked() { ui.close_menu(); app.import_shapes(); }
                     });
                 });
+                if ui.add_enabled(has, egui::Button::new(t("Export shapes (SHP)..."))).clicked() { ui.close_menu(); app.export_shapes(); }
                 ui.separator();
                 if ui.button(t("Project settings...")).clicked() { app.dialog = Dialog::ProjectSettings; ui.close_menu(); }
                 if ui.button(t("Exit")).clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
@@ -86,11 +104,7 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                 if ui.button(t("Settings...")).clicked() { app.dialog = Dialog::Settings; ui.close_menu(); }
             });
             ui.menu_button(t("View"), |ui| {
-                ui.checkbox(&mut app.show_objects, t("Objects"));
-                ui.checkbox(&mut app.show_grass, t("Grass"));
-                ui.checkbox(&mut app.show_shadows, t("Shadows"));
-                ui.checkbox(&mut app.show_water, t("Water"));
-                ui.checkbox(&mut app.show_lines, t("Roads and lines"));
+                visibility_toggles(app, ui);
                 ui.separator();
                 ui.checkbox(&mut app.show_land_grid, t("Land grid"));
                 ui.checkbox(&mut app.show_tile_grid, t("Texture tiles"));
@@ -134,7 +148,7 @@ fn toolbar(app: &mut App, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             if ui.button(t("Save")).on_hover_text("Ctrl+S").clicked() { app.save(None); }
             ui.separator();
-            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Generate, "Generate", "6")] {
+            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Generate, "Generate", "6"), (Mode::Shapes, "Shapes", "7")] {
                 if tool_button(ui, app.mode == m, &t(name)).on_hover_text(key).clicked() { app.mode = m; }
             }
             ui.separator();
@@ -201,6 +215,7 @@ fn modes_panel(app: &mut App, ui: &mut egui::Ui) {
         Mode::Place => place_mode(app, ui),
         Mode::Lines => lines_mode(app, ui),
         Mode::Generate => generate_mode(app, ui),
+        Mode::Shapes => shapes_mode(app, ui),
     });
 }
 
@@ -216,10 +231,29 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
     });
     section(ui, &t("Terrain under objects"), true, |ui| {
         ui.weak(t("A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched."));
-        slider(ui, &t("Blend"), &mut app.place.pad_falloff, 0.0..=60.0, false);
+        let mut changed = pad_sliders(app, ui);
         if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("Add modifier to selection"))).clicked() {
             let f = app.place.pad_falloff;
             app.add_pads_for_selection(f);
+            changed = false;
+        }
+        if changed { app.update_selected_pads(); }
+    });
+}
+
+/// Width and blend of the ground levelled under objects.
+fn pad_sliders(app: &mut App, ui: &mut egui::Ui) -> bool {
+    let before = (app.place.pad_margin, app.place.pad_falloff);
+    slider(ui, &t("Margin"), &mut app.place.pad_margin, 0.0..=40.0, false);
+    slider(ui, &t("Blend"), &mut app.place.pad_falloff, 0.0..=60.0, false);
+    before != (app.place.pad_margin, app.place.pad_falloff)
+}
+
+fn brush_shape_row(ui: &mut egui::Ui, shape: &mut dz_core::edit::BrushShape) {
+    use dz_core::edit::BrushShape as B;
+    ui.horizontal(|ui| {
+        for (s, name) in [(B::Circle, "Round"), (B::Square, "Square"), (B::Diamond, "Diamond")] {
+            if tool_button(ui, *shape == s, &t(name)).clicked() { *shape = s; }
         }
     });
 }
@@ -234,9 +268,12 @@ fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
         ui.weak(t("Ctrl inverts raise and lower, Shift smooths. [ and ] or Shift+wheel change the size."));
     });
     section(ui, &t("Brush"), true, |ui| {
+        brush_shape_row(ui, &mut app.sculpt.shape);
         slider(ui, &t("Radius"), &mut app.sculpt.radius, 2.0..=3000.0, true);
         slider(ui, &t("Falloff"), &mut app.sculpt.falloff, 0.0..=1.0, false);
         slider(ui, &t("Strength"), &mut app.sculpt.strength, 0.5..=200.0, true);
+        slider(ui, &t("Edge noise"), &mut app.sculpt.noise, 0.0..=1.0, false);
+        ui.weak(t("Shift+wheel: size. Ctrl+wheel: edge noise. Alt+wheel: strength and falloff."));
     });
 }
 
@@ -257,8 +294,19 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
 
 fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &t("Brush"), true, |ui| {
+        brush_shape_row(ui, &mut app.paint.shape);
         slider(ui, &t("Radius"), &mut app.paint.radius, 0.5..=2000.0, true);
         slider(ui, &t("Edge noise"), &mut app.paint.scatter, 0.0..=0.8, false);
+        if tool_button(ui, app.paint.picking, &t("Eyedropper")).on_hover_text(t("Takes the surface under the cursor. Alt+click does the same.")).clicked() { app.paint.picking = !app.paint.picking; }
+        let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
+        row(ui, &t("Paint only on"), |ui| {
+            let shown = app.paint.only_on.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| t("(none)"));
+            egui::ComboBox::from_id_salt("only_on").selected_text(shown).show_ui(ui, |ui| {
+                ui.selectable_value(&mut app.paint.only_on, None, t("(none)"));
+                for (i, n) in names.iter().enumerate() { ui.selectable_value(&mut app.paint.only_on, Some(i), n); }
+            });
+        });
+        ui.weak(t("Shift+wheel: size. Ctrl+wheel: edge noise."));
     });
     section(ui, &t("Surface layers"), true, |ui| {
         layer_list(app, ui);
@@ -287,7 +335,7 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
             });
         });
     });
-    ui.weak(t("The game blends at most five surfaces per texture tile; if a tile uses more, the rarest are replaced on export."));
+    ui.weak(t("The brush will not add a surface to a tile that already has as many as the project allows."));
 }
 
 fn place_mode(app: &mut App, ui: &mut egui::Ui) {
@@ -308,16 +356,239 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
-fn lines_mode(app: &mut App, ui: &mut egui::Ui) {
+fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &t("Draw"), true, |ui| {
         ui.horizontal(|ui| {
-            for (a, n) in [(LineAction::Road, "Road"), (LineAction::Fence, "Objects"), (LineAction::Plain, "Line")] {
+            for (tool, name) in [(ShapeTool::Edit, "Edit"), (ShapeTool::Polygon, "Polygon"), (ShapeTool::Polyline, "Polyline"), (ShapeTool::Point, "Point")] {
+                if tool_button(ui, app.shape.tool == tool, &t(name)).clicked() {
+                    app.shape.tool = tool;
+                    app.shape.points.clear();
+                }
+            }
+        });
+        if app.shape.tool == ShapeTool::Edit {
+            ui.weak(t("Click selects a shape. Drag a vertex to move it, Ctrl+click an edge to add one, Delete removes the vertex or the shape."));
+        } else {
+            ui.weak(t("Click to add points. Enter or a double click finishes, Backspace removes the last point, Esc cancels."));
+            ui.label(tf("{0} points", &[&app.shape.points.len().to_string()]));
+        }
+    });
+    section(ui, &t("Files"), true, |ui| {
+        ui.horizontal(|ui| {
+            if ui.button(t("Import...")).on_hover_text("SHP, TV4S").clicked() { app.import_shapes(); }
+            if ui.button(t("Export...")).on_hover_text("SHP").clicked() { app.export_shapes(); }
+        });
+    });
+    section(ui, &t("Selected shape"), true, |ui| shape_details(app, ui));
+}
+
+/// Vertices, attributes and layer of the selected shapes.
+fn shape_details(app: &mut App, ui: &mut egui::Ui) {
+    use dz_core::shapes::ShapeKind;
+    let count = app.shape.selection.len();
+    if count == 0 {
+        ui.weak(t("Nothing selected"));
+        return;
+    }
+    let Some(doc) = &app.doc else { return };
+    let previous = doc.world.shape_layers.clone();
+    let mut layers = previous.clone();
+    let names: Vec<String> = layers.iter().map(|l| l.name.clone()).collect();
+    let first = *app.shape.selection.iter().next().unwrap();
+    let Some(mut shape) = layers.get(first.0).and_then(|l| l.shapes.get(first.1)).cloned() else {
+        app.shape.selection.clear();
+        return;
+    };
+    let mut target = first.0;
+    let mut changed = false;
+    let mut remove = false;
+    let mut to_line = None;
+    if count > 1 {
+        ui.label(tf("{0} shapes selected", &[&count.to_string()]));
+    } else {
+        ui.label(match shape.kind { ShapeKind::Point => t("Point"), ShapeKind::Polyline => t("Polyline"), ShapeKind::Polygon => t("Polygon") });
+        if shape.kind != ShapeKind::Point {
+            let mut kind = shape.kind;
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut kind, ShapeKind::Polygon, t("Polygon"));
+                ui.selectable_value(&mut kind, ShapeKind::Polyline, t("Polyline"));
+            });
+            if kind != shape.kind && shape.points.len() >= kind.min_points() {
+                shape.kind = kind;
+                changed = true;
+            }
+        }
+    }
+    row(ui, &t("Layer"), |ui| {
+        egui::ComboBox::from_id_salt("shape_layer").selected_text(names.get(target).cloned().unwrap_or_default()).show_ui(ui, |ui| {
+            for (i, n) in names.iter().enumerate() { ui.selectable_value(&mut target, i, n); }
+        });
+    });
+    if count == 1 {
+        egui::CollapsingHeader::new(tf("{0} points", &[&shape.points.len().to_string()])).id_salt("shape_points").default_open(shape.points.len() <= 12).show(ui, |ui| {
+            egui::ScrollArea::vertical().id_salt("shape_point_list").max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
+                let marked = app.shape.vertex;
+                for (i, p) in shape.points.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        if ui.selectable_label(marked == Some(i), format!("{}", i + 1)).clicked() { app.shape.vertex = Some(i); }
+                        changed |= ui.add(egui::DragValue::new(&mut p[0]).speed(0.1).prefix("X ")).changed();
+                        changed |= ui.add(egui::DragValue::new(&mut p[1]).speed(0.1).prefix("Z ")).changed();
+                    });
+                }
+            });
+        });
+        for (k, v) in &mut shape.attributes {
+            row(ui, k, |ui| { changed |= ui.text_edit_singleline(v).changed(); });
+        }
+        if shape.kind != ShapeKind::Point && ui.button(t("Use as a road or object line")).on_hover_text(t("Opens the Roads tool with these points.")).clicked() {
+            to_line = Some(shape.points.clone());
+        }
+    }
+    if ui.button(t("Delete shape")).clicked() { remove = true; }
+    if changed {
+        layers[first.0].shapes[first.1] = shape;
+        let doc = app.doc.as_mut().unwrap();
+        doc.world.shape_layers = layers;
+        // One undo step for a whole drag or a typed value.
+        app.shape.drag_before.get_or_insert(previous);
+    }
+    let settled = !ui.ctx().input(|i| i.pointer.any_down()) && !ui.ctx().wants_keyboard_input() && app.shape.boxing.is_none();
+    if settled {
+        if let Some(before) = app.shape.drag_before.take() {
+            app.doc.as_mut().unwrap().history.push(t("Edit shape"), dz_core::edit::Change::Shapes(before));
+        }
+    }
+    if target != first.0 {
+        let doc = app.doc.as_mut().unwrap();
+        let before = doc.world.shape_layers.clone();
+        let mut moved = Vec::new();
+        for (l, s) in app.shape.selection.iter().rev() {
+            if let Some(list) = doc.world.shape_layers.get_mut(*l).map(|x| &mut x.shapes) {
+                if *s < list.len() { moved.push(list.remove(*s)); }
+            }
+        }
+        let dest = &mut doc.world.shape_layers[target];
+        let start = dest.shapes.len();
+        let n = moved.len();
+        dest.shapes.extend(moved);
+        // Removing from the same layer earlier shifts what is left, so indices come from the end.
+        let end = dest.shapes.len();
+        app.shape.selection = (end - n.min(end)..end.max(start)).map(|i| (target, i)).collect();
+        app.shape.vertex = None;
+        doc.history.push(t("Edit shape"), dz_core::edit::Change::Shapes(before));
+    }
+    if let Some(points) = to_line {
+        app.line.points = points;
+        app.mode = Mode::Lines;
+    }
+    if remove {
+        app.shape.vertex = None;
+        app.delete_shape_part();
+    }
+}
+
+fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSettings) -> bool {
+    let mut changed = false;
+    let mut field = |ui: &mut egui::Ui, label: String, v: &mut f64, range: std::ops::RangeInclusive<f64>| {
+        row(ui, &label, |ui| { changed |= ui.add(egui::Slider::new(v, range)).changed(); });
+    };
+    field(ui, t("Minimum radius"), &mut r.min_radius, 5.0..=300.0);
+    field(ui, t("Max. grade %"), &mut r.max_grade, 1.0..=30.0);
+    field(ui, t("Slope weight"), &mut r.slope_weight, 0.0..=20.0);
+    field(ui, t("Search step m"), &mut r.cell, 5.0..=60.0);
+    field(ui, t("Tolerance m"), &mut r.tolerance, 0.5..=20.0);
+    field(ui, t("Max. cut m"), &mut r.max_cut, 0.0..=20.0);
+    field(ui, t("Max. fill m"), &mut r.max_fill, 0.0..=20.0);
+    field(ui, t("Earthwork penalty"), &mut r.earth_weight, 0.0..=5.0);
+    field(ui, t("Max. bridge height m"), &mut r.bridge_height, 0.0..=60.0);
+    field(ui, t("Max. bridge length m"), &mut r.bridge_max, 0.0..=600.0);
+    changed |= ui.checkbox(&mut r.bridge_over_forbidden, t("Bridges may cross forbidden areas and water")).changed();
+    changed
+}
+
+/// Everything about the route being edited.
+fn route_details(app: &mut App, ui: &mut egui::Ui) {
+    let Some(doc) = &mut app.doc else { return };
+    let Some(index) = app.line.selected_route.filter(|i| *i < doc.world.routes.len()) else {
+        ui.weak(t("Nothing selected"));
+        return;
+    };
+    let before = doc.world.routes[index].points.clone();
+    let families = app.road_families.clone();
+    let route = &mut doc.world.routes[index];
+    row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut route.name); });
+    row(ui, &t("Road type"), |ui| {
+        egui::ComboBox::from_id_salt("route_family").selected_text(route.family.clone()).show_ui(ui, |ui| {
+            for f in families { ui.selectable_value(&mut route.family, f.clone(), f); }
+        });
+    });
+    ui.checkbox(&mut route.terrain_route, t("Route across terrain"));
+    ui.collapsing(t("Route settings"), |ui| { routing_fields(ui, &mut route.settings); });
+    let grading = (route.grade, route.grade_width, route.grade_falloff);
+    ui.checkbox(&mut route.grade, t("Grade the terrain under the road"));
+    if route.grade {
+        slider(ui, &t("Width"), &mut route.grade_width, 1.0..=80.0, false);
+        slider(ui, &t("Blend"), &mut route.grade_falloff, 0.0..=120.0, false);
+    }
+    let regrade = grading != (route.grade, route.grade_width, route.grade_falloff);
+    ui.label(tf("{0} models", &[&route.objects.len().to_string()]));
+    let mut typed = false;
+    egui::CollapsingHeader::new(tf("{0} points", &[&route.points.len().to_string()])).id_salt("route_points").default_open(route.points.len() <= 10).show(ui, |ui| {
+        egui::ScrollArea::vertical().id_salt("route_point_list").max_height(200.0).auto_shrink([false, true]).show(ui, |ui| {
+            let marked = app.line.selected_point;
+            for (i, p) in route.points.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(marked == Some(i), format!("{}", i + 1)).clicked() { app.line.selected_point = Some(i); }
+                    typed |= ui.add(egui::DragValue::new(&mut p[0]).speed(0.5).prefix("X ")).changed();
+                    typed |= ui.add(egui::DragValue::new(&mut p[1]).speed(0.5).prefix("Z ")).changed();
+                });
+            }
+        });
+    });
+    if typed && app.line.point_drag.is_none() { app.line.point_drag = Some(before.clone()); }
+    let mut action = 0;
+    ui.horizontal(|ui| {
+        if ui.button(t("Fit again")).on_hover_text(t("Applies the type, settings and typed points.")).clicked() { action = 1; }
+        if ui.button(t("Reverse")).clicked() { action = 2; }
+    });
+    if ui.button(t("Delete route")).clicked() { action = 4; }
+    // Typed values wait for "Fit again"; dragging in the list must not start the viewport drag.
+    let typed_before = if app.mode == Mode::Lines && !ui.ctx().input(|i| i.pointer.primary_down()) { app.line.point_drag.take() } else { None };
+    match action {
+        1 => app.refit_route(index, typed_before.unwrap_or(before)),
+        2 => {
+            if let Some(d) = &mut app.doc { d.world.routes[index].points.reverse(); }
+            app.line.selected_point = None;
+            app.refit_route(index, typed_before.unwrap_or(before));
+        }
+        4 => app.delete_route(index),
+        _ if regrade => app.route_grading_changed(index),
+        _ => {}
+    }
+}
+
+fn lines_mode(app: &mut App, ui: &mut egui::Ui) {
+    lines_tool_panel(app, ui);
+    if app.line.action == LineAction::Edit {
+        section(ui, &t("Selected route"), true, |ui| route_details(app, ui));
+    }
+}
+
+fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
+    section(ui, &t("Draw"), true, |ui| {
+        ui.horizontal(|ui| {
+            for (a, n) in [(LineAction::Road, "Road"), (LineAction::Fence, "Objects"), (LineAction::Plain, "Line"), (LineAction::Edit, "Edit routes")] {
                 if tool_button(ui, app.line.action == a, &t(n)).clicked() { app.line.action = a; }
             }
         });
-        ui.weak(t("Click to add points. Enter finishes, Backspace removes the last point, Esc cancels."));
-        ui.label(tf("{0} points", &[&app.line.points.len().to_string()]));
+        if app.line.action == LineAction::Edit {
+            ui.weak(t("Click a route, then drag its points. The + between two points adds one, Delete removes the marked point. Models are fitted again after each change."));
+        } else {
+            ui.weak(t("Click to add points. Enter finishes, Backspace removes the last point, Esc cancels."));
+            ui.label(tf("{0} points", &[&app.line.points.len().to_string()]));
+        }
         match app.line.action {
+            LineAction::Edit => {}
             LineAction::Road => {
                 let families = app.road_families.clone();
                 row(ui, &t("Road type"), |ui| {
@@ -325,8 +596,28 @@ fn lines_mode(app: &mut App, ui: &mut egui::Ui) {
                         for f in families { ui.selectable_value(&mut app.line.family, f.clone(), f); }
                     });
                 });
-                slider(ui, &t("Minimum radius"), &mut app.line.radius, 10.0..=200.0, false);
+                ui.checkbox(&mut app.line.route, t("Route across terrain")).on_hover_text(t("Finds the road through the clicked points within the grade limits, around water and forbidden areas, with bridges. Off: road parts follow the clicked line."));
+                if app.line.route {
+                    let shapes: Vec<String> = app.doc.as_ref().map(|d| d.world.shape_layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
+                    if app.line.forbidden.is_some_and(|i| i >= shapes.len()) { app.line.forbidden = None; }
+                    row(ui, &t("Forbidden areas"), |ui| {
+                        let shown = app.line.forbidden.map(|i| shapes[i].clone()).unwrap_or_else(|| t("(none)"));
+                        egui::ComboBox::from_id_salt("forbidden").selected_text(shown).show_ui(ui, |ui| {
+                            ui.selectable_value(&mut app.line.forbidden, None, t("(none)"));
+                            for (i, n) in shapes.iter().enumerate() { ui.selectable_value(&mut app.line.forbidden, Some(i), n); }
+                        });
+                    });
+                    let r = if dayz_road_tool::rails::is_track_family(&app.line.family) { &mut app.line.rail_routing } else { &mut app.line.routing };
+                    ui.collapsing(t("Route settings"), |ui| routing_fields(ui, r));
+                }
+                if ui.button(t("Road types from TV4P...")).clicked() {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("Terrain Builder", &["tv4p"]).pick_file() { app.load_road_types(p); }
+                }
                 ui.checkbox(&mut app.line.grade, t("Grade the terrain under the road"));
+                if app.line.grade {
+                    slider(ui, &t("Width"), &mut app.line.grade_width, 1.0..=80.0, false);
+                    slider(ui, &t("Blend"), &mut app.line.grade_falloff, 0.0..=120.0, false);
+                }
             }
             LineAction::Fence => {
                 row(ui, &t("Model"), |ui| {
@@ -340,45 +631,6 @@ fn lines_mode(app: &mut App, ui: &mut egui::Ui) {
             }
             LineAction::Plain => {}
         }
-    });
-}
-
-pub fn run_scatter(app: &mut App, at: Option<(f32, f32)>) {
-    let Some(doc) = &app.doc else { return };
-    let mut lite = doc.world.lite();
-    let rule = app.gen.scatter.clone();
-    let area = match at { Some((x, z)) => gen::Area::circle(x, z, app.gen.scatter_radius.max(10.0)), None => gen::Area::whole(&lite) };
-    app.spawn(t("Scattering objects"), move |job| {
-        let objects = gen::scatter(&mut lite, &rule, area, job)?;
-        let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
-        Ok(Box::new(move |a: &mut App| {
-            let n = objects.len();
-            a.merge_generated(&t("Scatter objects"), models, objects);
-            a.info(tf("Placed {0} objects", &[&n.to_string()]));
-        }) as Finish)
-    });
-}
-
-pub fn run_settlement(app: &mut App, x: f32, z: f32) {
-    let Some(doc) = &app.doc else { return };
-    let mut lite = doc.world.lite();
-    let rule = app.gen.settlement.clone();
-    let db = app.db.clone();
-    let falloff = app.place.pad_falloff;
-    app.spawn(t("Generating settlement"), move |_| {
-        let s = gen::settlement(&mut lite, &db, x, z, &rule)?;
-        let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
-        Ok(Box::new(move |a: &mut App| {
-            let ids = a.merge_generated(&t("Generate settlement"), models, s.objects);
-            if let Some(d) = &mut a.doc { d.world.lines.extend(s.streets); }
-            let pads: Vec<u32> = s.pads.iter().map(|(i, _, _)| ids[*i]).collect();
-            a.add_pads(&pads, falloff);
-            if !pads.is_empty() {
-                if let Some(d) = &mut a.doc {
-                    d.history.group_last(2, t("Generate settlement"));
-                }
-            }
-        }) as Finish)
     });
 }
 
@@ -447,147 +699,7 @@ fn generate_mode(app: &mut App, ui: &mut egui::Ui) {
             height_job(app, t("Carve rivers"), move |h, _| gen::carve_rivers(h, n, w, d, s));
         }
     });
-    section(ui, &t("Surface painting"), false, |ui| {
-        let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
-        let mut remove = None;
-        for (i, r) in app.gen.paint_rules.iter_mut().enumerate() {
-            ui.push_id(i, |ui| {
-                ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt("layer").width(110.0).selected_text(names.get(r.layer).cloned().unwrap_or_default()).show_ui(ui, |ui| {
-                        for (k, n) in names.iter().enumerate() { ui.selectable_value(&mut r.layer, k, n); }
-                    });
-                    if ui.small_button("✖").clicked() { remove = Some(i); }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("H");
-                    ui.add(egui::DragValue::new(&mut r.min_height).speed(1.0));
-                    ui.add(egui::DragValue::new(&mut r.max_height).speed(1.0));
-                    ui.label("°");
-                    ui.add(egui::DragValue::new(&mut r.min_slope).speed(0.5).range(0.0..=90.0));
-                    ui.add(egui::DragValue::new(&mut r.max_slope).speed(0.5).range(0.0..=90.0));
-                });
-                ui.horizontal(|ui| {
-                    ui.label("~");
-                    ui.add(egui::DragValue::new(&mut r.noise_scale).speed(5.0).range(0.0..=5000.0).suffix(" m"));
-                    ui.add(egui::Slider::new(&mut r.coverage, 0.0..=1.0).show_value(true));
-                });
-                ui.separator();
-            });
-        }
-        if let Some(i) = remove { app.gen.paint_rules.remove(i); }
-        ui.horizontal(|ui| {
-            if ui.button(format!("+ {}", t("Add rule"))).clicked() {
-                app.gen.paint_rules.push(gen::PaintRule { layer: 0, min_height: -1000.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 });
-            }
-            if ui.button(t("Paint surfaces")).clicked() {
-                if let Some(doc) = &app.doc {
-                    let (w, rules, seed) = (doc.world.lite(), app.gen.paint_rules.clone(), app.gen.terrain.seed);
-                    let label = t("Paint surfaces");
-                    let l2 = label.clone();
-                    app.spawn(label, move |job| {
-                        let data = gen::auto_paint(&w, &rules, seed, job);
-                        Ok(Box::new(move |a: &mut App| a.apply_mask(&l2, data)) as Finish)
-                    });
-                }
-            }
-        });
-    });
-    section(ui, &t("Scatter objects"), false, |ui| {
-        ui.weak(t("Models: pick in the Content Browser and press Add."));
-        let mut remove = None;
-        for (i, m) in app.gen.scatter.models.iter().enumerate() {
-            ui.horizontal(|ui| {
-                ui.label(m.rsplit('\\').next().unwrap_or(m));
-                if ui.small_button("✖").clicked() { remove = Some(i); }
-            });
-        }
-        if let Some(i) = remove { app.gen.scatter.models.remove(i); }
-        if ui.button(format!("+ {}", t("Add selected model"))).clicked() {
-            if let Some(m) = &app.place.model { if !app.gen.scatter.models.contains(m) { app.gen.scatter.models.push(m.clone()); } }
-        }
-        let s = &mut app.gen.scatter;
-        slider(ui, &t("Per hectare"), &mut s.density, 0.1..=600.0, true);
-        slider(ui, &t("Minimum distance"), &mut s.min_distance, 0.5..=100.0, true);
-        slider(ui, &t("Max slope"), &mut s.max_slope, 1.0..=90.0, false);
-        slider(ui, &t("Min height"), &mut s.min_height, -50.0..=800.0, false);
-        slider(ui, &t("Min scale"), &mut s.scale_min, 0.1..=4.0, false);
-        slider(ui, &t("Max scale"), &mut s.scale_max, 0.1..=4.0, false);
-        ui.checkbox(&mut s.align_to_slope, t("Align to slope"));
-        let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
-        ui.collapsing(t("Only on surfaces"), |ui| {
-            for (i, n) in names.iter().enumerate() {
-                let mut on = app.gen.scatter.layers.contains(&i);
-                if ui.checkbox(&mut on, n).changed() {
-                    if on { app.gen.scatter.layers.push(i); } else { app.gen.scatter.layers.retain(|l| *l != i); }
-                }
-            }
-        });
-        slider(ui, &t("Area radius"), &mut app.gen.scatter_radius, 10.0..=4000.0, true);
-        ui.horizontal(|ui| {
-            if ui.button(t("Whole map")).clicked() { run_scatter(app, None); }
-            if tool_button(ui, app.gen.pick_scatter, &t("Click on the map")).clicked() { app.gen.pick_scatter = !app.gen.pick_scatter; }
-        });
-    });
-    section(ui, &t("Forest (DayZForests)"), false, |ui| {
-        let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
-        let presets = gen::forest_preset_names();
-        let mut remove = None;
-        for (i, z) in app.gen.forest_zones.iter_mut().enumerate() {
-            ui.push_id(("zone", i), |ui| {
-                ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt("l").width(90.0).selected_text(names.get(z.0).cloned().unwrap_or_default()).show_ui(ui, |ui| {
-                        for (k, n) in names.iter().enumerate() { ui.selectable_value(&mut z.0, k, n); }
-                    });
-                    egui::ComboBox::from_id_salt("p").width(120.0).selected_text(z.1.clone()).show_ui(ui, |ui| {
-                        for p in &presets { ui.selectable_value(&mut z.1, p.clone(), p); }
-                    });
-                    if ui.small_button("✖").clicked() { remove = Some(i); }
-                });
-            });
-        }
-        if let Some(i) = remove { app.gen.forest_zones.remove(i); }
-        if ui.button(format!("+ {}", t("Add zone"))).clicked() { app.gen.forest_zones.push((0, presets.first().cloned().unwrap_or_default())); }
-        slider(ui, &t("Max slope"), &mut app.gen.forest_slope, 5.0..=70.0, false);
-        row(ui, &t("Clearings"), |ui| { ui.add(egui::Slider::new(&mut app.gen.forest_clearing, 0.0..=0.95)); });
-        row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut app.gen.forest_seed)); });
-        if ui.button(t("Generate forest")).clicked() {
-            if let Some(doc) = &app.doc {
-                let mut lite = doc.world.lite();
-                let req = gen::ForestRequest { zones: app.gen.forest_zones.clone(), seed: app.gen.forest_seed, max_slope: app.gen.forest_slope, clearing_strength: app.gen.forest_clearing };
-                let assets = app.assets.clone();
-                app.spawn(t("Generating forest"), move |job| {
-                    let (objects, notes) = gen::generate_forest(&mut lite, &assets, &req, job)?;
-                    let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
-                    Ok(Box::new(move |a: &mut App| {
-                        a.merge_generated(&t("Generate forest"), models, objects);
-                        for n in notes { a.info(n); }
-                    }) as Finish)
-                });
-            }
-        }
-    });
-    section(ui, &t("Settlement"), false, |ui| {
-        ui.weak(t("Buildings: pick in the Content Browser and press Add."));
-        let mut remove = None;
-        for (i, m) in app.gen.settlement.buildings.iter().enumerate() {
-            ui.horizontal(|ui| {
-                ui.label(m.rsplit('\\').next().unwrap_or(m));
-                if ui.small_button("✖").clicked() { remove = Some(i); }
-            });
-        }
-        if let Some(i) = remove { app.gen.settlement.buildings.remove(i); }
-        if ui.button(format!("+ {}", t("Add selected model"))).clicked() {
-            if let Some(m) = &app.place.model { if !app.gen.settlement.buildings.contains(m) { app.gen.settlement.buildings.push(m.clone()); } }
-        }
-        let s = &mut app.gen.settlement;
-        slider(ui, &t("Radius"), &mut s.radius, 40.0..=1500.0, true);
-        row(ui, &t("Streets"), |ui| { ui.add(egui::Slider::new(&mut s.streets, 1..=12)); });
-        slider(ui, &t("Plot size"), &mut s.plot, 10.0..=80.0, false);
-        slider(ui, &t("Distance from street"), &mut s.setback, 2.0..=40.0, false);
-        slider(ui, &t("Max slope"), &mut s.max_slope, 2.0..=45.0, false);
-        ui.checkbox(&mut s.flatten, t("Level the ground under buildings"));
-        if tool_button(ui, app.gen.pick_settlement, &t("Click on the map")).clicked() { app.gen.pick_settlement = !app.gen.pick_settlement; }
-    });
+    ui.weak(t("Forests, surfaces, settlements, fences and power lines are in the Generators tab below."));
 }
 
 fn right_panel(app: &mut App, ui: &mut egui::Ui) {
@@ -622,6 +734,19 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mods: Vec<(u64, String)> = doc.world.modifiers.iter().map(|m| (m.id, m.name.clone())).collect();
     let lines: Vec<(usize, String, usize)> = doc.world.lines.iter().enumerate().map(|(i, l)| (i, l.name.clone(), l.points.len())).collect();
     let paths: Vec<String> = hist.iter().map(|(m, _)| doc.world.objects.models[*m as usize].path.clone()).collect();
+    let shape_rows: Vec<(usize, String, bool, usize)> = doc.world.shape_layers.iter().enumerate().map(|(i, l)| (i, l.name.clone(), l.visible, l.shapes.len())).collect();
+    let active_shape = doc.world.active_shape_layer;
+    let total_objects = doc.world.objects.len();
+    let generators: Vec<(u64, String, &'static str, usize)> = doc.world.generators.iter().map(|g| (g.id, g.name.clone(), g.kind.type_name(), g.objects.len())).collect();
+    let open_shapes: Vec<(usize, Vec<(usize, dz_core::shapes::ShapeKind, usize)>)> = app.shape_open.iter().filter_map(|l| Some((*l, doc.world.shape_layers.get(*l)?.shapes.iter().enumerate().map(|(i, s)| (i, s.kind, s.points.len())).collect()))).collect();
+    let mut shape_pick: Option<(usize, usize, bool)> = None;
+    let mut shape_move: Option<(usize, usize, usize)> = None;
+    let mut toggle_open: Option<usize> = None;
+    let routes: Vec<(usize, String, String)> = doc.world.routes.iter().enumerate().map(|(i, r)| (i, r.name.clone(), r.family.clone())).collect();
+    let mut select_route = None;
+    let mut delete_route = None;
+    let mut shape_action = None;
+    let mut start_shape_rename = None;
     let mut select_model = None;
     let mut start_rename = None;
     let mut select_modifier = None;
@@ -632,9 +757,57 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 if ui.selectable_label(app.selected_modifier == Some(*id), name).clicked() { select_modifier = Some(*id); }
             }
         });
+        egui::CollapsingHeader::new(tf("Generators ({0})", &[&generators.len().to_string()])).default_open(true).show(ui, |ui| {
+            crate::library_ui::outliner_rows(app, ui, &generators, &filter);
+        });
+        egui::CollapsingHeader::new(tf("Routes ({0})", &[&routes.len().to_string()])).default_open(true).show(ui, |ui| {
+            for (i, name, family) in routes.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
+                let row = ui.selectable_label(app.line.selected_route == Some(*i), format!("{name}  ({family})"));
+                if row.clicked() { select_route = Some(*i); }
+                row.context_menu(|ui| { if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); } });
+            }
+        });
         egui::CollapsingHeader::new(tf("Roads and lines ({0})", &[&lines.len().to_string()])).default_open(false).show(ui, |ui| {
             for (i, name, n) in lines.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
                 if ui.selectable_label(app.selected_line == Some(*i), format!("{name}  ({n})")).clicked() { select_line = Some(*i); }
+            }
+        });
+        egui::CollapsingHeader::new(tf("Shape layers ({0})", &[&shape_rows.len().to_string()])).default_open(true).show(ui, |ui| {
+            if ui.small_button(format!("+ {}", t("New layer"))).clicked() { shape_action = Some(ShapeAction::New); }
+            for (i, name, visible, count) in shape_rows.iter().filter(|(_, n, _, _)| n.to_ascii_lowercase().contains(&filter)) {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    let opened = open_shapes.iter().any(|(l, _)| l == i);
+                    if ui.small_button(if opened { "-" } else { "+" }).clicked() { toggle_open = Some(*i); }
+                    if ui.add(egui::Button::new("👁").small().selected(*visible)).on_hover_text(t("Visible")).clicked() { shape_action = Some(ShapeAction::Visible(*i)); }
+                    if let Some((_, text)) = app.shape_rename.as_mut().filter(|(r, _)| r == i) {
+                        let edit = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+                        edit.request_focus();
+                        if edit.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) { shape_action = Some(ShapeAction::Rename(*i, text.clone())); }
+                        return;
+                    }
+                    let label = RichText::new(format!("{name}  ({count})"));
+                    let row = ui.selectable_label(active_shape == *i, if *visible { label } else { label.weak() });
+                    if row.clicked() { shape_action = Some(ShapeAction::Active(*i)); }
+                    if let Some(p) = row.dnd_release_payload::<(usize, usize)>() { shape_move = Some((p.0, p.1, *i)); }
+                    row.context_menu(|ui| {
+                        if ui.button(t("Rename")).clicked() { start_shape_rename = Some((*i, name.clone())); ui.close_menu(); }
+                        if ui.button(t("Delete layer")).clicked() { shape_action = Some(ShapeAction::Delete(*i)); ui.close_menu(); }
+                    });
+                });
+                if let Some((_, list)) = open_shapes.iter().find(|(l, _)| l == i) {
+                    ui.indent(("shapes", *i), |ui| {
+                        egui::ScrollArea::vertical().id_salt(("shape_list", *i)).max_height(180.0).auto_shrink([false, true]).show(ui, |ui| {
+                            for (s, kind, n) in list {
+                                let kind = match kind { dz_core::shapes::ShapeKind::Point => t("Point"), dz_core::shapes::ShapeKind::Polyline => t("Polyline"), dz_core::shapes::ShapeKind::Polygon => t("Polygon") };
+                                let selected = app.shape.selection.contains(&(*i, *s));
+                                let r = ui.selectable_label(selected, format!("{}  {kind}  ({n})", s + 1)).interact(egui::Sense::click_and_drag());
+                                if r.clicked() { shape_pick = Some((*i, *s, ui.input(|i| i.modifiers.shift || i.modifiers.command))); }
+                                r.dnd_set_drag_payload((*i, *s));
+                            }
+                        });
+                    });
+                }
             }
         });
         let live = layers.iter().filter(|l| !l.deleted).count();
@@ -680,7 +853,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
         });
-        egui::CollapsingHeader::new(tf("Objects ({0})", &[&doc.world.objects.len().to_string()])).default_open(true).show(ui, |ui| {
+        egui::CollapsingHeader::new(tf("Objects ({0})", &[&total_objects.to_string()])).default_open(true).show(ui, |ui| {
             for (k, (m, count)) in hist.iter().enumerate() {
                 let name = paths[k].rsplit('\\').next().unwrap_or(&paths[k]);
                 if !filter.is_empty() && !name.contains(&filter) { continue; }
@@ -700,6 +873,38 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
         app.layer_action(a);
     }
     if start_rename.is_some() { app.layer_rename = start_rename; }
+    if let Some(i) = toggle_open { if !app.shape_open.remove(&i) { app.shape_open.insert(i); } }
+    if let Some((l, s, add)) = shape_pick {
+        if !add { app.shape.selection.clear(); }
+        app.shape.vertex = None;
+        if !app.shape.selection.remove(&(l, s)) { app.shape.selection.insert((l, s)); }
+        app.selected_generator = None;
+    }
+    if let Some((from, shape, to)) = shape_move {
+        if from != to {
+            if let Some(d) = &mut app.doc {
+                let before = d.world.shape_layers.clone();
+                if shape < d.world.shape_layers[from].shapes.len() {
+                    let moved = d.world.shape_layers[from].shapes.remove(shape);
+                    d.world.shape_layers[to].shapes.push(moved);
+                    d.history.push(t("Edit shape"), dz_core::edit::Change::Shapes(before));
+                    app.shape.selection.clear();
+                }
+            }
+        }
+    }
+    if let Some(i) = delete_route { app.delete_route(i); }
+    if select_route.is_some() {
+        app.line.selected_route = select_route;
+        app.line.selected_point = None;
+        app.line.action = LineAction::Edit;
+        app.mode = Mode::Lines;
+    }
+    if let Some(a) = shape_action {
+        if matches!(a, ShapeAction::Rename(..)) { app.shape_rename = None; }
+        app.shape_action(a);
+    }
+    if start_shape_rename.is_some() { app.shape_rename = start_shape_rename; }
     if select_modifier.is_some() { app.selected_modifier = select_modifier; app.selected_line = None; }
     if select_line.is_some() { app.selected_line = select_line; app.selected_modifier = None; }
 }
@@ -709,6 +914,8 @@ fn details(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().id_salt("det").auto_shrink([false, false]).show(ui, |ui| {
         if let Some(id) = app.selected_modifier { modifier_details(app, ui, id); return; }
         if let Some(i) = app.selected_line { line_details(app, ui, i); return; }
+        if crate::library_ui::details(app, ui) { return; }
+        if app.mode != Mode::Shapes && app.selection.is_empty() && !app.shape.selection.is_empty() { shape_details(app, ui); return; }
         selection_layer(app, ui);
         if app.selection.len() == 1 {
             object_details(app, ui);
@@ -800,6 +1007,11 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
         });
         match &mut m.shape {
             ModShape::Circle { radius } => slider(ui, &t("Radius"), radius, 1.0..=500.0, true),
+            ModShape::Line { half_width, .. } => {
+                let mut width = *half_width * 2.0;
+                slider(ui, &t("Width"), &mut width, 1.0..=80.0, false);
+                *half_width = width * 0.5;
+            }
             ModShape::Rect { half_x, half_z } => {
                 slider(ui, "X", half_x, 0.5..=300.0, true);
                 slider(ui, "Z", half_z, 0.5..=300.0, true);
@@ -837,27 +1049,30 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
 fn line_details(app: &mut App, ui: &mut egui::Ui, i: usize) {
     let Some(doc) = &mut app.doc else { return };
     let Some(line) = doc.world.lines.get_mut(i) else { app.selected_line = None; return };
-    let mut remove = false;
+    let (mut remove, mut to_route) = (false, false);
     section(ui, &t("Road or line"), true, |ui| {
         row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut line.name); });
         ui.label(tf("{0} points", &[&line.points.len().to_string()]));
+        to_route = ui.button(t("Make editable route")).on_hover_text(t("Links the road parts on this line to waypoints you can edit.")).clicked();
         remove = ui.button(t("Delete")).clicked();
     });
     if remove {
-        doc.world.lines.remove(i);
-        doc.history.revision += 1;
-        app.selected_line = None;
+        app.delete_line(i);
+    } else if to_route {
+        app.line_to_route(i);
     }
 }
 
 fn bottom_panel(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        for (tab, name) in [(BottomTab::Content, "Content Browser"), (BottomTab::Output, "Output Log"), (BottomTab::Build, "Build")] {
+        for (tab, name) in [(BottomTab::Content, "Content Browser"), (BottomTab::Generators, "Generators"), (BottomTab::Presets, "Presets"), (BottomTab::Output, "Output Log"), (BottomTab::Build, "Build")] {
             if tool_button(ui, app.bottom == tab, &t(name)).clicked() { app.bottom = tab; }
         }
     });
     match app.bottom {
         BottomTab::Content => content_browser(app, ui),
+        BottomTab::Generators => crate::library_ui::generators_tab(app, ui),
+        BottomTab::Presets => crate::library_ui::presets_tab(app, ui),
         BottomTab::Output => output_log(app, ui),
         BottomTab::Build => build_tab(app, ui),
     }
@@ -1015,6 +1230,17 @@ fn import_window(app: &mut App, ui: &mut egui::Ui, d: &mut ImportDialog, close: 
             });
         }
     });
+    if !plan.shapes.is_empty() {
+        ui.strong(t("Shapes"));
+        egui::ScrollArea::vertical().id_salt("import_shapes").max_height(110.0).auto_shrink([false, true]).show(ui, |ui| {
+            for f in &mut plan.shapes {
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut f.import, &f.name).on_hover_text(f.path.display().to_string());
+                    ui.weak(format!("{}  {}", f.shapes, f.path.extension().map(|e| e.to_string_lossy().to_ascii_uppercase()).unwrap_or_default()));
+                });
+            }
+        });
+    }
     let chosen: u64 = plan.layers.iter().filter(|l| l.import).map(|l| l.info.objects as u64).sum();
     row(ui, &t("Template libraries"), |ui| {
         ui.label(tf("{0} files", &[&plan.libraries.len().to_string()]));
@@ -1076,6 +1302,7 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
         Dialog::Import(d) => {
             egui::Window::new(t("Import map")).collapsible(false).resizable(true).default_width(760.0).open(&mut open).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| import_window(app, ui, d, &mut close));
         }
+        Dialog::RoadCatalog => crate::library_ui::road_catalog_window(app, ctx, &mut open),
         Dialog::Settings => settings_window(app, ctx, &mut open),
         Dialog::ProjectSettings => project_window(app, ctx, &mut open),
         Dialog::About => {
@@ -1151,6 +1378,8 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
 fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     let Some(doc) = &mut app.doc else { *open = false; return };
     let before = doc.world.meta.clone();
+    let issues = app.tile_issues.clone();
+    let (mut check, mut fix) = (false, false);
     let m = &mut doc.world.meta;
     egui::Window::new(t("Project settings")).collapsible(false).open(open).show(ctx, |ui| {
         row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut m.name); });
@@ -1165,6 +1394,12 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                 for v in [256u32, 512, 1024, 2048] { ui.selectable_value(&mut m.tile_px, v, v.to_string()); }
             });
         });
+        row(ui, &t("Surfaces per tile"), |ui| { ui.add(egui::Slider::new(&mut m.max_tile_surfaces, 1..=5)); });
+        ui.horizontal(|ui| {
+            check = ui.button(t("Check tiles")).clicked();
+            fix = ui.button(t("Fix tiles")).on_hover_text(t("Replaces the rarest surfaces of a tile with its main surface.")).clicked();
+        });
+        if !issues.is_empty() { ui.colored_label(Color32::from_rgb(235, 110, 90), tf("{0} tiles over the limit, marked in the 2D view", &[&issues.len().to_string()])); }
         ui.checkbox(&mut m.write_underground_flag, t("Write the newer WRP format with underground flag"));
         ui.separator();
         ui.label(tf("Terrain {0} × {0}, cell {1} m, map {2} m", &[&m.terrain_size.to_string(), &m.terrain_cell.to_string(), &m.size_m().to_string()]));
@@ -1172,5 +1407,18 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     });
     if doc.world.meta != before {
         doc.history.revision += 1;
+    }
+    if check {
+        app.tile_issues = dz_core::mask_limit::scan(&doc.world);
+        let n = app.tile_issues.len();
+        app.info(tf("{0} tiles over the limit, marked in the 2D view", &[&n.to_string()]));
+    }
+    if fix {
+        let Some(doc) = &app.doc else { return };
+        let mut w = doc.world.lite();
+        dz_core::mask_limit::enforce(&mut w);
+        let data = w.mask.data;
+        app.tile_issues.clear();
+        app.apply_mask(&t("Fix tiles"), data);
     }
 }

@@ -12,11 +12,8 @@ fn main() -> anyhow::Result<()> {
     gen::generate_terrain(&mut w.base, &gen::TerrainParams { kind: gen::TerrainKind::Island, ..Default::default() }, &job);
     w.recompose(None);
     let rules = gen::default_paint_rules(&w);
-    w.mask.data = gen::auto_paint(&w, &rules, 1, &job);
+    w.mask.data = gen::auto_paint(&w, &rules, 1, None, &job);
     let db = model_info::ModelDb::new(paths.work_drive.clone());
-    let rule = gen::ScatterRule { models: vec![r"dz\plants_bliss\tree\t_fagussylvatica_2f_summer.p3d".into()], density: 8.0, min_distance: 6.0, ..Default::default() };
-    let area = gen::Area::whole(&w);
-    for o in gen::scatter(&mut w, &rule, area, &job)? { w.objects.insert(o); }
     println!("objects {}", w.objects.len());
     let t = Instant::now();
     let r = export::run(&w, &db, &export::ExportOptions { root: paths.work_drive.clone(), layers: true, world: true, config: true, source: false }, &job)?;

@@ -131,6 +131,23 @@ pub struct FolderScan {
     pub tile_dir: Option<PathBuf>,
     pub libraries: Vec<PathBuf>,
     pub layers: Vec<LayerFile>,
+    pub shapes: Vec<ShapeFile>,
+}
+
+/// A shape layer found on disk.
+#[derive(Debug, Clone)]
+pub struct ShapeFile {
+    pub path: PathBuf,
+    pub name: String,
+    pub shapes: usize,
+    pub import: bool,
+}
+
+impl ShapeFile {
+    pub fn read(path: &Path) -> Option<Self> {
+        let l = crate::shapes::load(path).ok()?;
+        Some(Self { path: path.to_path_buf(), name: l.name, shapes: l.shapes.len(), import: true })
+    }
 }
 
 fn walk(root: &Path, s: &mut FolderScan, found: &mut HashMap<PathBuf, (usize, u64)>) {
@@ -143,7 +160,7 @@ fn walk(root: &Path, s: &mut FolderScan, found: &mut HashMap<PathBuf, (usize, u6
             if p.is_dir() {
                 if name == "layers" && (p.join("S_000_000_lco.paa").is_file() || p.join("S_000_000_lco.png").is_file()) {
                     s.tile_dir.get_or_insert(p.clone());
-                } else if depth < 5 && ![".cache", ".layersbackup", ".shapes", ".git"].iter().any(|x| name.ends_with(x)) {
+                } else if depth < 5 && ![".cache", ".layersbackup", ".shapesbackup", ".git"].iter().any(|x| name.ends_with(x)) {
                     stack.push((p, depth + 1));
                 }
                 continue;
@@ -158,6 +175,11 @@ fn walk(root: &Path, s: &mut FolderScan, found: &mut HashMap<PathBuf, (usize, u6
                 &mut s.tv4p
             } else if name.ends_with(".tml") {
                 &mut s.libraries
+            } else if name.ends_with(".tv4s") || name.ends_with(".shp") {
+                if let Some(f) = ShapeFile::read(&p) {
+                    s.shapes.push(f);
+                }
+                continue;
             } else if name.ends_with(".tv4l") {
                 match crate::tv4l::read_info(&p) {
                     Ok(info) => {
@@ -218,6 +240,8 @@ pub fn scan_folder(root: &Path) -> FolderScan {
                 if s.libraries.is_empty() {
                     s.libraries = wider.libraries;
                 }
+                let known: Vec<PathBuf> = s.shapes.iter().map(|f| f.path.clone()).collect();
+                s.shapes.extend(wider.shapes.into_iter().filter(|f| !known.contains(&f.path)));
             }
         }
     }
@@ -245,6 +269,13 @@ pub fn scan_folder(root: &Path) -> FolderScan {
     s.objects.sort();
     s.libraries.sort();
     s.layers.sort_by_key(|l| l.info.priority);
+    // Terrain Builder's own shapes first; loose shapefiles are usually what they were made from.
+    s.shapes.sort_by_key(|f| (f.path.extension().is_some_and(|e| e.eq_ignore_ascii_case("shp")), f.name.to_ascii_lowercase()));
+    if s.shapes.iter().any(|f| f.path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tv4s"))) {
+        for f in s.shapes.iter_mut().filter(|f| f.path.extension().is_some_and(|e| e.eq_ignore_ascii_case("shp"))) {
+            f.import = false;
+        }
+    }
     s
 }
 
@@ -263,6 +294,7 @@ pub struct ImportPlan {
     pub libraries: Vec<PathBuf>,
     pub layers: Vec<LayerFile>,
     pub lists: Vec<(PathBuf, bool)>,
+    pub shapes: Vec<ShapeFile>,
 }
 
 impl ImportPlan {
@@ -284,6 +316,7 @@ impl ImportPlan {
             tv4p: scan.tv4p.first().cloned(),
             libraries: scan.libraries.clone(),
             layers: scan.layers.clone(),
+            shapes: scan.shapes.clone(),
             // Lists are usually exports of the same layers.
             lists: scan.objects.iter().map(|p| (p.clone(), !has_layers)).collect(),
             asc,
@@ -607,10 +640,29 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
             w.objects.insert(o);
         }
     }
+    w.road_project = plan.tv4p.clone();
     if let Some(p) = &plan.tv4p {
-        match import_tv4p(p, &mut w) {
-            Ok(n) => job.log(format!("{}: {n} roads", p.display())),
+        job.stage("Placing roads");
+        // A built world already holds the road parts as objects.
+        let layer = (!plan.objects_from_wrp).then(|| w.add_object_layer("Roads"));
+        match import_tv4p(p, &mut w, layer) {
+            Ok(n) => job.log(format!("{}: {n} road parts", p.display())),
             Err(e) => job.log(format!("{}: {e:#}", p.display())),
+        }
+    }
+    let mut files = Vec::new();
+    for f in plan.shapes.iter().filter(|f| f.import) {
+        match crate::shapes::load(&f.path) {
+            Ok(l) => files.push(l),
+            Err(e) => job.log(format!("{e:#}")),
+        }
+    }
+    if !files.is_empty() {
+        job.stage("Reading shapes");
+        let (n, warning) = crate::shapes::add_layers(&mut w, files);
+        job.log(format!("{n} shapes"));
+        if let Some(text) = warning {
+            job.log(text);
         }
     }
     Ok(w)
@@ -625,8 +677,9 @@ pub fn import_folder(root: &Path, assets: &AssetIndex, db: &ModelDb, job: &Job) 
     import_plan(&plan, assets, db, job)
 }
 
-/// Roads of a Terrain Builder project as lines.
-pub fn import_tv4p(path: &Path, w: &mut World) -> Result<usize> {
+/// Roads of a Terrain Builder project: centre lines, and the road parts as objects on
+/// `layer` when one is given. Returns the number of parts placed.
+pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usize> {
     use dayz_road_tool::{geometry::Library, tv4p};
     let mut lib = Library::new(PathBuf::from("P:\\dz\\structures\\roads\\parts"));
     let project = tv4p::load(path, &mut lib)?;
@@ -640,6 +693,15 @@ pub fn import_tv4p(path: &Path, w: &mut World) -> Result<usize> {
             let points: Vec<[f32; 2]> = line.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect();
             let family = dayz_road_tool::road_colors::family(&road.model);
             w.lines.push(MapLine { name: format!("Road {}", road.id), family, points, width: 6.0 });
+        }
+        let Some(layer) = layer else { continue };
+        for (file, angle, at) in &road.shape.placements {
+            let path = ObjectStore::normalize_path(&file.to_string_lossy());
+            let path = path.strip_prefix("p:\\").unwrap_or(&path).to_string();
+            let model = w.objects.intern(&path);
+            let mut o = Obj { x: (at[0] - ex) as f32, z: (at[1] - ey) as f32, elevation: 0.0, yaw: (-angle.to_degrees()).rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 };
+            o.set_layer(layer);
+            w.objects.insert(o);
             n += 1;
         }
     }
@@ -658,7 +720,8 @@ pub fn import_forest_project(path: &Path, w: &mut World, assets: &AssetIndex) ->
         };
         let m = m.to_string();
         let model = w.objects.intern(&m);
-        w.objects.insert(Obj { x: p.x as f32, z: p.y as f32, elevation: p.elevation as f32, yaw: p.yaw as f32, pitch: p.pitch as f32, roll: p.roll as f32, scale: p.scale as f32, model, flags: 0 });
+        let (yaw, pitch, roll) = from_terrain_builder(p.yaw as f32, p.pitch as f32, p.roll as f32);
+        w.objects.insert(Obj { x: p.x as f32, z: p.y as f32, elevation: p.elevation as f32, yaw, pitch, roll, scale: p.scale as f32, model, flags: 0 });
         n += 1;
     }
     Ok((n, missing.into_iter().map(|(k, c)| format!("{k} ({c})")).collect()))
@@ -829,6 +892,81 @@ mod tests {
         println!("layer {} objects, matched in WRP {found}, max matrix error {max_axis}, scale {max_scale}, elevation {max_elev}", layer.objects.len());
         assert!(found > 30);
         assert!(max_axis < 0.001 && max_scale < 0.01 && max_elev < 0.01);
+    }
+
+    /// Road parts placed from a project must land where Terrain Builder exported them.
+    #[test]
+    fn real_road_parts_match_the_built_world() {
+        let tv = Path::new("P:/BalticrusSource/TerrainBuilder/balticrus.tv4p");
+        let wp = Path::new("P:/Balticrus/world/Balticrus.wrp");
+        if !tv.exists() || !wp.exists() || std::env::var("DZ_SLOW_TESTS").is_err() { return; }
+        let db = ModelDb::new("P:/");
+        let built = import_wrp(wp, None, &db, &Job::default()).unwrap();
+        let mut w = World::new(WorldMeta::new("R", built.meta.terrain_size, built.meta.terrain_cell), 0.0);
+        let parts = import_tv4p(tv, &mut w, Some(0)).unwrap();
+        let wrp_parts = built.objects.iter().filter(|(_, o)| built.objects.model_path(o).contains("\\roads\\parts\\")).count();
+        let (mut found, mut max_d, mut max_yaw, mut sum_d) = (0, 0.0f32, 0.0f32, 0.0f32);
+        let mut misses: BTreeMap<String, usize> = BTreeMap::new();
+        let mut all: Vec<(f32, f32, String)> = Vec::new();
+        for (_, o) in w.objects.iter() {
+            let path = w.objects.model_path(o);
+            let mut best: Option<(f32, Obj)> = None;
+            built.objects.for_each_in(o.x - 3.0, o.z - 3.0, o.x + 3.0, o.z + 3.0, |_, c| {
+                if built.objects.model_path(c) == path {
+                    let d = ((c.x - o.x).powi(2) + (c.z - o.z).powi(2)).sqrt();
+                    if best.is_none_or(|b| d < b.0) { best = Some((d, *c)); }
+                }
+            });
+            match best {
+                Some((d, c)) => {
+                    found += 1;
+                    all.push((d, { let dy = (c.yaw - o.yaw).rem_euclid(360.0); dy.min(360.0 - dy) }, path.to_string()));
+                    sum_d += d;
+                    max_d = max_d.max(d);
+                    let dy = (c.yaw - o.yaw).rem_euclid(360.0);
+                    max_yaw = max_yaw.max(dy.min(360.0 - dy));
+                }
+                None => *misses.entry(path.to_string()).or_default() += 1,
+            }
+        }
+        println!("parts {parts} objects {} in WRP {wrp_parts} matched {found} mean distance {} max {max_d} max yaw {max_yaw}", w.objects.len(), sum_d / found.max(1) as f32);
+        all.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let close: Vec<_> = all.iter().filter(|a| a.0 < 0.1).collect();
+        println!("p50 {} p90 {} p99 {} close {} of those yaw>1deg {} examples {:?}", all[all.len() / 2].0, all[all.len() * 9 / 10].0, all[all.len() * 99 / 100].0, close.len(), close.iter().filter(|a| a.1 > 1.0).count(), close.iter().filter(|a| a.1 > 1.0).take(4).collect::<Vec<_>>());
+        println!("not matched {:?}", misses.iter().take(8).collect::<Vec<_>>());
+        assert!(found as f32 > parts as f32 * 0.8);
+    }
+
+    /// How the elevation of scaled objects relates to the built world.
+    #[test]
+    fn real_scaled_objects_height() {
+        let wp = Path::new("P:/Balticrus/world/Balticrus.wrp");
+        if !wp.exists() || std::env::var("DZ_SLOW_TESTS").is_err() { return; }
+        let db = ModelDb::new("P:/");
+        let built = import_wrp(wp, None, &db, &Job::default()).unwrap();
+        let lib = crate::tv4l::libraries_in(Path::new("P:/BalticrusSource/TerrainBuilder/TemplateLibs"));
+        let templates = crate::tv4l::read_libraries(&lib);
+        let mut rows = Vec::new();
+        for name in ["kamil-lasy", "kamil-all", "mahauu - las", "mahauu - all", "kamil-drzewa"] {
+            let layer = crate::tv4l::load(Path::new(&format!("P:/BalticrusSource/TerrainBuilder/balticrus.Layers/{name}.tv4l"))).unwrap();
+            for o in &layer.objects {
+                if (o.scale - 1.0).abs() < 0.05 { continue; }
+                let Some(path) = templates.get(&o.template) else { continue };
+                let (x, z) = ((o.x - 200000.0) as f32, o.z as f32);
+                let mut hit = None;
+                built.objects.for_each_in(x - 1.0, z - 1.0, x + 1.0, z + 1.0, |_, c| {
+                    if built.objects.model_path(c) == path && (c.x - x).abs() < 0.3 && (c.z - z).abs() < 0.3 && (c.scale - o.scale).abs() < 0.01 { hit = Some(*c); }
+                });
+                if let Some(c) = hit {
+                    let info = db.get(path);
+                    rows.push((c.elevation - o.elevation, o.scale, info.center[1], path.clone()));
+                }
+            }
+        }
+        let strong: Vec<_> = rows.iter().filter(|r| ((r.1 - 1.0) * r.2).abs() > 0.25).collect();
+        let same = strong.iter().filter(|r| r.0.abs() < 0.05).count();
+        println!("scaled objects with a large centre offset {} agreeing with the world {same}", strong.len());
+        assert!(same as f32 >= strong.len() as f32 * 0.99);
     }
 
     /// Imports a real built map when P: is mounted.

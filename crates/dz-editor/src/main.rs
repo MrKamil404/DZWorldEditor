@@ -3,6 +3,7 @@
 mod app;
 mod camera;
 mod i18n;
+mod library_ui;
 mod models;
 mod panels;
 mod render;

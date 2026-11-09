@@ -43,6 +43,9 @@ pub struct WorldMeta {
     pub longitude: f32,
     #[serde(default = "default_true")]
     pub write_underground_flag: bool,
+    /// Most surfaces one texture tile may use.
+    #[serde(default = "default_tile_surfaces")]
+    pub max_tile_surfaces: u8,
 }
 
 impl WorldMeta {
@@ -51,7 +54,7 @@ impl WorldMeta {
         let map_id = if map_id.is_empty() { "NewMap".to_string() } else { map_id };
         let side = size as f32 * cell;
         Self {
-            name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
+            max_tile_surfaces: 5, name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
             sea_level: 0.0, easting: 200000.0, northing: 0.0, tile_px: 512, cells_per_tile: 8,
             spawn: [side / 2.0, side / 2.0], latitude: 54.0, longitude: 23.0, write_underground_flag: true,
         }
@@ -87,12 +90,14 @@ pub struct SurfaceLayer {
     pub color: [u8; 3],
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ModShape {
     /// Radius in metres.
     Circle { radius: f32 },
     /// Half extents in metres, rotated by the modifier's yaw.
     Rect { half_x: f32, half_z: f32 },
+    /// A strip along a polyline, levelled to `heights` at its points.
+    Line { points: Vec<[f32; 2]>, heights: Vec<f32>, half_width: f32 },
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -131,21 +136,23 @@ pub struct TerrainModifier {
 impl TerrainModifier {
     /// Half size of the bounding square including the falloff.
     pub fn reach(&self) -> f32 {
-        self.falloff + match self.shape {
-            ModShape::Circle { radius } => radius,
+        self.falloff + match &self.shape {
+            ModShape::Circle { radius } => *radius,
             ModShape::Rect { half_x, half_z } => (half_x * half_x + half_z * half_z).sqrt(),
+            ModShape::Line { points, half_width, .. } => half_width + points.iter().map(|p| (p[0] - self.x).abs().max((p[1] - self.z).abs())).fold(0.0, f32::max),
         }
     }
     /// Blend weight at a world position: 1 inside the shape, down to 0 at the falloff edge.
     #[inline]
     pub fn weight(&self, x: f32, z: f32, sin: f32, cos: f32) -> f32 {
         let (dx, dz) = (x - self.x, z - self.z);
-        let d = match self.shape {
+        let d = match &self.shape {
             ModShape::Circle { radius } => (dx * dx + dz * dz).sqrt() - radius,
+            ModShape::Line { points, half_width, .. } => points.windows(2).map(|w| segment_distance(w[0], w[1], x, z).0).fold(f32::MAX, f32::min) - half_width,
             ModShape::Rect { half_x, half_z } => {
                 let u = dx * cos - dz * sin;
                 let v = dx * sin + dz * cos;
-                let (a, b) = (u.abs() - half_x, v.abs() - half_z);
+                let (a, b) = (u.abs() - *half_x, v.abs() - *half_z);
                 let out = (a.max(0.0).powi(2) + b.max(0.0).powi(2)).sqrt();
                 out + a.max(b).min(0.0)
             }
@@ -161,6 +168,53 @@ impl TerrainModifier {
     }
 }
 
+fn default_tile_surfaces() -> u8 {
+    5
+}
+
+/// Distance from a point to a segment, and how far along the segment its nearest point is.
+fn segment_distance(a: [f32; 2], b: [f32; 2], x: f32, z: f32) -> (f32, f32) {
+    let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+    let t = (((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz).max(1e-4)).clamp(0.0, 1.0);
+    (((a[0] + dx * t - x).powi(2) + (a[1] + dz * t - z).powi(2)).sqrt(), t)
+}
+
+/// Levels the terrain along a strip. Walks the segments, so a long road costs no more than
+/// the ground it actually covers.
+fn apply_line(height: &mut Heightmap, m: &TerrainModifier, area: Rect) {
+    let ModShape::Line { points, heights, half_width } = &m.shape else { return };
+    let (x0, y0) = (area.x0, area.y0);
+    let (w, h) = (area.x1 - x0 + 1, area.y1 - y0 + 1);
+    let mut best = vec![(f32::MAX, 0.0f32); w * h];
+    let cell = height.cell;
+    let reach = half_width + m.falloff;
+    for (seg, profile) in points.windows(2).zip(heights.windows(2)) {
+        let bounds = |lo: f32, hi: f32, min: usize, max: usize| (((lo - reach) / cell).floor().max(min as f32) as usize, ((hi + reach) / cell).ceil().min(max as f32) as usize);
+        let (i0, i1) = bounds(seg[0][0].min(seg[1][0]), seg[0][0].max(seg[1][0]), area.x0, area.x1);
+        let (j0, j1) = bounds(seg[0][1].min(seg[1][1]), seg[0][1].max(seg[1][1]), area.y0, area.y1);
+        for j in j0..=j1 {
+            for i in i0..=i1 {
+                let (d, t) = segment_distance(seg[0], seg[1], i as f32 * cell, j as f32 * cell);
+                let slot = &mut best[(j - y0) * w + i - x0];
+                if d < slot.0 {
+                    *slot = (d, profile[0] + (profile[1] - profile[0]) * t);
+                }
+            }
+        }
+    }
+    for j in 0..h {
+        for i in 0..w {
+            let (d, goal) = best[j * w + i];
+            if d >= reach {
+                continue;
+            }
+            let k = if d <= *half_width || m.falloff <= 0.0 { 1.0 } else { let t = 1.0 - (d - half_width) / m.falloff; t * t * (3.0 - 2.0 * t) };
+            let v = height.at(x0 + i, y0 + j);
+            height.set(x0 + i, y0 + j, v + (goal + m.amount - v) * k);
+        }
+    }
+}
+
 /// A road or other line drawn on the map.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub struct MapLine {
@@ -169,6 +223,47 @@ pub struct MapLine {
     pub family: String,
     pub points: Vec<[f32; 2]>,
     pub width: f32,
+}
+
+/// A model added to a road type: `category` 3 straight, 4 curve, 6 end.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RoadPart {
+    pub family: String,
+    pub category: u32,
+    pub path: String,
+}
+
+/// A road or track that stays editable: its waypoints and the objects fitted to them.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct RoadRoute {
+    pub name: String,
+    pub family: String,
+    /// Waypoints the user controls.
+    pub points: Vec<[f32; 2]>,
+    /// The centre line of the fitted models.
+    pub centerline: Vec<[f32; 2]>,
+    /// Ids of the models that make up the route.
+    pub objects: Vec<u32>,
+    /// Searched across the terrain, or fitted straight along the waypoints.
+    pub terrain_route: bool,
+    pub settings: dayz_road_tool::document::RoutingSettings,
+    /// Level the terrain under the route with a modifier.
+    #[serde(default)]
+    pub grade: bool,
+    #[serde(default = "default_grade_width")]
+    pub grade_width: f32,
+    #[serde(default = "default_grade_falloff")]
+    pub grade_falloff: f32,
+    /// The modifier that levels the terrain under this route.
+    #[serde(default)]
+    pub modifier: Option<u64>,
+}
+
+fn default_grade_width() -> f32 {
+    9.0
+}
+fn default_grade_falloff() -> f32 {
+    12.0
 }
 
 /// A named group of placed objects. Objects refer to layers by index, so a deleted layer
@@ -221,6 +316,16 @@ pub struct World {
     pub object_layers: Vec<ObjectLayer>,
     /// Layer that receives new objects.
     pub active_layer: u16,
+    pub shape_layers: Vec<crate::shapes::ShapeLayer>,
+    pub active_shape_layer: usize,
+    pub generators: Vec<crate::library::GeneratorInstance>,
+    /// File names of road parts left out of the catalog.
+    pub road_removed: std::collections::BTreeSet<String>,
+    /// Road parts added to the catalog.
+    pub road_added: Vec<RoadPart>,
+    /// Terrain Builder project whose road types are used for new roads.
+    pub road_project: Option<std::path::PathBuf>,
+    pub routes: Vec<RoadRoute>,
     next_modifier: u64,
 }
 
@@ -259,13 +364,20 @@ impl World {
             lines: Vec::new(),
             object_layers: default_object_layers(),
             active_layer: 0,
+            shape_layers: Vec::new(),
+            active_shape_layer: 0,
+            generators: Vec::new(),
+            road_removed: Default::default(),
+            road_added: Vec::new(),
+            road_project: None,
+            routes: Vec::new(),
             meta,
             next_modifier: 1,
         }
     }
     pub fn from_parts(meta: WorldMeta, base: Heightmap, mask: MaskMap, layers: Vec<SurfaceLayer>, satellite: Option<RgbImage>, objects: ObjectStore, modifiers: Vec<TerrainModifier>, lines: Vec<MapLine>) -> Self {
         let next_modifier = modifiers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
-        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, objects, modifiers, lines, object_layers: default_object_layers(), active_layer: 0, next_modifier };
+        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, objects, modifiers, lines, object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier };
         w.recompose(None);
         w
     }
@@ -277,7 +389,7 @@ impl World {
         }
         World {
             meta: self.meta.clone(), base: self.base.clone(), height: self.height.clone(), mask: self.mask.clone(),
-            layers: self.layers.clone(), satellite: None, objects, modifiers: Vec::new(), lines: Vec::new(), object_layers: self.object_layers.clone(), active_layer: self.active_layer, next_modifier: self.next_modifier,
+            layers: self.layers.clone(), satellite: None, objects, modifiers: Vec::new(), lines: Vec::new(), object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier: self.next_modifier,
         }
     }
     #[inline]
@@ -338,6 +450,10 @@ impl World {
             let Some(r) = self.base.rect_around(m.x, m.z, m.reach()) else { continue };
             let (x0, y0, x1, y1) = (r.x0.max(area.x0), r.y0.max(area.y0), r.x1.min(area.x1), r.y1.min(area.y1));
             if x0 > x1 || y0 > y1 {
+                continue;
+            }
+            if matches!(m.shape, ModShape::Line { .. }) {
+                apply_line(&mut self.height, m, Rect { x0, y0, x1, y1 });
                 continue;
             }
             let (sin, cos) = m.yaw.to_radians().sin_cos();

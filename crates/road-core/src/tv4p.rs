@@ -621,6 +621,71 @@ fn definition_parts(data: &[u8]) -> Result<Vec<DefinitionPart>> {
     }
     Ok(parts)
 }
+/// The models of one category of one road type, in the order they should be written.
+#[derive(Clone, Debug)]
+pub struct DefinitionEdit {
+    pub road_type_index: u32,
+    pub category: u32,
+    pub paths: Vec<String>,
+}
+/// Writes a copy of a project with these lists of models in its road types. Records of models
+/// that stay are kept byte for byte; a new model starts from a record of the same category.
+pub fn write_definitions(base: &Path, out: &Path, edits: &[DefinitionEdit]) -> Result<()> {
+    ensure_different(base, out)?;
+    let b = fs::read(base)?;
+    let bl = block(&b, 0x88)?;
+    let mut used = HashSet::new();
+    for p in 0..b.len().saturating_sub(13) {
+        if b.get(p..p + 3) == Some(MAGIC)
+            && let (Ok(len), Ok(id)) = (u32(&b, p + 3), u32(&b, p + 9))
+            && len >= 6
+            && p + 7 + len as usize <= b.len()
+        {
+            used.insert(id);
+        }
+    }
+    let mut state = used.iter().max().copied().unwrap_or(0).checked_add(1).context("ID overflow")?;
+    let key = |p: &str| p.rsplit(['\\', '/']).next().unwrap_or(p).to_lowercase();
+    let mut bodies = Vec::with_capacity(bl.entries.len());
+    for (type_index, entry) in bl.entries.iter().enumerate() {
+        let body = &b[entry.start..entry.start + entry.len];
+        let mut changes = std::collections::HashMap::new();
+        for f in fields(body)? {
+            let category = match f.tag {
+                0x78 => 3,
+                0x79 => 4,
+                0x7b => 6,
+                _ => continue,
+            };
+            let Some(edit) = edits.iter().find(|e| e.road_type_index == type_index as u32 && e.category == category) else { continue };
+            let Some(list) = &f.list else { continue };
+            let records: Vec<&[u8]> = list.iter().map(|e| &body[e.start..e.start + e.len]).collect();
+            let mut out_records = Vec::with_capacity(edit.paths.len());
+            for path in &edit.paths {
+                let existing = records.iter().find(|r| {
+                    fields(r).ok().and_then(|fs| fs.iter().find(|f| f.tag == 0x7c && f.typ == 11).map(|f| key(&text(r, f)) == key(path))).unwrap_or(false)
+                });
+                match (existing, records.first()) {
+                    (Some(r), _) => out_records.push(r.to_vec()),
+                    (None, Some(template)) => {
+                        let mut swap = std::collections::HashMap::new();
+                        swap.insert(0x7c_u8, string_field(0x7c, path)?);
+                        let changed = rewrite(template, &swap, &[])?;
+                        let id = new_id(&mut used, &mut state, 128)?;
+                        out_records.push(reid(&changed, id, &mut used, &mut state)?);
+                    }
+                    (None, None) => bail!("Typ drogi nie ma wzorca części kategorii {category}"),
+                }
+            }
+            changes.insert(f.tag, build_list(f.tag, &out_records)?);
+        }
+        bodies.push(if changes.is_empty() { body.to_vec() } else { rewrite(body, &changes, &[])? });
+    }
+    let mut output = b[..bl.start].to_vec();
+    output.extend(build_list(0x88, &bodies)?);
+    output.extend(&b[bl.end..]);
+    fs::write(out, output).with_context(|| format!("Cannot write {}", out.display()))
+}
 pub fn read_definition_parts(path: &Path) -> Result<Vec<DefinitionPart>> {
     definition_parts(&fs::read(path)?)
 }

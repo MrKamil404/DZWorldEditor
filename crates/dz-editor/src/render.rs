@@ -24,7 +24,7 @@ vec3 environment(vec3 d){
 vec2 ripple(vec2 p, vec2 dir, float f, float a, float s){
   return dir * f * a * cos(dot(dir, p) * f + u_time * s);
 }
-vec4 shadeWater(vec3 wp, float fog){
+vec4 shadeWater(vec3 wp, float fog, vec2 swell, float foam){
   float dist = distance(wp, u_eye);
   vec3 V = normalize(u_eye - wp);
   vec2 g = ripple(wp.xz, vec2(0.8, 0.6), 0.9, 0.035, 1.3)
@@ -33,14 +33,18 @@ vec4 shadeWater(vec3 wp, float fog){
          + ripple(wp.xz, vec2(-0.93, -0.36), 7.1, 0.004, 4.1);
   // Ripples blur into a calm surface with distance.
   g *= 1.0 / (1.0 + dist * 0.012);
+  g += swell;
   vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
   float f = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
   vec3 deep = vec3(0.025, 0.11, 0.14) * (u_amb * 1.1 + u_sun_col * max(u_sun.y, 0.0) * 1.2);
-  vec3 col = mix(deep, environment(reflect(-V, N)), f);
+  vec3 r = reflect(-V, N);
+  // At grazing angles a wave can reflect below the horizon; the sea still mirrors the sky.
+  vec3 col = mix(deep, environment(vec3(r.x, abs(r.y), r.z)), f);
   vec3 H = normalize(V + u_sun);
   col += u_sun_col * pow(max(dot(N, H), 0.0), 380.0) * 1.8 * step(0.0, u_sun.y);
+  col = mix(col, (u_amb + u_sun_col * max(u_sun.y, 0.0)) * 0.9, foam);
   col = mix(col, vec3(0.66,0.74,0.84), 1.0 - exp(-dist * fog));
-  return vec4(col * u_exposure, mix(0.74, 0.96, f));
+  return vec4(col * u_exposure, max(mix(0.74, 0.96, f), foam));
 }
 "#;
 
@@ -94,7 +98,8 @@ uniform sampler2DShadow u_shadow;
 uniform mat4 u_light;
 uniform int u_has_shadow;
 uniform vec3 u_sun, u_sun_col, u_amb;
-uniform float u_fog, u_exposure, u_bias;
+uniform float u_fog, u_exposure, u_bias, u_transition;
+uniform int u_brush_shape;
 vec3 tone(vec3 c){
   // Linear up to 0.7, then a soft shoulder so bright surfaces keep their detail.
   vec3 over = max(c - vec3(0.7), vec3(0.0));
@@ -128,9 +133,18 @@ void main(){
   vec3 col;
   // Surface blending: four nearest mask pixels.
   vec2 mp = uv * u_mask_size - 0.5;
-  ivec2 ip = ivec2(floor(mp));
-  vec2 f = fract(mp);
-  uint a = maskAt(ip), b = maskAt(ip + ivec2(1,0)), c = maskAt(ip + ivec2(0,1)), d = maskAt(ip + ivec2(1,1));
+  int span = 1;
+  if (u_mode == 0 && u_transition > 0.0) {
+    // Surfaces meet over a few metres along an uneven edge, as they do in the game.
+    float perM = u_mask_size.x / u_world;
+    vec2 w = v_world.xz;
+    vec2 wob = vec2(sin(w.x*0.63+1.7*sin(w.y*0.37)) + 0.5*sin(w.y*1.91+w.x*0.7), sin(w.y*0.71+1.3*sin(w.x*0.43)) + 0.5*sin(w.x*2.13-w.y*0.6));
+    mp += wob * u_transition * perM * 0.3;
+    span = max(1, int(u_transition * perM + 0.5));
+  }
+  ivec2 ip = ivec2(floor(mp / float(span))) * span;
+  vec2 f = (mp - vec2(ip)) / float(span);
+  uint a = maskAt(ip), b = maskAt(ip + ivec2(span,0)), c = maskAt(ip + ivec2(0,span)), d = maskAt(ip + ivec2(span,span));
   float wa = (1.0-f.x)*(1.0-f.y), wb = f.x*(1.0-f.y), wc = (1.0-f.x)*f.y, wd = f.x*f.y;
   vec3 palette = pal(a)*wa + pal(b)*wb + pal(c)*wc + pal(d)*wd;
 
@@ -164,10 +178,14 @@ void main(){
     if (near > 0.002) {
       vec2 t = v_world.xz * u_tile;
       vec2 dx = dFdx(t), dy = dFdy(t);
-      vec3 ta = textureGrad(u_layers, vec3(t, float(a)), dx, dy).rgb;
-      vec3 tb = textureGrad(u_layers, vec3(t, float(b)), dx, dy).rgb;
-      vec3 tc = textureGrad(u_layers, vec3(t, float(c)), dx, dy).rgb;
-      vec3 td = textureGrad(u_layers, vec3(t, float(d)), dx, dy).rgb;
+      vec4 ra = textureGrad(u_layers, vec3(t, float(a)), dx, dy), rb = textureGrad(u_layers, vec3(t, float(b)), dx, dy);
+      vec4 rc = textureGrad(u_layers, vec3(t, float(c)), dx, dy), rd = textureGrad(u_layers, vec3(t, float(d)), dx, dy);
+      vec3 ta = ra.rgb, tb = rb.rgb, tc = rc.rgb, td = rd.rgb;
+      // Taller parts of a surface (its alpha) show through first where two meet.
+      vec4 lift = vec4(wa, wb, wc, wd) * (vec4(ra.a, rb.a, rc.a, rd.a) * 0.75 + 0.25);
+      lift = pow(lift, vec4(1.6));
+      lift /= max(lift.x + lift.y + lift.z + lift.w, 1e-4);
+      wa = lift.x; wb = lift.y; wc = lift.z; wd = lift.w;
       vec3 s = ta / max(avg(a), vec3(0.05)) * wa + tb / max(avg(b), vec3(0.05)) * wb + tc / max(avg(c), vec3(0.05)) * wc + td / max(avg(d), vec3(0.05)) * wd;
       vec3 raw = ta * wa + tb * wb + tc * wc + td * wd;
       // Close up the game shows the surface texture itself, tinted a little by the satellite.
@@ -204,7 +222,8 @@ void main(){
     col = mix(col, vec3(0.2,0.1,0.05), (1.0 - clamp(g, 0.0, 1.0)) * 0.45);
   }
   if (u_brush.z > 0.0) {
-    float bd = distance(v_world.xz, u_brush.xy);
+    vec2 bv = abs(v_world.xz - u_brush.xy);
+    float bd = u_brush_shape == 1 ? max(bv.x, bv.y) : (u_brush_shape == 2 ? bv.x + bv.y : length(bv));
     float px = fwidth(bd) * 1.5;
     float ring = 1.0 - clamp(abs(bd - u_brush.z) / px, 0.0, 1.0);
     float inner = 1.0 - clamp(abs(bd - u_brush.z * (1.0 - u_brush.w)) / px, 0.0, 1.0);
@@ -218,15 +237,50 @@ void main(){
 
 const WATER_VS: &str = r#"#version 330 core
 layout(location=0) in vec2 a_pos;
-uniform mat4 u_vp; uniform vec4 u_area; uniform float u_sea;
-out vec3 v_world;
-void main(){ v_world = vec3(u_area.x + a_pos.x * u_area.z, u_sea, u_area.y + a_pos.y * u_area.w); gl_Position = u_vp * vec4(v_world, 1.0); }"#;
+uniform mat4 u_vp; uniform vec4 u_area; uniform float u_sea, u_time, u_waves, u_cell;
+uniform vec3 u_eye; uniform vec2 u_size; uniform sampler2D u_height;
+out vec3 v_world; out vec2 v_swell; out float v_depth;
+// (direction, wave length, relative height)
+const vec4 W[5] = vec4[5](vec4(0.83,0.55,92.0,1.0), vec4(0.62,0.78,57.0,0.55), vec4(0.97,0.22,38.0,0.3), vec4(0.34,0.94,23.0,0.16), vec4(0.9,-0.43,14.0,0.08));
+void main(){
+  // Grid packed round the camera, thinning out to the horizon.
+  vec2 q = a_pos * 2.0 - 1.0;
+  vec2 p = u_eye.xz + q * abs(q) * abs(q) * u_area.z;
+  vec2 uv = (p / u_cell + 0.5) / u_size;
+  bool on = uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0;
+  v_depth = on ? u_sea - texture(u_height, uv).r : 100.0;
+  // Swell dies in shallow water and is not worth drawing far away.
+  float shore = clamp(v_depth / 7.0, 0.12, 1.0);
+  float amp = u_waves * shore * (1.0 - smoothstep(900.0, 2600.0, distance(p, u_eye.xz)));
+  float h = 0.0; vec2 slope = vec2(0.0), shift = vec2(0.0);
+  for (int i = 0; i < 5; i++) {
+    float k = 6.28318 / W[i].z;
+    float speed = sqrt(9.81 * k);
+    float phase = k * dot(W[i].xy, p) - speed * u_time;
+    float a = amp * W[i].w * 0.5;
+    h += a * sin(phase);
+    slope += W[i].xy * k * a * cos(phase);
+    shift -= W[i].xy * a * 0.6 * cos(phase);
+  }
+  v_swell = slope;
+  v_world = vec3(p.x + shift.x, u_sea + h, p.y + shift.y);
+  gl_Position = u_vp * vec4(v_world, 1.0);
+  // Far away the surface and the sea bed under it would fight over the same depth.
+  gl_Position.z -= gl_Position.w * 0.0004 * smoothstep(200.0, 2500.0, distance(p, u_eye.xz));
+}"#;
 
 const WATER_FS: &str = r#"#version 330 core
-in vec3 v_world; out vec4 o;
+in vec3 v_world; in vec2 v_swell; in float v_depth; out vec4 o;
 uniform vec3 u_eye, u_sun, u_sun_col, u_amb; uniform float u_fog, u_exposure;
 //WATER
-void main(){ o = shadeWater(v_world, u_fog); }"#;
+void main(){
+  if (v_depth < -0.3) discard;
+  // Foam rolls in along the shore.
+  float band = 0.5 + 0.5 * sin(v_depth * 2.6 - u_time * 0.8 + 1.4 * sin(v_world.x * 0.11 + v_world.z * 0.07));
+  float lace = 0.5 + 0.5 * sin(v_world.x * 2.3 + sin(v_world.z * 1.7) * 2.0 + u_time * 0.5) * sin(v_world.z * 2.9 - u_time * 0.3);
+  float foam = (1.0 - smoothstep(0.0, 1.6, v_depth)) * smoothstep(0.35, 0.95, band * 0.7 + lace * 0.45) * 0.85;
+  o = shadeWater(v_world, u_fog, v_swell, foam);
+}"#;
 
 const MESH_VS: &str = r#"#version 330 core
 layout(location=0) in vec3 a_pos;
@@ -266,6 +320,7 @@ uniform vec3 u_xo[15];
 uniform int u_textured, u_mode;
 uniform vec3 u_eye, u_sun, u_sun_col, u_amb;
 uniform float u_alpha, u_fog, u_exposure, u_bias, u_f0;
+uniform int u_decal;
 uniform sampler2DShadow u_shadow;
 uniform mat4 u_light;
 uniform int u_has_shadow;
@@ -306,9 +361,9 @@ float shadow(vec3 n){
 }
 //WATER
 void main(){
-  if (u_mode == 3) { vec4 w = shadeWater(v_world, u_fog); o = vec4(w.rgb, w.a); return; }
+  if (u_mode == 3) { vec4 w = shadeWater(v_world, u_fog, vec2(0.0), 0.0); o = vec4(w.rgb, w.a); return; }
   float dist = distance(v_world, u_eye);
-  float cut = mix(0.42, 0.1, clamp(dist / 350.0, 0.0, 1.0));
+  float cut = u_decal != 0 ? 0.02 : mix(0.42, 0.1, clamp(dist / 350.0, 0.0, 1.0));
   vec3 N = normalize(v_n);
   vec3 V = normalize(u_eye - v_world);
   vec4 c = vec4(0.62,0.62,0.6,1.0);
@@ -331,12 +386,14 @@ void main(){
     float base = max(1.0 - m.r - m.g - m.b, 0.0);
     vec4 d0 = texture(u_m11, UV(11)), d1 = texture(u_m12, UV(12)), d2 = texture(u_m13, UV(13)), d3 = texture(u_m14, UV(14));
     // Red of dtsmdi is detail around mid grey, green specular, blue gloss.
-    c = texture(u_tex, UV(0)) * d0.r * 2.0 * base + texture(u_m1, UV(1)) * d1.r * 2.0 * m.r + texture(u_m2, UV(2)) * d2.r * 2.0 * m.g + texture(u_m3, UV(3)) * d3.r * 2.0 * m.b;
+    // The macro map is painted for the base layer; the other layers' areas hold arbitrary colours.
+    vec4 mc = texture(u_m5, UV(5));
+    vec4 l0 = texture(u_tex, UV(0)) * d0.r * 2.0;
+    l0.rgb = mix(l0.rgb, mc.rgb, mc.a);
+    c = l0 * base + texture(u_m1, UV(1)) * d1.r * 2.0 * m.r + texture(u_m2, UV(2)) * d2.r * 2.0 * m.g + texture(u_m3, UV(3)) * d3.r * 2.0 * m.b;
     c.a = 1.0;
     spec = d0.g * base + d1.g * m.r + d2.g * m.g + d3.g * m.b;
     gloss = mix(8.0, 128.0, d0.b * base + d1.b * m.r + d2.b * m.g + d3.b * m.b);
-    vec4 mc = texture(u_m5, UV(5));
-    c.rgb = mix(c.rgb, mc.rgb, mc.a);
     ao = texture(u_m6, UV(6)).g;
     vec3 n = (texture(u_m7, UV(7)).xyz * base + texture(u_m8, UV(8)).xyz * m.r + texture(u_m9, UV(9)).xyz * m.g + texture(u_m10, UV(10)).xyz * m.b) * 2.0 - 1.0;
     N = bump(N, n, UV(0));
@@ -359,7 +416,7 @@ void main(){
   }
   if (v_tint.a >= 0.99) lit = mix(lit, v_tint.rgb, 0.55);
   lit = mix(lit, vec3(0.66,0.74,0.84), 1.0 - exp(-dist * u_fog));
-  o = vec4(tone(lit * u_exposure), v_tint.a >= 0.99 ? 1.0 : u_alpha);
+  o = vec4(tone(lit * u_exposure), v_tint.a >= 0.99 ? 1.0 : (u_decal != 0 ? c.a : u_alpha));
 }"#;
 
 const SKY_VS: &str = r#"#version 330 core
@@ -439,6 +496,7 @@ pub struct BrushView {
     pub radius: f32,
     pub falloff: f32,
     pub color: [f32; 3],
+    pub shape: i32,
 }
 
 /// Height range and pyramid used to choose terrain patches.
@@ -589,6 +647,8 @@ pub struct MeshData {
     /// Vertices follow the terrain, as road parts do in the game.
     pub conform: bool,
     pub water: bool,
+    /// Lies flat on the ground and is blended over it.
+    pub decal: bool,
 }
 
 pub const IMPOSTOR_SIZE: i32 = 192;
@@ -611,6 +671,7 @@ struct Model {
     batches: Vec<(u32, u32, Option<glow::Texture>, Option<MatGpu>)>,
     triangles: u32,
     conform: bool,
+    decal: bool,
     water: bool,
 }
 
@@ -654,6 +715,8 @@ pub struct Frame {
     pub height_range: [f32; 2],
     pub objects: ObjectDraw,
     pub show_water: bool,
+    pub surface_blend: f32,
+    pub sea_waves: f32,
     pub world: f32,
     pub tile: f32,
     pub lighting: LightGpu,
@@ -695,6 +758,8 @@ pub struct Renderer {
     patch_instances: Option<glow::Buffer>,
     index_count: i32,
     quad_vao: Option<glow::VertexArray>,
+    sea_vao: Option<glow::VertexArray>,
+    sea_indices: i32,
     quad_vbo: Option<glow::Buffer>,
     box_vao: Option<glow::VertexArray>,
     box_vbo: Option<glow::Buffer>,
@@ -922,6 +987,32 @@ impl Renderer {
         gl.enable_vertex_attrib_array(0);
         gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0);
         self.quad_vao = Some(qvao);
+
+        // Grid for the sea surface.
+        const SEA: u32 = 360;
+        let mut sea: Vec<f32> = Vec::with_capacity(((SEA + 1) * (SEA + 1) * 2) as usize);
+        let mut sea_i: Vec<u32> = Vec::with_capacity((SEA * SEA * 6) as usize);
+        for y in 0..=SEA {
+            for x in 0..=SEA {
+                sea.extend_from_slice(&[x as f32 / SEA as f32, y as f32 / SEA as f32]);
+                if x < SEA && y < SEA {
+                    let at = y * (SEA + 1) + x;
+                    sea_i.extend_from_slice(&[at, at + 1, at + SEA + 1, at + 1, at + SEA + 2, at + SEA + 1]);
+                }
+            }
+        }
+        let svao = gl.create_vertex_array()?;
+        gl.bind_vertex_array(Some(svao));
+        let svbo = gl.create_buffer()?;
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(svbo));
+        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&sea), glow::STATIC_DRAW);
+        let sebo = gl.create_buffer()?;
+        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(sebo));
+        gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytes(&sea_i), glow::STATIC_DRAW);
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0);
+        self.sea_vao = Some(svao);
+        self.sea_indices = sea_i.len() as i32;
         self.quad_vbo = Some(qvbo);
 
         // Unit box, y from 0 to 1: position, normal, uv.
@@ -1200,7 +1291,7 @@ impl Renderer {
             (*f, *c, base, mat)
         }).collect();
         let triangles = m.indices.len() as u32 / 3;
-        self.models.insert(m.key, Model { vao, vbo, ebo, batches, triangles, conform: m.conform, water: m.water });
+        self.models.insert(m.key, Model { vao, vbo, ebo, batches, triangles, conform: m.conform, water: m.water, decal: m.decal });
         Ok(())
     }
 
@@ -1330,6 +1421,7 @@ impl Renderer {
         gl.use_program(Some(terrain));
         light_uniforms(terrain);
         gl.uniform_matrix_4_f32_slice(u(terrain, "u_vp").as_ref(), false, &f.view.vp);
+        gl.uniform_1_f32(u(terrain, "u_transition").as_ref(), f.surface_blend);
         gl.uniform_2_f32(u(terrain, "u_size").as_ref(), self.size[0], self.size[1]);
         gl.uniform_1_f32(u(terrain, "u_cell").as_ref(), self.cell);
         gl.uniform_1_f32(u(terrain, "u_world").as_ref(), f.world);
@@ -1349,6 +1441,7 @@ impl Renderer {
             Some(b) => {
                 gl.uniform_4_f32(u(terrain, "u_brush").as_ref(), b.x, b.z, b.radius, b.falloff);
                 gl.uniform_4_f32(u(terrain, "u_brush_color").as_ref(), b.color[0], b.color[1], b.color[2], 1.0);
+                gl.uniform_1_i32(u(terrain, "u_brush_shape").as_ref(), b.shape);
             }
             None => gl.uniform_4_f32(u(terrain, "u_brush").as_ref(), 0.0, 0.0, 0.0, 0.0),
         }
@@ -1432,8 +1525,17 @@ impl Renderer {
                 gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&f.objects.instances), glow::STREAM_DRAW);
                 self.instances_uploaded.insert(f.viewport_key, ptr);
             }
+            for decals in [false, true] {
+            if decals {
+                gl.enable(glow::BLEND);
+                gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+                gl.depth_mask(false);
+                gl.enable(glow::POLYGON_OFFSET_FILL);
+                gl.polygon_offset(-2.0, -2.0);
+            }
+            gl.uniform_1_i32(u(mesh_prog, "u_decal").as_ref(), decals as i32);
             for (key, first, count) in f.objects.groups.iter() {
-                let Some(m) = self.models.get(key).filter(|m| !m.water) else { continue };
+                let Some(m) = self.models.get(key).filter(|m| !m.water && m.decal == decals) else { continue };
                 gl.bind_vertex_array(Some(m.vao));
                 Self::bind_mesh_instances(gl, buffer, *first);
                 gl.uniform_1_i32(conform_u.as_ref(), m.conform as i32);
@@ -1463,6 +1565,10 @@ impl Renderer {
                 stats.triangles += m.triangles as u64 * *count as u64;
                 stats.mesh_instances += *count;
             }
+            }
+            gl.disable(glow::POLYGON_OFFSET_FILL);
+            gl.depth_mask(true);
+            gl.uniform_1_i32(u(mesh_prog, "u_decal").as_ref(), 0);
         }
         gl.uniform_1_i32(conform_u.as_ref(), 0);
         if let Some(buffer) = self.mesh_instances.get(&f.viewport_key).copied().filter(|_| !f.objects.groups.is_empty()) {
@@ -1536,10 +1642,15 @@ impl Renderer {
             gl.uniform_matrix_4_f32_slice(u(water, "u_vp").as_ref(), false, &f.view.vp);
             gl.uniform_3_f32(u(water, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
             gl.uniform_1_f32(u(water, "u_sea").as_ref(), f.sea);
-            let m = f.world * 3.0;
-            gl.uniform_4_f32(u(water, "u_area").as_ref(), -m, -m, f.world + 2.0 * m, f.world + 2.0 * m);
-            gl.bind_vertex_array(self.quad_vao);
-            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+            gl.uniform_1_f32(u(water, "u_waves").as_ref(), f.sea_waves);
+            gl.uniform_1_f32(u(water, "u_cell").as_ref(), self.cell);
+            gl.uniform_2_f32(u(water, "u_size").as_ref(), self.size[0], self.size[1]);
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(glow::TEXTURE_2D, Some(height));
+            gl.uniform_1_i32(u(water, "u_height").as_ref(), 0);
+            gl.uniform_4_f32(u(water, "u_area").as_ref(), 0.0, 0.0, f.world * 4.0, f.world * 4.0);
+            gl.bind_vertex_array(self.sea_vao);
+            gl.draw_elements(glow::TRIANGLES, self.sea_indices, glow::UNSIGNED_INT, 0);
             gl.depth_mask(true);
         }
         gl.disable(glow::DEPTH_TEST);

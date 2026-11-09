@@ -39,35 +39,35 @@ pub struct Layer {
     pub objects: Vec<TbObject>,
 }
 
-struct Cursor<'a> {
-    b: &'a [u8],
-    p: usize,
+pub(crate) struct Cursor<'a> {
+    pub(crate) b: &'a [u8],
+    pub(crate) p: usize,
 }
 
 impl<'a> Cursor<'a> {
-    fn take(&mut self, n: usize) -> Result<&'a [u8]> {
+    pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8]> {
         let end = self.p.checked_add(n).context("Damaged layer file")?;
         let s = self.b.get(self.p..end).context("Truncated layer file")?;
         self.p = end;
         Ok(s)
     }
-    fn u8(&mut self) -> Result<u8> {
+    pub(crate) fn u8(&mut self) -> Result<u8> {
         Ok(self.take(1)?[0])
     }
-    fn u16(&mut self) -> Result<u16> {
+    pub(crate) fn u16(&mut self) -> Result<u16> {
         Ok(u16::from_le_bytes(self.take(2)?.try_into()?))
     }
-    fn u32(&mut self) -> Result<u32> {
+    pub(crate) fn u32(&mut self) -> Result<u32> {
         Ok(u32::from_le_bytes(self.take(4)?.try_into()?))
     }
     fn f32(&mut self) -> Result<f32> {
         Ok(f32::from_le_bytes(self.take(4)?.try_into()?))
     }
-    fn f64(&mut self) -> Result<f64> {
+    pub(crate) fn f64(&mut self) -> Result<f64> {
         Ok(f64::from_le_bytes(self.take(8)?.try_into()?))
     }
     /// `tag, type, count` and `count` of `(id, length, text)`.
-    fn dictionary(&mut self) -> Result<HashMap<u16, String>> {
+    pub(crate) fn dictionary(&mut self) -> Result<HashMap<u16, String>> {
         self.u16()?;
         ensure!(self.u8()? == 0x0f, "Not a Terrain Builder layer");
         let n = self.u32()?;

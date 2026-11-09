@@ -42,6 +42,27 @@ impl Brush {
     }
 }
 
+/// Outline of a brush.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BrushShape {
+    #[default]
+    Circle,
+    Square,
+    Diamond,
+}
+
+impl BrushShape {
+    /// Distance from the brush centre in this outline's metric.
+    #[inline]
+    pub fn distance(self, dx: f32, dz: f32) -> f32 {
+        match self {
+            BrushShape::Circle => (dx * dx + dz * dz).sqrt(),
+            BrushShape::Square => dx.abs().max(dz.abs()),
+            BrushShape::Diamond => dx.abs() + dz.abs(),
+        }
+    }
+}
+
 /// Copy-on-write snapshot of a raster's tiles touched by one stroke.
 #[derive(Default, Clone)]
 pub struct TileSnapshot<T: Copy> {
@@ -94,6 +115,9 @@ pub enum Change {
     Objects(Vec<(u32, Option<Obj>, Option<Obj>)>),
     Modifiers(Vec<TerrainModifier>),
     ObjectLayers(Vec<crate::world::ObjectLayer>),
+    Shapes(Vec<crate::shapes::ShapeLayer>),
+    Routes(Vec<crate::world::RoadRoute>, Vec<crate::world::MapLine>),
+    Generators(Vec<crate::library::GeneratorInstance>),
     /// A whole-raster change produced by a generator.
     WholeHeight(Vec<f32>),
     WholeMask(Vec<u8>),
@@ -165,6 +189,12 @@ impl Change {
                 w.objects.revision += 1;
                 t.objects = true;
             }
+            Change::Shapes(prev) => std::mem::swap(prev, &mut w.shape_layers),
+            Change::Generators(prev) => std::mem::swap(prev, &mut w.generators),
+            Change::Routes(routes, lines) => {
+                std::mem::swap(routes, &mut w.routes);
+                std::mem::swap(lines, &mut w.lines);
+            }
             Change::WholeHeight(v) => {
                 std::mem::swap(v, &mut w.base.data);
                 w.recompose(None);
@@ -192,6 +222,9 @@ impl Change {
             Change::Objects(l) => l.len() * 80,
             Change::Modifiers(l) => l.len() * 96,
             Change::ObjectLayers(l) => l.len() * 64,
+            Change::Routes(r, l) => r.iter().map(|x| x.points.len() * 8 + x.centerline.len() * 8 + x.objects.len() * 4).sum::<usize>() + l.iter().map(|x| x.points.len() * 8).sum::<usize>(),
+            Change::Generators(l) => l.iter().map(|g| g.objects.len() * 4 + 4096).sum(),
+            Change::Shapes(l) => l.iter().map(|s| s.shapes.iter().map(|x| x.points.len() * 8 + 64).sum::<usize>()).sum(),
             Change::WholeHeight(v) => v.len() * 4,
             Change::WholeMask(v) => v.len(),
             Change::Group(l) => l.iter().map(|c| c.bytes()).sum(),
@@ -272,11 +305,14 @@ pub struct SculptStroke {
     /// Start of the ramp.
     pub start: [f32; 2],
     pub noise: Perlin,
+    pub shape: BrushShape,
+    /// How much the edge of the brush is broken up, 0..1.
+    pub edge_noise: f32,
 }
 
 impl SculptStroke {
     pub fn begin(tool: SculptTool, brush: Brush, w: &World, x: f32, z: f32) -> Self {
-        Self { tool, brush, snapshot: TileSnapshot::default(), target: w.base.sample(x, z), start: [x, z], noise: Perlin::new(1234) }
+        Self { tool, brush, snapshot: TileSnapshot::default(), target: w.base.sample(x, z), start: [x, z], noise: Perlin::new(1234), shape: BrushShape::Circle, edge_noise: 0.0 }
     }
     /// Applies one step of the stroke at a world position; `dt` in seconds.
     pub fn apply(&mut self, w: &mut World, x: f32, z: f32, dt: f32) -> Option<Rect> {
@@ -291,7 +327,11 @@ impl SculptStroke {
         for j in r.y0..=r.y1 {
             for i in r.x0..=r.x1 {
                 let (px, pz) = (i as f32 * cell, j as f32 * cell);
-                let d = ((px - x).powi(2) + (pz - z).powi(2)).sqrt();
+                let mut d = self.shape.distance(px - x, pz - z);
+                if self.edge_noise > 0.0 {
+                    let scale = (self.brush.radius * 0.4).max(1.0);
+                    d += self.noise.fbm(px / scale, pz / scale, 3, 0.5, 2.0) * self.edge_noise * self.brush.radius;
+                }
                 let k = self.brush.weight(d);
                 if k <= 0.0 {
                     continue;
@@ -344,6 +384,11 @@ fn copy_rect(h: &Heightmap, r: Rect) -> Vec<f32> {
 #[derive(Default)]
 pub struct MaskStroke {
     pub snapshot: TileSnapshot<u8>,
+    pub shape: BrushShape,
+    /// Paints only over this surface.
+    pub only_on: Option<u8>,
+    /// Keeps tiles within the project's surface limit.
+    pub guard: Option<crate::mask_limit::TileGuard>,
 }
 
 impl MaskStroke {
@@ -361,7 +406,7 @@ impl MaskStroke {
         self.snapshot.capture(&mask.data, mask.width, mask.height, r);
         for y in r.y0..=r.y1 {
             for xp in r.x0..=r.x1 {
-                let d = ((xp as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+                let d = self.shape.distance(xp as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
                 let limit = if scatter > 0.0 {
                     let h = (xp as u32).wrapping_mul(73856093) ^ (y as u32).wrapping_mul(19349663);
                     let n = ((h.wrapping_mul(2654435761) >> 16) & 255) as f32 / 255.0;
@@ -369,9 +414,17 @@ impl MaskStroke {
                 } else {
                     rp
                 };
-                if d <= limit {
-                    mask.data[y * mask.width + xp] = layer;
+                if d > limit {
+                    continue;
                 }
+                let at = y * mask.width + xp;
+                if mask.data[at] == layer || self.only_on.is_some_and(|l| l != mask.data[at]) {
+                    continue;
+                }
+                if self.guard.as_mut().is_some_and(|g| !g.allow(mask, xp, y, layer)) {
+                    continue;
+                }
+                mask.data[at] = layer;
             }
         }
         Some(r)

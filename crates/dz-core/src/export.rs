@@ -183,7 +183,7 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
     // The most used surfaces of the tile; the game shader takes at most five.
     let mut order: Vec<usize> = (0..256).filter(|l| count[*l] > 0).collect();
     order.sort_by_key(|l| std::cmp::Reverse(count[*l]));
-    order.truncate(MAX_SLOTS);
+    order.truncate(MAX_SLOTS.min(w.meta.max_tile_surfaces.max(1) as usize));
     order.sort();
     let slots = order.len();
     let mut slot_of = [0u8; 256];

@@ -110,7 +110,11 @@ fn describe_format_error(bytes: &[u8]) -> Option<String> {
 /// Solid colour of a procedural texture such as `#(argb,8,8,3)color(0.5,0.5,1,1,nohq)`.
 fn procedural_color(name: &str) -> Option<TextureImage> {
     let args = name.trim().strip_prefix('#')?.split("color(").nth(1)?;
-    let values: Vec<f32> = args.split(',').take(4).filter_map(|v| v.trim().parse().ok()).collect();
+    let mut values: Vec<f32> = args.split(',').take(4).filter_map(|v| v.trim().parse().ok()).collect();
+    // A flat colour carries no detail pattern, so its detail channel stays neutral.
+    if name.to_ascii_lowercase().contains("dtsmdi") && !values.is_empty() {
+        values[0] = 0.5;
+    }
     (values.len() == 4).then(|| TextureImage {
         width: 1,
         height: 1,
@@ -167,6 +171,11 @@ fn build_shading(m: &odol::Material, loader: &mut MapLoader, mesh: &mut ModelMes
         out.xf[slot] = [1.0, 0.0, 0.0, 1.0];
     }
     for &(slot, stage, limit) in table {
+        // A flat macro colour in a Multi material is a placeholder: taken at face value its full
+        // alpha would replace the base layer with one colour.
+        if multi && slot == 5 && s[stage].texture.trim_start().starts_with('#') {
+            continue;
+        }
         out.maps[slot] = loader.load(&s[stage].texture, limit, mesh);
         if let Some(t) = m.transforms.get(s[stage].transform as usize) {
             out.xf[slot] = [t.matrix[0], t.matrix[1], t.matrix[3], t.matrix[4]];

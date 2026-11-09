@@ -14,6 +14,7 @@ use dz_core::model_info::ModelDb;
 use dz_core::objects::Obj;
 use dz_core::project::{self, SaveParts};
 use dz_core::terrain::Rect;
+use dz_core::shapes::{MapShape, ShapeKind, ShapeLayer};
 use dz_core::world::{MapLine, World, WorldMeta};
 use dz_core::Job;
 use eframe::egui;
@@ -32,6 +33,44 @@ pub enum Mode {
     Place,
     Lines,
     Generate,
+    Shapes,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShapeTool {
+    Edit,
+    Polygon,
+    Polyline,
+    Point,
+}
+
+pub struct ShapePanel {
+    pub tool: ShapeTool,
+    /// Vertices of the shape being drawn.
+    pub points: Vec<[f32; 2]>,
+    /// (layer, shape)
+    pub selection: BTreeSet<(usize, usize)>,
+    pub vertex: Option<usize>,
+    /// Corners of the selection box being dragged, and whether it adds to the selection.
+    pub boxing: Option<(egui::Pos2, egui::Pos2, bool)>,
+    /// Last ground point of a drag that moves whole shapes.
+    pub move_from: Option<[f32; 2]>,
+    /// State before the vertex drag in progress, for undo.
+    pub drag_before: Option<Vec<ShapeLayer>>,
+}
+
+impl Default for ShapePanel {
+    fn default() -> Self {
+        Self { tool: ShapeTool::Edit, points: Vec::new(), selection: BTreeSet::new(), vertex: None, boxing: None, move_from: None, drag_before: None }
+    }
+}
+
+pub enum ShapeAction {
+    New,
+    Active(usize),
+    Visible(usize),
+    Rename(usize, String),
+    Delete(usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -51,6 +90,8 @@ pub enum ViewMode {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BottomTab {
     Content,
+    Generators,
+    Presets,
     Output,
     Build,
 }
@@ -60,6 +101,7 @@ pub enum LineAction {
     Road,
     Fence,
     Plain,
+    Edit,
 }
 
 pub struct SculptSettings {
@@ -67,12 +109,19 @@ pub struct SculptSettings {
     pub radius: f32,
     pub falloff: f32,
     pub strength: f32,
+    pub shape: dz_core::edit::BrushShape,
+    pub noise: f32,
 }
 
 pub struct PaintSettings {
     pub layer: usize,
     pub radius: f32,
     pub scatter: f32,
+    pub shape: dz_core::edit::BrushShape,
+    /// Paint only over this surface.
+    pub only_on: Option<usize>,
+    /// The next click takes the surface under the cursor.
+    pub picking: bool,
 }
 
 pub struct PlaceSettings {
@@ -81,8 +130,12 @@ pub struct PlaceSettings {
     pub scale_min: f32,
     pub scale_max: f32,
     pub align: bool,
+    /// Places models of this object preset instead of `model`.
+    pub preset: Option<u64>,
     pub auto_pad: bool,
     pub pad_falloff: f32,
+    /// Extra ground levelled around an object, in metres.
+    pub pad_margin: f32,
 }
 
 pub struct LineSettings {
@@ -92,7 +145,18 @@ pub struct LineSettings {
     pub grade: bool,
     pub fence_model: String,
     pub fence_spacing: f32,
-    pub radius: f32,
+    /// Search the route across the terrain, as Road Builder does.
+    pub route: bool,
+    pub routing: dayz_road_tool::document::RoutingSettings,
+    pub rail_routing: dayz_road_tool::document::RoutingSettings,
+    pub grade_width: f32,
+    pub grade_falloff: f32,
+    pub selected_route: Option<usize>,
+    pub selected_point: Option<usize>,
+    /// Waypoints before the drag in progress.
+    pub point_drag: Option<Vec<[f32; 2]>>,
+    /// Shape layer whose polygons the route must avoid.
+    pub forbidden: Option<usize>,
 }
 
 pub struct GenPanel {
@@ -105,16 +169,6 @@ pub struct GenPanel {
     pub rivers: u32,
     pub river_width: f32,
     pub river_depth: f32,
-    pub paint_rules: Vec<gen::PaintRule>,
-    pub scatter: gen::ScatterRule,
-    pub scatter_radius: f32,
-    pub forest_zones: Vec<(usize, String)>,
-    pub forest_seed: u64,
-    pub forest_slope: f32,
-    pub forest_clearing: f64,
-    pub settlement: gen::SettlementRule,
-    pub pick_settlement: bool,
-    pub pick_scatter: bool,
 }
 
 impl Default for GenPanel {
@@ -122,9 +176,6 @@ impl Default for GenPanel {
         Self {
             terrain: Default::default(), erosion: Default::default(), thermal_iters: 20, thermal_talus: 40.0,
             terrace_step: 12.0, terrace_sharp: 0.6, rivers: 3, river_width: 8.0, river_depth: 3.0,
-            paint_rules: Vec::new(), scatter: Default::default(), scatter_radius: 0.0,
-            forest_zones: Vec::new(), forest_seed: 1337, forest_slope: 35.0, forest_clearing: 0.35,
-            settlement: Default::default(), pick_settlement: false, pick_scatter: false,
         }
     }
 }
@@ -164,6 +215,10 @@ pub struct Doc {
     pub height_range: [f32; 2],
 }
 
+fn layers_len(w: &World) -> usize {
+    w.shape_layers.len()
+}
+
 fn ctx_shift(ctx: &egui::Context) -> bool {
     ctx.input(|i| i.modifiers.shift)
 }
@@ -200,6 +255,7 @@ pub enum LayerAction {
 pub enum Dialog {
     None,
     Import(Box<ImportDialog>),
+    RoadCatalog,
     NewProject(NewProject),
     Settings,
     ProjectSettings,
@@ -282,6 +338,29 @@ pub struct App {
     pub outliner_filter: String,
     pub outliner_cache: Option<OutlinerCache>,
     pub layer_rename: Option<(u16, String)>,
+    pub shape_rename: Option<(usize, String)>,
+    /// Tiles found over the surface limit.
+    pub tile_issues: Vec<(u32, u32, u32)>,
+    /// Triangles of loaded models, for picking what is actually under the cursor.
+    pub pick_meshes: HashMap<u32, Arc<crate::viewport::PickMesh>>,
+    pub shape: ShapePanel,
+    pub show_shapes: bool,
+    pub grass_under_objects: bool,
+    pub library: dz_core::library::Library,
+    pub built_in: Vec<dz_core::library::GeneratorPreset>,
+    /// Generator of the project shown in the details panel.
+    pub selected_generator: Option<u64>,
+    /// Library entries being edited.
+    pub edit_generator: Option<u64>,
+    pub edit_object: Option<u64>,
+    pub gen_folder: Option<String>,
+    pub preset_folder: Option<String>,
+    pub new_folder: String,
+    /// The generator or preset waiting for a satellite colour from the map.
+    pub sampling: Option<u64>,
+    pub lib_dirty: bool,
+    /// Shape layers opened in the outliner.
+    pub shape_open: BTreeSet<usize>,
     pub last_autosave: Instant,
     pub session: Option<dz_core::build::Session>,
     pub close_confirmed: bool,
@@ -319,16 +398,16 @@ impl App {
             mode: Mode::Select, gizmo: Gizmo::Move, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, bottom: BottomTab::Content,
-            sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0 },
-            paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3 },
-            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, auto_pad: false, pad_falloff: 8.0 },
-            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, radius: 25.0 },
+            sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0 },
+            paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), only_on: None, picking: false },
+            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, preset: None, auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0 },
+            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
             gen: GenPanel::default(), stroke: None, mask_stroke: None,
-            camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: 75f32.to_radians(), speed: camera_speed },
+            camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selected_line: None, selection_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None,
+            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
@@ -367,12 +446,260 @@ impl App {
         self.assets_rx = Some(rx);
     }
 
+    /// Everything a road or track depends on besides its own waypoints.
+    pub fn route_request(&self, family: String, points: Vec<[f32; 2]>, terrain_route: bool, settings: dayz_road_tool::document::RoutingSettings) -> gen::RouteRequest {
+        let world = self.doc.as_ref().map(|d| &d.world);
+        let forbidden = self.line.forbidden.and_then(|i| world?.shape_layers.get(i)).map(|l| l.shapes.iter().filter(|s| s.kind == ShapeKind::Polygon).map(|s| s.points.clone()).collect()).unwrap_or_default();
+        let roads = world.map(|w| w.lines.iter().map(|l| l.points.clone()).chain(w.routes.iter().filter(|r| !dayz_road_tool::rails::is_track_family(&r.family)).map(|r| r.centerline.clone())).collect()).unwrap_or_default();
+        gen::RouteRequest { family, points, terrain_route, settings, forbidden, roads }
+    }
+
+    /// Makes the terrain modifier of a route match its line and options. Returns what to undo.
+    fn sync_route_modifier(&mut self, i: usize) -> Option<Vec<dz_core::world::TerrainModifier>> {
+        let doc = self.doc.as_mut()?;
+        let route = doc.world.routes.get(i)?.clone();
+        let before = doc.world.modifiers.clone();
+        let mut area: Option<Rect> = None;
+        let at = route.modifier.and_then(|id| doc.world.modifiers.iter().position(|m| m.id == id));
+        if let Some(k) = at {
+            area = doc.world.modifier_rect(&doc.world.modifiers[k]);
+        }
+        let id = route.modifier.unwrap_or_else(|| doc.world.new_modifier_id());
+        let built = route.grade.then(|| gen::road_modifier(&doc.world.base, id, &route.name, &route.centerline, route.grade_width, route.grade_falloff)).flatten();
+        match (built, at) {
+            (Some(m), Some(k)) => doc.world.modifiers[k] = m,
+            (Some(m), None) => {
+                doc.world.modifiers.push(m);
+                doc.world.routes[i].modifier = Some(id);
+            }
+            (None, Some(k)) => {
+                doc.world.modifiers.remove(k);
+                doc.world.routes[i].modifier = None;
+            }
+            (None, None) => return None,
+        }
+        if let Some(m) = doc.world.modifiers.iter().find(|m| Some(m.id) == doc.world.routes[i].modifier) {
+            if let Some(r) = doc.world.modifier_rect(m) { area = Some(area.map_or(r, |a| a.union(r))); }
+        }
+        let r = area?;
+        doc.world.recompose(Some(r));
+        self.height_changed(r);
+        Some(before)
+    }
+
+    /// Width, blend or on/off of a route's levelling changed.
+    pub fn route_grading_changed(&mut self, i: usize) {
+        self.sync_route_modifier(i);
+        if let Some(d) = &mut self.doc { d.history.revision += 1; }
+    }
+
+    /// Builds a route in the background. `target` is the route being re-fitted, and `before`
+    /// the waypoints it goes back to when no fit is found.
+    pub fn start_route(&mut self, req: gen::RouteRequest, target: Option<usize>, before: Option<Vec<[f32; 2]>>, grade: bool) {
+        // New routes take the option from the tool; existing ones keep their own.
+        let Some(doc) = &self.doc else { return };
+        let mut lite = doc.world.lite();
+        let catalog = self.road_catalog.clone();
+        self.spawn(t("Building road"), move |job| {
+            let built = gen::build_route(&mut lite, &req, &catalog, job);
+            let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
+            Ok(Box::new(move |app: &mut App| match built {
+                Ok(road) => app.store_route(req, road, models, target, before, grade),
+                Err(e) => {
+                    if let (Some(i), Some(points), Some(d)) = (target, before, &mut app.doc) {
+                        if let Some(r) = d.world.routes.get_mut(i) { r.points = points; }
+                    }
+                    app.error(format!("{e:#}"));
+                }
+            }) as Finish)
+        });
+    }
+
+    fn store_route(&mut self, req: gen::RouteRequest, road: gen::RoadResult, models: Vec<String>, target: Option<usize>, before: Option<Vec<[f32; 2]>>, grade: bool) {
+        let Some(doc) = &mut self.doc else { return };
+        let mut previous = doc.world.routes.clone();
+        let previous_lines = doc.world.lines.clone();
+        let old = target.and_then(|i| doc.world.routes.get(i)).map(|r| r.objects.clone()).unwrap_or_default();
+        let layer = old.first().and_then(|id| doc.world.objects.get(*id)).map(|o| o.layer()).unwrap_or_else(|| doc.world.target_layer());
+        let mut change = Vec::with_capacity(old.len() + road.objects.len());
+        for id in old {
+            if let Some(o) = doc.world.objects.remove(id) {
+                change.push((id, Some(o), None));
+            }
+        }
+        let map: Vec<u32> = models.iter().map(|m| doc.world.objects.intern(m)).collect();
+        let mut ids = Vec::with_capacity(road.objects.len());
+        for mut o in road.objects {
+            o.model = map[o.model as usize];
+            o.set_layer(layer);
+            let id = doc.world.objects.insert(o);
+            change.push((id, None, Some(o)));
+            ids.push(id);
+        }
+        let center = road.centerline;
+        let index = match target.filter(|i| *i < doc.world.routes.len()) {
+            Some(i) => {
+                if let (Some(p), Some(points)) = (previous.get_mut(i), before) { p.points = points; }
+                let r = &mut doc.world.routes[i];
+                (r.points, r.centerline, r.objects, r.family, r.terrain_route, r.settings) = (req.points, center.clone(), ids, req.family, req.terrain_route, req.settings);
+                i
+            }
+            None => {
+                let n = doc.world.routes.len() + 1;
+                let kind = if dayz_road_tool::rails::is_track_family(&req.family) { "Track" } else { "Road" };
+                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, terrain_route: req.terrain_route, settings: req.settings, grade, grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None });
+                doc.world.routes.len() - 1
+            }
+        };
+        let label = t("Build road");
+        doc.history.push(label.clone(), Change::Objects(change));
+        doc.history.push(label.clone(), Change::Routes(previous, previous_lines));
+        doc.dirty.objects = true;
+        self.line.selected_route = Some(index);
+        let parts = match self.sync_route_modifier(index) {
+            Some(before) => {
+                self.doc.as_mut().unwrap().history.push(label.clone(), Change::Modifiers(before));
+                3
+            }
+            None => 2,
+        };
+        self.doc.as_mut().unwrap().history.group_last(parts, label);
+    }
+
+    /// Fits the models of a route again after its waypoints or settings changed.
+    pub fn refit_route(&mut self, i: usize, before: Vec<[f32; 2]>) {
+        let Some(r) = self.doc.as_ref().and_then(|d| d.world.routes.get(i)).cloned() else { return };
+        if self.task.is_some() {
+            if let Some(d) = &mut self.doc { d.world.routes[i].points = before; }
+            self.warn(t("Another task is still running"));
+            return;
+        }
+        let req = self.route_request(r.family, r.points, r.terrain_route, r.settings);
+        self.start_route(req, Some(i), Some(before), false);
+    }
+
+    pub fn delete_route(&mut self, i: usize) {
+        let Some(doc) = &mut self.doc else { return };
+        if i >= doc.world.routes.len() { return; }
+        let (previous, previous_lines) = (doc.world.routes.clone(), doc.world.lines.clone());
+        let route = doc.world.routes.remove(i);
+        let change = route.objects.iter().filter_map(|id| doc.world.objects.remove(*id).map(|o| (*id, Some(o), None))).collect();
+        doc.history.push(t("Delete route"), Change::Objects(change));
+        doc.history.push(t("Delete route"), Change::Routes(previous, previous_lines));
+        let mut parts = 2;
+        if let Some(k) = route.modifier.and_then(|id| doc.world.modifiers.iter().position(|m| m.id == id)) {
+            let before = doc.world.modifiers.clone();
+            let area = doc.world.modifier_rect(&doc.world.modifiers[k]);
+            doc.world.modifiers.remove(k);
+            doc.history.push(t("Delete route"), Change::Modifiers(before));
+            parts = 3;
+            if let Some(r) = area {
+                doc.world.recompose(Some(r));
+                self.height_changed(r);
+            }
+        }
+        let Some(doc) = &mut self.doc else { return };
+        doc.history.group_last(parts, t("Delete route"));
+        doc.dirty.objects = true;
+        self.line.selected_route = None;
+        self.line.selected_point = None;
+        self.selection.retain(|id| self.doc.as_ref().is_some_and(|d| d.world.objects.get(*id).is_some()));
+        self.selection_rev += 1;
+    }
+
+    /// Road parts lying on a line that no route owns.
+    fn parts_along(world: &World, line: &MapLine) -> Vec<u32> {
+        let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for p in &line.points {
+            (x0, z0, x1, z1) = (x0.min(p[0]), z0.min(p[1]), x1.max(p[0]), z1.max(p[1]));
+        }
+        let distance = |x: f32, z: f32| line.points.windows(2).map(|w| {
+            let (dx, dz) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
+            let k = (((x - w[0][0]) * dx + (z - w[0][1]) * dz) / (dx * dx + dz * dz).max(1e-3)).clamp(0.0, 1.0);
+            ((w[0][0] + dx * k - x).powi(2) + (w[0][1] + dz * k - z).powi(2)).sqrt()
+        }).fold(f32::MAX, f32::min);
+        let taken: BTreeSet<u32> = world.routes.iter().flat_map(|r| r.objects.iter().copied()).collect();
+        let mut ids = Vec::new();
+        world.objects.for_each_in(x0 - 3.0, z0 - 3.0, x1 + 3.0, z1 + 3.0, |id, o| {
+            if !taken.contains(&id) && world.objects.model_path(o).contains("\\roads\\parts\\") && distance(o.x, o.z) < 1.5 {
+                ids.push(id);
+            }
+        });
+        ids
+    }
+
+    /// Deletes an imported road: its line and the parts lying on it.
+    pub fn delete_line(&mut self, i: usize) {
+        let Some(doc) = &mut self.doc else { return };
+        let Some(line) = doc.world.lines.get(i).cloned() else { return };
+        let ids = Self::parts_along(&doc.world, &line);
+        let (routes, lines) = (doc.world.routes.clone(), doc.world.lines.clone());
+        let change = ids.iter().filter_map(|id| doc.world.objects.remove(*id).map(|o| (*id, Some(o), None))).collect();
+        doc.world.lines.remove(i);
+        doc.history.push(t("Delete route"), Change::Objects(change));
+        doc.history.push(t("Delete route"), Change::Routes(routes, lines));
+        doc.history.group_last(2, t("Delete route"));
+        doc.dirty.objects = true;
+        self.selected_line = None;
+        self.selection.retain(|id| !ids.contains(id));
+        self.selection_rev += 1;
+    }
+
+    /// Turns an imported road line into an editable route that owns the parts lying on it.
+    /// The parts stay exactly as they are until a waypoint is changed.
+    pub fn line_to_route(&mut self, i: usize) {
+        let Some(doc) = &mut self.doc else { return };
+        let Some(line) = doc.world.lines.get(i).cloned() else { return };
+        let ids = Self::parts_along(&doc.world, &line);
+        let world = &doc.world;
+        let Some(first) = ids.first().and_then(|id| world.objects.get(*id)) else {
+            self.warn(t("No road parts lie along this line"));
+            return;
+        };
+        let family = dayz_road_tool::road_colors::family(world.objects.model_path(first));
+        let (previous, previous_lines) = (doc.world.routes.clone(), doc.world.lines.clone());
+        // Terrain Builder roads may turn tighter than new ones are allowed to.
+        let settings = dayz_road_tool::document::RoutingSettings { min_radius: 10.0, ..Default::default() };
+        doc.world.routes.push(dz_core::world::RoadRoute { name: line.name.clone(), family, points: gen::simplify_line(&line.points, 2.0), centerline: line.points, objects: ids, terrain_route: false, settings, grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None });
+        doc.world.lines.remove(i);
+        doc.history.push(t("Make editable route"), Change::Routes(previous, previous_lines));
+        doc.dirty.objects = true;
+        self.selected_line = None;
+        self.line.selected_route = Some(doc.world.routes.len() - 1);
+        self.line.selected_point = None;
+        self.line.action = LineAction::Edit;
+        self.mode = Mode::Lines;
+    }
+
+    /// Road types defined by the map's Terrain Builder project, when it has one.
+    pub fn load_road_types(&mut self, project: PathBuf) {
+        self.spawn(t("Reading road types"), move |_| {
+            let mut catalog = gen::road_catalog_from_project(&project, Path::new("P:\\dz\\structures\\roads\\parts"))?;
+            anyhow::ensure!(!catalog.is_empty(), "{} defines no usable road types", project.display());
+            catalog.extend(gen::rail_catalog());
+            Ok(Box::new(move |app: &mut App| {
+                let mut catalog = catalog;
+                if let Some(d) = &app.doc {
+                    gen::apply_catalog_edits(&mut catalog, &d.world.road_removed, &d.world.road_added, Path::new("P:\\dz\\structures\\roads\\parts"));
+                }
+                app.road_families = gen::road_families(&catalog);
+                if !app.road_families.contains(&app.line.family) {
+                    app.line.family = app.road_families.first().cloned().unwrap_or_default();
+                }
+                app.road_catalog = Arc::new(catalog);
+                if let Some(d) = &mut app.doc { d.world.road_project = Some(project); d.history.revision += 1; }
+            }) as Finish)
+        });
+    }
+
     fn scan_roads(&mut self) {
         let (tx, rx) = channel();
         let folder = self.settings.tools.work_drive.join("dz/structures/roads/parts");
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(gen::road_catalog(&folder).unwrap_or_default());
+            let mut catalog = gen::road_catalog(&folder).unwrap_or_default();
+            catalog.extend(gen::rail_catalog());
+            let _ = tx.send(catalog);
             ctx.request_repaint();
         });
         self.road_rx = Some(rx);
@@ -463,8 +790,9 @@ impl App {
         }
         // Models arriving from the workers.
         {
-            let (renderer, fits) = (self.renderer.clone(), &mut self.impostor_fits);
+            let (renderer, fits, picks) = (self.renderer.clone(), &mut self.impostor_fits, &mut self.pick_meshes);
             self.loader.poll(|m| {
+                crate::viewport::remember_pick_mesh(picks, &m);
                 if m.impostor.is_some() {
                     fits.insert(m.key.0, m.impostor_fit);
                 }
@@ -539,7 +867,15 @@ impl App {
         self.camera.pos = [side * 0.35, ground + side * 0.09, side * 0.3];
         self.camera.look_at([side * 0.5, ground, side * 0.52]);
         self.line.points.clear();
-        self.gen.paint_rules = gen::default_paint_rules(&world);
+        self.shape.selection.clear();
+        self.shape.points.clear();
+        self.line.selected_route = None;
+        self.line.selected_point = None;
+        self.line.point_drag = None;
+        self.pick_meshes.clear();
+        self.selected_generator = None;
+        self.sampling = None;
+        let road_project = world.road_project.clone().filter(|p| p.is_file());
         if let Some(d) = &dir {
             self.settings.remember(d.clone());
             self.settings.save();
@@ -552,6 +888,9 @@ impl App {
         self.push_palette();
         self.reload_layer_textures();
         self.info(tf("Opened {0}", &[&name]));
+        if let Some(p) = road_project {
+            self.load_road_types(p);
+        }
     }
 
     pub fn create_project(&mut self, p: &NewProject) {
@@ -779,6 +1118,31 @@ impl App {
         self.add_pads(&ids, falloff);
     }
 
+    /// Applies the margin and blend to the modifiers of the selected objects.
+    pub fn update_selected_pads(&mut self) {
+        let (margin, falloff) = (self.place.pad_margin, self.place.pad_falloff);
+        let Some(doc) = &mut self.doc else { return };
+        let mut area: Option<Rect> = None;
+        for id in &self.selection {
+            let Some(o) = doc.world.objects.get(*id).copied() else { continue };
+            let info = self.db.get(doc.world.objects.model_path(&o));
+            let (hx, hz) = if info.known { info.footprint() } else { (4.0, 4.0) };
+            for k in 0..doc.world.modifiers.len() {
+                if doc.world.modifiers[k].attached != Some(*id) { continue; }
+                let before = doc.world.modifier_rect(&doc.world.modifiers[k]);
+                doc.world.modifiers[k].shape = dz_core::world::ModShape::Rect { half_x: hx * o.scale + margin, half_z: hz * o.scale + margin };
+                doc.world.modifiers[k].falloff = falloff;
+                let after = doc.world.modifier_rect(&doc.world.modifiers[k]);
+                for r in [before, after].into_iter().flatten() { area = Some(area.map_or(r, |a| a.union(r))); }
+            }
+        }
+        if let Some(r) = area {
+            doc.world.recompose(Some(r));
+            doc.history.revision += 1;
+            self.height_changed(r);
+        }
+    }
+
     pub fn add_pads(&mut self, ids: &[u32], falloff: f32) {
         let Some(doc) = &mut self.doc else { return };
         let before = doc.world.modifiers.clone();
@@ -790,7 +1154,7 @@ impl App {
             let Some(o) = doc.world.objects.get(*id).copied() else { continue };
             let info = self.db.get(doc.world.objects.model_path(&o));
             let (hx, hz) = if info.known { info.footprint() } else { (4.0, 4.0) };
-            if let Some(m) = gen::pad_modifier(&mut doc.world, *id, hx * o.scale, hz * o.scale, falloff) {
+            if let Some(m) = gen::pad_modifier(&mut doc.world, *id, hx * o.scale, hz * o.scale, self.place.pad_margin, falloff) {
                 doc.world.modifiers.push(m);
                 added += 1;
             }
@@ -847,6 +1211,140 @@ impl App {
             let w = dz_core::import::import_plan(&plan, &assets, &db, job)?;
             Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
         });
+    }
+
+    pub fn finish_shape(&mut self) {
+        let kind = match self.shape.tool {
+            ShapeTool::Polygon => ShapeKind::Polygon,
+            ShapeTool::Polyline => ShapeKind::Polyline,
+            ShapeTool::Point => ShapeKind::Point,
+            ShapeTool::Edit => return,
+        };
+        if self.shape.points.len() < kind.min_points() {
+            return;
+        }
+        let points = std::mem::take(&mut self.shape.points);
+        let Some(doc) = &mut self.doc else { return };
+        let previous = doc.world.shape_layers.clone();
+        let w = &mut doc.world;
+        if w.shape_layers.is_empty() {
+            w.shape_layers.push(ShapeLayer { name: t("Shapes"), visible: true, shapes: Vec::new() });
+        }
+        w.active_shape_layer = w.active_shape_layer.min(w.shape_layers.len() - 1);
+        let layer = &mut w.shape_layers[w.active_shape_layer];
+        layer.visible = true;
+        layer.shapes.push(MapShape { kind, points, attributes: Vec::new() });
+        self.shape.selection = BTreeSet::from([(w.active_shape_layer, layer.shapes.len() - 1)]);
+        doc.history.push(t("Add shape"), Change::Shapes(previous));
+    }
+
+    /// Removes the selected vertex, or the selected shapes.
+    pub fn delete_shape_part(&mut self) {
+        let vertex = self.shape.vertex.take();
+        let Some(doc) = &mut self.doc else { return };
+        let previous = doc.world.shape_layers.clone();
+        if let (1, Some(v)) = (self.shape.selection.len(), vertex) {
+            let (l, s) = *self.shape.selection.iter().next().unwrap();
+            if let Some(shape) = doc.world.shape_layers.get_mut(l).and_then(|x| x.shapes.get_mut(s)) {
+                if v < shape.points.len() && shape.points.len() > shape.kind.min_points() {
+                    shape.points.remove(v);
+                    doc.history.push(t("Edit shape"), Change::Shapes(previous));
+                    return;
+                }
+            }
+        }
+        let mut removed = false;
+        for (l, s) in std::mem::take(&mut self.shape.selection).into_iter().rev() {
+            if let Some(list) = doc.world.shape_layers.get_mut(l).map(|x| &mut x.shapes) {
+                if s < list.len() {
+                    list.remove(s);
+                    removed = true;
+                }
+            }
+        }
+        if removed {
+            doc.history.push(t("Delete shape"), Change::Shapes(previous));
+        }
+    }
+
+    pub fn shape_action(&mut self, action: ShapeAction) {
+        let Some(doc) = &mut self.doc else { return };
+        let previous = doc.world.shape_layers.clone();
+        let layers = &mut doc.world.shape_layers;
+        match action {
+            ShapeAction::New => {
+                layers.push(ShapeLayer { name: t("New layer"), visible: true, shapes: Vec::new() });
+                let n = layers.len() - 1;
+                doc.world.active_shape_layer = n;
+                self.shape_rename = Some((n, doc.world.shape_layers[n].name.clone()));
+                doc.history.push(t("New layer"), Change::Shapes(previous));
+            }
+            ShapeAction::Active(i) => {
+                doc.world.active_shape_layer = i;
+                doc.history.revision += 1;
+            }
+            ShapeAction::Visible(i) => {
+                layers[i].visible ^= true;
+                doc.history.revision += 1;
+            }
+            ShapeAction::Rename(i, name) => {
+                let name = name.trim();
+                if !name.is_empty() && name != layers[i].name {
+                    layers[i].name = name.to_string();
+                    doc.history.push(t("Rename"), Change::Shapes(previous));
+                }
+            }
+            ShapeAction::Delete(i) => {
+                layers.remove(i);
+                doc.world.active_shape_layer = doc.world.active_shape_layer.min(layers_len(&doc.world).saturating_sub(1));
+                self.shape.selection.clear();
+                doc.history.push(t("Delete layer"), Change::Shapes(previous));
+            }
+        }
+    }
+
+    pub fn import_shapes(&mut self) {
+        let Some(files) = rfd::FileDialog::new().add_filter("Shapes", &["shp", "tv4s"]).pick_files() else { return };
+        self.load_shape_files(files);
+    }
+
+    pub fn load_shape_files(&mut self, files: Vec<PathBuf>) {
+        self.spawn(t("Import shapes"), move |_| {
+            let mut layers = Vec::new();
+            for f in &files {
+                layers.push(dz_core::shapes::load(f)?);
+            }
+            Ok(Box::new(move |app: &mut App| {
+                let Some(doc) = &mut app.doc else { return };
+                let previous = doc.world.shape_layers.clone();
+                let (n, warning) = dz_core::shapes::add_layers(&mut doc.world, layers);
+                doc.history.push(t("Import shapes"), Change::Shapes(previous));
+                if let Some(w) = warning { app.warn(w); }
+                app.info(tf("Imported {0} shapes", &[&n.to_string()]));
+            }) as Finish)
+        });
+    }
+
+    pub fn export_shapes(&mut self) {
+        let Some(dir) = rfd::FileDialog::new().set_title(t("Export shapes (SHP)...")).pick_folder() else { return };
+        self.write_shapes(&dir);
+    }
+
+    /// Writes every visible layer; hidden layers are left out like hidden objects.
+    pub fn write_shapes(&mut self, dir: &Path) {
+        let Some(doc) = &self.doc else { return };
+        let (ex, ey) = (doc.world.meta.easting, doc.world.meta.northing);
+        let mut files = 0;
+        for l in doc.world.shape_layers.iter().filter(|l| l.visible && !l.shapes.is_empty()) {
+            match dz_core::shapes::write_layer(dir, l, ex, ey) {
+                Ok(list) => files += list.len(),
+                Err(e) => {
+                    self.error(format!("{e:#}"));
+                    return;
+                }
+            }
+        }
+        self.info(tf("Exported {0} shapefiles", &[&files.to_string()]));
     }
 
     /// Terrain Builder layers into the open project, each as a new object layer.
@@ -1001,6 +1499,14 @@ impl App {
         self.layers_changed();
     }
 
+    pub fn import_wrp_file(&mut self, f: PathBuf) {
+        let db = self.db.clone();
+        self.spawn(t("Importing WRP"), move |job| {
+            let w = dz_core::import::import_wrp(&f, None, &db, job)?;
+            Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
+        });
+    }
+
     pub fn import_wrp(&mut self) {
         let Some(f) = rfd::FileDialog::new().add_filter("WRP", &["wrp"]).pick_file() else { return };
         let db = self.db.clone();
@@ -1115,7 +1621,7 @@ impl App {
     pub fn import_tv4p(&mut self) {
         let Some(f) = rfd::FileDialog::new().add_filter("TV4P", &["tv4p"]).pick_file() else { return };
         self.import_into_project(t("Import TV4P roads"), move |w, _, _| {
-            dz_core::import::import_tv4p(&f, w)?;
+            dz_core::import::import_tv4p(&f, w, Some(0))?;
             Ok(Vec::new())
         });
     }

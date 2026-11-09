@@ -1,4 +1,5 @@
 //! Viewports: camera control, tools, draw lists and on-screen overlays.
+use crate::app::ShapeTool;
 use crate::app::{App, Finish, Gizmo, LineAction, Mode, ViewMode};
 use crate::camera::{add, dot, mul, norm, sub, View, V3};
 use crate::i18n::{t, tf};
@@ -26,7 +27,7 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
-    toggles: Option<(bool, bool, Shading, i32)>,
+    toggles: Option<(bool, bool, Shading, i32, bool)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -113,12 +114,71 @@ fn ray_box(o: &V3, d: &V3, ob: &Obj, ground: f32, info: &ModelInfo) -> Option<f3
     (t0 <= t1 && t1 > 0.0).then_some(t0.max(0.0))
 }
 
+/// Positions and triangles of a model, for picking.
+pub struct PickMesh {
+    positions: Vec<[f32; 3]>,
+    triangles: Vec<u32>,
+}
+
+/// Keeps the finest geometry seen of each model.
+pub fn remember_pick_mesh(meshes: &mut HashMap<u32, std::sync::Arc<PickMesh>>, m: &crate::render::MeshData) {
+    if m.key.0 >= CLUTTER_BASE || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
+        return;
+    }
+    let positions = m.vertices.chunks_exact(10).map(|v| [v[0], v[1], v[2]]).collect();
+    meshes.insert(m.key.0, std::sync::Arc::new(PickMesh { positions, triangles: m.indices.clone() }));
+}
+
+/// Ray parameter of the nearest triangle hit, in the units of `d`.
+fn ray_mesh(mesh: &PickMesh, o: V3, d: V3) -> Option<f32> {
+    let mut best: Option<f32> = None;
+    for t in mesh.triangles.chunks_exact(3) {
+        let (a, b, c) = (mesh.positions[t[0] as usize], mesh.positions[t[1] as usize], mesh.positions[t[2] as usize]);
+        let (e1, e2) = (sub(b, a), sub(c, a));
+        let p = cross(d, e2);
+        let det = dot(e1, p);
+        if det.abs() < 1e-9 {
+            continue;
+        }
+        let f = 1.0 / det;
+        let s = sub(o, a);
+        let u = f * dot(s, p);
+        if !(0.0..=1.0).contains(&u) {
+            continue;
+        }
+        let q = cross(s, e1);
+        let w = f * dot(d, q);
+        if w < 0.0 || u + w > 1.0 {
+            continue;
+        }
+        let hit = f * dot(e2, q);
+        if hit > 0.0 && best.is_none_or(|b| hit < b) {
+            best = Some(hit);
+        }
+    }
+    best
+}
+
+fn cross(a: V3, b: V3) -> V3 {
+    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+}
+
+/// The ray in a model's own coordinates; distances along it stay those of the world ray.
+fn ray_in_model(o: &V3, d: &V3, ob: &Obj, ground: f32) -> (V3, V3) {
+    let m = rotation(ob.yaw, ob.pitch, ob.roll, ob.scale.max(0.01));
+    let s2 = ob.scale.max(0.01).powi(2);
+    let rel = sub(*o, [ob.x, ground, ob.z]);
+    ([dot(rel, m[0]) / s2, dot(rel, m[1]) / s2, dot(rel, m[2]) / s2], [dot(*d, m[0]) / s2, dot(*d, m[1]) / s2, dot(*d, m[2]) / s2])
+}
+
 fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
     let doc = app.doc.as_ref()?;
     let (o, d) = v.ray(s);
-    let limit = pick_terrain(&doc.world.height, o, d, v.ortho).map(|p| dot(sub(p, o), d) + 1.0).unwrap_or(4000.0).min(6000.0);
+    let ground_hit = pick_terrain(&doc.world.height, o, d, v.ortho);
+    let limit = ground_hit.map(|p| dot(sub(p, o), d) + 1.0).unwrap_or(4000.0).min(6000.0);
     let mut seen = std::collections::HashSet::new();
-    let mut best: Option<(f32, u32)> = None;
+    // Whatever the ray's box test lets through, nearest first.
+    let mut candidates: Vec<(f32, u32, bool)> = Vec::new();
     let mut t = 0.0;
     let step = GRID_CELL * 0.5;
     let world = &doc.world;
@@ -138,19 +198,59 @@ fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
                     if !world.object_interactive(ob) {
                         continue;
                     }
-                    let ground = ObjectStore::origin_y(ob, &world.height);
-                    let info = app.db.get(world.objects.model_path(ob));
-                    if let Some(h) = ray_box(&o, &d, ob, ground, &info) {
-                        if best.is_none_or(|b| h < b.0) {
-                            best = Some((h, id));
+                    let path = world.objects.model_path(ob);
+                    let info = app.db.get(path);
+                    if path.contains(r"\roads\parts\") || crate::models::is_decal_model(path) {
+                        // Road parts bend over the terrain, so they are found where the ray
+                        // meets the ground, not at the height of their origin.
+                        let Some(g) = ground_hit else { continue };
+                        let (lo, _) = ray_in_model(&g, &d, ob, g[1]);
+                        if lo[0] >= info.min[0] - 0.3 && lo[0] <= info.max[0] + 0.3 && lo[2] >= info.min[2] - 0.3 && lo[2] <= info.max[2] + 0.3 {
+                            candidates.push((dot(sub(g, o), d) - 0.5, id, true));
                         }
+                        continue;
+                    }
+                    let ground = ObjectStore::origin_y(ob, &world.height);
+                    if let Some(h) = ray_box(&o, &d, ob, ground, &info) {
+                        candidates.push((h, id, false));
                     }
                 }
             }
         }
         t += step;
     }
+    candidates.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+    let mut best: Option<(f32, u32)> = None;
+    for (h, id, flat) in candidates.into_iter().take(400) {
+        if best.is_some_and(|b| h >= b.0) {
+            break;
+        }
+        let Some(ob) = world.objects.get(id) else { continue };
+        let hit = match app.pick_meshes.get(&ob.model) {
+            Some(mesh) if flat => {
+                let g = ground_hit?;
+                let (lo, _) = ray_in_model(&g, &d, ob, g[1]);
+                // Straight down through the part at the point under the cursor.
+                ray_mesh(mesh, [lo[0], 1000.0, lo[2]], [0.0, -1.0, 0.0]).map(|_| h)
+            }
+            Some(mesh) => {
+                let (lo, ld) = ray_in_model(&o, &d, ob, ObjectStore::origin_y(ob, &world.height));
+                ray_mesh(mesh, lo, ld)
+            }
+            // Not loaded yet: its box is the best there is.
+            None => Some(h),
+        };
+        if let Some(t) = hit {
+            if best.is_none_or(|b| t < b.0) {
+                best = Some((t, id));
+            }
+        }
+    }
     best.map(|b| b.1)
+}
+
+fn is_plant(path: &str) -> bool {
+    path.contains("\\tree\\") || path.contains("\\t_") || path.contains("plants") || path.contains("\\bush") || path.contains("\\b_")
 }
 
 /// Colour of an object in the top view, by what kind of thing it is.
@@ -207,7 +307,7 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     // The top view lists more than is on screen, so panning needs no rebuild until it nears the edge.
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
     let shadow_range = app.settings.lighting.shadow_range;
-    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32);
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects);
     let toggled = cache.toggles != Some(toggles);
     let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
@@ -369,22 +469,48 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
             let size = world.meta.size_m();
             let mut triangles_left: i64 = 5_000_000;
             // The game keeps clutter off roads: (x, z, sin, cos, half width, half length).
-            let mut road_boxes: Vec<[f32; 6]> = Vec::new();
+            // Grass is ruled out cell by cell, one metre to a cell.
+            let side = (2 * (RANGE + 3) + 1) as usize;
+            let (ox, oz) = (ex - RANGE - 3, ez - RANGE - 3);
+            let mut blocked = vec![false; side * side];
             let reach = RANGE as f32 + 40.0;
+            let under_objects = app.grass_under_objects;
             world.objects.for_each_in(v.eye[0] - reach, v.eye[2] - reach, v.eye[0] + reach, v.eye[2] + reach, |_, o| {
-                if !world.object_visible(o) || !world.objects.model_path(o).contains(r"\roads\parts\") {
+                if !world.object_visible(o) {
+                    return;
+                }
+                let path = world.objects.model_path(o);
+                let road = path.contains(r"\roads\parts\");
+                // A wall's bounding box can span a whole yard, while the wall itself covers next to nothing.
+                if !road && (under_objects || is_plant(path) || path.contains(r"\walls\") || path.contains("fence") || crate::models::is_water_model(path)) {
                     return;
                 }
                 let info = &infos[o.model as usize];
+                if !road && !info.known {
+                    return;
+                }
                 let (sin, cos) = o.yaw.to_radians().sin_cos();
-                let (cx, cz) = ((info.min[0] + info.max[0]) * 0.5, (info.min[2] + info.max[2]) * 0.5);
+                let (cx, cz) = ((info.min[0] + info.max[0]) * 0.5 * o.scale, (info.min[2] + info.max[2]) * 0.5 * o.scale);
                 let (hx, hz) = info.footprint();
-                road_boxes.push([o.x + cos * cx + sin * cz, o.z - sin * cx + cos * cz, sin, cos, hx, hz]);
+                let (hx, hz) = (hx * o.scale + 0.3, hz * o.scale + 0.3);
+                let (bx, bz) = (o.x + cos * cx + sin * cz, o.z - sin * cx + cos * cz);
+                let r = (hx * hx + hz * hz).sqrt();
+                let span = |lo: f32, hi: f32, origin: i32| ((lo.floor() as i32 - origin).max(0), (hi.ceil() as i32 - origin).min(side as i32 - 1));
+                let (x0, x1) = span(bx - r, bx + r, ox);
+                let (z0, z1) = span(bz - r, bz + r, oz);
+                for gz in z0..=z1 {
+                    for gx in x0..=x1 {
+                        let (dx, dz) = ((ox + gx) as f32 + 0.5 - bx, (oz + gz) as f32 + 0.5 - bz);
+                        if (dx * cos - dz * sin).abs() < hx && (dx * sin + dz * cos).abs() < hz {
+                            blocked[gz as usize * side + gx as usize] = true;
+                        }
+                    }
+                }
             });
-            let on_road = |x: f32, z: f32| road_boxes.iter().any(|b| {
-                let (dx, dz) = (x - b[0], z - b[1]);
-                (dx * b[3] - dz * b[2]).abs() < b[4] && (dx * b[2] + dz * b[3]).abs() < b[5]
-            });
+            let on_ground_kept = |x: f32, z: f32| {
+                let (gx, gz) = (x.floor() as i32 - ox, z.floor() as i32 - oz);
+                gx >= 0 && gz >= 0 && (gx as usize) < side && (gz as usize) < side && blocked[gz as usize * side + gx as usize]
+            };
             for z in ez - RANGE..=ez + RANGE {
                 for x in ex - RANGE..=ex + RANGE {
                     let h = (x as u32).wrapping_mul(73856093) ^ (z as u32).wrapping_mul(19349663);
@@ -406,7 +532,7 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                     let pick = (r & 0xFFFF) as f32 / 65535.0;
                     let Some(list) = app.clutter_layers.get(world.mask.sample(wx, wz, size) as usize) else { continue };
                     let Some(&(model, _, a, b)) = list.iter().find(|e| pick < e.1) else { continue };
-                    if on_road(wx, wz) {
+                    if on_ground_kept(wx, wz) {
                         continue;
                     }
                     let y = world.height.sample(wx, wz);
@@ -463,6 +589,10 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
 fn begin_paint_or_sculpt(app: &mut App, p: V3, invert: bool, smooth: bool) {
     let Some(doc) = &mut app.doc else { return };
     match app.mode {
+        Mode::Paint => {
+            let guard = dz_core::mask_limit::TileGuard::new(&doc.world);
+            app.mask_stroke = Some(MaskStroke { shape: app.paint.shape, only_on: app.paint.only_on.map(|l| l as u8), guard: Some(guard), ..Default::default() });
+        }
         Mode::Landscape => {
             let brush = Brush { radius: app.sculpt.radius, falloff: app.sculpt.falloff, strength: app.sculpt.strength };
             let tool = if smooth {
@@ -474,9 +604,8 @@ fn begin_paint_or_sculpt(app: &mut App, p: V3, invert: bool, smooth: bool) {
             } else {
                 app.sculpt.tool
             };
-            app.stroke = Some(SculptStroke::begin(tool, brush, &doc.world, p[0], p[2]));
+            let mut stroke = SculptStroke::begin(tool, brush, &doc.world, p[0], p[2]); stroke.shape = app.sculpt.shape; stroke.edge_noise = app.sculpt.noise; app.stroke = Some(stroke);
         }
-        Mode::Paint => app.mask_stroke = Some(MaskStroke::default()),
         _ => {}
     }
 }
@@ -523,7 +652,7 @@ fn finish_line(app: &mut App) {
     if points.len() < 2 {
         return;
     }
-    let (action, family, grade, model, spacing, radius) = (app.line.action, app.line.family.clone(), app.line.grade, app.line.fence_model.clone(), app.line.fence_spacing, app.line.radius);
+    let (action, family, grade, model, spacing) = (app.line.action, app.line.family.clone(), app.line.grade, app.line.fence_model.clone(), app.line.fence_spacing);
     let Some(doc) = &app.doc else { return };
     match action {
         LineAction::Plain => {
@@ -547,30 +676,13 @@ fn finish_line(app: &mut App) {
                 }) as Finish)
             });
         }
+        LineAction::Edit => {}
         LineAction::Road => {
-            let mut lite = doc.world.lite();
-            let catalog = app.road_catalog.clone();
-            app.spawn(t("Building road"), move |_| {
-                let road = gen::build_road(&mut lite, &points, &family, &catalog, "dz\\structures\\roads\\parts", radius as f64)?;
-                let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
-                Ok(Box::new(move |a: &mut App| {
-                    let label = t("Build road");
-                    a.merge_generated(&label, models, road.objects);
-                    let Some(d) = &mut a.doc else { return };
-                    let n = d.world.lines.len() + 1;
-                    let center = road.centerline;
-                    d.world.lines.push(dz_core::world::MapLine { name: format!("Road {n}"), family, points: center.clone(), width: 8.0 });
-                    if grade {
-                        let mut base = d.world.base.clone();
-                        if gen::grade_along(&mut base, &center, 9.0, 12.0).is_some() {
-                            a.apply_heights(&label, base.data, Vec::new());
-                            if let Some(d) = &mut a.doc {
-                                d.history.group_last(2, label.clone());
-                            }
-                        }
-                    }
-                }) as Finish)
-            });
+            let settings = if dayz_road_tool::rails::is_track_family(&family) { app.line.rail_routing.clone() } else { app.line.routing.clone() };
+            let terrain_route = app.line.route;
+            let req = app.route_request(family, points, terrain_route, settings);
+            // The route remembers this; its modifier is made when the models are in place.
+            app.start_route(req, None, None, grade);
         }
     }
 }
@@ -708,7 +820,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         let drag = if resp.dragged_by(PointerButton::Middle) || resp.dragged_by(PointerButton::Secondary) { resp.drag_delta() } else { vec2(0.0, 0.0) };
         app.top_center[0] -= drag.x * app.top_mpp;
         app.top_center[1] += drag.y * app.top_mpp;
-        if hover && scroll != 0.0 && !modifiers.shift {
+        if hover && scroll != 0.0 && !modifiers.shift && !(modifiers.alt && matches!(app.mode, Mode::Landscape | Mode::Paint)) {
             if let Some(m) = resp.hover_pos() {
                 let (ox, oz) = ((m.x - v.rect.center().x) * app.top_mpp, (v.rect.center().y - m.y) * app.top_mpp);
                 let before = [app.top_center[0] + ox, app.top_center[1] + oz];
@@ -728,7 +840,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
             app.camera.speed = (app.camera.speed * (scroll * 0.002).exp()).clamp(1.0, 4000.0);
             app.settings.camera_speed = app.camera.speed;
         }
-    } else if hover && scroll != 0.0 && !modifiers.shift {
+    } else if hover && scroll != 0.0 && !modifiers.shift && !(modifiers.alt && matches!(app.mode, Mode::Landscape | Mode::Paint)) {
         let f = app.camera.forward();
         let clearance = app.doc.as_ref().map(|d| (app.camera.pos[1] - d.world.height.sample(app.camera.pos[0], app.camera.pos[2])).abs()).unwrap_or(50.0);
         app.camera.pos = add(app.camera.pos, mul(f, scroll * (clearance * 0.0035).max(0.15)));
@@ -790,6 +902,27 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
     let primary_down = ctx.input(|i| i.pointer.primary_down());
     let pressed = resp.is_pointer_button_down_on() && ctx.input(|i| i.pointer.primary_pressed());
 
+    // A satellite colour for a generator.
+    if pressed && app.sampling.is_some() {
+        if let Some(h) = hit {
+            crate::library_ui::take_sample(app, h[0], h[2]);
+        }
+        return;
+    }
+    // Generators and presets dropped from their libraries.
+    if let Some(p) = resp.dnd_release_payload::<crate::library_ui::LibDrag>() {
+        if let Some(h) = hit {
+            use crate::library_ui::LibDrag as L;
+            match *p {
+                L::Generator(id) => {
+                    let shape = app.doc.as_ref().and_then(|d| pick_shape(&d.world, v, mouse, hit));
+                    crate::library_ui::add_instance(app, id, Some((shape, [h[0], h[2]])));
+                }
+                L::ObjectPreset(id) => crate::library_ui::place_preset(app, id, h[0], h[2]),
+            }
+        }
+        return;
+    }
     // Models dropped from the content browser.
     if let Some(p) = resp.dnd_release_payload::<String>() {
         if let Some(h) = hit {
@@ -801,6 +934,14 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
 
     match app.mode {
         Mode::Landscape | Mode::Paint => {
+            // The eyedropper: the tool's button, or Alt+click while painting.
+            if pressed && app.mode == Mode::Paint && (app.paint.picking || modifiers.alt) {
+                if let (Some(h), Some(d)) = (hit, &app.doc) {
+                    app.paint.layer = d.world.mask.sample(h[0], h[2], d.world.meta.size_m()) as usize;
+                }
+                app.paint.picking = false;
+                return;
+            }
             if pressed && !modifiers.alt {
                 if let Some(h) = hit {
                     begin_paint_or_sculpt(app, h, modifiers.ctrl, modifiers.shift);
@@ -832,6 +973,10 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         }
         Mode::Place => {
             if resp.clicked() && !modifiers.alt {
+                if let (Some(id), Some(h)) = (app.place.preset, hit) {
+                    crate::library_ui::place_preset(app, id, h[0], h[2]);
+                    return;
+                }
                 match (&app.place.model, hit) {
                     (Some(m), Some(h)) => {
                         let m = m.clone();
@@ -842,6 +987,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                 }
             }
         }
+        Mode::Lines if app.line.action == LineAction::Edit => routes_input(app, ctx, resp, v, hit, mouse),
         Mode::Lines => {
             if resp.clicked() {
                 if let Some(h) = hit {
@@ -859,19 +1005,8 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                 finish_line(app);
             }
         }
-        Mode::Generate => {
-            if resp.clicked() {
-                if let Some(h) = hit {
-                    if app.gen.pick_settlement {
-                        app.gen.pick_settlement = false;
-                        crate::panels::run_settlement(app, h[0], h[2]);
-                    } else if app.gen.pick_scatter {
-                        app.gen.pick_scatter = false;
-                        crate::panels::run_scatter(app, Some((h[0], h[2])));
-                    }
-                }
-            }
-        }
+        Mode::Shapes => shapes_input(app, ctx, resp, v, hit, mouse),
+        Mode::Generate => {}
         Mode::Select => {
             let pivot = selection_pivot(app);
             if pressed && !modifiers.alt {
@@ -915,11 +1050,24 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
     }
     let r = Rect::from_two_pos(a, b);
     if r.width() < 4.0 && r.height() < 4.0 {
+        if !add_mode {
+            app.shape.selection.clear();
+            app.shape.vertex = None;
+        }
         if let Some(id) = pick_object(app, v, b) {
             if add_mode && app.selection.contains(&id) {
                 app.selection.remove(&id);
             } else {
                 app.selection.insert(id);
+            }
+        } else if app.show_shapes {
+            // Nothing solid under the cursor: shapes can be picked from this tool as well.
+            if let Some(doc) = &app.doc {
+                let (o, d) = v.ray(b);
+                let hit = pick_terrain(&doc.world.height, o, d, v.ortho);
+                if let Some(s) = pick_shape(&doc.world, v, b, hit) {
+                    app.shape.selection.insert(s);
+                }
             }
         }
     } else if let Some(doc) = &app.doc {
@@ -978,6 +1126,304 @@ fn draw_gizmo(app: &App, painter: &egui::Painter, v: &View, p: V3, hover: Option
     }
 }
 
+const SHAPE_COLORS: [Color32; 6] = [Color32::from_rgb(120, 220, 120), Color32::from_rgb(110, 200, 255), Color32::from_rgb(255, 150, 200), Color32::from_rgb(255, 205, 90), Color32::from_rgb(190, 160, 255), Color32::from_rgb(120, 235, 215)];
+
+fn shape_screen(world: &dz_core::world::World, v: &View, p: [f32; 2]) -> Option<Pos2> {
+    v.project([p[0], world.height.sample(p[0], p[1]) + 0.3, p[1]])
+}
+
+fn near_segment(m: Pos2, a: Pos2, b: Pos2) -> f32 {
+    let ab = b - a;
+    let t = ((m - a).dot(ab) / ab.length_sq().max(1e-3)).clamp(0.0, 1.0);
+    (a + ab * t - m).length()
+}
+
+/// Segments of a shape as index pairs, closing polygons.
+fn shape_segments(s: &dz_core::shapes::MapShape) -> impl Iterator<Item = (usize, usize)> + '_ {
+    let n = s.points.len();
+    let closed = s.kind == dz_core::shapes::ShapeKind::Polygon;
+    (0..n.saturating_sub(1)).map(|i| (i, i + 1)).chain((closed && n > 2).then_some((n - 1, 0)))
+}
+
+fn pick_shape(world: &dz_core::world::World, v: &View, m: Pos2, hit: Option<V3>) -> Option<(usize, usize)> {
+    use dz_core::shapes::{point_in_polygon, ShapeKind};
+    let mut inside = None;
+    for (li, l) in world.shape_layers.iter().enumerate().rev().filter(|(_, l)| l.visible) {
+        for (si, s) in l.shapes.iter().enumerate().rev() {
+            let near = if s.kind == ShapeKind::Point {
+                shape_screen(world, v, s.points[0]).is_some_and(|p| (p - m).length() < 9.0)
+            } else {
+                shape_segments(s).any(|(a, b)| match (shape_screen(world, v, s.points[a]), shape_screen(world, v, s.points[b])) {
+                    (Some(a), Some(b)) => near_segment(m, a, b) < 7.0,
+                    _ => false,
+                })
+            };
+            if near {
+                return Some((li, si));
+            }
+            if inside.is_none() && s.kind == ShapeKind::Polygon && hit.is_some_and(|h| point_in_polygon(&s.points, h[0], h[2])) {
+                inside = Some((li, si));
+            }
+        }
+    }
+    inside
+}
+
+/// Picks a waypoint, a "+" handle between two waypoints, or a route.
+enum RouteHit {
+    Point(usize),
+    Between(usize, [f32; 2]),
+    Route(usize),
+    Nothing,
+}
+
+fn route_hit(world: &dz_core::world::World, v: &View, selected: Option<usize>, m: Pos2) -> RouteHit {
+    if let Some(r) = selected.and_then(|i| world.routes.get(i)) {
+        let screen: Vec<Option<Pos2>> = r.points.iter().map(|p| shape_screen(world, v, *p)).collect();
+        if let Some(i) = screen.iter().enumerate().filter_map(|(i, s)| Some((i, ((*s)? - m).length()))).filter(|(_, d)| *d < 11.0).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(i, _)| i) {
+            return RouteHit::Point(i);
+        }
+        for i in 0..r.points.len().saturating_sub(1) {
+            let mid = [(r.points[i][0] + r.points[i + 1][0]) * 0.5, (r.points[i][1] + r.points[i + 1][1]) * 0.5];
+            if shape_screen(world, v, mid).is_some_and(|s| (s - m).length() < 9.0) {
+                return RouteHit::Between(i, mid);
+            }
+        }
+    }
+    for (i, r) in world.routes.iter().enumerate() {
+        for w in r.centerline.windows(2) {
+            if let (Some(a), Some(b)) = (shape_screen(world, v, w[0]), shape_screen(world, v, w[1])) {
+                if near_segment(m, a, b) < 8.0 {
+                    return RouteHit::Route(i);
+                }
+            }
+        }
+    }
+    RouteHit::Nothing
+}
+
+fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View, hit: Option<V3>, mouse: Pos2) {
+    let (del, esc) = ctx.input(|i| (i.key_pressed(Key::Delete), i.key_pressed(Key::Escape)));
+    let typing = ctx.wants_keyboard_input();
+    let primary_down = ctx.input(|i| i.pointer.primary_down());
+    if app.line.point_drag.is_some() {
+        let (route, point) = (app.line.selected_route, app.line.selected_point);
+        if primary_down {
+            if let (Some(h), Some(r), Some(p)) = (hit, route, point) {
+                if let Some(q) = app.doc.as_mut().unwrap().world.routes.get_mut(r).and_then(|x| x.points.get_mut(p)) {
+                    *q = [h[0], h[2]];
+                }
+            }
+            ctx.request_repaint();
+        } else if let (Some(before), Some(r)) = (app.line.point_drag.take(), route) {
+            app.refit_route(r, before);
+        }
+        return;
+    }
+    let Some(doc) = &app.doc else { return };
+    let world = &doc.world;
+    let selected = app.line.selected_route.filter(|i| *i < world.routes.len());
+    if selected.is_none() {
+        app.line.selected_point = None;
+    }
+    let busy = app.task.is_some();
+    if resp.drag_started_by(egui::PointerButton::Primary) {
+        let origin = ctx.input(|i| i.pointer.press_origin()).unwrap_or(mouse);
+        if let (RouteHit::Point(i), false, Some(r)) = (route_hit(world, v, selected, origin), busy, selected) {
+            app.line.selected_point = Some(i);
+            app.line.point_drag = Some(world.routes[r].points.clone());
+        }
+        return;
+    }
+    if resp.clicked() {
+        match route_hit(world, v, selected, mouse) {
+            RouteHit::Point(i) => app.line.selected_point = Some(i),
+            RouteHit::Between(i, at) if !busy => {
+                let r = selected.unwrap();
+                let before = world.routes[r].points.clone();
+                app.doc.as_mut().unwrap().world.routes[r].points.insert(i + 1, at);
+                app.line.selected_point = Some(i + 1);
+                app.refit_route(r, before);
+            }
+            RouteHit::Between(..) => {}
+            RouteHit::Route(i) => {
+                app.line.selected_route = Some(i);
+                app.line.selected_point = None;
+            }
+            RouteHit::Nothing => {
+                app.line.selected_route = None;
+                app.line.selected_point = None;
+            }
+        }
+        return;
+    }
+    if del && !typing && !busy {
+        if let (Some(r), Some(p)) = (selected, app.line.selected_point) {
+            let points = &world.routes[r].points;
+            if points.len() > 2 && p < points.len() {
+                let before = points.clone();
+                app.doc.as_mut().unwrap().world.routes[r].points.remove(p);
+                app.line.selected_point = None;
+                app.refit_route(r, before);
+            }
+        }
+    }
+    if esc {
+        app.line.selected_route = None;
+        app.line.selected_point = None;
+    }
+}
+
+fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View, hit: Option<V3>, mouse: Pos2) {
+    let typing = ctx.wants_keyboard_input();
+    let (enter, esc, back, del, modifiers) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Backspace), i.key_pressed(Key::Delete), i.modifiers));
+    if app.shape.tool != ShapeTool::Edit {
+        if resp.double_clicked() && app.shape.tool != ShapeTool::Point {
+            app.finish_shape();
+            return;
+        }
+        if resp.clicked() {
+            if let Some(h) = hit {
+                app.shape.points.push([h[0], h[2]]);
+                if app.shape.tool == ShapeTool::Point {
+                    app.finish_shape();
+                }
+            }
+        }
+        if !typing {
+            if back { app.shape.points.pop(); }
+            if enter { app.finish_shape(); }
+        }
+        if esc { app.shape.points.clear(); }
+        return;
+    }
+    let primary_down = ctx.input(|i| i.pointer.primary_down());
+    // A drag in progress, whichever kind.
+    if app.shape.drag_before.is_some() {
+        if primary_down {
+            if let Some(h) = hit {
+                let doc = app.doc.as_mut().unwrap();
+                match app.shape.move_from {
+                    Some(from) => {
+                        let delta = [h[0] - from[0], h[2] - from[1]];
+                        for (l, s) in &app.shape.selection {
+                            if let Some(shape) = doc.world.shape_layers.get_mut(*l).and_then(|x| x.shapes.get_mut(*s)) {
+                                for p in &mut shape.points {
+                                    p[0] += delta[0];
+                                    p[1] += delta[1];
+                                }
+                            }
+                        }
+                        app.shape.move_from = Some([h[0], h[2]]);
+                    }
+                    None => {
+                        if let (Some((l, s)), Some(i)) = (app.shape.selection.iter().next().copied(), app.shape.vertex) {
+                            if let Some(p) = doc.world.shape_layers.get_mut(l).and_then(|x| x.shapes.get_mut(s)).and_then(|x| x.points.get_mut(i)) {
+                                *p = [h[0], h[2]];
+                            }
+                        }
+                    }
+                }
+            }
+            ctx.request_repaint();
+        } else if let Some(before) = app.shape.drag_before.take() {
+            app.shape.move_from = None;
+            app.doc.as_mut().unwrap().history.push(t("Edit shape"), Change::Shapes(before));
+        }
+        return;
+    }
+    let Some(doc) = &app.doc else { return };
+    let world = &doc.world;
+    if let Some((_, end, _)) = &mut app.shape.boxing {
+        *end = mouse;
+        if !primary_down {
+            let (a, b, add) = app.shape.boxing.take().unwrap();
+            let r = Rect::from_two_pos(a, b);
+            if !add {
+                app.shape.selection.clear();
+            }
+            app.shape.vertex = None;
+            for (li, l) in world.shape_layers.iter().enumerate().filter(|(_, l)| l.visible) {
+                for (si, s) in l.shapes.iter().enumerate() {
+                    if s.points.iter().any(|p| shape_screen(world, v, *p).is_some_and(|q| r.contains(q))) {
+                        app.shape.selection.insert((li, si));
+                    }
+                }
+            }
+        }
+        ctx.request_repaint();
+        return;
+    }
+    let single = (app.shape.selection.len() == 1).then(|| *app.shape.selection.iter().next().unwrap());
+    let shape = single.and_then(|(l, s)| world.shape_layers.get(l)?.shapes.get(s));
+    let vertex_near = |m: Pos2| shape.and_then(|s| {
+        s.points.iter().enumerate().filter_map(|(i, p)| Some((i, (shape_screen(world, v, *p)? - m).length()))).filter(|(_, d)| *d < 10.0).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(i, _)| i)
+    });
+    if resp.drag_started_by(egui::PointerButton::Primary) {
+        let origin = ctx.input(|i| i.pointer.press_origin()).unwrap_or(mouse);
+        if let Some(i) = vertex_near(origin) {
+            app.shape.vertex = Some(i);
+            app.shape.move_from = None;
+            app.shape.drag_before = Some(world.shape_layers.clone());
+            return;
+        }
+        let (ro, rd) = v.ray(origin);
+        let ground = pick_terrain(&world.height, ro, rd, v.ortho);
+        match (pick_shape(world, v, origin, ground), ground) {
+            (Some(picked), Some(g)) if app.shape.selection.contains(&picked) => {
+                app.shape.vertex = None;
+                app.shape.move_from = Some([g[0], g[2]]);
+                app.shape.drag_before = Some(world.shape_layers.clone());
+            }
+            (Some(picked), Some(g)) if !modifiers.shift => {
+                app.shape.selection = std::collections::BTreeSet::from([picked]);
+                app.shape.vertex = None;
+                app.shape.move_from = Some([g[0], g[2]]);
+                app.shape.drag_before = Some(world.shape_layers.clone());
+            }
+            _ => app.shape.boxing = Some((origin, mouse, modifiers.shift)),
+        }
+        return;
+    }
+    if resp.clicked() {
+        if modifiers.command {
+            // Ctrl+click on an edge of the selected shape adds a vertex there.
+            let at = shape.and_then(|s| shape_segments(s).find(|(a, b)| match (shape_screen(world, v, s.points[*a]), shape_screen(world, v, s.points[*b])) {
+                (Some(a), Some(b)) => near_segment(mouse, a, b) < 8.0,
+                _ => false,
+            }));
+            if let (Some((a, _)), Some(h), Some((l, s))) = (at, hit, single) {
+                let before = world.shape_layers.clone();
+                let doc = app.doc.as_mut().unwrap();
+                doc.world.shape_layers[l].shapes[s].points.insert(a + 1, [h[0], h[2]]);
+                doc.history.push(t("Edit shape"), Change::Shapes(before));
+                app.shape.vertex = Some(a + 1);
+            }
+        } else if let Some(i) = vertex_near(mouse) {
+            app.shape.vertex = Some(i);
+        } else {
+            let picked = pick_shape(world, v, mouse, hit);
+            app.shape.vertex = None;
+            if modifiers.shift {
+                if let Some(p) = picked {
+                    if !app.shape.selection.remove(&p) {
+                        app.shape.selection.insert(p);
+                    }
+                }
+            } else {
+                app.shape.selection = picked.into_iter().collect();
+            }
+        }
+    }
+    if del && !typing {
+        app.delete_shape_part();
+    }
+    if esc {
+        app.shape.selection.clear();
+        app.shape.vertex = None;
+    }
+}
+
 fn draw_polyline(painter: &egui::Painter, v: &View, world: &dz_core::world::World, points: &[[f32; 2]], stroke: Stroke) {
     let mut prev: Option<Pos2> = None;
     for p in points {
@@ -1005,6 +1451,86 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
                 Color32::from_rgb(235, 235, 120)
             };
             draw_polyline(&painter, v, world, &l.points, Stroke::new(1.6_f32, col));
+        }
+    }
+    if app.show_lines {
+        for (i, r) in world.routes.iter().enumerate() {
+            let selected = app.line.selected_route == Some(i);
+            let col = if selected { Color32::from_rgb(255, 170, 40) } else if dayz_road_tool::rails::is_track_family(&r.family) { Color32::from_rgb(200, 150, 255) } else { Color32::from_rgb(120, 230, 150) };
+            draw_polyline(&painter, v, world, &r.centerline, Stroke::new(if selected { 2.6_f32 } else { 1.6 }, col));
+        }
+    }
+    if app.mode == Mode::Lines && app.line.action == LineAction::Edit {
+        if let Some(r) = app.line.selected_route.and_then(|i| world.routes.get(i)) {
+            let col = Color32::from_rgb(255, 170, 40);
+            draw_polyline(&painter, v, world, &r.points, Stroke::new(1.0_f32, col));
+            for (i, p) in r.points.iter().enumerate() {
+                if let Some(c) = shape_screen(world, v, *p) {
+                    let marked = app.line.selected_point == Some(i);
+                    painter.circle_filled(c, if marked { 7.0 } else { 5.0 }, if marked { Color32::WHITE } else { col });
+                }
+            }
+            for w in r.points.windows(2) {
+                if let Some(c) = shape_screen(world, v, [(w[0][0] + w[1][0]) * 0.5, (w[0][1] + w[1][1]) * 0.5]) {
+                    painter.circle_stroke(c, 6.0, Stroke::new(1.0_f32, col));
+                    painter.text(c, egui::Align2::CENTER_CENTER, "+", egui::FontId::proportional(12.0), col);
+                }
+            }
+        }
+    }
+    if app.show_shapes {
+        use dz_core::shapes::ShapeKind;
+        for (li, l) in world.shape_layers.iter().enumerate().filter(|(_, l)| l.visible) {
+            for (si, s) in l.shapes.iter().enumerate() {
+                let selected = app.shape.selection.contains(&(li, si));
+                let col = if selected { Color32::from_rgb(255, 150, 30) } else { SHAPE_COLORS[li % SHAPE_COLORS.len()] };
+                if s.kind == ShapeKind::Point {
+                    if let Some(c) = shape_screen(world, v, s.points[0]).filter(|c| v.rect.contains(*c)) {
+                        painter.circle_filled(c, if selected { 5.5 } else { 3.5 }, col);
+                    }
+                } else {
+                    draw_polyline(&painter, v, world, &s.points, Stroke::new(if selected { 2.6_f32 } else { 1.4 }, col));
+                    if s.kind == ShapeKind::Polygon && s.points.len() > 2 {
+                        draw_polyline(&painter, v, world, &[*s.points.last().unwrap(), s.points[0]], Stroke::new(if selected { 2.6_f32 } else { 1.4 }, col));
+                    }
+                }
+                if selected && app.mode == Mode::Shapes && app.shape.selection.len() == 1 {
+                    for (i, p) in s.points.iter().enumerate() {
+                        if let Some(c) = shape_screen(world, v, *p) {
+                            painter.circle_filled(c, if app.shape.vertex == Some(i) { 6.0 } else { 4.0 }, if app.shape.vertex == Some(i) { Color32::WHITE } else { col });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some((a, b, _)) = app.shape.boxing {
+        painter.rect(Rect::from_two_pos(a, b), 0.0, Color32::from_rgba_unmultiplied(0, 112, 224, 40), Stroke::new(1.0_f32, theme::ACCENT), egui::StrokeKind::Inside);
+    }
+    if app.mode == Mode::Shapes && !app.shape.points.is_empty() {
+        let col = Color32::from_rgb(255, 120, 40);
+        let mut pts = app.shape.points.clone();
+        if let Some(h) = resp.hover_pos().and_then(|m| { let (o, d) = v.ray(m); pick_terrain(&world.height, o, d, v.ortho) }) {
+            pts.push([h[0], h[2]]);
+        }
+        if app.shape.tool == ShapeTool::Polygon && pts.len() > 2 {
+            pts.push(pts[0]);
+        }
+        draw_polyline(&painter, v, world, &pts, Stroke::new(2.5_f32, col));
+        for p in &app.shape.points {
+            if let Some(s) = shape_screen(world, v, *p) {
+                painter.circle_filled(s, 4.0, col);
+            }
+        }
+    }
+    if !app.tile_issues.is_empty() && v.ortho {
+        let step = world.meta.tile_step();
+        let size = world.meta.size_m();
+        for (col, row, _) in &app.tile_issues {
+            let (x, z) = (*col as f32 * step, size - (*row as f32 + 1.0) * step);
+            if let (Some(a), Some(b)) = (v.project([x, 0.0, z + step]), v.project([x + step, 0.0, z])) {
+                painter.rect(Rect::from_two_pos(a, b), 0.0, Color32::from_rgba_unmultiplied(230, 40, 40, 50), Stroke::new(1.5_f32, Color32::from_rgb(235, 60, 60)), egui::StrokeKind::Inside);
+            }
         }
     }
     for m in world.modifiers.iter().filter(|m| m.enabled) {
@@ -1103,18 +1629,16 @@ fn sun_matrix(v: &View, sun: V3, range: f32) -> [f32; 16] {
 fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
     let h = hit?;
     match app.mode {
-        Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: app.sculpt.falloff, color: [0.25, 0.65, 1.0] }),
-        Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2] }),
-        Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: 2.0, falloff: 0.0, color: [0.3, 1.0, 0.4] }),
-        Mode::Generate if app.gen.pick_settlement => Some(BrushView { x: h[0], z: h[2], radius: app.gen.settlement.radius, falloff: 0.0, color: [0.9, 0.5, 0.9] }),
-        Mode::Generate if app.gen.pick_scatter => Some(BrushView { x: h[0], z: h[2], radius: app.gen.scatter_radius.max(10.0), falloff: 0.0, color: [0.4, 0.9, 0.5] }),
+        Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: app.sculpt.falloff, color: [0.25, 0.65, 1.0], shape: app.sculpt.shape as i32 }),
+        Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: app.paint.shape as i32 }),
+        Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: 2.0, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
         _ => None,
     }
 }
 
 fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let area = Rect::from_min_size(rect.min + vec2(6.0, 5.0), vec2(rect.width() - 12.0, 24.0));
-    let width: f32 = if top { 190.0 } else { 570.0 };
+    let width: f32 = if top { 190.0 } else { 660.0 };
     ui.painter().rect_filled(Rect::from_min_size(rect.min + vec2(2.0, 2.0), vec2(width.min(rect.width() - 4.0), 30.0)), 3.0, Color32::from_black_alpha(150));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::left_to_right(egui::Align::Center)));
     let shading = if top { &mut app.shading2 } else { &mut app.shading3 };
@@ -1130,7 +1654,30 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         child.add(egui::Slider::new(&mut speed, 1.0..=4000.0).logarithmic(true).suffix(" m/s").show_value(true).text(""));
         app.camera.speed = speed;
         lighting_menu(app, &mut child);
+        show_menu(app, &mut child);
+        camera_menu(app, &mut child);
     }
+}
+
+fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
+    ui.menu_button(t("Camera"), |ui| {
+        ui.set_min_width(280.0);
+        let row = |ui: &mut egui::Ui, label: String, v: &mut f32, range: std::ops::RangeInclusive<f32>| {
+            ui.add(egui::Slider::new(v, range).text(label));
+        };
+        row(ui, t("Field of view"), &mut app.settings.fov, 20.0..=120.0);
+        app.camera.fov = app.settings.fov.to_radians();
+        row(ui, t("Movement speed"), &mut app.settings.camera_speed, 1.0..=4000.0);
+        app.camera.speed = app.settings.camera_speed;
+        row(ui, t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0);
+        row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=500.0);
+        row(ui, t("Surface transition m"), &mut app.settings.surface_blend, 0.0..=10.0);
+        row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=3.0);
+    });
+}
+
+fn show_menu(app: &mut App, ui: &mut egui::Ui) {
+    ui.menu_button(t("Show"), |ui| crate::panels::visibility_toggles(app, ui));
 }
 
 fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
@@ -1231,6 +1778,8 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         height_range: doc.height_range,
         objects,
         show_water: app.show_water,
+        surface_blend: app.settings.surface_blend,
+        sea_waves: app.settings.sea_waves,
         world: meta.size_m(),
         tile: 10.0 / meta.land_cell(),
         lighting: app.settings.lighting.gpu(),
@@ -1287,14 +1836,18 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     if undo { app.undo(); }
     if redo { app.redo(); }
     if save { app.save(None); }
-    if del { app.delete_selection(); }
+    if del && app.mode != Mode::Shapes { app.delete_selection(); }
     if dup { app.duplicate_selection(); }
     if focus { focus_selection(app); }
     if esc && app.mode == Mode::Select {
         app.selection.clear();
         app.selection_rev += 1;
     }
-    if select_all {
+    if select_all && app.mode == Mode::Shapes {
+        if let Some(d) = &app.doc {
+            app.shape.selection = d.world.shape_layers.iter().enumerate().filter(|(_, l)| l.visible).flat_map(|(li, l)| (0..l.shapes.len()).map(move |si| (li, si))).collect();
+        }
+    } else if select_all {
         if let Some(d) = &app.doc {
             app.selection = d.world.objects.iter().filter(|(_, o)| d.world.object_interactive(o)).map(|(id, _)| id).collect();
             app.selection_rev += 1;
@@ -1312,6 +1865,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                 if i.key_pressed(Key::Num4) { app.mode = Mode::Place; }
                 if i.key_pressed(Key::Num5) { app.mode = Mode::Lines; }
                 if i.key_pressed(Key::Num6) { app.mode = Mode::Generate; }
+                if i.key_pressed(Key::Num7) { app.mode = Mode::Shapes; }
                 let f = if i.key_pressed(Key::CloseBracket) { 1.25 } else if i.key_pressed(Key::OpenBracket) { 0.8 } else { 1.0 };
                 if f != 1.0 {
                     app.sculpt.radius = (app.sculpt.radius * f).clamp(2.0, 3000.0);
@@ -1320,11 +1874,24 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
             }
         });
     }
-    let shift_scroll = ctx.input(|i| if i.modifiers.shift { i.smooth_scroll_delta.y } else { 0.0 });
-    if shift_scroll != 0.0 {
-        let f = (shift_scroll * 0.003).exp();
-        app.sculpt.radius = (app.sculpt.radius * f).clamp(2.0, 3000.0);
-        app.paint.radius = (app.paint.radius * f).clamp(0.5, 2000.0);
+    // Holding a modifier turns the wheel into a brush control. egui reports Shift+wheel as
+    // sideways scrolling and Ctrl+wheel as zoom.
+    if matches!(app.mode, Mode::Landscape | Mode::Paint) {
+        let (delta, zoom, mods) = ctx.input(|i| (i.smooth_scroll_delta.x + i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers));
+        if mods.shift && delta != 0.0 {
+            let f = (delta * 0.003).exp();
+            app.sculpt.radius = (app.sculpt.radius * f).clamp(2.0, 3000.0);
+            app.paint.radius = (app.paint.radius * f).clamp(0.5, 2000.0);
+        }
+        if mods.command && zoom != 1.0 {
+            let step = (zoom - 1.0) * 0.5;
+            app.sculpt.noise = (app.sculpt.noise + step).clamp(0.0, 1.0);
+            app.paint.scatter = (app.paint.scatter + step).clamp(0.0, 0.8);
+        }
+        if mods.alt && delta != 0.0 {
+            app.sculpt.strength = (app.sculpt.strength * (delta * 0.003).exp()).clamp(0.5, 200.0);
+            app.sculpt.falloff = (app.sculpt.falloff + delta * 0.0005).clamp(0.0, 1.0);
+        }
     }
 }
 
@@ -1420,6 +1987,25 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 eprintln!("LAYERS total={} selection={} active={}", d.world.objects.len(), app.selection.len(), d.world.active_layer);
             }
         }
+        "shapes" => {
+            if let Some(d) = &app.doc {
+                for l in &d.world.shape_layers {
+                    eprintln!("SHAPES {:?} visible={} shapes={} points={}", l.name, l.visible, l.shapes.len(), l.shapes.iter().map(|s| s.points.len()).sum::<usize>());
+                }
+                eprintln!("SHAPES total={} selected={:?} vertex={:?}", d.world.shape_layers.len(), app.shape.selection, app.shape.vertex);
+            }
+        }
+        "shapetool" => {
+            app.shape.tool = match arg.as_str() {
+                "polygon" => ShapeTool::Polygon,
+                "polyline" => ShapeTool::Polyline,
+                "point" => ShapeTool::Point,
+                _ => ShapeTool::Edit,
+            };
+        }
+        "shapeexport" => app.write_shapes(std::path::Path::new(&arg)),
+        "shapeimport" => app.load_shape_files(vec![arg.into()]),
+        "grassunder" => app.grass_under_objects = arg == "1",
         "layer" => {
             use crate::app::LayerAction as A;
             let mut it = arg.split_whitespace();
@@ -1454,14 +2040,9 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 gen::generate_terrain(&mut w.base, &params, job);
                 w.recompose(None);
                 let rules = gen::default_paint_rules(&w);
-                w.mask.data = gen::auto_paint(&w, &rules, 1, job);
+                w.mask.data = gen::auto_paint(&w, &rules, 1, None, job);
                 Ok(Box::new(move |a: &mut App| a.open_world(w, None)) as Finish)
             });
-        }
-        "scatter" => {
-            app.gen.scatter.models = vec![arg];
-            app.gen.scatter.density = 40.0;
-            crate::panels::run_scatter(app, None);
         }
         "mode" => {
             app.mode = match arg.as_str() {
@@ -1469,6 +2050,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 "paint" => Mode::Paint,
                 "place" => Mode::Place,
                 "lines" => Mode::Lines,
+                "shapes" => Mode::Shapes,
                 "gen" => Mode::Generate,
                 _ => Mode::Select,
             }
@@ -1556,25 +2138,92 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "save" => app.save(Some(arg.into())),
         "build" => app.build(false),
         "browse" => app.filter = arg,
-        "forest" => {
-            let presets = gen::forest_preset_names();
-            let names: Vec<String> = app.doc.as_ref().unwrap().world.layers.iter().map(|l| l.name.clone()).collect();
-            let layer = names.iter().position(|n| n == "grass1").unwrap_or(0);
-            let mut lite = app.doc.as_ref().unwrap().world.lite();
-            let req = gen::ForestRequest { zones: vec![(layer, presets[0].clone())], seed: 5, max_slope: 35.0, clearing_strength: 0.35 };
-            let assets = app.assets.clone();
-            app.spawn("forest", move |job| {
-                let (objects, notes) = gen::generate_forest(&mut lite, &assets, &req, job)?;
-                let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
-                Ok(Box::new(move |a: &mut App| {
-                    a.merge_generated("forest", models, objects);
-                    for n in notes { a.info(n); }
-                }) as Finish)
-            });
+        "log" => {
+            for l in &app.log { eprintln!("LOG {}", l.text); }
         }
-        "settle" if nums.len() >= 2 => {
-            app.gen.settlement.buildings = vec![r"dz\structures\residential\houses\house_1w01.p3d".to_string(), r"dz\structures\residential\houses\house_1w02.p3d".to_string()];
-            crate::panels::run_settlement(app, nums[0], nums[1]);
+        "routefamily" => app.line.family = arg,
+        "routecenter" => {
+            if let Some(mid) = app.doc.as_ref().and_then(|d| d.world.routes.first()).map(|r| r.centerline[r.centerline.len() / 2]) {
+                app.top_center = mid;
+                app.top_mpp = 0.25;
+            }
+        }
+        "placeat" if nums.len() >= 2 => {
+            if let Some(m) = app.place.model.clone() { place_model(app, &m, nums[0], nums[1]); }
+        }
+        "modifiers" => {
+            if let Some(d) = &app.doc {
+                eprintln!("MODIFIERS total={} ids={:?} height0={}", d.world.modifiers.len(), d.world.routes.iter().map(|r| r.modifier).collect::<Vec<_>>(), d.world.height.sample(2350.0, 6400.0));
+            }
+        }
+        "railgrade" => app.line.rail_routing.max_grade = nums.first().copied().unwrap_or(3.0) as f64,
+        "routemode" => app.line.route = arg != "fit",
+        "routetool" => app.line.action = LineAction::Edit,
+        "routes" => {
+            if let Some(d) = &app.doc {
+                for r in &d.world.routes {
+                    eprintln!("ROUTE {:?} family={} points={} center={} objects={} terrain={} alive={}", r.name, r.family, r.points.len(), r.centerline.len(), r.objects.len(), r.terrain_route, r.objects.iter().filter(|i| d.world.objects.get(**i).is_some()).count());
+                }
+                eprintln!("ROUTES total={} lines={} objects={} selected={:?} point={:?}", d.world.routes.len(), d.world.lines.len(), d.world.objects.len(), app.line.selected_route, app.line.selected_point);
+            }
+        }
+        "routemove" if nums.len() >= 4 => {
+            let (r, p) = (nums[0] as usize, nums[1] as usize);
+            if let Some(route) = app.doc.as_mut().and_then(|d| d.world.routes.get_mut(r)) {
+                let before = route.points.clone();
+                route.points[p] = [nums[2], nums[3]];
+                app.refit_route(r, before);
+            }
+        }
+        "routeconvert" => {
+            let lines = app.doc.as_ref().map(|d| d.world.lines.len()).unwrap_or(0);
+            app.line_to_route(nums.first().map(|v| *v as usize).unwrap_or(0).min(lines.saturating_sub(1)));
+        }
+        "routedelete" => app.delete_route(nums.first().map(|v| *v as usize).unwrap_or(0)),
+        "routeroad" if nums.len() >= 4 => {
+            app.mode = Mode::Lines;
+            app.line.action = LineAction::Road;
+            app.line.points = nums.chunks_exact(2).map(|p| [p[0], p[1]]).collect();
+            finish_line(app);
+        }
+        "genadd" => {
+            let index: usize = arg.split_whitespace().next().and_then(|v| v.parse().ok()).unwrap_or(0);
+            if let Some(id) = app.built_in.get(index).map(|g| g.id) {
+                let drop = nums.get(1..3).map(|p| (None, [p[0], p[1]]));
+                crate::library_ui::add_instance(app, id, drop);
+            }
+        }
+        "gens" => {
+            if let Some(d) = &app.doc {
+                for g in &d.world.generators {
+                    eprintln!("GEN {} {:?} kind={} target={:?} objects={} alive={}", g.id, g.name, g.kind.type_name(), g.target, g.objects.len(), g.objects.iter().filter(|i| d.world.objects.get(**i).is_some()).count());
+                }
+                eprintln!("GENS total={} objects={}", d.world.generators.len(), d.world.objects.len());
+            }
+        }
+        "genrun" => {
+            let index = nums.first().map(|v| *v as usize).unwrap_or(0);
+            if let Some(id) = app.doc.as_ref().and_then(|d| d.world.generators.get(index)).map(|g| g.id) {
+                crate::library_ui::run_generator(app, id);
+            }
+        }
+        "genforest" => {
+            let project: Option<forest_core::preset::ForestProject> = std::fs::read(&arg).ok().and_then(|b| serde_json::from_slice(&b).ok());
+            if let (Some(p), Some(d)) = (project, app.doc.as_mut()) {
+                if let Some(dz_core::library::GeneratorKind::Forest(f)) = d.world.generators.last_mut().map(|g| &mut g.kind) { f.project = p; }
+            }
+        }
+        "shapeadd" if nums.len() >= 6 => {
+            app.shape.tool = ShapeTool::Polygon;
+            app.shape.points = nums.chunks_exact(2).map(|p| [p[0], p[1]]).collect();
+            app.finish_shape();
+            app.shape.tool = ShapeTool::Edit;
+        }
+        "lineadd" if nums.len() >= 4 => {
+            app.shape.tool = ShapeTool::Polyline;
+            app.shape.points = nums.chunks_exact(2).map(|p| [p[0], p[1]]).collect();
+            app.finish_shape();
+            app.shape.tool = ShapeTool::Edit;
         }
         "report" => {
             let d = app.doc.as_ref();

@@ -15,6 +15,10 @@
   "de": "3. Erstellen und starten",
   "pl": "3. Zbuduj i uruchom"
  },
+ "A built-in generator. Duplicate it to make your own version, or drop it on the map.": {
+  "de": "Eingebauter Generator. Dupliziere ihn für eine eigene Version oder lege ihn auf der Karte ab.",
+  "pl": "Generator wbudowany. Zduplikuj go, aby zrobić własną wersję, albo upuść na mapę."
+ },
  "A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched.": {
   "de": "Ein Modifikator ebnet das Gelände unter dem Objekt und folgt ihm. Das modellierte Gelände bleibt unverändert.",
   "pl": "Modyfikator wyrównuje teren pod obiektem i podąża za nim. Rzeźbiony teren pozostaje nienaruszony."
@@ -22,6 +26,18 @@
  "About": {
   "de": "Über",
   "pl": "O programie"
+ },
+ "Add area": {
+  "de": "Gebiet hinzufügen",
+  "pl": "Dodaj obszar"
+ },
+ "Add edge preset": {
+  "de": "Rand-Preset hinzufügen",
+  "pl": "Dodaj preset granicy"
+ },
+ "Add generator": {
+  "de": "Generator hinzufügen",
+  "pl": "Dodaj generator"
  },
  "Add layer": {
   "de": "Ebene hinzufügen",
@@ -43,9 +59,17 @@
   "de": "Gewähltes Modell hinzufügen",
   "pl": "Dodaj wybrany model"
  },
+ "Add shape": {
+  "de": "Form hinzufügen",
+  "pl": "Dodaj kształt"
+ },
  "Add terrain modifiers": {
   "de": "Geländemodifikatoren hinzufügen",
   "pl": "Dodaj modyfikatory terenu"
+ },
+ "Add to the project": {
+  "de": "Zum Projekt hinzufügen",
+  "pl": "Dodaj do projektu"
  },
  "Add zone": {
   "de": "Zone hinzufügen",
@@ -71,6 +95,10 @@
   "de": "Eine andere Aufgabe läuft noch",
   "pl": "Inne zadanie nadal trwa"
  },
+ "Applies the type, settings and typed points.": {
+  "de": "Übernimmt Typ, Einstellungen und eingegebene Punkte.",
+  "pl": "Stosuje typ, ustawienia i wpisane punkty."
+ },
  "Archipelago": {
   "de": "Archipel",
   "pl": "Archipelag"
@@ -78,6 +106,10 @@
  "Area radius": {
   "de": "Gebietsradius",
   "pl": "Promień obszaru"
+ },
+ "Areas from shapes": {
+  "de": "Gebiete aus Formen",
+  "pl": "Obszary z kształtów"
  },
  "Author": {
   "de": "Autor",
@@ -94,6 +126,18 @@
  "Blend": {
   "de": "Übergang",
   "pl": "Przejście"
+ },
+ "Blend inward m": {
+  "de": "Übergang nach innen m",
+  "pl": "Wtapianie w głąb m"
+ },
+ "Blotch size m": {
+  "de": "Fleckengröße m",
+  "pl": "Wielkość plam m"
+ },
+ "Bridges may cross forbidden areas and water": {
+  "de": "Brücken dürfen Sperrgebiete und Wasser queren",
+  "pl": "Mosty mogą przechodzić nad obszarami zakazanymi i wodą"
  },
  "Brush": {
   "de": "Pinsel",
@@ -131,6 +175,10 @@
   "de": "Straße wird gebaut",
   "pl": "Budowanie drogi"
  },
+ "Buildings: pick in the Content Browser and press Add, or drop them here.": {
+  "de": "Gebäude: im Browser wählen und Hinzufügen klicken oder hier ablegen.",
+  "pl": "Budynki: wybierz w przeglądarce i kliknij Dodaj albo upuść je tutaj."
+ },
  "Buildings: pick in the Content Browser and press Add.": {
   "de": "Gebäude: im Inhaltsbrowser wählen und Hinzufügen drücken.",
   "pl": "Budynki: wybierz w bibliotece i naciśnij Dodaj."
@@ -142,6 +190,10 @@
  "Built world (WRP)": {
   "de": "Erstellte Welt (WRP)",
   "pl": "Zbudowany świat (WRP)"
+ },
+ "Camera": {
+  "de": "Kamera",
+  "pl": "Kamera"
  },
  "Cancel": {
   "de": "Abbrechen",
@@ -162,6 +214,10 @@
  "Check for updates at start": {
   "de": "Beim Start nach Updates suchen",
   "pl": "Sprawdzaj aktualizacje przy starcie"
+ },
+ "Check tiles": {
+  "de": "Kacheln prüfen",
+  "pl": "Sprawdź kafle"
  },
  "Checking for updates...": {
   "de": "Suche nach Updates...",
@@ -195,17 +251,41 @@
   "de": "Zuerst ein Modell im Inhaltsbrowser wählen",
   "pl": "Najpierw wybierz model w bibliotece"
  },
+ "Clear project areas": {
+  "de": "Projektgebiete löschen",
+  "pl": "Wyczyść obszary projektu"
+ },
+ "Clearing size m": {
+  "de": "Lichtungsgröße m",
+  "pl": "Wielkość polan m"
+ },
  "Clearings": {
   "de": "Lichtungen",
   "pl": "Polany"
+ },
+ "Click a route, then drag its points. The + between two points adds one, Delete removes the marked point. Models are fitted again after each change.": {
+  "de": "Klicke eine Route an und ziehe ihre Punkte. Das + zwischen zwei Punkten fügt einen hinzu, Entf löscht den markierten. Die Modelle werden nach jeder Änderung neu eingepasst.",
+  "pl": "Kliknij trasę i przeciągaj jej punkty. Znak + między punktami dodaje nowy, Delete usuwa zaznaczony. Modele dopasowują się po każdej zmianie."
  },
  "Click on the map": {
   "de": "Auf die Karte klicken",
   "pl": "Kliknij na mapie"
  },
+ "Click removes this sample": {
+  "de": "Klick entfernt die Probe",
+  "pl": "Kliknięcie usuwa próbkę"
+ },
+ "Click selects a shape. Drag a vertex to move it, Ctrl+click an edge to add one, Delete removes the vertex or the shape.": {
+  "de": "Klick wählt eine Form aus. Ziehe einen Punkt zum Verschieben, Strg+Klick auf eine Kante fügt einen hinzu, Entf löscht den Punkt oder die Form.",
+  "pl": "Kliknięcie zaznacza kształt. Przeciągnij wierzchołek, aby go przesunąć, Ctrl+klik na krawędzi dodaje nowy, Delete usuwa wierzchołek lub kształt."
+ },
  "Click to add points. Enter finishes, Backspace removes the last point, Esc cancels.": {
   "de": "Punkte per Klick setzen. Enter beendet, Rücktaste entfernt den letzten Punkt, Esc bricht ab.",
   "pl": "Klikaj, aby dodać punkty. Enter kończy, Backspace usuwa ostatni punkt, Esc anuluje."
+ },
+ "Click to add points. Enter or a double click finishes, Backspace removes the last point, Esc cancels.": {
+  "de": "Klicke, um Punkte hinzuzufügen. Enter oder Doppelklick beendet, Rücktaste entfernt den letzten Punkt, Esc bricht ab.",
+  "pl": "Klikaj, aby dodawać punkty. Enter lub dwuklik kończy, Backspace usuwa ostatni punkt, Esc anuluje."
  },
  "Click to select, drag for a box, Shift adds. W, E, R change the gizmo. F frames the selection.": {
   "de": "Klicken wählt aus, Ziehen zieht einen Rahmen, Shift ergänzt. W, E, R wechseln das Gizmo. F zeigt die Auswahl.",
@@ -231,9 +311,17 @@
   "de": "Höhenlinien",
   "pl": "Warstwice"
  },
+ "Corner tower": {
+  "de": "Eckmast",
+  "pl": "Słup narożny"
+ },
  "Could not check for updates": {
   "de": "Updates konnten nicht geprüft werden",
   "pl": "Nie udało się sprawdzić aktualizacji"
+ },
+ "Coverage": {
+  "de": "Abdeckung",
+  "pl": "Pokrycie"
  },
  "Create": {
   "de": "Erstellen",
@@ -242,6 +330,10 @@
  "Ctrl inverts raise and lower, Shift smooths. [ and ] or Shift+wheel change the size.": {
   "de": "Strg kehrt Heben und Senken um, Shift glättet. [ und ] oder Shift+Rad ändern die Größe.",
   "pl": "Ctrl odwraca podnoszenie i obniżanie, Shift wygładza. [ i ] lub Shift+kółko zmieniają rozmiar."
+ },
+ "Curves": {
+  "de": "Kurven",
+  "pl": "Łuki"
  },
  "Cut": {
   "de": "Nur abtragen",
@@ -271,6 +363,14 @@
   "de": "Löschen",
   "pl": "Usuń"
  },
+ "Delete generator": {
+  "de": "Generator löschen",
+  "pl": "Usuń generator"
+ },
+ "Delete generator, keep objects": {
+  "de": "Generator löschen, Objekte behalten",
+  "pl": "Usuń generator, zachowaj obiekty"
+ },
  "Delete layer": {
   "de": "Ebene löschen",
   "pl": "Usuń warstwę"
@@ -286,6 +386,14 @@
  "Delete objects": {
   "de": "Objekte löschen",
   "pl": "Usuń obiekty"
+ },
+ "Delete route": {
+  "de": "Route löschen",
+  "pl": "Usuń trasę"
+ },
+ "Delete shape": {
+  "de": "Form löschen",
+  "pl": "Usuń kształt"
  },
  "Deposition": {
   "de": "Ablagerung",
@@ -307,6 +415,10 @@
   "de": "Automatisch erkennen",
   "pl": "Wykryj automatycznie"
  },
+ "Diamond": {
+  "de": "Raute",
+  "pl": "Romb"
+ },
  "Display": {
   "de": "Anzeige",
   "pl": "Wyświetlanie"
@@ -327,6 +439,10 @@
   "de": "Zeichnen",
   "pl": "Rysowanie"
  },
+ "Drop this generator on a polyline, or select one first": {
+  "de": "Lege diesen Generator auf einer Polylinie ab oder wähle zuerst eine aus",
+  "pl": "Upuść ten generator na polilinię albo najpierw ją zaznacz"
+ },
  "Droplets": {
   "de": "Tropfen",
   "pl": "Krople"
@@ -339,13 +455,33 @@
   "de": "Objekte duplizieren",
   "pl": "Powiel obiekty"
  },
+ "Earthwork penalty": {
+  "de": "Erdarbeiten-Malus",
+  "pl": "Kara za roboty ziemne"
+ },
  "Easting offset": {
   "de": "Easting-Versatz",
   "pl": "Przesunięcie easting"
  },
+ "Edge density": {
+  "de": "Randdichte",
+  "pl": "Gęstość pasa"
+ },
  "Edge noise": {
   "de": "Kantenrauschen",
   "pl": "Szum krawędzi"
+ },
+ "Edge padding m": {
+  "de": "Kartenrand m",
+  "pl": "Margines od krawędzi mapy m"
+ },
+ "Edge presets": {
+  "de": "Rand-Presets",
+  "pl": "Presety granic"
+ },
+ "Edge width m": {
+  "de": "Randbreite m",
+  "pl": "Szerokość pasa m"
  },
  "Edit": {
   "de": "Bearbeiten",
@@ -358,6 +494,14 @@
  "Edit only this layer": {
   "de": "Nur diese Ebene bearbeiten",
   "pl": "Edytuj tylko tę warstwę"
+ },
+ "Edit routes": {
+  "de": "Routen bearbeiten",
+  "pl": "Edytuj trasy"
+ },
+ "Edit shape": {
+  "de": "Form bearbeiten",
+  "pl": "Edycja kształtu"
  },
  "Editable": {
   "de": "Bearbeitbar",
@@ -387,6 +531,10 @@
   "de": "Abend",
   "pl": "Wieczór"
  },
+ "Everywhere except these colours": {
+  "de": "Überall außer diesen Farben",
+  "pl": "Wszędzie oprócz tych kolorów"
+ },
  "Exit": {
   "de": "Beenden",
   "pl": "Wyjście"
@@ -399,6 +547,10 @@
   "de": "Dateien für PBO exportieren",
   "pl": "Eksportuj pliki do PBO"
  },
+ "Export shapes (SHP)...": {
+  "de": "Formen exportieren (SHP)...",
+  "pl": "Eksportuj kształty (SHP)..."
+ },
  "Export with Terrain Builder sources": {
   "de": "Mit Terrain-Builder-Quellen exportieren",
   "pl": "Eksportuj ze źródłami Terrain Buildera"
@@ -407,9 +559,17 @@
   "de": "Exportieren, binarisieren und Karte in DayZ starten",
   "pl": "Eksportuj, zbinaryzuj i uruchom mapę w DayZ"
  },
+ "Export...": {
+  "de": "Exportieren...",
+  "pl": "Eksportuj..."
+ },
  "Exported to {0}: {1} tiles, {2} materials, {3} objects": {
   "de": "Exportiert nach {0}: {1} Kacheln, {2} Materialien, {3} Objekte",
   "pl": "Wyeksportowano do {0}: {1} kafli, {2} materiałów, {3} obiektów"
+ },
+ "Exported {0} shapefiles": {
+  "de": "{0} Shapefiles exportiert",
+  "pl": "Wyeksportowane pliki SHP: {0}"
  },
  "Exporting map": {
   "de": "Karte wird exportiert",
@@ -419,6 +579,10 @@
   "de": "Belichtung",
   "pl": "Ekspozycja"
  },
+ "Eyedropper": {
+  "de": "Pipette",
+  "pl": "Pipeta"
+ },
  "Falloff": {
   "de": "Abfall",
   "pl": "Zanik"
@@ -427,13 +591,37 @@
   "de": "Formgröße",
   "pl": "Rozmiar form"
  },
+ "Fence": {
+  "de": "Zaun",
+  "pl": "Płot"
+ },
+ "Field of view": {
+  "de": "Sichtfeld",
+  "pl": "Pole widzenia"
+ },
  "File": {
   "de": "Datei",
   "pl": "Plik"
  },
+ "Files": {
+  "de": "Dateien",
+  "pl": "Pliki"
+ },
  "Fill": {
   "de": "Nur auffüllen",
   "pl": "Tylko podnoś"
+ },
+ "Finds the road through the clicked points within the grade limits, around water and forbidden areas, with bridges. Off: road parts follow the clicked line.": {
+  "de": "Sucht die Straße durch die geklickten Punkte innerhalb der Steigung, um Wasser und Sperrgebiete herum, mit Brücken. Aus: Teile folgen der geklickten Linie.",
+  "pl": "Szuka drogi przez kliknięte punkty w granicach nachylenia, omijając wodę i obszary zakazane, z mostami. Wyłączone: części drogi idą po klikniętej linii."
+ },
+ "Fit again": {
+  "de": "Neu einpassen",
+  "pl": "Dopasuj ponownie"
+ },
+ "Fix tiles": {
+  "de": "Kacheln korrigieren",
+  "pl": "Napraw kafle"
  },
  "Fixed height, ignores the terrain": {
   "de": "Feste Höhe, ignoriert das Gelände",
@@ -455,9 +643,33 @@
   "de": "Ordner",
   "pl": "Folder"
  },
+ "Follow the slope": {
+  "de": "Der Neigung folgen",
+  "pl": "Podążaj za nachyleniem"
+ },
+ "Forbidden areas": {
+  "de": "Sperrgebiete",
+  "pl": "Obszary zakazane"
+ },
+ "Forest": {
+  "de": "Wald",
+  "pl": "Las"
+ },
  "Forest (DayZForests)": {
   "de": "Wald (DayZForests)",
   "pl": "Las (DayZForests)"
+ },
+ "Forest areas": {
+  "de": "Waldgebiete",
+  "pl": "Obszary lasu"
+ },
+ "Forest edge": {
+  "de": "Waldrand",
+  "pl": "Granica lasu"
+ },
+ "Forests, surfaces, settlements, fences and power lines are in the Generators tab below.": {
+  "de": "Wälder, Oberflächen, Siedlungen, Zäune und Stromleitungen sind unten im Tab Generatoren.",
+  "pl": "Lasy, powierzchnie, osady, płoty i linie energetyczne są w zakładce Generatory poniżej."
  },
  "Full detail distance": {
   "de": "Distanz volle Details",
@@ -499,6 +711,18 @@
   "de": "Siedlung wird erzeugt",
   "pl": "Generowanie osady"
  },
+ "Generators": {
+  "de": "Generatoren",
+  "pl": "Generatory"
+ },
+ "Generators ({0})": {
+  "de": "Generatoren ({0})",
+  "pl": "Generatory ({0})"
+ },
+ "Grade the terrain": {
+  "de": "Gelände angleichen",
+  "pl": "Wyrównaj teren"
+ },
  "Grade the terrain under the road": {
   "de": "Gelände unter der Straße angleichen",
   "pl": "Wyprofiluj teren pod drogą"
@@ -506,6 +730,10 @@
  "Grass": {
   "de": "Gras",
   "pl": "Trawa"
+ },
+ "Grass under objects": {
+  "de": "Gras unter Objekten",
+  "pl": "Trawa pod obiektami"
  },
  "Height": {
   "de": "Höhe",
@@ -579,9 +807,21 @@
   "de": "Objekte importieren",
   "pl": "Import obiektów"
  },
+ "Import shapes": {
+  "de": "Formen importieren",
+  "pl": "Import kształtów"
+ },
+ "Import...": {
+  "de": "Importieren...",
+  "pl": "Importuj..."
+ },
  "Imported {0} objects": {
   "de": "{0} Objekte importiert",
   "pl": "Zaimportowano obiektów: {0}"
+ },
+ "Imported {0} shapes": {
+  "de": "{0} Formen importiert",
+  "pl": "Zaimportowano kształty: {0}"
  },
  "Importing WRP": {
   "de": "WRP wird importiert",
@@ -618,6 +858,10 @@
  "Island": {
   "de": "Insel",
   "pl": "Wyspa"
+ },
+ "Jagged edge m": {
+  "de": "Unregelmäßiger Rand m",
+  "pl": "Poszarpanie granicy m"
  },
  "Land grid": {
   "de": "Geländeraster",
@@ -659,9 +903,21 @@
   "de": "Linie",
   "pl": "Linia"
  },
+ "Links the road parts on this line to waypoints you can edit.": {
+  "de": "Verknüpft die Straßenteile dieser Linie mit bearbeitbaren Punkten.",
+  "pl": "Łączy części drogi na tej linii z punktami, które można edytować."
+ },
  "Lit": {
   "de": "Beleuchtet",
   "pl": "Oświetlony"
+ },
+ "Load DayZForests project...": {
+  "de": "DayZForests-Projekt laden...",
+  "pl": "Wczytaj projekt DayZForests..."
+ },
+ "Load zone presets...": {
+  "de": "Zonen-Presets laden...",
+  "pl": "Wczytaj presety stref..."
  },
  "Loading models: {0}": {
   "de": "Modelle werden geladen: {0}",
@@ -683,6 +939,10 @@
   "de": "Senken",
   "pl": "Obniż"
  },
+ "Make editable route": {
+  "de": "In bearbeitbare Route umwandeln",
+  "pl": "Zamień na edytowalną trasę"
+ },
  "Make terraces": {
   "de": "Terrassen erzeugen",
   "pl": "Utwórz tarasy"
@@ -690,6 +950,10 @@
  "Map ID": {
   "de": "Karten-ID",
   "pl": "ID mapy"
+ },
+ "Margin": {
+  "de": "Rand",
+  "pl": "Margines"
  },
  "Mask": {
   "de": "Maske",
@@ -699,6 +963,10 @@
   "de": "Maskenbild...",
   "pl": "Obraz maski..."
  },
+ "Max height": {
+  "de": "Max. Höhe",
+  "pl": "Maks. wysokość"
+ },
  "Max scale": {
   "de": "Max. Skalierung",
   "pl": "Maks. skala"
@@ -707,6 +975,26 @@
   "de": "Max. Neigung",
   "pl": "Maks. spadek"
  },
+ "Max. bridge height m": {
+  "de": "Max. Brückenhöhe m",
+  "pl": "Maks. wysokość mostu m"
+ },
+ "Max. bridge length m": {
+  "de": "Max. Brückenlänge m",
+  "pl": "Maks. długość mostu m"
+ },
+ "Max. cut m": {
+  "de": "Max. Einschnitt m",
+  "pl": "Maks. wykop m"
+ },
+ "Max. fill m": {
+  "de": "Max. Aufschüttung m",
+  "pl": "Maks. nasyp m"
+ },
+ "Max. grade %": {
+  "de": "Max. Steigung %",
+  "pl": "Maks. nachylenie %"
+ },
  "Min height": {
   "de": "Min. Höhe",
   "pl": "Min. wysokość"
@@ -714,6 +1002,10 @@
  "Min scale": {
   "de": "Min. Skalierung",
   "pl": "Min. skala"
+ },
+ "Min slope": {
+  "de": "Min. Neigung",
+  "pl": "Min. nachylenie"
  },
  "Minimum distance": {
   "de": "Mindestabstand",
@@ -726,6 +1018,10 @@
  "Model": {
   "de": "Modell",
   "pl": "Model"
+ },
+ "Models can also be dropped here.": {
+  "de": "Modelle können auch hier abgelegt werden.",
+  "pl": "Modele można też tu upuścić."
  },
  "Models not found on the work drive ({0}), placed without height correction": {
   "de": "Modelle nicht auf dem Arbeitslaufwerk gefunden ({0}), ohne Höhenkorrektur platziert",
@@ -759,6 +1055,10 @@
   "de": "In Ebene verschieben",
   "pl": "Przenieś do warstwy"
  },
+ "Movement speed": {
+  "de": "Bewegungstempo",
+  "pl": "Prędkość ruchu"
+ },
  "Name": {
   "de": "Name",
   "pl": "Nazwa"
@@ -767,9 +1067,21 @@
   "de": "Navmesh-Server gestartet. Netz im NavMeshGenerator erzeugen, als navmesh.nm im navmesh-Ordner der Karte speichern und neu erstellen.",
   "pl": "Serwer navmesh uruchomiony. Wygeneruj siatkę w NavMeshGenerator, zapisz jako navmesh.nm w folderze navmesh mapy i zbuduj ponownie."
  },
+ "New folder": {
+  "de": "Neuer Ordner",
+  "pl": "Nowy folder"
+ },
+ "New generator": {
+  "de": "Neuer Generator",
+  "pl": "Nowy generator"
+ },
  "New layer": {
   "de": "Neue Ebene",
   "pl": "Nowa warstwa"
+ },
+ "New preset": {
+  "de": "Neues Preset",
+  "pl": "Nowy preset"
  },
  "New project": {
   "de": "Neues Projekt",
@@ -790,6 +1102,10 @@
  "No release notes": {
   "de": "Keine Versionshinweise",
   "pl": "Brak opisu zmian"
+ },
+ "No road parts lie along this line": {
+  "de": "Entlang dieser Linie liegen keine Straßenteile",
+  "pl": "Wzdłuż tej linii nie ma części drogi"
  },
  "Noise": {
   "de": "Rauschen",
@@ -839,6 +1155,14 @@
   "de": "Versatz",
   "pl": "Przesunięcie"
  },
+ "Only inside shapes": {
+  "de": "Nur innerhalb von Formen",
+  "pl": "Tylko wewnątrz kształtów"
+ },
+ "Only on satellite colours": {
+  "de": "Nur auf Satellitenfarben",
+  "pl": "Tylko na kolorach satelity"
+ },
  "Only on surfaces": {
   "de": "Nur auf Oberflächen",
   "pl": "Tylko na powierzchniach"
@@ -863,6 +1187,10 @@
   "de": "Projekt wird geöffnet",
   "pl": "Otwieranie projektu"
  },
+ "Opens the Roads tool with these points.": {
+  "de": "Öffnet das Straßenwerkzeug mit diesen Punkten.",
+  "pl": "Otwiera narzędzie Drogi z tymi punktami."
+ },
  "Outliner": {
   "de": "Gliederung",
   "pl": "Hierarchia"
@@ -882,6 +1210,10 @@
  "Paint": {
   "de": "Malen",
   "pl": "Malowanie"
+ },
+ "Paint only on": {
+  "de": "Nur malen auf",
+  "pl": "Maluj tylko na"
  },
  "Paint surface": {
   "de": "Oberfläche malen",
@@ -906,6 +1238,10 @@
  "Perspective": {
   "de": "Perspektive",
   "pl": "Perspektywa"
+ },
+ "Pick from the map": {
+  "de": "Von der Karte nehmen",
+  "pl": "Pobierz z mapy"
  },
  "Pitch": {
   "de": "Neigung",
@@ -951,6 +1287,30 @@
   "de": "Grundstücksgröße",
   "pl": "Rozmiar działki"
  },
+ "Point": {
+  "de": "Punkt",
+  "pl": "Punkt"
+ },
+ "Polygon": {
+  "de": "Polygon",
+  "pl": "Wielokąt"
+ },
+ "Polyline": {
+  "de": "Polylinie",
+  "pl": "Polilinia"
+ },
+ "Power line": {
+  "de": "Stromleitung",
+  "pl": "Linia energetyczna"
+ },
+ "Preset in shapes": {
+  "de": "Preset in Formen",
+  "pl": "Preset w kształtach"
+ },
+ "Presets": {
+  "de": "Presets",
+  "pl": "Presety"
+ },
  "Program update": {
   "de": "Programmupdate",
   "pl": "Aktualizacja programu"
@@ -979,6 +1339,10 @@
   "de": "Zufällige Drehung",
   "pl": "Losowy obrót"
  },
+ "Reading road types": {
+  "de": "Straßentypen werden gelesen",
+  "pl": "Wczytywanie typów dróg"
+ },
  "Recent projects": {
   "de": "Letzte Projekte",
   "pl": "Ostatnie projekty"
@@ -991,13 +1355,29 @@
   "de": "Release-Seite",
   "pl": "Strona wydania"
  },
+ "Reload from TV4P": {
+  "de": "Aus TV4P neu laden",
+  "pl": "Wczytaj ponownie z TV4P"
+ },
  "Remove modifier": {
   "de": "Modifikator entfernen",
   "pl": "Usuń modyfikator"
  },
+ "Removes the generator and what it made.": {
+  "de": "Entfernt den Generator und was er erzeugt hat.",
+  "pl": "Usuwa generator i to, co stworzył."
+ },
  "Rename": {
   "de": "Umbenennen",
   "pl": "Zmień nazwę"
+ },
+ "Replaces the rarest surfaces of a tile with its main surface.": {
+  "de": "Ersetzt die seltensten Oberflächen einer Kachel durch ihre Hauptoberfläche.",
+  "pl": "Zastępuje najrzadsze powierzchnie kafla jego główną powierzchnią."
+ },
+ "Replaces what this generator made before.": {
+  "de": "Ersetzt, was dieser Generator zuvor erzeugt hat.",
+  "pl": "Zastępuje to, co ten generator stworzył wcześniej."
  },
  "Reset": {
   "de": "Zurücksetzen",
@@ -1010,6 +1390,10 @@
  "Restart to use {0}": {
   "de": "Neu starten, um {0} zu verwenden",
   "pl": "Uruchom ponownie, aby użyć {0}"
+ },
+ "Reverse": {
+  "de": "Umkehren",
+  "pl": "Odwróć"
  },
  "River valley": {
   "de": "Flusstal",
@@ -1027,6 +1411,18 @@
   "de": "Road-Studio-Projekt...",
   "pl": "Projekt Road Studio..."
  },
+ "Road catalog": {
+  "de": "Straßenkatalog",
+  "pl": "Katalog dróg"
+ },
+ "Road catalog...": {
+  "de": "Straßenkatalog...",
+  "pl": "Katalog dróg..."
+ },
+ "Road ends": {
+  "de": "Straßenenden",
+  "pl": "Końce dróg"
+ },
  "Road or line": {
   "de": "Straße oder Linie",
   "pl": "Droga lub linia"
@@ -1034,6 +1430,14 @@
  "Road type": {
   "de": "Straßentyp",
   "pl": "Typ drogi"
+ },
+ "Road types from TV4P...": {
+  "de": "Straßentypen aus TV4P...",
+  "pl": "Typy dróg z TV4P..."
+ },
+ "Road types saved": {
+  "de": "Straßentypen gespeichert",
+  "pl": "Zapisano typy dróg"
  },
  "Roads": {
   "de": "Straßen",
@@ -1067,6 +1471,22 @@
   "de": "Rauheit",
   "pl": "Chropowatość"
  },
+ "Round": {
+  "de": "Rund",
+  "pl": "Okrągły"
+ },
+ "Route across terrain": {
+  "de": "Route über das Gelände",
+  "pl": "Wyznacz trasę po terenie"
+ },
+ "Route settings": {
+  "de": "Routeneinstellungen",
+  "pl": "Ustawienia trasy"
+ },
+ "Routes ({0})": {
+  "de": "Routen ({0})",
+  "pl": "Trasy ({0})"
+ },
  "Satellite": {
   "de": "Satellit",
   "pl": "Satelita"
@@ -1079,9 +1499,25 @@
   "de": "Speichern",
   "pl": "Zapisz"
  },
+ "Save as preset": {
+  "de": "Als Preset speichern",
+  "pl": "Zapisz jako preset"
+ },
  "Save as...": {
   "de": "Speichern unter...",
   "pl": "Zapisz jako..."
+ },
+ "Save to TV4P...": {
+  "de": "In TV4P speichern...",
+  "pl": "Zapisz do TV4P..."
+ },
+ "Save...": {
+  "de": "Speichern...",
+  "pl": "Zapisz..."
+ },
+ "Saved in the generator library": {
+  "de": "In der Generatorbibliothek gespeichert",
+  "pl": "Zapisano w bibliotece generatorów"
  },
  "Saved {0}": {
   "de": "{0} gespeichert",
@@ -1119,9 +1555,17 @@
   "de": "Meeresspiegel",
   "pl": "Poziom morza"
  },
+ "Sea waves m": {
+  "de": "Meereswellen m",
+  "pl": "Fale morza m"
+ },
  "Search models...": {
   "de": "Modelle suchen...",
   "pl": "Szukaj modeli..."
+ },
+ "Search step m": {
+  "de": "Suchschritt m",
+  "pl": "Krok szukania m"
  },
  "Search...": {
   "de": "Suchen...",
@@ -1138,6 +1582,14 @@
  "Select objects": {
   "de": "Objekte auswählen",
   "pl": "Zaznacz obiekty"
+ },
+ "Selected route": {
+  "de": "Ausgewählte Route",
+  "pl": "Zaznaczona trasa"
+ },
+ "Selected shape": {
+  "de": "Ausgewählte Form",
+  "pl": "Zaznaczony kształt"
  },
  "Selection": {
   "de": "Auswahl",
@@ -1167,13 +1619,41 @@
   "de": "Schatten",
   "pl": "Cienie"
  },
+ "Shape layers ({0})": {
+  "de": "Formebenen ({0})",
+  "pl": "Warstwy kształtów ({0})"
+ },
+ "Shapes": {
+  "de": "Formen",
+  "pl": "Kształty"
+ },
+ "Shapes (SHP, TV4S)...": {
+  "de": "Formen (SHP, TV4S)...",
+  "pl": "Kształty (SHP, TV4S)..."
+ },
  "Sharpness": {
   "de": "Schärfe",
   "pl": "Ostrość"
  },
+ "Shift+wheel: size. Ctrl+wheel: edge noise.": {
+  "de": "Umschalt+Rad: Größe. Strg+Rad: Randrauschen.",
+  "pl": "Shift+kółko: rozmiar. Ctrl+kółko: szum krawędzi."
+ },
+ "Shift+wheel: size. Ctrl+wheel: edge noise. Alt+wheel: strength and falloff.": {
+  "de": "Umschalt+Rad: Größe. Strg+Rad: Randrauschen. Alt+Rad: Stärke und Weichheit.",
+  "pl": "Shift+kółko: rozmiar. Ctrl+kółko: szum krawędzi. Alt+kółko: siła i miękkość."
+ },
+ "Show": {
+  "de": "Anzeigen",
+  "pl": "Pokaż"
+ },
  "Show all": {
   "de": "Alle anzeigen",
   "pl": "Pokaż wszystkie"
+ },
+ "Show project areas as shapes": {
+  "de": "Projektgebiete als Formen anzeigen",
+  "pl": "Pokaż obszary projektu jako kształty"
  },
  "Size": {
   "de": "Größe",
@@ -1187,6 +1667,10 @@
   "de": "Hanglimit",
   "pl": "Limit spadku"
  },
+ "Slope weight": {
+  "de": "Steigungsgewicht",
+  "pl": "Waga nachylenia"
+ },
  "Smooth": {
   "de": "Glätten",
   "pl": "Wygładź"
@@ -1194,6 +1678,18 @@
  "Spacing": {
   "de": "Abstand",
   "pl": "Odstęp"
+ },
+ "Spacing 0 uses the length of the model.": {
+  "de": "Abstand 0 nimmt die Modelllänge.",
+  "pl": "Odstęp 0 bierze długość modelu."
+ },
+ "Spacing 0 uses the length of the wire model.": {
+  "de": "Abstand 0 nimmt die Länge des Leitungsmodells.",
+  "pl": "Odstęp 0 bierze długość modelu przewodów."
+ },
+ "Square": {
+  "de": "Quadrat",
+  "pl": "Kwadrat"
  },
  "Start the game client too": {
   "de": "Auch den Spielclient starten",
@@ -1210,6 +1706,10 @@
  "Stop": {
   "de": "Stoppen",
   "pl": "Zatrzymaj"
+ },
+ "Straight parts": {
+  "de": "Gerade Teile",
+  "pl": "Odcinki proste"
  },
  "Streets": {
   "de": "Straßen",
@@ -1243,9 +1743,21 @@
   "de": "Oberflächen malen",
   "pl": "Malowanie powierzchni"
  },
+ "Surface transition m": {
+  "de": "Oberflächenübergang m",
+  "pl": "Przejście powierzchni m"
+ },
  "Surfaces (layers.cfg)": {
   "de": "Oberflächen (layers.cfg)",
   "pl": "Powierzchnie (layers.cfg)"
+ },
+ "Surfaces per tile": {
+  "de": "Oberflächen pro Kachel",
+  "pl": "Powierzchnie na kafel"
+ },
+ "Takes the surface under the cursor. Alt+click does the same.": {
+  "de": "Übernimmt die Oberfläche unter dem Cursor. Alt+Klick tut dasselbe.",
+  "pl": "Pobiera powierzchnię spod kursora. To samo robi Alt+klik."
  },
  "Template libraries": {
   "de": "Vorlagenbibliotheken",
@@ -1319,6 +1831,10 @@
   "de": "Die aktive Ebene ist ausgeblendet oder gesperrt",
   "pl": "Aktywna warstwa jest ukryta lub zablokowana"
  },
+ "The brush will not add a surface to a tile that already has as many as the project allows.": {
+  "de": "Der Pinsel fügt einer Kachel keine Oberfläche hinzu, wenn das Limit des Projekts erreicht ist.",
+  "pl": "Pędzel nie doda powierzchni do kafla, który ma już tyle, ile pozwala projekt."
+ },
  "The download replaces the current file; the previous one stays as .old until the next start.": {
   "de": "Der Download ersetzt die aktuelle Datei; die vorherige bleibt bis zum nächsten Start als .old erhalten.",
   "pl": "Pobrany program zastąpi obecny plik; poprzedni zostaje jako .old do następnego uruchomienia."
@@ -1335,6 +1851,10 @@
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
   "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
  },
+ "The next click in a view takes the satellite colour there.": {
+  "de": "Der nächste Klick in einer Ansicht nimmt die Satellitenfarbe.",
+  "pl": "Następne kliknięcie w widoku pobierze kolor satelity."
+ },
  "The project has unsaved changes. Close without saving?": {
   "de": "Das Projekt hat ungespeicherte Änderungen. Ohne Speichern schließen?",
   "pl": "Projekt ma niezapisane zmiany. Zamknąć bez zapisywania?"
@@ -1343,17 +1863,37 @@
   "de": "Das Release enthält keine .exe zum Herunterladen",
   "pl": "Wydanie nie zawiera pliku .exe do pobrania"
  },
+ "The shape this generator works on no longer exists": {
+  "de": "Die Form dieses Generators existiert nicht mehr",
+  "pl": "Kształt, na którym działa generator, już nie istnieje"
+ },
  "Thermal erosion": {
   "de": "Thermische Erosion",
   "pl": "Erozja termiczna"
+ },
+ "This preset has no models yet": {
+  "de": "Dieses Preset hat noch keine Modelle",
+  "pl": "Ten preset nie ma jeszcze modeli"
  },
  "Tile size": {
   "de": "Kachelgröße",
   "pl": "Rozmiar kafla"
  },
+ "Tolerance": {
+  "de": "Toleranz",
+  "pl": "Tolerancja"
+ },
+ "Tolerance m": {
+  "de": "Toleranz m",
+  "pl": "Tolerancja m"
+ },
  "Top": {
   "de": "Draufsicht",
   "pl": "Z góry"
+ },
+ "Tower": {
+  "de": "Mast",
+  "pl": "Słup"
  },
  "Transform": {
   "de": "Transformation",
@@ -1362,6 +1902,10 @@
  "Transform objects": {
   "de": "Objekte transformieren",
   "pl": "Transformuj obiekty"
+ },
+ "Turn": {
+  "de": "Drehung",
+  "pl": "Obrót"
  },
  "Type": {
   "de": "Typ",
@@ -1375,9 +1919,17 @@
   "de": "Rückgängig",
   "pl": "Cofnij"
  },
+ "Use as a road or object line": {
+  "de": "Als Straßen- oder Objektlinie verwenden",
+  "pl": "Użyj jako linii drogi lub obiektów"
+ },
  "Use selected": {
   "de": "Gewähltes verwenden",
   "pl": "Użyj wybranego"
+ },
+ "Use selected shape": {
+  "de": "Ausgewählte Form verwenden",
+  "pl": "Użyj zaznaczonego kształtu"
  },
  "Version": {
   "de": "Version",
@@ -1423,6 +1975,10 @@
   "de": "Drahtgitter",
   "pl": "Siatka"
  },
+ "Wires": {
+  "de": "Leitungen",
+  "pl": "Przewody"
+ },
  "Without template libraries the layers cannot be matched to models.": {
   "de": "Ohne Vorlagenbibliotheken lassen sich die Ebenen keinen Modellen zuordnen.",
   "pl": "Bez bibliotek szablonów nie da się dopasować warstw do modeli."
@@ -1430,6 +1986,10 @@
  "Work drive": {
   "de": "Arbeitslaufwerk",
   "pl": "Dysk roboczy"
+ },
+ "Works on": {
+  "de": "Wirkt auf",
+  "pl": "Działa na"
  },
  "Write the newer WRP format with underground flag": {
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",
@@ -1455,6 +2015,10 @@
   "de": "Deine Version: {0}",
   "pl": "Twoja wersja: {0}"
  },
+ "Zones from the mask": {
+  "de": "Zonen aus der Maske",
+  "pl": "Strefy z maski"
+ },
  "hidden in Terrain Builder": {
   "de": "in Terrain Builder ausgeblendet",
   "pl": "ukryta w Terrain Builderze"
@@ -1479,6 +2043,10 @@
   "de": "{0} Modelle",
   "pl": "modeli: {0}"
  },
+ "{0} objects": {
+  "de": "{0} Objekte",
+  "pl": "Obiekty: {0}"
+ },
  "{0} objects selected": {
   "de": "{0} Objekte ausgewählt",
   "pl": "Zaznaczono obiektów: {0}"
@@ -1490,5 +2058,17 @@
  "{0} points": {
   "de": "{0} Punkte",
   "pl": "Punktów: {0}"
+ },
+ "{0} shapes selected": {
+  "de": "{0} Formen ausgewählt",
+  "pl": "Zaznaczone kształty: {0}"
+ },
+ "{0} species, {1} areas, {2} zones in the project": {
+  "de": "Im Projekt: {0} Arten, {1} Gebiete, {2} Zonen",
+  "pl": "W projekcie: gatunki {0}, obszary {1}, strefy {2}"
+ },
+ "{0} tiles over the limit, marked in the 2D view": {
+  "de": "{0} Kacheln über dem Limit, in der 2D-Ansicht markiert",
+  "pl": "Kafle ponad limit: {0}, zaznaczone w widoku 2D"
  }
 }

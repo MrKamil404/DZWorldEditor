@@ -381,7 +381,7 @@ pub fn default_paint_rules(w: &World) -> Vec<PaintRule> {
     ].into_iter().flatten().collect()
 }
 
-pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, job: &Job) -> Vec<u8> {
+pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, area: Option<&crate::shapes::PolygonIndex>, job: &Job) -> Vec<u8> {
     let noise = Perlin::new(seed);
     let (mw, mh) = (w.mask.width, w.mask.height);
     let size = w.meta.size_m();
@@ -391,6 +391,9 @@ pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, job: &Job) -> Vec<u
         let wz = (1.0 - (y as f32 + 0.5) / mh as f32) * size;
         for (x, v) in row.iter_mut().enumerate() {
             let wx = (x as f32 + 0.5) / mw as f32 * size;
+            if area.is_some_and(|a| !a.contains(wx, wz)) {
+                continue;
+            }
             let (h, s) = (w.height.sample(wx, wz), w.height.slope(wx, wz));
             for r in rules {
                 if h < r.min_height || h > r.max_height || s < r.min_slope || s > r.max_slope {
@@ -413,109 +416,6 @@ pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, job: &Job) -> Vec<u
 
 // ---------------------------------------------------------------- object generators
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct ScatterRule {
-    /// WRP model paths.
-    pub models: Vec<String>,
-    /// Objects per hectare.
-    pub density: f32,
-    pub min_distance: f32,
-    pub min_slope: f32,
-    pub max_slope: f32,
-    pub min_height: f32,
-    pub max_height: f32,
-    /// Mask layers to scatter on; empty allows every layer.
-    pub layers: Vec<usize>,
-    pub scale_min: f32,
-    pub scale_max: f32,
-    pub align_to_slope: bool,
-    pub seed: u64,
-}
-impl Default for ScatterRule {
-    fn default() -> Self {
-        Self { models: Vec::new(), density: 20.0, min_distance: 3.0, min_slope: 0.0, max_slope: 35.0, min_height: 0.5, max_height: 9000.0, layers: Vec::new(), scale_min: 0.85, scale_max: 1.2, align_to_slope: false, seed: 1 }
-    }
-}
-
-/// Area limit of a generator, in world metres.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Area {
-    pub x0: f32,
-    pub z0: f32,
-    pub x1: f32,
-    pub z1: f32,
-}
-impl Area {
-    pub fn whole(w: &World) -> Self {
-        Self { x0: 0.0, z0: 0.0, x1: w.meta.size_m(), z1: w.meta.size_m() }
-    }
-    pub fn circle(x: f32, z: f32, r: f32) -> Self {
-        Self { x0: x - r, z0: z - r, x1: x + r, z1: z + r }
-    }
-}
-
-/// Fast Poisson-style dart throwing over a grid.
-pub fn scatter(w: &mut World, rule: &ScatterRule, area: Area, job: &Job) -> Result<Vec<Obj>> {
-    if rule.models.is_empty() {
-        bail!("Choose at least one model");
-    }
-    let models: Vec<u32> = rule.models.iter().map(|m| w.objects.intern(m)).collect();
-    let mut rng = StdRng::seed_from_u64(rule.seed);
-    let size = w.meta.size_m();
-    let (x0, z0, x1, z1) = (area.x0.max(0.0), area.z0.max(0.0), area.x1.min(size), area.z1.min(size));
-    let hectares = ((x1 - x0) * (z1 - z0)).max(0.0) / 10_000.0;
-    let tries = (hectares * rule.density * 2.5) as usize;
-    let cell = rule.min_distance.max(0.5);
-    let mut grid: HashMap<(i32, i32), Vec<[f32; 2]>> = HashMap::new();
-    let limit = (hectares * rule.density) as usize;
-    let mut out = Vec::new();
-    let min2 = rule.min_distance * rule.min_distance;
-    for n in 0..tries {
-        if n % 8192 == 0 {
-            job.set_progress(n as f32 / tries.max(1) as f32);
-            job.check()?;
-        }
-        if out.len() >= limit {
-            break;
-        }
-        let (x, z) = (rng.gen_range(x0..x1.max(x0 + 0.01)), rng.gen_range(z0..z1.max(z0 + 0.01)));
-        let h = w.height.sample(x, z);
-        if h < rule.min_height || h > rule.max_height {
-            continue;
-        }
-        let slope = w.height.slope(x, z);
-        if slope < rule.min_slope || slope > rule.max_slope {
-            continue;
-        }
-        if !rule.layers.is_empty() && !rule.layers.contains(&(w.mask.sample(x, z, size) as usize)) {
-            continue;
-        }
-        let key = ((x / cell).floor() as i32, (z / cell).floor() as i32);
-        let mut blocked = false;
-        'near: for dz in -1..=1 {
-            for dx in -1..=1 {
-                if let Some(c) = grid.get(&(key.0 + dx, key.1 + dz)) {
-                    if c.iter().any(|p| (p[0] - x).powi(2) + (p[1] - z).powi(2) < min2) {
-                        blocked = true;
-                        break 'near;
-                    }
-                }
-            }
-        }
-        if blocked {
-            continue;
-        }
-        grid.entry(key).or_default().push([x, z]);
-        let (pitch, roll) = if rule.align_to_slope { slope_angles(&w.height, x, z, 0.0) } else { (0.0, 0.0) };
-        out.push(Obj {
-            x, z, elevation: 0.0, yaw: rng.gen_range(0.0..360.0), pitch, roll,
-            scale: rng.gen_range(rule.scale_min..=rule.scale_max.max(rule.scale_min + 1e-4)),
-            model: *models.choose(&mut rng).unwrap(), flags: 0,
-        });
-    }
-    Ok(out)
-}
-
 /// Pitch and roll laying a model flat on the terrain, for a given yaw.
 pub fn slope_angles(h: &Heightmap, x: f32, z: f32, yaw: f32) -> (f32, f32) {
     let n = h.normal(x, z);
@@ -525,47 +425,119 @@ pub fn slope_angles(h: &Heightmap, x: f32, z: f32, yaw: f32) -> (f32, f32) {
     ((forward).clamp(-1.0, 1.0).asin().to_degrees(), (-right).clamp(-1.0, 1.0).asin().to_degrees())
 }
 
-/// Forest generation through the DayZForests engine. Each selected mask layer becomes a zone.
+/// Forest generation through the DayZForests engine, with a whole DayZForests project.
 pub struct ForestRequest {
+    pub project: forest_core::preset::ForestProject,
     /// (mask layer, forest preset name)
     pub zones: Vec<(usize, String)>,
-    pub seed: u64,
-    pub max_slope: f32,
-    pub clearing_strength: f64,
+    /// (polygons, forest preset name)
+    pub areas: Vec<(crate::shapes::ShapeLayer, String)>,
+    /// Needed by areas that follow the colours of the satellite image.
+    pub satellite: Option<forest_core::mask::MaskImage>,
+    /// Applied to the areas made from shapes.
+    pub color_filter: Option<forest_core::preset::ColorFilter>,
+    /// (preset, share) planted along the edges.
+    pub edge_presets: Vec<(String, f32)>,
+    pub user_presets: Vec<forest_core::user_presets::UserPreset>,
 }
 
 pub fn forest_preset_names() -> Vec<String> {
     forest_core::species::zone_presets().iter().map(|z| z.name.to_string()).collect()
 }
 
-pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: &ForestRequest, job: &Job) -> Result<(Vec<Obj>, Vec<String>)> {
+/// The satellite image in the form the forest engine samples.
+pub fn satellite_for_forest(img: &crate::terrain::RgbImage) -> forest_core::mask::MaskImage {
+    let side = img.width.max(img.height).min(8192);
+    let (w, h) = (side, side * img.height / img.width.max(1));
+    let mut rgba = vec![255u8; w * h * 4];
+    rgba.par_chunks_mut(w * 4).enumerate().for_each(|(y, row)| {
+        let sy = y * img.height / h;
+        for x in 0..w {
+            let p = (sy * img.width + x * img.width / w) * 3;
+            row[x * 4..x * 4 + 3].copy_from_slice(&img.data[p..p + 3]);
+        }
+    });
+    forest_core::mask::MaskImage { width: w as u32, height: h as u32, rgba }
+}
+
+/// Finds a preset by name, the user's own first.
+fn find_preset(name: &str, user: &[forest_core::user_presets::UserPreset]) -> Option<forest_core::user_presets::UserPreset> {
+    use forest_core::user_presets::UserPreset;
+    user.iter().find(|p| p.name == name).cloned().or_else(|| forest_core::species::zone_presets().iter().find(|p| p.name == name).map(UserPreset::from_builtin))
+}
+
+/// Weights of a preset for the project's own species list, adding what it lacks.
+fn preset_weights(project: &mut forest_core::preset::ForestProject, preset: &forest_core::user_presets::UserPreset, vanilla: &[forest_core::species::SpeciesDef]) -> Vec<(usize, f32)> {
+    let mut out = Vec::with_capacity(preset.weights.len());
+    for (model, weight) in &preset.weights {
+        let at = match project.species.iter().position(|x| x.model.eq_ignore_ascii_case(model)) {
+            Some(at) => at,
+            None => {
+                let Some(s) = vanilla.iter().find(|x| x.model.eq_ignore_ascii_case(model)) else { continue };
+                project.species.push(s.clone());
+                project.species.len() - 1
+            }
+        };
+        out.push((at, *weight));
+    }
+    out
+}
+
+/// Whether the project reads the satellite image.
+pub fn forest_needs_satellite(p: &forest_core::preset::ForestProject) -> bool {
+    p.areas.iter().any(|a| a.color_filter.as_ref().is_some_and(|f| !f.samples.is_empty()) || a.preset_mix.iter().any(|m| m.color_filter.as_ref().is_some_and(|f| !f.samples.is_empty())))
+}
+
+pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, job: &Job) -> Result<(Vec<Obj>, Vec<String>)> {
     use forest_core::mask::{MaskImage, Rgb8};
+    use forest_core::preset::{AreaDef, GenStep, MixEntry, ZoneDef};
     let size = w.meta.size_m() as f64;
-    let presets = forest_core::species::zone_presets();
-    let mut project = forest_core::preset::ForestProject { map_size_m: size, seed: req.seed, max_slope_deg: Some(req.max_slope as f64), clearing_strength: req.clearing_strength, ..Default::default() };
+    let vanilla = forest_core::species::vanilla_library();
+    let mut project = req.project;
+    project.map_size_m = size;
     project.easting_offset = 0.0;
     project.northing_offset = 0.0;
-    let mut used = vec![false; 256];
     for (layer, name) in &req.zones {
-        let preset = presets.iter().find(|p| p.name == name).with_context(|| format!("Unknown forest preset {name}"))?;
-        project.zones.push(preset.to_zone_def(Rgb8(unique_color(*layer))));
-        used[*layer] = true;
+        let preset = find_preset(name, &req.user_presets).with_context(|| format!("Unknown forest preset {name}"))?;
+        let color = w.layers.get(*layer).context("Unknown surface layer")?.color;
+        let species_weights = preset_weights(&mut project, &preset, &vanilla);
+        project.zones.push(ZoneDef { color: Rgb8(color), label: preset.name.clone(), density_per_ha: preset.density_per_ha, species_weights, preset_mix: Vec::new() });
     }
-    if project.zones.is_empty() {
-        bail!("Add at least one zone");
-    }
-    // The engine reads RGB masks; a 4096 image keeps zones accurate to about 3 m.
-    let side = w.mask.width.min(4096) as u32;
-    let mut mask = MaskImage { width: side, height: side, rgba: vec![0; (side * side * 4) as usize] };
-    let (mw, mh) = (w.mask.width, w.mask.height);
-    let src = &w.mask.data;
-    mask.rgba.par_chunks_mut(side as usize * 4).enumerate().for_each(|(y, row)| {
-        let sy = y * mh / side as usize;
-        for x in 0..side as usize {
-            let l = src[sy * mw + x * mw / side as usize];
-            let c = if used[l as usize] { unique_color(l as usize) } else { [0, 0, 0] };
-            row[x * 4..x * 4 + 4].copy_from_slice(&[c[0], c[1], c[2], 255]);
+    for (layer, name) in &req.areas {
+        let preset = find_preset(name, &req.user_presets).with_context(|| format!("Unknown forest preset {name}"))?;
+        let species_weights = preset_weights(&mut project, &preset, &vanilla);
+        for (i, s) in layer.shapes.iter().enumerate().filter(|(_, s)| s.kind == crate::shapes::ShapeKind::Polygon) {
+            project.areas.push(AreaDef { label: format!("{} {}", layer.name, i + 1), density_per_ha: preset.density_per_ha, species_weights: species_weights.clone(), polygon: s.points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect(), color_filter: req.color_filter.clone(), ..Default::default() });
+            project.generation_order.push(GenStep::Area(project.areas.len() - 1));
         }
+    }
+    if !req.edge_presets.is_empty() {
+        project.edges.preset_mix.clear();
+        for (name, share) in &req.edge_presets {
+            let preset = find_preset(name, &req.user_presets).with_context(|| format!("Unknown forest preset {name}"))?;
+            let species_weights = preset_weights(&mut project, &preset, &vanilla);
+            project.edges.preset_mix.push(MixEntry { name: name.clone(), share: *share, spatial: false, color_filter: None, density_per_ha: preset.density_per_ha, species_weights });
+        }
+    }
+    project.sanitize();
+    if project.zones.is_empty() && project.areas.is_empty() {
+        bail!("Add at least one zone or area");
+    }
+    // The engine reads RGB masks in the colours of the map's surface layers.
+    let mask = (!project.zones.is_empty() || !project.cut_zones.is_empty() || !project.exclusion_colors.is_empty()).then(|| {
+        let side = w.mask.width.min(8192) as u32;
+        let mut mask = MaskImage { width: side, height: side, rgba: vec![255; (side * side * 4) as usize] };
+        let (mw, mh) = (w.mask.width, w.mask.height);
+        let src = &w.mask.data;
+        let colors: Vec<[u8; 3]> = w.layers.iter().map(|l| l.color).collect();
+        mask.rgba.par_chunks_mut(side as usize * 4).enumerate().for_each(|(y, row)| {
+            let sy = y * mh / side as usize;
+            for x in 0..side as usize {
+                let c = colors.get(src[sy * mw + x * mw / side as usize] as usize).copied().unwrap_or([0, 0, 0]);
+                row[x * 4..x * 4 + 3].copy_from_slice(&c);
+            }
+        });
+        mask
     });
     let values: Vec<f32> = (0..w.height.rows).rev().flat_map(|j| (0..w.height.cols).map(move |i| (i, j))).map(|(i, j)| w.height.at(i, j)).collect();
     let hm = forest_core::heightmap::AscHeightmap {
@@ -574,7 +546,7 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: &ForestRequest, 
     };
     let j2 = job.clone();
     let progress = move |v: f64| j2.set_progress(v as f32);
-    let (placed, stats) = forest_core::scatter::generate(&project, Some(&mask), None, Some(&hm), None, &progress).map_err(anyhow::Error::msg)?;
+    let (placed, stats) = forest_core::scatter::generate(&project, mask.as_ref(), req.satellite.as_ref(), Some(&hm), None, &progress).map_err(anyhow::Error::msg)?;
     let mut missing: HashMap<String, usize> = HashMap::new();
     let mut out = Vec::with_capacity(placed.len());
     for p in placed {
@@ -583,7 +555,8 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: &ForestRequest, 
             continue;
         };
         let model = w.objects.intern(path);
-        out.push(Obj { x: p.x as f32, z: p.y as f32, elevation: p.elevation as f32, yaw: p.yaw as f32, pitch: p.pitch as f32, roll: p.roll as f32, scale: p.scale as f32, model, flags: 0 });
+        let (yaw, pitch, roll) = crate::objects::from_terrain_builder(p.yaw as f32, p.pitch as f32, p.roll as f32);
+        out.push(Obj { x: p.x as f32, z: p.y as f32, elevation: p.elevation as f32, yaw, pitch, roll, scale: p.scale as f32, model, flags: 0 });
     }
     let mut notes = vec![stats.summary()];
     if !missing.is_empty() {
@@ -592,10 +565,6 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: &ForestRequest, 
         notes.push(format!("Models not found on P:\\ and skipped: {}", names.join(", ")));
     }
     Ok((out, notes))
-}
-
-fn unique_color(i: usize) -> [u8; 3] {
-    [((i * 53 + 40) % 240 + 10) as u8, ((i * 97 + 90) % 240 + 10) as u8, ((i * 151 + 30) % 240 + 10) as u8]
 }
 
 /// Objects along a polyline: fences, walls, poles.
@@ -725,13 +694,13 @@ impl ObjectStorePath {
 }
 
 /// Modifier that levels the ground under an object.
-pub fn pad_modifier(w: &mut World, object: u32, half_x: f32, half_z: f32, falloff: f32) -> Option<TerrainModifier> {
+pub fn pad_modifier(w: &mut World, object: u32, half_x: f32, half_z: f32, margin: f32, falloff: f32) -> Option<TerrainModifier> {
     let o = *w.objects.get(object)?;
     let id = w.new_modifier_id();
     let model = w.objects.models.get(o.model as usize).map(|m| m.path.rsplit('\\').next().unwrap_or("").to_string()).unwrap_or_default();
     Some(TerrainModifier {
         id, name: format!("Pad: {model}"), enabled: true, x: o.x, z: o.z, yaw: o.yaw,
-        shape: ModShape::Rect { half_x: half_x + 1.0, half_z: half_z + 1.0 },
+        shape: ModShape::Rect { half_x: half_x + margin, half_z: half_z + margin },
         mode: ModMode::Flatten, target: None, amount: 0.0, falloff, attached: Some(object),
     })
 }
@@ -762,7 +731,7 @@ pub fn road_catalog(folder: &Path) -> Result<Vec<dayz_road_tool::roads::CatalogP
 }
 
 pub fn road_families(catalog: &[dayz_road_tool::roads::CatalogPart]) -> Vec<String> {
-    let mut f: Vec<String> = catalog.iter().filter(|c| c.category == 6).map(|c| c.family.clone()).collect();
+    let mut f: Vec<String> = catalog.iter().filter(|c| c.category == 6 || dayz_road_tool::rails::is_track_family(&c.family)).map(|c| c.family.clone()).collect();
     f.sort();
     f.dedup();
     f
@@ -786,6 +755,250 @@ pub fn build_road(w: &mut World, points: &[[f32; 2]], family: &str, catalog: &[d
         objects.push(Obj { x: p.position[0] as f32, z: p.position[1] as f32, elevation: 0.0, yaw: p.rotation.rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 });
     }
     Ok(RoadResult { objects, centerline: center.iter().map(|p| [p[0] as f32, p[1] as f32]).collect() })
+}
+
+/// Road types of a Terrain Builder project, as Terrain Builder itself defines them.
+pub fn road_catalog_from_project(project: &Path, folder: &Path) -> Result<Vec<dayz_road_tool::roads::CatalogPart>> {
+    let mut lib = dayz_road_tool::geometry::Library::new(folder.to_path_buf());
+    let (catalog, _) = dayz_road_tool::tv4p::catalog(project, &mut lib)?;
+    Ok(catalog)
+}
+
+fn road_model_path(model: &str, models_prefix: &str) -> String {
+    let lower = crate::objects::ObjectStore::normalize_path(model);
+    match lower.strip_prefix("p:\\") {
+        Some(rest) => rest.to_string(),
+        None => format!("{models_prefix}\\{}", lower.rsplit('\\').next().unwrap_or(&lower)),
+    }
+}
+
+/// What to build for a road or track.
+#[derive(Clone)]
+pub struct RouteRequest {
+    pub family: String,
+    pub points: Vec<[f32; 2]>,
+    pub terrain_route: bool,
+    pub settings: dayz_road_tool::document::RoutingSettings,
+    /// Polygons the route must keep out of.
+    pub forbidden: Vec<Vec<[f32; 2]>>,
+    /// Centre lines of roads, for level crossings of tracks.
+    pub roads: Vec<Vec<[f32; 2]>>,
+}
+
+/// Track pieces, which are not part of a road project.
+pub fn rail_catalog() -> Vec<dayz_road_tool::roads::CatalogPart> {
+    let folder = Path::new(dayz_road_tool::rails::DEFAULT_FOLDER);
+    let mut lib = dayz_road_tool::geometry::Library::new(folder.to_path_buf());
+    dayz_road_tool::rails::catalog(folder, &mut lib).map(|(c, _)| c).unwrap_or_default()
+}
+
+/// Roads and tracks made the way Road Builder makes them: searched across the terrain within
+/// the grade, around water and forbidden polygons, with bridges and level crossings. Tracks
+/// and bridges are rigid and get a full pose on the terrain.
+pub fn build_route(w: &mut World, req: &RouteRequest, catalog: &[dayz_road_tool::roads::CatalogPart], job: &Job) -> Result<RoadResult> {
+    use crate::fsutil::f32s_to_bytes;
+    use dayz_road_tool::{document::{Route, WaterSettings}, rails::{self, BridgeKit, Crossings, RoadLine}, roads, routing::{self, Planned}, terrain::{Meta, Terrain}};
+    use std::sync::atomic::AtomicBool;
+    let rail = rails::is_track_family(&req.family);
+    let prefix = if rail { r"dz\structures\rail\Tracks" } else { r"dz\structures\roads\parts" };
+    let line: Vec<[f64; 2]> = req.points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
+    let tracks = Path::new(rails::DEFAULT_FOLDER);
+    let road_folder = Path::new("P:\\").join(r"dz\structures\roads\parts");
+    let cancel = AtomicBool::new(false);
+    let crossings = if rail {
+        let near: Vec<RoadLine> = req.roads.iter().enumerate().filter(|(_, l)| l.len() >= 2).map(|(road, l)| RoadLine { points: l.iter().map(|p| [p[0] as f64, p[1] as f64]).collect(), half_width: 4.0, road }).collect();
+        Crossings::new(near, &req.family, catalog, tracks)
+    } else {
+        Crossings::none()
+    };
+    let planned = if req.terrain_route {
+        job.stage("Preparing the terrain");
+        let dir = tempfile_dir()?;
+        let result = (|| -> Result<Planned> {
+            let cell = w.height.cell as f64;
+            let meta = Meta { cols: w.height.cols, rows: w.height.rows, east: -cell * 0.5, north: -cell * 0.5, cell };
+            std::fs::write(dir.join("terrain.json"), serde_json::to_vec(&meta)?)?;
+            // Road Builder's terrain runs from the north edge; the map's from the south.
+            let flipped: Vec<f32> = (0..w.height.rows).rev().flat_map(|j| (0..w.height.cols).map(move |i| (i, j))).map(|(i, j)| w.height.at(i, j)).collect();
+            std::fs::write(dir.join("height.f32"), f32s_to_bytes(&flipped))?;
+            let terrain = Terrain::open(&dir)?;
+            job.stage("Finding the route");
+            let polygons: Vec<Vec<[f64; 2]>> = req.forbidden.iter().map(|r| r.iter().map(|p| [p[0] as f64, p[1] as f64]).collect()).collect();
+            let water = WaterSettings { enabled: true, level: w.meta.sea_level as f64 };
+            let obstacles = routing::Obstacles::new(&polygons, &[], &water, Some(&terrain), &cancel)?;
+            let bridge = if rail { BridgeKit::for_track(tracks, &req.family) } else { BridgeKit::for_road(&road_folder, &req.family, catalog) };
+            routing::plan(&terrain, &line, &req.family, catalog, &req.settings, &obstacles, &crossings.with_bridge(bridge), &cancel)
+        })();
+        let _ = std::fs::remove_dir_all(&dir);
+        result?
+    } else {
+        let mut parts = roads::fit(&line, &req.family, catalog, &req.settings, |_, _| true)?;
+        let extras = crossings.apply(&mut parts, catalog)?;
+        Planned { parts, extras, ..Default::default() }
+    };
+    let route = Route { name: String::new(), family: req.family.clone(), points: line, parts: planned.parts, replaces: None, rail, extras: planned.extras, grading: None, bridges: planned.bridges };
+    let center: Vec<[f64; 2]> = route.stretches().into_iter().flat_map(|s| roads::centerline(s, catalog)).collect();
+    let height = &w.height;
+    let ground = |p: [f64; 2]| Some(height.sample(p[0] as f32, p[1] as f32) as f64);
+    let poses = rails::route_poses(&route, catalog, &ground)?;
+    let spans = route.bridges.iter().flat_map(|b| &b.pieces);
+    let mut objects = Vec::with_capacity(route.parts.len() + route.extras.len());
+    for (i, p) in route.parts.iter().chain(&route.extras).chain(spans).enumerate() {
+        let model = w.objects.intern(&road_model_path(&p.model, prefix));
+        let obj = match poses.get(i).copied().flatten() {
+            Some(pose) => {
+                // Pose axes are (east, north, up); the editor's are (east, up, north).
+                let axis = |v: [f64; 3]| [v[0] as f32, v[2] as f32, v[1] as f32];
+                let (yaw, pitch, roll, _) = crate::objects::angles(&[axis(pose.right), axis(pose.up), axis(pose.forward)]);
+                let ground_there = w.height.sample(pose.origin[0] as f32, pose.origin[1] as f32);
+                Obj { x: pose.origin[0] as f32, z: pose.origin[1] as f32, elevation: pose.origin[2] as f32 - ground_there, yaw, pitch, roll, scale: 1.0, model, flags: 0 }
+            }
+            None => Obj { x: p.position[0] as f32, z: p.position[1] as f32, elevation: 0.0, yaw: p.rotation.rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 },
+        };
+        objects.push(obj);
+    }
+    Ok(RoadResult { objects, centerline: center.iter().map(|p| [p[0] as f32, p[1] as f32]).collect() })
+}
+
+/// Keeps the points that matter to a line's shape, to `tolerance` metres.
+pub fn simplify_line(points: &[[f32; 2]], tolerance: f32) -> Vec<[f32; 2]> {
+    fn mark(p: &[[f32; 2]], a: usize, b: usize, t: f32, keep: &mut [bool]) {
+        if b <= a + 1 {
+            return;
+        }
+        let (dx, dz) = (p[b][0] - p[a][0], p[b][1] - p[a][1]);
+        let len = (dx * dx + dz * dz).sqrt().max(1e-3);
+        let (mut far, mut at) = (0.0f32, a);
+        for i in a + 1..b {
+            let d = ((p[i][0] - p[a][0]) * dz - (p[i][1] - p[a][1]) * dx).abs() / len;
+            if d > far {
+                (far, at) = (d, i);
+            }
+        }
+        if far > t {
+            keep[at] = true;
+            mark(p, a, at, t, keep);
+            mark(p, at, b, t, keep);
+        }
+    }
+    if points.len() < 3 {
+        return points.to_vec();
+    }
+    let mut keep = vec![false; points.len()];
+    (keep[0], keep[points.len() - 1]) = (true, true);
+    mark(points, 0, points.len() - 1, tolerance, &mut keep);
+    points.iter().zip(&keep).filter(|(_, k)| **k).map(|(p, _)| *p).collect()
+}
+
+fn tempfile_dir() -> Result<std::path::PathBuf> {
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!("dzwe_route_{}_{stamp}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// Walls and fences along a line, one model after another.
+pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[f32; 2]], g: &crate::library::FenceGen) -> Vec<Obj> {
+    let info = db.get(&crate::objects::ObjectStore::normalize_path(&g.model));
+    let (lx, lz) = if info.known { (info.max[0] - info.min[0], info.max[2] - info.min[2]) } else { (0.0, 4.0) };
+    // Yaw points a model's Z axis along the line, so one that is long in X turns by 90 degrees.
+    let (length, turn) = if lx > lz { (lx, 90.0) } else { (lz, 0.0) };
+    let spacing = if g.spacing > 0.0 { g.spacing } else { length.max(0.5) };
+    along_line(w, points, &LineRule { model: g.model.clone(), spacing, offset: 0.0, jitter: 0.0, yaw_offset: turn + g.yaw_offset, follow_slope: g.follow_slope }, 1)
+}
+
+/// Towers along a line, and the wires between them.
+pub fn power_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[f32; 2]], g: &crate::library::PowerGen) -> Vec<Obj> {
+    let wire_info = (!g.wire.is_empty()).then(|| db.get(&crate::objects::ObjectStore::normalize_path(&g.wire)));
+    let wire_length = wire_info.filter(|i| i.known).map(|i| (i.max[0] - i.min[0]).max(i.max[2] - i.min[2]));
+    let spacing = if g.spacing > 0.0 { g.spacing } else { wire_length.unwrap_or(60.0) }.max(5.0);
+    let tower = w.objects.intern(&g.tower);
+    let corner = if g.corner.is_empty() { tower } else { w.objects.intern(&g.corner) };
+    let wire = (!g.wire.is_empty()).then(|| w.objects.intern(&g.wire));
+    let mut out = Vec::new();
+    // Tower positions: each straight stretch is divided into whole spans.
+    let mut stations: Vec<([f32; 2], bool)> = vec![(points[0], false)];
+    for (k, seg) in points.windows(2).enumerate() {
+        let (dx, dz) = (seg[1][0] - seg[0][0], seg[1][1] - seg[0][1]);
+        let n = ((dx * dx + dz * dz).sqrt() / spacing).round().max(1.0) as usize;
+        for i in 1..=n {
+            let t = i as f32 / n as f32;
+            stations.push(([seg[0][0] + dx * t, seg[0][1] + dz * t], i == n && k + 2 < points.len()));
+        }
+    }
+    let heading = |a: [f32; 2], b: [f32; 2]| (b[0] - a[0]).atan2(b[1] - a[1]).to_degrees();
+    for (i, (p, bend)) in stations.iter().enumerate() {
+        let before = i.checked_sub(1).map(|k| stations[k].0);
+        let after = stations.get(i + 1).map(|s| s.0);
+        // At a bend the arms split the angle between the two spans.
+        let yaw = match (before, after) {
+            (Some(a), Some(b)) => { let (h0, h1) = (heading(a, *p), heading(*p, b)); h0 + ((h1 - h0 + 540.0).rem_euclid(360.0) - 180.0) * 0.5 }
+            (None, Some(b)) => heading(*p, b),
+            (Some(a), None) => heading(a, *p),
+            _ => 0.0,
+        };
+        out.push(Obj { x: p[0], z: p[1], elevation: 0.0, yaw: yaw + g.yaw_offset, pitch: 0.0, roll: 0.0, scale: 1.0, model: if *bend { corner } else { tower }, flags: 0 });
+    }
+    if let (Some(model), Some(info)) = (wire, wire_info) {
+        let along_x = info.known && info.max[0] - info.min[0] > info.max[2] - info.min[2];
+        for s in stations.windows(2) {
+            let (a, b) = (s[0].0, s[1].0);
+            let span = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt().max(0.1);
+            let (ga, gb) = (w.height.sample(a[0], a[1]), w.height.sample(b[0], b[1]));
+            let mid = [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5];
+            let elevation = (ga + gb) * 0.5 - w.height.sample(mid[0], mid[1]);
+            let tilt = ((gb - ga) / span).atan().to_degrees();
+            let (yaw, pitch, roll) = if along_x { (heading(a, b) + 90.0, 0.0, -tilt) } else { (heading(a, b), -tilt, 0.0) };
+            let scale = wire_length.map(|l| span / l.max(1.0)).unwrap_or(1.0);
+            out.push(Obj { x: mid[0], z: mid[1], elevation, yaw, pitch, roll, scale, model, flags: 0 });
+        }
+    }
+    out
+}
+
+/// Applies the user's changes to a road catalog read from a project.
+pub fn apply_catalog_edits(catalog: &mut Vec<dayz_road_tool::roads::CatalogPart>, removed: &std::collections::BTreeSet<String>, added: &[crate::world::RoadPart], folder: &Path) {
+    let file = |p: &str| p.rsplit(['\\', '/']).next().unwrap_or(p).to_ascii_lowercase();
+    catalog.retain(|c| !removed.contains(&file(&c.path)));
+    let mut lib = dayz_road_tool::geometry::Library::new(folder.to_path_buf());
+    for a in added {
+        if catalog.iter().any(|c| file(&c.path) == file(&a.path)) {
+            continue;
+        }
+        let Ok(model) = lib.model(&a.path) else { continue };
+        let road_type_index = catalog.iter().find(|c| c.family == a.family).map(|c| c.road_type_index).unwrap_or(0);
+        catalog.push(dayz_road_tool::roads::CatalogPart { path: a.path.clone(), family: a.family.clone(), category: a.category, index: catalog.len() as u32, road_type_index, model });
+    }
+}
+
+/// A modifier that levels a strip along a road to a smooth profile of the sculpted terrain.
+pub fn road_modifier(base: &Heightmap, id: u64, name: &str, center: &[[f32; 2]], width: f32, falloff: f32) -> Option<TerrainModifier> {
+    if center.len() < 2 {
+        return None;
+    }
+    // Long straight parts give few points, which would bridge over the terrain between them.
+    let mut points: Vec<[f32; 2]> = Vec::with_capacity(center.len() * 2);
+    for w in center.windows(2) {
+        let (dx, dz) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
+        let steps = ((dx * dx + dz * dz).sqrt() / 8.0).ceil().max(1.0) as usize;
+        for k in 0..steps {
+            let t = k as f32 / steps as f32;
+            points.push([w[0][0] + dx * t, w[0][1] + dz * t]);
+        }
+    }
+    points.push(*center.last().unwrap());
+    let mut heights: Vec<f32> = points.iter().map(|p| base.sample(p[0], p[1])).collect();
+    for _ in 0..24 {
+        let prev = heights.clone();
+        for k in 1..prev.len() - 1 {
+            heights[k] = (prev[k - 1] + 2.0 * prev[k] + prev[k + 1]) / 4.0;
+        }
+    }
+    let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for p in &points {
+        (x0, z0, x1, z1) = (x0.min(p[0]), z0.min(p[1]), x1.max(p[0]), z1.max(p[1]));
+    }
+    Some(TerrainModifier { id, name: name.to_string(), enabled: true, x: (x0 + x1) * 0.5, z: (z0 + z1) * 0.5, yaw: 0.0, shape: ModShape::Line { points, heights, half_width: width * 0.5 }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff, attached: None })
 }
 
 /// Smooths heights along a line so a road sits on an even bed.
@@ -839,6 +1052,62 @@ pub fn grade_along(base: &mut Heightmap, line: &[[f32; 2]], width: f32, blend: f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn simplified_lines_keep_ends_and_corners() {
+        let line = [[0.0, 0.0], [10.0, 0.05], [20.0, 0.0], [20.0, 10.0], [20.05, 20.0]];
+        assert_eq!(simplify_line(&line, 1.0), vec![[0.0, 0.0], [20.0, 0.0], [20.05, 20.0]]);
+    }
+
+    /// Road types are written back to a copy of a real project.
+    #[test]
+    fn real_road_types_are_written_to_a_project() {
+        use dayz_road_tool::{geometry::Library, tv4p};
+        let base = Path::new("P:/BalticrusSource/TerrainBuilder/balticrus.tv4p");
+        if !base.exists() || std::env::var("DZ_SLOW_TESTS").is_err() { return; }
+        let d = tempfile::tempdir().unwrap();
+        let out = d.path().join("edited.tv4p");
+        let parts = Path::new("P:/dz/structures/roads/parts");
+        let (catalog, _) = tv4p::catalog(base, &mut Library::new(parts.to_path_buf())).unwrap();
+        let first = catalog.iter().find(|c| c.family == "asf2" && c.category == 3).unwrap();
+        let mut paths: Vec<String> = catalog.iter().filter(|c| c.road_type_index == first.road_type_index && c.category == 3).map(|c| c.path.clone()).collect();
+        let dropped = paths.remove(0);
+        tv4p::write_definitions(base, &out, &[tv4p::DefinitionEdit { road_type_index: first.road_type_index, category: 3, paths: paths.clone() }]).unwrap();
+        let (edited, _) = tv4p::catalog(&out, &mut Library::new(parts.to_path_buf())).unwrap();
+        assert_eq!(edited.len(), catalog.len() - 1);
+        assert!(!edited.iter().any(|c| c.path == dropped));
+        // Road records stay readable.
+        let project = tv4p::load(&out, &mut Library::new(parts.to_path_buf())).unwrap();
+        assert!(!project.roads.is_empty());
+    }
+
+    /// A road searched across a real terrain, when P: is mounted.
+    #[test]
+    fn real_road_is_routed_on_terrain() {
+        let parts = Path::new("P:/dz/structures/roads/parts");
+        let asc = Path::new("P:/BalticrusSource/heightmaps/mapa_wysokosci_mahauu.asc");
+        if !parts.exists() || !asc.exists() || std::env::var("DZ_SLOW_TESTS").is_err() { return; }
+        let catalog = road_catalog_from_project(Path::new("P:/BalticrusSource/TerrainBuilder/balticrus.tv4p"), parts).unwrap();
+        let g = crate::import::read_asc(asc).unwrap();
+        let meta = crate::world::WorldMeta::new("R", g.map.cols as u32, g.map.cell);
+        let mut w = World::new(meta, 0.0);
+        w.base = g.map;
+        w.recompose(None);
+        let t0 = std::time::Instant::now();
+        let mut req = RouteRequest { family: "asf2".into(), points: vec![[2200.0, 6500.0], [2500.0, 6300.0]], terrain_route: true, settings: Default::default(), forbidden: vec![], roads: vec![] };
+        let r = build_route(&mut w, &req, &catalog, &Job::default()).unwrap();
+        println!("catalog {} parts {} in {:?}, line {}", catalog.len(), r.objects.len(), t0.elapsed(), r.centerline.len());
+        assert!(!r.objects.is_empty());
+        // A track over the same ground is laid on it piece by piece.
+        let rails = rail_catalog();
+        assert!(!rails.is_empty());
+        req.family = "Rail_TrackE".into();
+        req.settings = dayz_road_tool::document::RoutingSettings::rail();
+        let t = build_route(&mut w, &req, &rails, &Job::default()).unwrap();
+        println!("track pieces {} max elevation {:?}", t.objects.len(), t.objects.iter().map(|o| o.elevation.abs()).fold(0.0f32, f32::max));
+        assert!(!t.objects.is_empty());
+        assert!(t.objects.iter().any(|o| w.objects.models[o.model as usize].path.contains("\\rail\\tracks\\")), "{:?}", w.objects.models[t.objects[0].model as usize].path);
+    }
     use crate::world::WorldMeta;
 
     fn world(h: f32) -> World {
@@ -891,27 +1160,10 @@ mod tests {
             PaintRule { layer: 1, min_height: -100.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 },
             PaintRule { layer: 6, min_height: -100.0, max_height: 9000.0, min_slope: 30.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 },
         ];
-        let out = auto_paint(&w, &rules, 1, &Job::default());
+        let out = auto_paint(&w, &rules, 1, None, &Job::default());
         let px = w.mask.width;
         assert_eq!(out[px * px / 2 + px / 4], 1);
         assert_eq!(out[px * px / 2 + px * 3 / 4], 6);
-    }
-    #[test]
-    fn scatter_respects_distance_area_and_mask() {
-        let mut w = world(100.0);
-        let size = w.meta.size_m();
-        let layer_px = w.mask.width;
-        for y in 0..layer_px { for x in 0..layer_px / 2 { w.mask.data[y * layer_px + x] = 2; } }
-        let rule = ScatterRule { models: vec!["dz\\a.p3d".into()], density: 50.0, min_distance: 4.0, layers: vec![2], ..Default::default() };
-        let area = Area::whole(&w);
-        let out = scatter(&mut w, &rule, area, &Job::default()).unwrap();
-        assert!(out.len() > 100);
-        assert!(out.iter().all(|o| o.x < size / 2.0 + 2.0));
-        for (i, a) in out.iter().enumerate().take(400) {
-            for b in out.iter().skip(i + 1).take(400) {
-                assert!((a.x - b.x).powi(2) + (a.z - b.z).powi(2) >= 15.9);
-            }
-        }
     }
     #[test]
     fn line_objects_are_spaced_and_follow_heading() {

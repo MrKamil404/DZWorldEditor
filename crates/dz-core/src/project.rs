@@ -23,6 +23,20 @@ struct ProjectFile {
     object_layers: Vec<ObjectLayer>,
     #[serde(default)]
     active_layer: u16,
+    #[serde(default)]
+    shape_layers: Vec<crate::shapes::ShapeLayer>,
+    #[serde(default)]
+    active_shape_layer: usize,
+    #[serde(default)]
+    generators: Vec<crate::library::GeneratorInstance>,
+    #[serde(default)]
+    road_removed: std::collections::BTreeSet<String>,
+    #[serde(default)]
+    road_added: Vec<crate::world::RoadPart>,
+    #[serde(default)]
+    road_project: Option<PathBuf>,
+    #[serde(default)]
+    routes: Vec<crate::world::RoadRoute>,
 }
 
 /// Which parts need rewriting; rasters are large, so unchanged ones are skipped.
@@ -55,16 +69,41 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
     if parts.objects {
         atomic_write(&dir.join("objects.dzob"), &w.objects.to_bytes())?;
     }
+    // Loading numbers objects in file order, so references are written in that numbering.
+    let ordinal: std::collections::HashMap<u32, u32> = if w.routes.is_empty() && w.generators.is_empty() && w.modifiers.iter().all(|m| m.attached.is_none()) {
+        Default::default()
+    } else {
+        w.objects.iter().enumerate().map(|(n, (id, _))| (id, n as u32)).collect()
+    };
+    let mut modifiers = w.modifiers.clone();
+    for m in &mut modifiers {
+        m.attached = m.attached.and_then(|id| ordinal.get(&id).copied());
+    }
+    let mut generators = w.generators.clone();
+    for g in &mut generators {
+        g.objects = g.objects.iter().filter_map(|id| ordinal.get(id).copied()).collect();
+    }
+    let mut routes = w.routes.clone();
+    for r in &mut routes {
+        r.objects = r.objects.iter().filter_map(|id| ordinal.get(id).copied()).collect();
+    }
     let file = ProjectFile {
         version: VERSION,
         meta: w.meta.clone(),
         layers: w.layers.clone(),
-        modifiers: w.modifiers.clone(),
+        modifiers,
         lines: w.lines.clone(),
         mask_size: [w.mask.width, w.mask.height],
         satellite_size: w.satellite.as_ref().map(|s| [s.width, s.height]),
         object_layers: w.object_layers.clone(),
         active_layer: w.active_layer,
+        shape_layers: w.shape_layers.clone(),
+        active_shape_layer: w.active_shape_layer,
+        generators,
+        road_removed: w.road_removed.clone(),
+        road_added: w.road_added.clone(),
+        road_project: w.road_project.clone(),
+        routes,
     };
     atomic_write(&dir.join(PROJECT_FILE), &serde_json::to_vec_pretty(&file)?)
 }
@@ -95,6 +134,13 @@ pub fn load(dir: &Path) -> Result<World> {
         w.object_layers = file.object_layers;
         w.active_layer = file.active_layer.min(w.object_layers.len() as u16 - 1);
     }
+    w.shape_layers = file.shape_layers;
+    w.active_shape_layer = file.active_shape_layer;
+    w.generators = file.generators;
+    w.road_removed = file.road_removed;
+    w.road_added = file.road_added;
+    w.road_project = file.road_project;
+    w.routes = file.routes;
     Ok(w)
 }
 
@@ -137,6 +183,20 @@ mod tests {
         assert_eq!(r.height.at(50, 50), 53.0);
         assert_eq!(r.new_modifier_id(), 10);
         assert_eq!(r.object_layers.len(), 1);
+    }
+    #[test]
+    fn routes_keep_their_objects_when_saving_compacts_ids() {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("L", 64, 8.0), 1.0);
+        let m = w.objects.intern("dz\\x.p3d");
+        let o = Obj { x: 1.0, z: 2.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 };
+        let gone = w.objects.insert(o);
+        let kept = w.objects.insert(Obj { x: 9.0, ..o });
+        w.objects.remove(gone);
+        w.routes.push(crate::world::RoadRoute { name: "r".into(), family: "asf2".into(), points: vec![], centerline: vec![], objects: vec![kept], terrain_route: true, settings: Default::default(), grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None });
+        save(&w, d.path(), SaveParts::ALL).unwrap();
+        let r = load(d.path()).unwrap();
+        assert_eq!(r.objects.get(r.routes[0].objects[0]).unwrap().x, 9.0);
     }
     #[test]
     fn object_layers_survive_saving() {

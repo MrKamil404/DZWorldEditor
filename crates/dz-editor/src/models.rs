@@ -110,7 +110,7 @@ fn from_model3d(mesh: &model3d::ModelMesh, center: [f32; 3], key: (u32, u8), wit
         impostor_fit = [fit.world_size, fit.center[0] + center[0], fit.center[1] + center[1]];
         impostor_mips(rgba, IMPOSTOR_SIZE as usize)
     });
-    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, shadings: mesh.shadings.clone(), impostor, impostor_fit, conform: false, water: false }
+    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, shadings: mesh.shadings.clone(), impostor, impostor_fit, conform: false, water: false, decal: false }
 }
 
 /// MLOD models and everything `model3d` refuses go through the road tool's reader.
@@ -136,7 +136,7 @@ fn from_mesh3d(file: &Path, cache: &dayz_road_tool::mesh3d::Cache, key: (u32, u8
         });
         batches.push((first, indices.len() as u32 - first, tex, None));
     }
-    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false })
+    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false, decal: false })
 }
 
 impl ModelLoader {
@@ -190,6 +190,10 @@ impl ModelLoader {
 }
 
 /// Rivers, ponds and streams; not the beds under them or buildings named after water.
+pub fn is_decal_model(path: &str) -> bool {
+    path.contains("\\decals\\") || path.rsplit('\\').next().is_some_and(|f| f.starts_with("decal_"))
+}
+
 pub fn is_water_model(path: &str) -> bool {
     (path.contains("\\water\\") || path.contains("\\water_")) && !path.contains("streambed")
 }
@@ -217,6 +221,13 @@ fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d
     if path.contains("\\roads\\parts\\") {
         tessellate(&mut mesh, 2.0);
         mesh.conform = true;
+    }
+    // Decals are drawn flat on what is under them, with their edges faded out.
+    if is_decal_model(path) {
+        tessellate(&mut mesh, 2.0);
+        mesh.conform = true;
+        mesh.decal = true;
+        mesh.impostor = None;
     }
     Some(mesh)
 }
@@ -283,7 +294,7 @@ mod tests {
             vertices: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0].to_vec(),
             indices: vec![0, 1, 2],
             batches: vec![(0, 3, Some(0), None)],
-            textures: Vec::new(), shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false,
+            textures: Vec::new(), shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false, decal: false,
         };
         tessellate(&mut m, 2.0);
         assert!(m.indices.len() > 30);
@@ -381,7 +392,7 @@ pub fn load_layer_textures(root: PathBuf, layers: Vec<(usize, String, [u8; 3])>,
                     for y in 0..512 {
                         for x in 0..512 {
                             let p = (y * h / 512 * w + x * w / 512) * 4;
-                            rgba.extend_from_slice(&[t.rgba[p], t.rgba[p + 1], t.rgba[p + 2], 255]);
+                            rgba.extend_from_slice(&[t.rgba[p], t.rgba[p + 1], t.rgba[p + 2], t.rgba[p + 3]]);
                             for c in 0..3 {
                                 sum[c] += t.rgba[p + c] as u64;
                             }
