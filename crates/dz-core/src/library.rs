@@ -337,11 +337,19 @@ pub struct PondGen {
     pub level: f32,
     /// Added to the height of the water, in metres.
     pub offset: f32,
+    /// Dig the basin and hold the water in with a terrain modifier.
+    pub modify_terrain: bool,
+    /// Depth of the floor under the water, in metres.
+    pub depth: f32,
+    /// Width of the slopes at the shore, in metres.
+    pub blend: f32,
+    /// Width of the strip raised around the shape where the ground is too low, in metres.
+    pub bank: f32,
 }
 
 impl Default for PondGen {
     fn default() -> Self {
-        Self { model: r"dz\water\ponds\pond_50x50.p3d".into(), fixed: false, level: 0.0, offset: 0.0 }
+        Self { model: r"dz\water\ponds\pond_50x50.p3d".into(), fixed: false, level: 0.0, offset: 0.0, modify_terrain: true, depth: 2.5, blend: 8.0, bank: 50.0 }
     }
 }
 
@@ -410,6 +418,8 @@ pub struct RiverGen {
     pub water_offset: f32,
     /// Lays the models the other way round, for a current running against the line.
     pub reverse_flow: bool,
+    /// Cut the bed with a terrain modifier.
+    pub modify_terrain: bool,
     pub line: LineOptions,
 }
 
@@ -418,7 +428,7 @@ const JOIN: f32 = 0.5;
 
 impl Default for RiverGen {
     fn default() -> Self {
-        Self { width: 24.0, depth: 3.0, falloff: 8.0, model: r"dz\water\streams\river_24_24.p3d".into(), join_offset: JOIN, water_offset: 0.0, reverse_flow: false, line: LineOptions { mode: LineMode::Bezier, offset: 0.0 } }
+        Self { width: 24.0, depth: 3.0, falloff: 8.0, model: r"dz\water\streams\river_24_24.p3d".into(), join_offset: JOIN, water_offset: 0.0, reverse_flow: false, modify_terrain: true, line: LineOptions { mode: LineMode::Bezier, offset: 0.0 } }
     }
 }
 

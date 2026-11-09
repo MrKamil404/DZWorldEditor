@@ -34,6 +34,7 @@ pub enum Mode {
     Lines,
     Generate,
     Shapes,
+    KeyPoints,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -42,7 +43,6 @@ pub enum ShapeTool {
     Polygon,
     Polyline,
     Point,
-    KeyPoint,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -69,11 +69,13 @@ pub struct ShapePanel {
     pub keypoints_before: Option<Vec<dz_core::keypoints::KeyPoint>>,
     pub keypoint_filter: String,
     pub keypoint_moving: bool,
+    /// Clicks on the map add key points.
+    pub keypoint_adding: bool,
 }
 
 impl Default for ShapePanel {
     fn default() -> Self {
-        Self { keypoint: None, keypoints_before: None, keypoint_filter: String::new(), keypoint_moving: false, tool: ShapeTool::Edit, points: Vec::new(), selection: BTreeSet::new(), vertex: None, boxing: None, move_from: None, drag_before: None }
+        Self { keypoint: None, keypoints_before: None, keypoint_filter: String::new(), keypoint_moving: false, keypoint_adding: false, tool: ShapeTool::Edit, points: Vec::new(), selection: BTreeSet::new(), vertex: None, boxing: None, move_from: None, drag_before: None }
     }
 }
 
@@ -357,6 +359,7 @@ pub struct App {
     pub pick_meshes: HashMap<u32, Arc<crate::viewport::PickMesh>>,
     pub shape: ShapePanel,
     pub show_shapes: bool,
+    pub show_keypoints: bool,
     pub grass_under_objects: bool,
     pub library: dz_core::library::Library,
     pub built_in: Vec<dz_core::library::GeneratorPreset>,
@@ -426,7 +429,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
+            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
@@ -1269,7 +1272,7 @@ impl App {
             ShapeTool::Polygon => ShapeKind::Polygon,
             ShapeTool::Polyline => ShapeKind::Polyline,
             ShapeTool::Point => ShapeKind::Point,
-            ShapeTool::Edit | ShapeTool::KeyPoint => return,
+            ShapeTool::Edit => return,
         };
         if self.shape.points.len() < kind.min_points() {
             return;

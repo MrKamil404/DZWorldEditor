@@ -1182,6 +1182,15 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
             }
         }
         Mode::Shapes => shapes_input(app, ctx, resp, v, hit, mouse),
+        Mode::KeyPoints => {
+            if app.shape.keypoint_adding {
+                if resp.clicked() {
+                    if let Some(h) = hit { app.add_keypoint(h[0], h[2]); }
+                }
+            } else {
+                keypoint_input(app, ctx, resp, v, hit, mouse);
+            }
+        }
         Mode::Generate => {}
         Mode::Select => {
             let pivot = selection_pivot(app);
@@ -1625,15 +1634,6 @@ fn keypoint_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: 
 }
 
 fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View, hit: Option<V3>, mouse: Pos2) {
-    if app.shape.tool == ShapeTool::KeyPoint {
-        if resp.clicked() {
-            if let Some(h) = hit { app.add_keypoint(h[0], h[2]); }
-        }
-        return;
-    }
-    if keypoint_input(app, ctx, resp, v, hit, mouse) {
-        return;
-    }
     let typing = ctx.wants_keyboard_input();
     let (enter, esc, back, del, modifiers) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Backspace), i.key_pressed(Key::Delete), i.modifiers));
     if app.shape.tool != ShapeTool::Edit {
@@ -1950,9 +1950,9 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
             }
         }
     }
-    for (i, k) in world.keypoints.iter().enumerate() {
+    for (i, k) in world.keypoints.iter().enumerate().filter(|_| app.show_keypoints) {
         let selected = app.shape.keypoint == Some(i);
-        if app.mode == Mode::Shapes {
+        if app.mode == Mode::KeyPoints {
             let (sin, cos) = k.angle.to_radians().sin_cos();
             let ring: Vec<Option<Pos2>> = (0..=48).map(|n| {
                 let a = n as f32 / 48.0 * std::f32::consts::TAU;
@@ -1965,7 +1965,7 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
                 if let (Some(p), Some(q)) = (w[0], w[1]) { painter.line_segment([p, q], Stroke::new(1.0_f32, color)); }
             }
         }
-        if !(k.show || app.mode == Mode::Shapes) { continue; }
+        if !(k.show || app.mode == Mode::KeyPoints) { continue; }
         if let Some(s) = v.project([k.x, world.height.sample(k.x, k.z) + 1.0, k.z]) {
             painter.circle_filled(s, if selected { 5.0 } else { 3.5 }, if selected { Color32::from_rgb(255, 210, 90) } else { Color32::from_rgb(120, 190, 255) });
             painter.text(s + vec2(7.0, -2.0), egui::Align2::LEFT_CENTER, if k.text.is_empty() { &k.name } else { &k.text }, egui::FontId::proportional(11.0), Color32::WHITE);
@@ -2268,7 +2268,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     if undo { app.undo(); }
     if redo { app.redo(); }
     if save { app.save(None); }
-    if del && app.mode != Mode::Shapes { app.delete_selection(); }
+    if del && !matches!(app.mode, Mode::Shapes | Mode::KeyPoints) { app.delete_selection(); }
     if dup { app.duplicate_selection(); }
     if focus { focus_selection(app); }
     if esc && app.mode == Mode::Select {
@@ -2298,6 +2298,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                 if i.key_pressed(Key::Num5) { app.mode = Mode::Lines; }
                 if i.key_pressed(Key::Num6) { app.bottom = crate::app::BottomTab::Generators; }
                 if i.key_pressed(Key::Num7) { app.mode = Mode::Shapes; }
+                if i.key_pressed(Key::Num8) { app.mode = Mode::KeyPoints; }
                 let f = if i.key_pressed(Key::CloseBracket) { 1.25 } else if i.key_pressed(Key::OpenBracket) { 0.8 } else { 1.0 };
                 if f != 1.0 {
                     app.sculpt.radius = (app.sculpt.radius * f).clamp(2.0, 3000.0);
@@ -2483,6 +2484,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 "place" => Mode::Place,
                 "lines" => Mode::Lines,
                 "shapes" => Mode::Shapes,
+                "keypoints" => Mode::KeyPoints,
                 "gen" => Mode::Generate,
                 _ => Mode::Select,
             }

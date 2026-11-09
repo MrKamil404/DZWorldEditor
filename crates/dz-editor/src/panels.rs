@@ -42,6 +42,7 @@ pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
     ui.checkbox(&mut app.show_water, t("Water"));
     ui.checkbox(&mut app.show_lines, t("Roads and lines"));
     ui.checkbox(&mut app.show_shapes, t("Shapes"));
+    ui.checkbox(&mut app.show_keypoints, t("Key points"));
     ui.checkbox(&mut app.show_contours, t("Contour lines"));
     if app.show_contours {
         row(ui, &t("Interval"), |ui| { ui.add(egui::DragValue::new(&mut app.contour_interval).speed(0.5).range(1.0..=200.0).suffix(" m")); });
@@ -151,11 +152,8 @@ fn toolbar(app: &mut App, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             if ui.button(t("Save")).on_hover_text("Ctrl+S").clicked() { app.save(None); }
             ui.separator();
-            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Generate, "Generate", "6"), (Mode::Shapes, "Shapes", "7")] {
-                if tool_button(ui, app.mode == m, &t(name)).on_hover_text(key).clicked() {
-                    // Generators live in their library.
-                    if m == Mode::Generate { app.bottom = BottomTab::Generators; } else { app.mode = m; }
-                }
+            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Shapes, "Shapes", "7"), (Mode::KeyPoints, "Key points", "8")] {
+                if tool_button(ui, app.mode == m, &t(name)).on_hover_text(key).clicked() { app.mode = m; }
             }
             ui.separator();
             ui.add_enabled_ui(app.mode == Mode::Select, |ui| {
@@ -222,6 +220,7 @@ fn modes_panel(app: &mut App, ui: &mut egui::Ui) {
         Mode::Lines => lines_mode(app, ui),
         Mode::Generate => {}
         Mode::Shapes => shapes_mode(app, ui),
+        Mode::KeyPoints => keypoints_mode(app, ui),
     });
 }
 
@@ -414,16 +413,14 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
 fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &t("Draw"), true, |ui| {
         ui.horizontal(|ui| {
-            for (tool, name) in [(ShapeTool::Edit, "Edit"), (ShapeTool::Polygon, "Polygon"), (ShapeTool::Polyline, "Polyline"), (ShapeTool::Point, "Point"), (ShapeTool::KeyPoint, "Key point")] {
+            for (tool, name) in [(ShapeTool::Edit, "Edit"), (ShapeTool::Polygon, "Polygon"), (ShapeTool::Polyline, "Polyline"), (ShapeTool::Point, "Point")] {
                 if tool_button(ui, app.shape.tool == tool, &t(name)).clicked() {
                     app.shape.tool = tool;
                     app.shape.points.clear();
                 }
             }
         });
-        if app.shape.tool == ShapeTool::KeyPoint {
-            ui.weak(t("Click on the map adds a key point."));
-        } else if app.shape.tool == ShapeTool::Edit {
+        if app.shape.tool == ShapeTool::Edit {
             ui.weak(t("Click selects a shape. Drag a dot to move a point, a + to add one, the square to move the whole shape. Right click or Delete removes a point, Esc cancels a drag."));
         } else {
             ui.weak(t("Click to add points. Enter or a double click finishes, Backspace removes the last point, Esc cancels."));
@@ -437,6 +434,16 @@ fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
         });
     });
     section(ui, &t("Selected shape"), true, |ui| shape_details(app, ui));
+}
+
+fn keypoints_mode(app: &mut App, ui: &mut egui::Ui) {
+    section(ui, &t("Draw"), true, |ui| {
+        ui.horizontal(|ui| {
+            if tool_button(ui, !app.shape.keypoint_adding, &t("Edit")).clicked() { app.shape.keypoint_adding = false; }
+            if tool_button(ui, app.shape.keypoint_adding, &t("Add")).clicked() { app.shape.keypoint_adding = true; }
+        });
+        ui.weak(if app.shape.keypoint_adding { t("Click on the map adds a key point.") } else { t("Click selects a key point. Drag moves it, Delete removes it.") });
+    });
     section(ui, &t("Key points"), true, |ui| keypoints_ui(app, ui));
 }
 
@@ -1044,6 +1051,11 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
         });
         match &mut m.shape {
             ModShape::Circle { radius } => slider(ui, &t("Radius"), radius, 1.0..=500.0, true),
+            ModShape::Pond { depth, blend, bank, .. } => {
+                slider(ui, &t("Depth"), depth, 0.3..=30.0, false);
+                slider(ui, &t("Blend"), blend, 0.0..=80.0, false);
+                slider(ui, &t("Bank width m"), bank, 0.0..=100.0, false);
+            }
             ModShape::Line { half_width, .. } => {
                 let mut width = *half_width * 2.0;
                 slider(ui, &t("Width"), &mut width, 1.0..=80.0, false);

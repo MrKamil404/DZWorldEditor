@@ -483,8 +483,11 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
         }
         GeneratorKind::River(g) => {
             number(ui, t("Width"), &mut g.width, 2.0..=120.0);
-            number(ui, t("Depth"), &mut g.depth, 0.3..=20.0);
-            number(ui, t("Blend"), &mut g.falloff, 0.0..=80.0);
+            ui.checkbox(&mut g.modify_terrain, t("Modify the terrain"));
+            ui.add_enabled_ui(g.modify_terrain, |ui| {
+                number(ui, t("Depth"), &mut g.depth, 0.3..=20.0);
+                number(ui, t("Blend"), &mut g.falloff, 0.0..=80.0);
+            });
             model_field(ui, t("Water model"), &mut g.model, &cx.model);
             number(ui, t("Overlap of the water models m"), &mut g.join_offset, -6.0..=12.0);
             number(ui, t("Water height m"), &mut g.water_offset, -5.0..=5.0);
@@ -506,6 +509,12 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 ui.weak(t("The water stands at the lowest ground around the shape."));
             }
             number(ui, t("Water height m"), &mut g.offset, -20.0..=20.0);
+            ui.checkbox(&mut g.modify_terrain, t("Modify the terrain"));
+            ui.add_enabled_ui(g.modify_terrain, |ui| {
+                number(ui, t("Depth"), &mut g.depth, 0.3..=30.0);
+                number(ui, t("Blend"), &mut g.blend, 0.0..=80.0);
+                number(ui, t("Bank width m"), &mut g.bank, 0.0..=100.0);
+            });
             ui.weak(t("Models are laid side by side until they cover the whole shape."));
         }
         GeneratorKind::Remove(g) => {
@@ -1482,6 +1491,9 @@ pub fn run_generator(app: &mut App, id: u64) {
                 // The bed is cut along the models, wherever they ended up.
                 let chain = gen::fit_river(&line, &r);
                 let center = chain.as_ref().map_or(&line, |c| &c.center);
+                // Without a bed the water lies on the ground as it is.
+                let shaped = r.modify_terrain;
+                let r = if shaped { r } else { dz_core::library::RiverGen { depth: 0.0, ..r } };
                 let (modifier, surface) = gen::river_modifier(&lite.base, 0, &lite.meta.name.clone(), center, &r).ok_or_else(|| anyhow::anyhow!("The line is too short"))?;
                 let objects = match &chain {
                     Some(c) => gen::river_chain_objects(&mut lite, &modifier, &surface, &r, c),
@@ -1490,7 +1502,7 @@ pub fn run_generator(app: &mut App, id: u64) {
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| {
                     store_generated(a, id, models, objects);
-                    store_modifier(a, id, modifier);
+                    if shaped { store_modifier(a, id, modifier); } else { clear_modifier(a, id); }
                 }) as Finish)
             });
         }
@@ -1512,8 +1524,15 @@ pub fn run_generator(app: &mut App, id: u64) {
             }
             app.spawn(label, move |_| {
                 let objects = gen::pond_objects(&mut lite, &db, &polygons, &p);
+                let modifier = p.modify_terrain.then(|| gen::pond_modifier(&lite.base, 0, "", &polygons, &p)).flatten();
                 let models = model_list(&lite);
-                Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    match modifier {
+                        Some(m) => store_modifier(a, id, m),
+                        None => clear_modifier(a, id),
+                    }
+                }) as Finish)
             });
         }
         GeneratorKind::Terrain(p) => height_job(app, label, move |h, job| gen::generate_terrain(h, &p, job)),
@@ -1611,6 +1630,15 @@ fn store_modifier(app: &mut App, id: u64, mut modifier: dz_core::world::TerrainM
         doc.world.recompose(Some(r));
         app.height_changed(r);
     }
+}
+
+/// Takes away the terrain modifier a generator made earlier.
+fn clear_modifier(app: &mut App, id: u64) {
+    let Some(doc) = &mut app.doc else { return };
+    let Some(g) = doc.world.generators.iter_mut().find(|g| g.id == id) else { return };
+    let Some(m) = g.modifier.take() else { return };
+    let name = g.name.clone();
+    app.set_modifiers(&name, |list| list.retain(|x| x.id != m));
 }
 
 fn model_list(w: &World) -> Vec<String> {

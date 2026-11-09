@@ -35,6 +35,10 @@
   "de": "Über",
   "pl": "O programie"
  },
+ "Add": {
+  "de": "Hinzufügen",
+  "pl": "Dodaj"
+ },
  "Add area": {
   "de": "Gebiet hinzufügen",
   "pl": "Dodaj obszar"
@@ -182,6 +186,10 @@
  "Bank reach": {
   "de": "Böschungsreichweite",
   "pl": "Zasięg skarp"
+ },
+ "Bank width m": {
+  "de": "Breite des Uferwalls m",
+  "pl": "Szerokość obwałowania m"
  },
  "Base height": {
   "de": "Grundhöhe",
@@ -382,6 +390,10 @@
  "Click removes this sample": {
   "de": "Klick entfernt die Probe",
   "pl": "Kliknięcie usuwa próbkę"
+ },
+ "Click selects a key point. Drag moves it, Delete removes it.": {
+  "de": "Ein Klick wählt einen Keypoint aus. Ziehen verschiebt ihn, Entf löscht ihn.",
+  "pl": "Kliknięcie zaznacza keypoint. Przeciąganie go przesuwa, a Delete usuwa."
  },
  "Click selects a shape. Drag a dot to move a point, a + to add one, the square to move the whole shape. Right click or Delete removes a point, Esc cancels a drag.": {
   "de": "Klick wählt eine Form aus. Ziehe einen Punkt zum Verschieben, ein + zum Hinzufügen und das Quadrat, um die ganze Form zu bewegen. Rechtsklick oder Entf löscht einen Punkt, Esc bricht das Ziehen ab.",
@@ -1330,6 +1342,10 @@
  "Models: pick in the Content Browser and press Add.": {
   "de": "Modelle: im Inhaltsbrowser wählen und Hinzufügen drücken.",
   "pl": "Modele: wybierz w bibliotece i naciśnij Dodaj."
+ },
+ "Modify the terrain": {
+  "de": "Gelände verändern",
+  "pl": "Modyfikuj teren"
  },
  "More presets in shapes": {
   "de": "Weitere Presets in Formen",

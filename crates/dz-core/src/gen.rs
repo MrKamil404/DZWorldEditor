@@ -1910,6 +1910,23 @@ pub fn apply_catalog_edits(catalog: &mut Vec<dayz_road_tool::roads::CatalogPart>
     }
 }
 
+/// Height of the water of a pond: it finds the level of the lowest place on its shore.
+fn pond_level(base: &Heightmap, shape: &crate::shapes::MapShape, g: &crate::library::PondGen) -> f32 {
+    let ring: Vec<[f32; 2]> = shape.points.iter().chain(shape.points.first()).copied().collect();
+    let shore = ring.windows(2).flat_map(|s| {
+        let steps = ((s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1]) / base.cell).ceil().max(1.0) as usize;
+        (0..steps).map(move |k| { let t = k as f32 / steps as f32; [s[0][0] + (s[1][0] - s[0][0]) * t, s[0][1] + (s[1][1] - s[0][1]) * t] })
+    }).map(|p| base.sample(p[0], p[1])).fold(f32::MAX, f32::min);
+    (if g.fixed { g.level } else { shore }) + g.offset
+}
+
+/// The basins of the polygons, for a generator that shapes the terrain under its ponds.
+pub fn pond_modifier(base: &Heightmap, id: u64, name: &str, polygons: &[crate::shapes::MapShape], g: &crate::library::PondGen) -> Option<TerrainModifier> {
+    let areas: Vec<crate::world::PondArea> = polygons.iter().filter(|s| s.points.len() >= 3).map(|s| crate::world::PondArea { points: s.points.clone(), level: pond_level(base, s, g) }).collect();
+    let b = areas.iter().flat_map(|a| &a.points).fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, p| [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])]);
+    (!areas.is_empty()).then(|| TerrainModifier { id, name: name.to_string(), enabled: true, x: (b[0] + b[2]) * 0.5, z: (b[1] + b[3]) * 0.5, yaw: 0.0, shape: ModShape::Pond { areas, depth: g.depth, blend: g.blend, bank: g.bank }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: g.blend, attached: None })
+}
+
 /// Water models side by side, level, over the whole of each polygon.
 pub fn pond_objects(w: &mut World, db: &crate::model_info::ModelDb, polygons: &[crate::shapes::MapShape], g: &crate::library::PondGen) -> Vec<Obj> {
     let path = crate::objects::ObjectStore::normalize_path(&g.model);
@@ -1919,13 +1936,7 @@ pub fn pond_objects(w: &mut World, db: &crate::model_info::ModelDb, polygons: &[
     let model = w.objects.intern(&path);
     let mut out = Vec::new();
     for shape in polygons.iter().filter(|s| s.points.len() >= 3) {
-        let ring: Vec<[f32; 2]> = shape.points.iter().chain(shape.points.first()).copied().collect();
-        // Water finds the level of the lowest place on its shore.
-        let shore = ring.windows(2).flat_map(|s| {
-            let steps = ((s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1]) / w.height.cell).ceil().max(1.0) as usize;
-            (0..steps).map(move |k| { let t = k as f32 / steps as f32; [s[0][0] + (s[1][0] - s[0][0]) * t, s[0][1] + (s[1][1] - s[0][1]) * t] })
-        }).map(|p| w.height.sample(p[0], p[1])).fold(f32::MAX, f32::min);
-        let level = if g.fixed { g.level } else { shore } + g.offset;
+        let level = pond_level(&w.base, shape, g);
         let index = crate::shapes::PolygonIndex::new(&crate::shapes::ShapeLayer { name: String::new(), visible: true, shapes: vec![shape.clone()] });
         let b = shape.points.iter().fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, p| [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])]);
         let (cols, rows) = (((b[2] - b[0]) / side).ceil().max(1.0) as usize, ((b[3] - b[1]) / side).ceil().max(1.0) as usize);
@@ -2321,7 +2332,7 @@ mod tests {
     fn ponds_cover_the_whole_shape_side_by_side_at_one_level() {
         use crate::shapes::{MapShape, ShapeKind};
         let mut w = World::new(crate::world::WorldMeta::new("t", 128, 8.0), 30.0);
-        for j in 0..128 { for i in 0..128 { w.height.set(i, j, 30.0 + i as f32 * 0.1); } }
+        for j in 0..128 { for i in 0..128 { w.base.set(i, j, 30.0 + i as f32 * 0.1); } }
         let db = crate::model_info::ModelDb::new("nowhere");
         let shape = MapShape { kind: ShapeKind::Polygon, points: vec![[100.0, 100.0], [220.0, 100.0], [220.0, 190.0], [100.0, 190.0]], attributes: Vec::new() };
         let g = crate::library::PondGen::default();
@@ -2330,7 +2341,7 @@ mod tests {
         // Tiles touch: 50 m apart, and the first is 25 m in from the corner of the shape.
         assert!(objects.iter().any(|o| (o.x - 125.0).abs() < 0.01 && (o.z - 125.0).abs() < 0.01));
         assert!(objects.iter().any(|o| (o.x - 175.0).abs() < 0.01 && (o.z - 125.0).abs() < 0.01));
-        let shore = w.height.sample(100.0, 100.0);
+        let shore = w.base.sample(100.0, 100.0);
         assert!(objects.iter().all(|o| (o.elevation - shore).abs() < 0.02 && o.flags == crate::objects::FLAG_ABSOLUTE), "{:?}", objects[0]);
         let fixed = pond_objects(&mut w, &db, &[shape], &crate::library::PondGen { fixed: true, level: 12.0, offset: 1.0, ..Default::default() });
         assert!(fixed.iter().all(|o| o.elevation == 13.0));

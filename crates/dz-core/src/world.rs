@@ -108,6 +108,47 @@ pub enum ModShape {
         #[serde(default)]
         bank: Option<LineBank>,
     },
+    /// Basins dug under water standing at their own level.
+    Pond {
+        areas: Vec<PondArea>,
+        /// Depth of the floor under the water, in metres.
+        depth: f32,
+        /// Width of the slope from the shore down to the floor, in metres.
+        blend: f32,
+        /// Width of the strip around a basin raised to hold the water, in metres.
+        bank: f32,
+    },
+}
+
+/// The outline of one pond and the level of its water.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PondArea {
+    pub points: Vec<[f32; 2]>,
+    pub level: f32,
+}
+
+impl PondArea {
+    fn contains(&self, x: f32, z: f32) -> bool {
+        let mut inside = false;
+        let mut b = *self.points.last().unwrap_or(&[0.0, 0.0]);
+        for a in &self.points {
+            if (a[1] > z) != (b[1] > z) && x < a[0] + (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]) {
+                inside = !inside;
+            }
+            b = *a;
+        }
+        inside
+    }
+    /// Distance to the outline: negative inside.
+    fn signed_distance(&self, x: f32, z: f32) -> f32 {
+        let mut d = f32::MAX;
+        let mut b = *self.points.last().unwrap_or(&[0.0, 0.0]);
+        for a in &self.points {
+            d = d.min(segment_distance(b, *a, x, z).0);
+            b = *a;
+        }
+        if self.contains(x, z) { -d } else { d }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -149,6 +190,7 @@ impl TerrainModifier {
         self.falloff + match &self.shape {
             ModShape::Circle { radius } => *radius,
             ModShape::Rect { half_x, half_z } => (half_x * half_x + half_z * half_z).sqrt(),
+            ModShape::Pond { areas, bank, .. } => bank + areas.iter().flat_map(|a| &a.points).map(|p| (p[0] - self.x).abs().max((p[1] - self.z).abs())).fold(0.0, f32::max) * std::f32::consts::SQRT_2,
             ModShape::Line { points, half_width, .. } => half_width + points.iter().map(|p| (p[0] - self.x).abs().max((p[1] - self.z).abs())).fold(0.0, f32::max),
         }
     }
@@ -158,6 +200,7 @@ impl TerrainModifier {
         let (dx, dz) = (x - self.x, z - self.z);
         let d = match &self.shape {
             ModShape::Circle { radius } => (dx * dx + dz * dz).sqrt() - radius,
+            ModShape::Pond { areas, .. } => areas.iter().map(|a| a.signed_distance(x, z)).fold(f32::MAX, f32::min),
             ModShape::Line { points, half_width, .. } => points.windows(2).map(|w| segment_distance(w[0], w[1], x, z).0).fold(f32::MAX, f32::min) - half_width,
             ModShape::Rect { half_x, half_z } => {
                 let u = dx * cos - dz * sin;
@@ -187,6 +230,39 @@ fn segment_distance(a: [f32; 2], b: [f32; 2], x: f32, z: f32) -> (f32, f32) {
     let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
     let t = (((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz).max(1e-4)).clamp(0.0, 1.0);
     (((a[0] + dx * t - x).powi(2) + (a[1] + dz * t - z).powi(2)).sqrt(), t)
+}
+
+/// Digs basins and raises low ground around them so the water stays in.
+fn apply_pond(height: &mut Heightmap, m: &TerrainModifier, area: Rect) {
+    let ModShape::Pond { areas, depth, blend, bank } = &m.shape else { return };
+    let cell = height.cell;
+    let smooth = |t: f32| { let t = t.clamp(0.0, 1.0); t * t * (3.0 - 2.0 * t) };
+    for a in areas.iter().filter(|a| a.points.len() >= 3) {
+        let reach = bank + m.falloff;
+        let b = a.points.iter().fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, p| [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])]);
+        let lo = |v: f32, min: usize| (((v - reach) / cell).floor().max(min as f32)) as usize;
+        let hi = |v: f32, max: usize| (((v + reach) / cell).ceil().max(0.0) as usize).min(max);
+        let shore = a.level + 0.25;
+        let floor = a.level - depth;
+        for j in lo(b[1], area.y0)..=hi(b[3], area.y1) {
+            for i in lo(b[0], area.x0)..=hi(b[2], area.x1) {
+                let d = a.signed_distance(i as f32 * cell, j as f32 * cell);
+                let v = height.at(i, j);
+                // The ground at the shore, raised where it would let the water out.
+                let rim = if *bank > 0.0 { v.max(shore) } else { v };
+                let new = if d <= 0.0 {
+                    let k = if *blend > 0.0 { smooth(-d / blend) } else { 1.0 };
+                    rim + (rim.min(floor) - rim) * k
+                } else if *bank > 0.0 && d < reach {
+                    let k = if d <= *bank || m.falloff <= 0.0 { 1.0 } else { smooth(1.0 - (d - bank) / m.falloff) };
+                    v + (rim - v) * k
+                } else {
+                    continue;
+                };
+                height.set(i, j, new);
+            }
+        }
+    }
 }
 
 /// Levels the terrain along a strip. Walks the segments, so a long road costs no more than
@@ -567,6 +643,10 @@ impl World {
                 apply_line(&mut self.height, m, Rect { x0, y0, x1, y1 }, false);
                 continue;
             }
+            if matches!(m.shape, ModShape::Pond { .. }) {
+                apply_pond(&mut self.height, m, Rect { x0, y0, x1, y1 });
+                continue;
+            }
             let (sin, cos) = m.yaw.to_radians().sin_cos();
             let target = m.target.unwrap_or_else(|| self.base.sample(m.x, m.z)) + m.amount;
             for j in y0..=y1 {
@@ -645,6 +725,21 @@ mod tests {
     fn modifier(mode: ModMode, target: Option<f32>, amount: f32) -> TerrainModifier {
         TerrainModifier { id: 1, name: "m".into(), enabled: true, x: 400.0, z: 400.0, yaw: 0.0, shape: ModShape::Circle { radius: 40.0 }, mode, target, amount, falloff: 40.0, attached: None }
     }
+    #[test]
+    fn a_pond_is_dug_within_its_shape_and_holds_its_water() {
+        let mut w = World::new(WorldMeta::new("t", 64, 8.0), 10.0);
+        // Ground falling away to the east, past the shore.
+        for j in 0..64 { for i in 0..64 { w.base.set(i, j, 20.0 - i as f32 * 0.2); } }
+        let area = PondArea { points: vec![[100.0, 100.0], [300.0, 100.0], [300.0, 300.0], [100.0, 300.0]], level: 10.0 };
+        w.modifiers.push(TerrainModifier { id: 1, name: "p".into(), enabled: true, x: 200.0, z: 200.0, yaw: 0.0, shape: ModShape::Pond { areas: vec![area], depth: 3.0, blend: 16.0, bank: 24.0 }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: 16.0, attached: None });
+        w.recompose(None);
+        // The middle is the floor; the low side just outside is raised over the water.
+        assert!((w.height.sample(200.0, 200.0) - 7.0).abs() < 0.01, "{}", w.height.sample(200.0, 200.0));
+        assert!(w.height.sample(320.0, 200.0) >= 10.2, "{}", w.height.sample(320.0, 200.0));
+        // Far from it nothing changed.
+        assert!((w.height.sample(440.0, 200.0) - (20.0 - 55.0 * 0.2)).abs() < 0.01);
+    }
+
     #[test]
     fn a_hole_covers_exactly_one_terrain_cell() {
         let mut w = world();
