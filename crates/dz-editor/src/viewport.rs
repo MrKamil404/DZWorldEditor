@@ -1578,7 +1578,62 @@ fn shape_handle(world: &dz_core::world::World, v: &View, selection: &std::collec
     edge_grips(world, v, s).into_iter().find(|g| (g.2 - m).length() < 9.0).map(|g| ShapeHandle::Edge(g.0))
 }
 
+/// Picks, drags and deletes key points. True when the input was theirs.
+fn keypoint_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View, hit: Option<V3>, mouse: Pos2) -> bool {
+    let Some(doc) = &mut app.doc else { return false };
+    let (pressed, down, del, esc) = ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.key_pressed(Key::Delete), i.key_pressed(Key::Escape)));
+    if app.shape.keypoint_moving {
+        let i = app.shape.keypoint.unwrap_or(usize::MAX);
+        if esc {
+            if let Some(before) = app.shape.keypoints_before.take() { doc.world.keypoints = before; }
+            app.shape.keypoint_moving = false;
+            return true;
+        }
+        if down {
+            if let (Some(h), Some(k)) = (hit, doc.world.keypoints.get_mut(i)) { (k.x, k.z) = (h[0], h[2]); }
+            return true;
+        }
+        if let Some(before) = app.shape.keypoints_before.take() {
+            if before != doc.world.keypoints { doc.history.push(t("Move key point"), Change::KeyPoints(before)); }
+        }
+        app.shape.keypoint_moving = false;
+        return true;
+    }
+    if del && !ctx.wants_keyboard_input() {
+        if let Some(i) = app.shape.keypoint {
+            app.delete_keypoint(i);
+            return true;
+        }
+    }
+    if pressed && resp.hovered() {
+        let world = &doc.world;
+        let near = world.keypoints.iter().enumerate().filter_map(|(i, k)| {
+            let s = v.project([k.x, world.height.sample(k.x, k.z) + 1.0, k.z])?;
+            let d = s.distance(mouse);
+            (d < 12.0).then_some((i, d))
+        }).min_by(|a, b| a.1.total_cmp(&b.1));
+        if let Some((i, _)) = near {
+            app.shape.keypoint = Some(i);
+            app.shape.selection.clear();
+            app.shape.keypoints_before = Some(world.keypoints.clone());
+            app.shape.keypoint_moving = true;
+            return true;
+        }
+        app.shape.keypoint = None;
+    }
+    false
+}
+
 fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View, hit: Option<V3>, mouse: Pos2) {
+    if app.shape.tool == ShapeTool::KeyPoint {
+        if resp.clicked() {
+            if let Some(h) = hit { app.add_keypoint(h[0], h[2]); }
+        }
+        return;
+    }
+    if keypoint_input(app, ctx, resp, v, hit, mouse) {
+        return;
+    }
     let typing = ctx.wants_keyboard_input();
     let (enter, esc, back, del, modifiers) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Backspace), i.key_pressed(Key::Delete), i.modifiers));
     if app.shape.tool != ShapeTool::Edit {
@@ -1893,6 +1948,27 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
             if let (Some(p), Some(q)) = (c[a], c[b]) {
                 painter.line_segment([p, q], Stroke::new(1.0_f32, Color32::from_rgb(255, 170, 40)));
             }
+        }
+    }
+    for (i, k) in world.keypoints.iter().enumerate() {
+        let selected = app.shape.keypoint == Some(i);
+        if app.mode == Mode::Shapes {
+            let (sin, cos) = k.angle.to_radians().sin_cos();
+            let ring: Vec<Option<Pos2>> = (0..=48).map(|n| {
+                let a = n as f32 / 48.0 * std::f32::consts::TAU;
+                let (dx, dz) = (k.width * a.cos(), k.height * a.sin());
+                let (x, z) = (k.x + cos * dx + sin * dz, k.z - sin * dx + cos * dz);
+                v.project([x, world.height.sample(x, z) + 1.0, z])
+            }).collect();
+            let color = if selected { Color32::from_rgb(255, 210, 90) } else { Color32::from_rgb(120, 190, 255) };
+            for w in ring.windows(2) {
+                if let (Some(p), Some(q)) = (w[0], w[1]) { painter.line_segment([p, q], Stroke::new(1.0_f32, color)); }
+            }
+        }
+        if !(k.show || app.mode == Mode::Shapes) { continue; }
+        if let Some(s) = v.project([k.x, world.height.sample(k.x, k.z) + 1.0, k.z]) {
+            painter.circle_filled(s, if selected { 5.0 } else { 3.5 }, if selected { Color32::from_rgb(255, 210, 90) } else { Color32::from_rgb(120, 190, 255) });
+            painter.text(s + vec2(7.0, -2.0), egui::Align2::LEFT_CENTER, if k.text.is_empty() { &k.name } else { &k.text }, egui::FontId::proportional(11.0), Color32::WHITE);
         }
     }
     if let Some(s) = v.project([world.meta.spawn[0], world.height.sample(world.meta.spawn[0], world.meta.spawn[1]) + 1.0, world.meta.spawn[1]]) {
@@ -2578,13 +2654,19 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "exportto" => {
             if let Some(d) = &app.doc {
-                let opts = dz_core::export::ExportOptions { root: std::path::PathBuf::from(arg.trim()), layers: true, world: true, config: false, source: false };
+                let opts = dz_core::export::ExportOptions { root: std::path::PathBuf::from(arg.trim()), layers: false, world: false, config: true, source: false };
                 match dz_core::export::run(&d.world, &app.db, &opts, &dz_core::Job::default()) {
                     Ok(r) => eprintln!("GENSTATS export tiles={} rvmats={}", r.tiles, r.rvmats),
                     Err(e) => eprintln!("GENSTATS export failed {e:#}"),
                 }
             }
         }
+        "keypoints" => {
+            if let Some(d) = &app.doc {
+                eprintln!("GENSTATS keypoints {} {:?}", d.world.keypoints.len(), d.world.keypoints.first());
+            }
+        }
+        "keypointadd" if nums.len() >= 2 => app.add_keypoint(nums[0], nums[1]),
         "riverjoin" => {
             if let Some(dz_core::library::GeneratorKind::River(x)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) { x.join_offset = nums[0]; }
         }

@@ -327,6 +327,24 @@ impl Default for LineTerrainGen {
     }
 }
 
+/// Water models side by side over a shape.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct PondGen {
+    pub model: String,
+    /// Use `level` instead of the lowest ground around the shape.
+    pub fixed: bool,
+    pub level: f32,
+    /// Added to the height of the water, in metres.
+    pub offset: f32,
+}
+
+impl Default for PondGen {
+    fn default() -> Self {
+        Self { model: r"dz\water\ponds\pond_50x50.p3d".into(), fixed: false, level: 0.0, offset: 0.0 }
+    }
+}
+
 /// Takes objects off the map.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -441,6 +459,7 @@ pub enum GeneratorKind {
     River(RiverGen),
     LineTerrain(LineTerrainGen),
     Remove(RemoveGen),
+    Pond(PondGen),
     Terrain(TerrainParams),
     Erosion(ErosionParams),
     ThermalErosion { iterations: u32, talus: f32 },
@@ -462,7 +481,7 @@ pub enum TargetKind {
 impl GeneratorKind {
     pub fn target_kind(&self) -> TargetKind {
         match self {
-            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) => TargetKind::Area,
+            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) | GeneratorKind::Pond(_) => TargetKind::Area,
             GeneratorKind::Settlement(_) => TargetKind::Point,
             GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::River(_) | GeneratorKind::Line(_) | GeneratorKind::LineTerrain(_) => TargetKind::Line,
             GeneratorKind::Remove(_) => TargetKind::Any,
@@ -493,6 +512,7 @@ impl GeneratorKind {
             GeneratorKind::River(_) => "River",
             GeneratorKind::LineTerrain(_) => "Terrain along a line",
             GeneratorKind::Remove(_) => "Remove objects",
+            GeneratorKind::Pond(_) => "Ponds and lakes",
             GeneratorKind::Terrain(_) => "Terrain shape",
             GeneratorKind::Erosion(_) => "Hydraulic erosion",
             GeneratorKind::ThermalErosion { .. } => "Thermal erosion",
@@ -585,6 +605,7 @@ pub fn built_in_generators() -> Vec<GeneratorPreset> {
         make(20, "Line: Nodes Objects", GeneratorKind::Line(LineGen { method: LineMethod::Nodes, ..Default::default() })),
         make(21, "Terrain along a line", GeneratorKind::LineTerrain(LineTerrainGen::default())),
         make(22, "Remove objects", GeneratorKind::Remove(RemoveGen::default())),
+        make(23, "Ponds and lakes", GeneratorKind::Pond(PondGen::default())),
     ]
 }
 
@@ -649,7 +670,7 @@ mod tests {
     #[test]
     fn built_ins_cover_every_kind() {
         let names: Vec<&str> = built_in_generators().iter().map(|g| g.kind.type_name()).collect();
-        assert_eq!(names.len(), 22);
+        assert_eq!(names.len(), 23);
         assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects"));
     }
 

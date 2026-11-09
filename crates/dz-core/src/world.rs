@@ -191,7 +191,7 @@ fn segment_distance(a: [f32; 2], b: [f32; 2], x: f32, z: f32) -> (f32, f32) {
 
 /// Levels the terrain along a strip. Walks the segments, so a long road costs no more than
 /// the ground it actually covers.
-fn apply_line(height: &mut Heightmap, m: &TerrainModifier, area: Rect) {
+fn apply_line(height: &mut Heightmap, m: &TerrainModifier, area: Rect, bed_only: bool) {
     let ModShape::Line { points, heights, half_width, gaps, bank } = &m.shape else { return };
     let (x0, y0) = (area.x0, area.y0);
     let (w, h) = (area.x1 - x0 + 1, area.y1 - y0 + 1);
@@ -219,6 +219,13 @@ fn apply_line(height: &mut Heightmap, m: &TerrainModifier, area: Rect) {
         for i in 0..w {
             let (d, goal) = best[j * w + i];
             if d >= reach {
+                continue;
+            }
+            if bed_only {
+                // Laid again after every other line, so that no bank covers a road or a track.
+                if d <= *half_width + bank.as_ref().map_or(0.0, |b| b.shoulder) {
+                    height.set(x0 + i, y0 + j, goal + m.amount);
+                }
                 continue;
             }
             if let Some(b) = bank {
@@ -423,6 +430,8 @@ pub struct World {
     /// Terrain Builder project whose road types are used for new roads.
     pub road_project: Option<std::path::PathBuf>,
     pub routes: Vec<RoadRoute>,
+    /// Named places of the map.
+    pub keypoints: Vec<crate::keypoints::KeyPoint>,
     /// Terrain cells the game does not draw.
     pub holes: crate::holes::Holes,
     /// Goes up whenever `holes` changes, so the view can follow.
@@ -456,7 +465,7 @@ impl World {
         let mask_px = (meta.size_m().round() as usize).clamp(1024, 20480);
         Self {
             holes: Default::default(),
-            holes_rev: 0,
+            holes_rev: 0, keypoints: Vec::new(),
             height: base.clone(),
             base,
             mask: MaskMap::new(mask_px, mask_px, 0),
@@ -479,7 +488,7 @@ impl World {
     }
     pub fn from_parts(meta: WorldMeta, base: Heightmap, mask: MaskMap, layers: Vec<SurfaceLayer>, satellite: Option<RgbImage>, objects: ObjectStore, modifiers: Vec<TerrainModifier>) -> Self {
         let next_modifier = modifiers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
-        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, objects, modifiers, holes: Default::default(), holes_rev: 0, object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier };
+        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, objects, modifiers, holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier };
         w.recompose(None);
         w
     }
@@ -491,7 +500,7 @@ impl World {
         }
         World {
             meta: self.meta.clone(), base: self.base.clone(), height: self.height.clone(), mask: self.mask.clone(),
-            layers: self.layers.clone(), satellite: None, objects, modifiers: Vec::new(), holes: Default::default(), holes_rev: 0, object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier: self.next_modifier,
+            layers: self.layers.clone(), satellite: None, objects, modifiers: Vec::new(), holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier: self.next_modifier,
         }
     }
     #[inline]
@@ -555,7 +564,7 @@ impl World {
                 continue;
             }
             if matches!(m.shape, ModShape::Line { .. }) {
-                apply_line(&mut self.height, m, Rect { x0, y0, x1, y1 });
+                apply_line(&mut self.height, m, Rect { x0, y0, x1, y1 }, false);
                 continue;
             }
             let (sin, cos) = m.yaw.to_radians().sin_cos();
@@ -575,6 +584,14 @@ impl World {
                     };
                     self.height.set(i, j, h + (goal - h) * w);
                 }
+            }
+        }
+        // Banks reach far; the beds themselves must survive whatever came after them.
+        for m in self.modifiers.iter().filter(|m| m.enabled && matches!(m.shape, ModShape::Line { .. })) {
+            let Some(r) = self.base.rect_around(m.x, m.z, m.reach()) else { continue };
+            let (x0, y0, x1, y1) = (r.x0.max(area.x0), r.y0.max(area.y0), r.x1.min(area.x1), r.y1.min(area.y1));
+            if x0 <= x1 && y0 <= y1 {
+                apply_line(&mut self.height, m, Rect { x0, y0, x1, y1 }, true);
             }
         }
     }

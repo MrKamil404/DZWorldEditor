@@ -47,6 +47,10 @@
   "de": "Generator hinzufügen",
   "pl": "Dodaj generator"
  },
+ "Add key point": {
+  "de": "Keypoint hinzufügen",
+  "pl": "Dodaj keypoint"
+ },
  "Add layer": {
   "de": "Ebene hinzufügen",
   "pl": "Dodaj warstwę"
@@ -118,6 +122,10 @@
  "Ambient": {
   "de": "Umgebungslicht",
   "pl": "Światło otoczenia"
+ },
+ "Angle": {
+  "de": "Winkel",
+  "pl": "Kąt"
  },
  "Another task is still running": {
   "de": "Eine andere Aufgabe läuft noch",
@@ -367,6 +375,10 @@
   "de": "Auf die Karte klicken",
   "pl": "Kliknij na mapie"
  },
+ "Click on the map adds a key point.": {
+  "de": "Ein Klick auf die Karte fügt einen Keypoint hinzu.",
+  "pl": "Kliknięcie na mapie dodaje keypoint."
+ },
  "Click removes this sample": {
   "de": "Klick entfernt die Probe",
   "pl": "Kliknięcie usuwa próbkę"
@@ -486,6 +498,10 @@
  "Delete generator, keep objects": {
   "de": "Generator löschen, Objekte behalten",
   "pl": "Usuń generator, zachowaj obiekty"
+ },
+ "Delete key point": {
+  "de": "Keypoint löschen",
+  "pl": "Usuń keypoint"
  },
  "Delete layer": {
   "de": "Ebene löschen",
@@ -642,6 +658,10 @@
  "Edit all": {
   "de": "Alle bearbeiten",
   "pl": "Edytuj wszystkie"
+ },
+ "Edit key point": {
+  "de": "Keypoint bearbeiten",
+  "pl": "Edycja keypointu"
  },
  "Edit only this layer": {
   "de": "Nur diese Ebene bearbeiten",
@@ -806,6 +826,10 @@
  "Fixed target height": {
   "de": "Feste Zielhöhe",
   "pl": "Stała wysokość docelowa"
+ },
+ "Fixed water level": {
+  "de": "Fester Wasserstand",
+  "pl": "Stały poziom wody"
  },
  "Flatten": {
   "de": "Einebnen",
@@ -1011,6 +1035,10 @@
   "de": "Höhenkarte importieren",
   "pl": "Import mapy wysokości"
  },
+ "Import key points": {
+  "de": "Keypoints importieren",
+  "pl": "Import keypointów"
+ },
  "Import map": {
   "de": "Karte importieren",
   "pl": "Import mapy"
@@ -1086,6 +1114,14 @@
  "Keep free of trees": {
   "de": "Baumfrei halten",
   "pl": "Bez drzew"
+ },
+ "Key point": {
+  "de": "Keypoint",
+  "pl": "Keypoint"
+ },
+ "Key points": {
+  "de": "Keypoints",
+  "pl": "Keypointy"
  },
  "Land grid": {
   "de": "Geländeraster",
@@ -1279,6 +1315,10 @@
   "de": "Modell",
   "pl": "Model"
  },
+ "Models are laid side by side until they cover the whole shape.": {
+  "de": "Die Modelle werden nebeneinander gelegt, bis sie die ganze Form bedecken.",
+  "pl": "Modele są układane obok siebie, aż pokryją cały kształt."
+ },
  "Models can also be dropped here.": {
   "de": "Modelle können auch hier abgelegt werden.",
   "pl": "Modele można też tu upuścić."
@@ -1310,6 +1350,10 @@
  "Move camera here": {
   "de": "Kamera hierher",
   "pl": "Przenieś tu kamerę"
+ },
+ "Move key point": {
+  "de": "Keypoint verschieben",
+  "pl": "Przesunięcie keypointu"
  },
  "Move selection here": {
   "de": "Auswahl hierher verschieben",
@@ -1366,6 +1410,10 @@
  "No": {
   "de": "Nein",
   "pl": "Nie"
+ },
+ "No key points in this file": {
+  "de": "In dieser Datei gibt es keine Keypoints",
+  "pl": "W tym pliku nie ma keypointów"
  },
  "No release notes": {
   "de": "Keine Versionshinweise",
@@ -1623,6 +1671,10 @@
   "de": "Polylinie",
   "pl": "Polilinia"
  },
+ "Ponds and lakes": {
+  "de": "Teiche und Seen",
+  "pl": "Stawy i jeziora"
+ },
  "Power line": {
   "de": "Stromleitung",
   "pl": "Linia energetyczna"
@@ -1646,6 +1698,10 @@
  "Project settings...": {
   "de": "Projekteinstellungen...",
   "pl": "Ustawienia projektu..."
+ },
+ "Properties": {
+  "de": "Eigenschaften",
+  "pl": "Właściwości"
  },
  "Radius": {
   "de": "Radius",
@@ -2015,6 +2071,10 @@
   "de": "Alle anzeigen",
   "pl": "Pokaż wszystkie"
  },
+ "Show on map": {
+  "de": "Auf der Karte anzeigen",
+  "pl": "Pokaż na mapie"
+ },
  "Show project areas as shapes": {
   "de": "Projektgebiete als Formen anzeigen",
   "pl": "Pokaż obszary projektu jako kształty"
@@ -2219,6 +2279,10 @@
   "de": "Testsitzung gestoppt",
   "pl": "Sesja testowa zatrzymana"
  },
+ "Text": {
+  "de": "Text",
+  "pl": "Tekst"
+ },
  "Texture tiles": {
   "de": "Texturkacheln",
   "pl": "Kafle tekstur"
@@ -2271,9 +2335,17 @@
   "de": "Die Form dieses Generators existiert nicht mehr",
   "pl": "Kształt, na którym działa generator, już nie istnieje"
  },
+ "The water stands at the lowest ground around the shape.": {
+  "de": "Das Wasser steht auf der Höhe des tiefsten Geländes rund um die Form.",
+  "pl": "Woda stoi na poziomie najniższego terenu wokół kształtu."
+ },
  "Thermal erosion": {
   "de": "Thermische Erosion",
   "pl": "Erozja termiczna"
+ },
+ "This generator needs a polygon": {
+  "de": "Dieser Generator braucht ein Polygon",
+  "pl": "Ten generator wymaga wielokąta"
  },
  "This preset has no models yet": {
   "de": "Dieses Preset hat noch keine Modelle",
@@ -2391,6 +2463,10 @@
   "de": "Wasserhöhe m",
   "pl": "Wysokość wody m"
  },
+ "Water level m": {
+  "de": "Wasserstand m",
+  "pl": "Poziom wody m"
+ },
  "Water model": {
   "de": "Wassermodell",
   "pl": "Model wody"
@@ -2486,6 +2562,10 @@
  "{0} files": {
   "de": "{0} Dateien",
   "pl": "Pliki: {0}"
+ },
+ "{0} key points read": {
+  "de": "{0} Keypoints gelesen",
+  "pl": "Wczytano keypointów: {0}"
  },
  "{0} models": {
   "de": "{0} Modelle",

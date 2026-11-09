@@ -844,6 +844,7 @@ pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usi
     let mut lib = Library::new(PathBuf::from("P:\\dz\\structures\\roads\\parts"));
     let project = tv4p::load(path, &mut lib)?;
     let (ex, ey) = (w.meta.easting, w.meta.northing);
+    crate::keypoints::merge(w, crate::keypoints::parse_tv4p(&std::fs::read(path)?, [ex, ey]));
     let mut n = 0;
     for road in &project.roads {
         let lines: Vec<Vec<[f32; 2]>> = road.shape.lines.iter().map(|l| l.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect()).collect();

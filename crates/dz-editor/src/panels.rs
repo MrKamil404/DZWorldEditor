@@ -414,14 +414,16 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
 fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &t("Draw"), true, |ui| {
         ui.horizontal(|ui| {
-            for (tool, name) in [(ShapeTool::Edit, "Edit"), (ShapeTool::Polygon, "Polygon"), (ShapeTool::Polyline, "Polyline"), (ShapeTool::Point, "Point")] {
+            for (tool, name) in [(ShapeTool::Edit, "Edit"), (ShapeTool::Polygon, "Polygon"), (ShapeTool::Polyline, "Polyline"), (ShapeTool::Point, "Point"), (ShapeTool::KeyPoint, "Key point")] {
                 if tool_button(ui, app.shape.tool == tool, &t(name)).clicked() {
                     app.shape.tool = tool;
                     app.shape.points.clear();
                 }
             }
         });
-        if app.shape.tool == ShapeTool::Edit {
+        if app.shape.tool == ShapeTool::KeyPoint {
+            ui.weak(t("Click on the map adds a key point."));
+        } else if app.shape.tool == ShapeTool::Edit {
             ui.weak(t("Click selects a shape. Drag a dot to move a point, a + to add one, the square to move the whole shape. Right click or Delete removes a point, Esc cancels a drag."));
         } else {
             ui.weak(t("Click to add points. Enter or a double click finishes, Backspace removes the last point, Esc cancels."));
@@ -435,6 +437,57 @@ fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
         });
     });
     section(ui, &t("Selected shape"), true, |ui| shape_details(app, ui));
+    section(ui, &t("Key points"), true, |ui| keypoints_ui(app, ui));
+}
+
+/// The key points of the map, as Terrain Builder's selection properties show them.
+fn keypoints_ui(app: &mut App, ui: &mut egui::Ui) {
+    use dz_core::keypoints::TYPES;
+    if ui.button(t("Import...")).on_hover_text("TV4P, HPP").clicked() { app.import_keypoints(); }
+    ui.add(egui::TextEdit::singleline(&mut app.shape.keypoint_filter).hint_text(t("Search...")));
+    let filter = app.shape.keypoint_filter.to_lowercase();
+    let Some(doc) = &app.doc else { return };
+    let names: Vec<(usize, String)> = doc.world.keypoints.iter().enumerate().filter(|(_, k)| k.name.to_lowercase().contains(&filter)).map(|(i, k)| (i, k.name.clone())).collect();
+    egui::ScrollArea::vertical().id_salt("keypoints").max_height(140.0).show(ui, |ui| {
+        for (i, name) in names {
+            if ui.selectable_label(app.shape.keypoint == Some(i), name).clicked() { app.shape.keypoint = Some(i); }
+        }
+    });
+    let Some(i) = app.shape.keypoint.filter(|i| app.doc.as_ref().is_some_and(|d| *i < d.world.keypoints.len())) else {
+        app.shape.keypoint = None;
+        return;
+    };
+    let doc = app.doc.as_mut().unwrap();
+    let mut k = doc.world.keypoints[i].clone();
+    ui.separator();
+    row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut k.name); });
+    row(ui, &t("Type"), |ui| {
+        egui::ComboBox::from_id_salt("keypoint type").selected_text(k.kind.clone()).show_ui(ui, |ui| {
+            for n in TYPES { ui.selectable_value(&mut k.kind, n.to_string(), n); }
+        });
+    });
+    ui.label(t("Properties"));
+    ui.add(egui::TextEdit::multiline(&mut k.properties).desired_rows(2));
+    let number = |ui: &mut egui::Ui, label: &str, v: &mut f32, speed: f64| row(ui, label, |ui| { ui.add(egui::DragValue::new(v).speed(speed).max_decimals(3)); });
+    number(ui, "X", &mut k.x, 1.0);
+    number(ui, "Y", &mut k.z, 1.0);
+    number(ui, &t("Angle"), &mut k.angle, 0.5);
+    number(ui, &t("Width"), &mut k.width, 1.0);
+    number(ui, &t("Height"), &mut k.height, 1.0);
+    ui.checkbox(&mut k.show, t("Show on map"));
+    row(ui, &t("Text"), |ui| { ui.text_edit_singleline(&mut k.text); });
+    let edited = k != doc.world.keypoints[i];
+    if edited {
+        let before = doc.world.keypoints.clone();
+        app.shape.keypoints_before.get_or_insert(before);
+        doc.world.keypoints[i] = k;
+    } else if !ui.ctx().wants_keyboard_input() && !ui.ctx().input(|p| p.pointer.any_down()) {
+        // A whole edit is one undo step.
+        if !app.shape.keypoint_moving {
+            if let Some(before) = app.shape.keypoints_before.take().filter(|b| *b != doc.world.keypoints) { doc.history.push(t("Edit key point"), dz_core::edit::Change::KeyPoints(before)); }
+        }
+    }
+    if ui.button(t("Delete")).clicked() { app.delete_keypoint(i); }
 }
 
 /// Vertices, attributes and layer of the selected shapes.
@@ -1299,7 +1352,7 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
         Dialog::About => {
             egui::Window::new(t("About")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
                 ui.heading("DZ World Editor");
-                ui.label(format!("{} {}", t("Version"), env!("CARGO_PKG_VERSION")));
+                ui.label(format!("{} {}", t("Version"), crate::updater::version()));
                 ui.label(t("Built on the DayZForests and DayZ Road Studio engines."));
             });
         }

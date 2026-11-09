@@ -497,6 +497,17 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             crate::panels::grading_ui(ui, &mut g.grading, &mut g.width, &mut g.falloff, false);
             line_ui(ui, &mut g.line);
         }
+        GeneratorKind::Pond(g) => {
+            model_field(ui, t("Water model"), &mut g.model, &cx.model);
+            ui.checkbox(&mut g.fixed, t("Fixed water level"));
+            if g.fixed {
+                number(ui, t("Water level m"), &mut g.level, -200.0..=2000.0);
+            } else {
+                ui.weak(t("The water stands at the lowest ground around the shape."));
+            }
+            number(ui, t("Water height m"), &mut g.offset, -20.0..=20.0);
+            ui.weak(t("Models are laid side by side until they cover the whole shape."));
+        }
         GeneratorKind::Remove(g) => {
             ui.strong(t("What to remove"));
             ui.checkbox(&mut g.trees, t("Trees"));
@@ -576,6 +587,7 @@ fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::River(_) => ("R", Color32::from_rgb(40, 96, 130)),
         GeneratorKind::LineTerrain(_) => ("G", Color32::from_rgb(112, 96, 62)),
         GeneratorKind::Remove(_) => ("X", Color32::from_rgb(132, 56, 52)),
+        GeneratorKind::Pond(_) => ("W", Color32::from_rgb(44, 110, 150)),
         GeneratorKind::Terrain(_) => ("T", Color32::from_rgb(96, 110, 70)),
         GeneratorKind::Erosion(_) => ("E", Color32::from_rgb(110, 92, 70)),
         GeneratorKind::ThermalErosion { .. } => ("E", Color32::from_rgb(120, 100, 76)),
@@ -1493,6 +1505,17 @@ pub fn run_generator(app: &mut App, id: u64) {
             });
         }
         GeneratorKind::Remove(r) => remove_objects(app, id, &r, polygons, lines),
+        GeneratorKind::Pond(p) => {
+            if polygons.is_empty() {
+                app.warn(t("This generator needs a polygon"));
+                return;
+            }
+            app.spawn(label, move |_| {
+                let objects = gen::pond_objects(&mut lite, &db, &polygons, &p);
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
+            });
+        }
         GeneratorKind::Terrain(p) => height_job(app, label, move |h, job| gen::generate_terrain(h, &p, job)),
         GeneratorKind::Erosion(p) => height_job(app, label, move |h, job| gen::hydraulic_erosion(h, &p, job)),
         GeneratorKind::ThermalErosion { iterations, talus } => height_job(app, label, move |h, job| gen::thermal_erosion(h, iterations, talus, job)),

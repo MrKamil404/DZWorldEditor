@@ -1910,6 +1910,39 @@ pub fn apply_catalog_edits(catalog: &mut Vec<dayz_road_tool::roads::CatalogPart>
     }
 }
 
+/// Water models side by side, level, over the whole of each polygon.
+pub fn pond_objects(w: &mut World, db: &crate::model_info::ModelDb, polygons: &[crate::shapes::MapShape], g: &crate::library::PondGen) -> Vec<Obj> {
+    let path = crate::objects::ObjectStore::normalize_path(&g.model);
+    let info = db.get(&path);
+    let side = if info.known { (info.max[0] - info.min[0]).max(info.max[2] - info.min[2]).max(1.0) } else { 50.0 };
+    let (top, cx, cz) = if info.known { (info.max[1], (info.min[0] + info.max[0]) * 0.5, (info.min[2] + info.max[2]) * 0.5) } else { (0.0, 0.0, 0.0) };
+    let model = w.objects.intern(&path);
+    let mut out = Vec::new();
+    for shape in polygons.iter().filter(|s| s.points.len() >= 3) {
+        let ring: Vec<[f32; 2]> = shape.points.iter().chain(shape.points.first()).copied().collect();
+        // Water finds the level of the lowest place on its shore.
+        let shore = ring.windows(2).flat_map(|s| {
+            let steps = ((s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1]) / w.height.cell).ceil().max(1.0) as usize;
+            (0..steps).map(move |k| { let t = k as f32 / steps as f32; [s[0][0] + (s[1][0] - s[0][0]) * t, s[0][1] + (s[1][1] - s[0][1]) * t] })
+        }).map(|p| w.height.sample(p[0], p[1])).fold(f32::MAX, f32::min);
+        let level = if g.fixed { g.level } else { shore } + g.offset;
+        let index = crate::shapes::PolygonIndex::new(&crate::shapes::ShapeLayer { name: String::new(), visible: true, shapes: vec![shape.clone()] });
+        let b = shape.points.iter().fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, p| [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])]);
+        let (cols, rows) = (((b[2] - b[0]) / side).ceil().max(1.0) as usize, ((b[3] - b[1]) / side).ceil().max(1.0) as usize);
+        for j in 0..rows {
+            for i in 0..cols {
+                let (x0, z0) = (b[0] + i as f32 * side, b[1] + j as f32 * side);
+                let inside = (0..=4).any(|u| (0..=4).any(|v| index.contains(x0 + side * u as f32 * 0.25, z0 + side * v as f32 * 0.25)));
+                let vertex = shape.points.iter().any(|p| p[0] >= x0 && p[0] <= x0 + side && p[1] >= z0 && p[1] <= z0 + side);
+                if inside || vertex {
+                    out.push(Obj { x: x0 + side * 0.5 - cx, z: z0 + side * 0.5 - cz, elevation: level - top, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: crate::objects::FLAG_ABSOLUTE });
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Blocks of a level crossing laid over the track `piece` where a road crosses at `at`. Track
 /// geometry runs through the middle of a model; objects are placed by their own origin.
 fn deck_objects(piece: &Obj, piece_center: [f32; 3], origin_y: f32, at: [f32; 2], blocks: &[(String, f64, f64)], block_center: impl Fn(&str) -> [f32; 3]) -> Vec<(String, Obj)> {
@@ -1938,7 +1971,7 @@ fn deck_objects(piece: &Obj, piece_center: [f32; 3], origin_y: f32, at: [f32; 2]
 pub fn decks_over_tracks(w: &World, db: &crate::model_info::ModelDb, center: &[[f32; 2]], road_decks: &[crate::world::BridgeDeck]) -> (Vec<(String, Obj)>, usize) {
     use dayz_road_tool::rails;
     const HALF_WIDTH: f32 = 4.0;
-    const MARGIN: f32 = 1.0;
+    const MARGIN: f32 = 0.5;
     let (mut out, mut skipped) = (Vec::new(), 0);
     for track in w.routes.iter().filter(|r| rails::is_track_family(&r.family)) {
         let line: Vec<[f32; 3]> = track.centerline.iter().map(|p| [p[0], p[1], 0.0]).collect();
@@ -2282,6 +2315,25 @@ mod tests {
             let (end, start) = (height(&objects[k], chain.pieces[k].to), height(&objects[k + 1], chain.pieces[k].to));
             assert!((end - start).abs() < 0.1, "{k}: {end} {start}");
         }
+    }
+
+    #[test]
+    fn ponds_cover_the_whole_shape_side_by_side_at_one_level() {
+        use crate::shapes::{MapShape, ShapeKind};
+        let mut w = World::new(crate::world::WorldMeta::new("t", 128, 8.0), 30.0);
+        for j in 0..128 { for i in 0..128 { w.height.set(i, j, 30.0 + i as f32 * 0.1); } }
+        let db = crate::model_info::ModelDb::new("nowhere");
+        let shape = MapShape { kind: ShapeKind::Polygon, points: vec![[100.0, 100.0], [220.0, 100.0], [220.0, 190.0], [100.0, 190.0]], attributes: Vec::new() };
+        let g = crate::library::PondGen::default();
+        let objects = pond_objects(&mut w, &db, &[shape.clone()], &g);
+        assert_eq!(objects.len(), 3 * 2, "120 x 90 m is three by two 50 m models");
+        // Tiles touch: 50 m apart, and the first is 25 m in from the corner of the shape.
+        assert!(objects.iter().any(|o| (o.x - 125.0).abs() < 0.01 && (o.z - 125.0).abs() < 0.01));
+        assert!(objects.iter().any(|o| (o.x - 175.0).abs() < 0.01 && (o.z - 125.0).abs() < 0.01));
+        let shore = w.height.sample(100.0, 100.0);
+        assert!(objects.iter().all(|o| (o.elevation - shore).abs() < 0.02 && o.flags == crate::objects::FLAG_ABSOLUTE), "{:?}", objects[0]);
+        let fixed = pond_objects(&mut w, &db, &[shape], &crate::library::PondGen { fixed: true, level: 12.0, offset: 1.0, ..Default::default() });
+        assert!(fixed.iter().all(|o| o.elevation == 13.0));
     }
 
     #[test]

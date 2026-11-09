@@ -11,6 +11,7 @@ pub mod holes;
 pub mod layers_cfg;
 pub mod modules;
 pub mod library;
+pub mod keypoints;
 pub mod mask_limit;
 pub mod model_info;
 pub mod noise;

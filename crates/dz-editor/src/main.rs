@@ -46,7 +46,7 @@ impl eframe::App for Host {
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_title(format!("DZ World Editor {}", env!("CARGO_PKG_VERSION"))).with_inner_size([1600.0, 950.0]).with_min_inner_size([1000.0, 600.0]).with_maximized(std::env::var_os("DZWE_AUTO").is_none()),
+        viewport: egui::ViewportBuilder::default().with_title(format!("DZ World Editor {}", updater::version())).with_inner_size([1600.0, 950.0]).with_min_inner_size([1000.0, 600.0]).with_maximized(std::env::var_os("DZWE_AUTO").is_none()),
         depth_buffer: 24,
         multisampling: 0,
         renderer: eframe::Renderer::Glow,

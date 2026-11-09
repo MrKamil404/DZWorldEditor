@@ -348,6 +348,7 @@ pub fn write_configs(w: &World, target: &Path, has_navmesh: bool) -> Result<()> 
         "\t\tclass Navmesh: Navmesh\n\t\t{\n\t\t\tnavmeshName=\"\";\n\t\t};\n".to_string()
     };
     let holes = if w.holes.is_empty() { String::new() } else { crate::holes::class_text(&w.holes, "\t\t") };
+    let names = crate::keypoints::names_text(&w.keypoints, "\t\t\t");
     let world = format!(
 "class CfgPatches
 {{
@@ -375,6 +376,7 @@ class CfgWorlds
 	class {id}: Enoch
 	{{
 		description=\"{name}\";
+		hasOcean=1;
 		worldName=\"{id}\\world\\{id_lc}.wrp\";
 		initWorld=\"{id}\";
 		cutscenes[]={{}};
@@ -418,7 +420,7 @@ class CfgWorlds
 {materials}		}};
 		class Names
 		{{
-		}};
+{names}		}};
 	}};
 }};
 class CfgWorldList

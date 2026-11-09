@@ -41,6 +41,8 @@ struct ProjectFile {
     routes: Vec<crate::world::RoadRoute>,
     #[serde(default)]
     holes: crate::holes::Holes,
+    #[serde(default)]
+    keypoints: Vec<crate::keypoints::KeyPoint>,
 }
 
 /// Which parts need rewriting; rasters are large, so unchanged ones are skipped.
@@ -103,6 +105,7 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         active_layer: w.active_layer,
         shape_layers: w.shape_layers.clone(),
         holes: w.holes.clone(),
+        keypoints: w.keypoints.clone(),
         active_shape_layer: w.active_shape_layer,
         generators,
         road_removed: w.road_removed.clone(),
@@ -147,6 +150,7 @@ pub fn load(dir: &Path) -> Result<World> {
     w.road_project = file.road_project;
     w.routes = file.routes;
     w.holes = file.holes;
+    w.keypoints = file.keypoints;
     for r in &mut w.routes {
         if r.id == 0 {
             r.id = crate::library::new_id();

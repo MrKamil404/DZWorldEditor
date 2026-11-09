@@ -118,6 +118,7 @@ pub enum Change {
     Shapes(Vec<crate::shapes::ShapeLayer>),
     Routes(Vec<crate::world::RoadRoute>),
     Holes(crate::holes::Holes),
+    KeyPoints(Vec<crate::keypoints::KeyPoint>),
     Generators(Vec<crate::library::GeneratorInstance>),
     /// A whole-raster change produced by a generator.
     WholeHeight(Vec<f32>),
@@ -191,6 +192,7 @@ impl Change {
                 t.objects = true;
             }
             Change::Shapes(prev) => std::mem::swap(prev, &mut w.shape_layers),
+            Change::KeyPoints(prev) => std::mem::swap(prev, &mut w.keypoints),
             Change::Generators(prev) => std::mem::swap(prev, &mut w.generators),
             Change::Routes(routes) => std::mem::swap(routes, &mut w.routes),
             Change::Holes(holes) => {
@@ -226,6 +228,7 @@ impl Change {
             Change::ObjectLayers(l) => l.len() * 64,
             Change::Routes(r) => r.iter().map(|x| x.points.len() * 8 + x.centerline.len() * 8 + x.objects.len() * 4).sum(),
             Change::Holes(h) => h.len() * 8,
+            Change::KeyPoints(k) => k.len() * 96,
             Change::Generators(l) => l.iter().map(|g| g.objects.len() * 4 + 4096).sum(),
             Change::Shapes(l) => l.iter().map(|s| s.shapes.iter().map(|x| x.points.len() * 8 + 64).sum::<usize>()).sum(),
             Change::WholeHeight(v) => v.len() * 4,

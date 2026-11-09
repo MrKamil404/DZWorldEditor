@@ -21,7 +21,9 @@ const API_ENV: &str = "DZWORLDEDITOR_UPDATE_API";
 const GUI_ASSET_PREFIX: &str = "dzworldeditor";
 
 pub fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+    // Cargo only knows three numbers, so a fourth one is written as build metadata.
+    static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| env!("CARGO_PKG_VERSION").replace('+', "."));
+    &VERSION
 }
 
 #[derive(Deserialize, Clone, Debug)]

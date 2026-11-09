@@ -42,6 +42,7 @@ pub enum ShapeTool {
     Polygon,
     Polyline,
     Point,
+    KeyPoint,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -63,11 +64,16 @@ pub struct ShapePanel {
     pub move_from: Option<[f32; 2]>,
     /// State before the vertex drag in progress, for undo.
     pub drag_before: Option<Vec<ShapeLayer>>,
+    pub keypoint: Option<usize>,
+    /// Key points before the drag or edit in progress, for undo.
+    pub keypoints_before: Option<Vec<dz_core::keypoints::KeyPoint>>,
+    pub keypoint_filter: String,
+    pub keypoint_moving: bool,
 }
 
 impl Default for ShapePanel {
     fn default() -> Self {
-        Self { tool: ShapeTool::Edit, points: Vec::new(), selection: BTreeSet::new(), vertex: None, boxing: None, move_from: None, drag_before: None }
+        Self { keypoint: None, keypoints_before: None, keypoint_filter: String::new(), keypoint_moving: false, tool: ShapeTool::Edit, points: Vec::new(), selection: BTreeSet::new(), vertex: None, boxing: None, move_from: None, drag_before: None }
     }
 }
 
@@ -501,7 +507,7 @@ impl App {
         Some(before)
     }
 
-    /// Also makes the roads that cross route `i` meet it, and keeps tracks under roads.
+    /// Also makes the roads that cross route `i` meet it, and keeps tracks over road banks.
     fn sync_route_and_crossings(&mut self, i: usize) -> Option<Vec<dz_core::world::TerrainModifier>> {
         use dayz_road_tool::rails::is_track_family as track;
         let mut before = self.sync_route_modifier(i);
@@ -520,11 +526,12 @@ impl App {
         let doc = self.doc.as_mut()?;
         let is_track = |m: &dz_core::world::TerrainModifier| doc.world.routes.iter().any(|r| r.modifier == Some(m.id) && track(&r.family));
         let tracks: Vec<bool> = doc.world.modifiers.iter().map(is_track).collect();
-        let first_road = tracks.iter().position(|t| !*t).unwrap_or(tracks.len());
-        if tracks[first_road..].iter().any(|t| *t) {
+        // Tracks come last, so the banks of a road never bury them.
+        let first_track = tracks.iter().position(|t| *t).unwrap_or(tracks.len());
+        if tracks[first_track..].iter().any(|t| !*t) {
             before.get_or_insert_with(|| doc.world.modifiers.clone());
             let (rails, others): (Vec<_>, Vec<_>) = std::mem::take(&mut doc.world.modifiers).into_iter().zip(tracks).partition(|(_, t)| *t);
-            doc.world.modifiers = rails.into_iter().chain(others).map(|(m, _)| m).collect();
+            doc.world.modifiers = others.into_iter().chain(rails).map(|(m, _)| m).collect();
             doc.world.recompose(None);
             self.whole_height_changed();
         }
@@ -1262,7 +1269,7 @@ impl App {
             ShapeTool::Polygon => ShapeKind::Polygon,
             ShapeTool::Polyline => ShapeKind::Polyline,
             ShapeTool::Point => ShapeKind::Point,
-            ShapeTool::Edit => return,
+            ShapeTool::Edit | ShapeTool::KeyPoint => return,
         };
         if self.shape.points.len() < kind.min_points() {
             return;
@@ -1345,6 +1352,46 @@ impl App {
                 doc.history.push(t("Delete layer"), Change::Shapes(previous));
             }
         }
+    }
+
+    /// Key points from Terrain Builder: a project or an exported names file.
+    pub fn import_keypoints(&mut self) {
+        let Some(file) = rfd::FileDialog::new().add_filter("Terrain Builder", &["tv4p", "hpp"]).pick_file() else { return };
+        let Some(doc) = &mut self.doc else { return };
+        let is_project = file.extension().is_some_and(|e| e.eq_ignore_ascii_case("tv4p"));
+        let points = match std::fs::read(&file) {
+            Ok(b) if is_project => dz_core::keypoints::parse_tv4p(&b, [doc.world.meta.easting, doc.world.meta.northing]),
+            Ok(b) => dz_core::keypoints::parse_hpp(&String::from_utf8_lossy(&b)),
+            Err(e) => { self.error(format!("{e:#}")); return }
+        };
+        if points.is_empty() {
+            self.warn(t("No key points in this file"));
+            return;
+        }
+        let before = doc.world.keypoints.clone();
+        let n = dz_core::keypoints::merge(&mut doc.world, points);
+        doc.history.push(t("Import key points"), Change::KeyPoints(before));
+        self.info(tf("{0} key points read", &[&n.to_string()]));
+    }
+
+    pub fn add_keypoint(&mut self, x: f32, z: f32) {
+        let Some(doc) = &mut self.doc else { return };
+        let before = doc.world.keypoints.clone();
+        let mut n = doc.world.keypoints.len() + 1;
+        while doc.world.keypoints.iter().any(|k| k.name == format!("KeyPoint{n}")) { n += 1; }
+        let name = format!("KeyPoint{n}");
+        doc.world.keypoints.push(dz_core::keypoints::KeyPoint { text: name.clone(), name, x, z, ..Default::default() });
+        doc.history.push(t("Add key point"), Change::KeyPoints(before));
+        self.shape.keypoint = Some(doc.world.keypoints.len() - 1);
+    }
+
+    pub fn delete_keypoint(&mut self, i: usize) {
+        let Some(doc) = &mut self.doc else { return };
+        if i >= doc.world.keypoints.len() { return; }
+        let before = doc.world.keypoints.clone();
+        doc.world.keypoints.remove(i);
+        doc.history.push(t("Delete key point"), Change::KeyPoints(before));
+        self.shape.keypoint = None;
     }
 
     pub fn import_shapes(&mut self) {
