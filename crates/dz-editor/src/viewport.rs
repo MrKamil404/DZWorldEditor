@@ -261,7 +261,7 @@ fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
     best.map(|b| b.1)
 }
 
-fn is_plant(path: &str) -> bool {
+pub(crate) fn is_plant(path: &str) -> bool {
     path.contains("\\tree\\") || path.contains("\\t_") || path.contains("plants") || path.contains("\\bush") || path.contains("\\b_")
 }
 
@@ -1112,6 +1112,20 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                 }
             } else if let Some(before) = app.hole_before.take() {
                 if let Some(d) = &mut app.doc { d.history.push(t("Terrain holes"), Change::Holes(before)); }
+            }
+        }
+        Mode::Satellite => {
+            if pressed {
+                if let Some(h) = hit {
+                    crate::satellite::begin_stroke(app, h[0], h[2]);
+                }
+            }
+            if !primary_down {
+                crate::satellite::finish_stroke(app);
+            } else if let Some(h) = hit {
+                if crate::satellite::continue_stroke(app, h[0], h[2]) {
+                    ctx.request_repaint();
+                }
             }
         }
         Mode::Landscape | Mode::Paint => {
@@ -2061,6 +2075,7 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
         Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: app.sculpt.falloff, color: [0.25, 0.65, 1.0], shape: app.sculpt.shape as i32 }),
         Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: app.paint.shape as i32 }),
         Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: if app.place.brush { app.place.brush_radius } else { 2.0 }, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
+        Mode::Satellite => Some(BrushView { x: h[0], z: h[2], radius: app.sat.radius, falloff: 1.0 - app.sat.hardness, color: [1.0, 0.82, 0.24], shape: 0 }),
         _ => None,
     }
 }
@@ -2315,6 +2330,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                 if i.key_pressed(Key::Num5) { app.mode = Mode::Lines; }
                 if i.key_pressed(Key::Num6) { app.mode = Mode::Shapes; }
                 if i.key_pressed(Key::Num7) { app.mode = Mode::KeyPoints; }
+                if i.key_pressed(Key::Num8) { app.mode = Mode::Satellite; }
                 let f = if i.key_pressed(Key::CloseBracket) { 1.25 } else if i.key_pressed(Key::OpenBracket) { 0.8 } else { 1.0 };
                 if f != 1.0 {
                     app.sculpt.radius = (app.sculpt.radius * f).clamp(2.0, 3000.0);
@@ -2497,6 +2513,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.mode = match arg.as_str() {
                 "sculpt" => Mode::Landscape,
                 "paint" => Mode::Paint,
+                "satellite" => Mode::Satellite,
                 "place" => Mode::Place,
                 "lines" => Mode::Lines,
                 "shapes" => Mode::Shapes,
@@ -2546,6 +2563,50 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "shot" => {
             app.pending_shot(arg, ctx);
+        }
+        // A plain satellite image with a grid, to try the satellite tools on.
+        "satnew" => {
+            if let Some(d) = app.doc.as_mut() {
+                let n = nums.first().map(|v| *v as usize).unwrap_or(2048);
+                let mut img = dz_core::terrain::RgbImage::new(n, n, [96, 118, 72]);
+                for y in 0..n {
+                    for x in 0..n {
+                        let o = (y * n + x) * 3;
+                        let shade = ((x / 8 + y / 8) % 2) as u8 * 10 + ((x * 31 + y * 17) % 7) as u8;
+                        let line = x % 64 == 0 || y % 64 == 0;
+                        img.data[o..o + 3].copy_from_slice(&if line { [60, 70, 50] } else { [96 + shade, 118 + shade, 72 + shade] });
+                    }
+                }
+                d.world.satellite = Some(img);
+                d.world.sat_image_replaced();
+                app.renderer.lock().unwrap().set_satellite(d.world.satellite.as_ref());
+                app.detail_center = [f32::MIN, f32::MIN];
+            }
+        }
+        "satbake" => {
+            app.sat.bake_selection = false;
+            app.sat.bake_plants = nums.first().is_some_and(|v| *v > 0.0);
+            crate::satellite::bake(app);
+        }
+        // Source point in metres, then the ends of a stroke in metres.
+        "satclone" if nums.len() >= 6 => {
+            if let Some((w, size)) = app.doc.as_ref().and_then(|d| d.world.satellite.as_ref().map(|s| (s.width as f32, d.world.meta.size_m()))) {
+                app.sat.source = Some([nums[0] / size * w, (1.0 - nums[1] / size) * w]);
+                crate::satellite::begin_stroke(app, nums[2], nums[3]);
+                crate::satellite::continue_stroke(app, nums[4], nums[5]);
+                crate::satellite::finish_stroke(app);
+            }
+        }
+        "satradius" if !nums.is_empty() => app.sat.radius = nums[0],
+        "satdel" => {
+            let touched = app.doc.as_mut().and_then(|d| {
+                let id = d.world.sat.modifiers.get(nums.first().map(|v| *v as usize).unwrap_or(0))?.id;
+                d.world.sat_remove(id)
+            });
+            if let Some(r) = touched {
+                app.satellite_changed(r);
+            }
+            eprintln!("GENSTATS satmods={}", app.doc.as_ref().map_or(0, |d| d.world.sat.modifiers.len()));
         }
         "put" if nums.len() >= 3 => {
             if let Some(d) = app.doc.as_mut() {

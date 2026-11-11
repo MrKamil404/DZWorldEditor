@@ -152,7 +152,7 @@ fn toolbar(app: &mut App, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             if ui.button(t("Save")).on_hover_text("Ctrl+S").clicked() { app.save(None); }
             ui.separator();
-            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Shapes, "Shapes", "6"), (Mode::KeyPoints, "Key points", "7")] {
+            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Shapes, "Shapes", "6"), (Mode::KeyPoints, "Key points", "7"), (Mode::Satellite, "Satellite", "8")] {
                 if tool_button(ui, app.mode == m, &t(name)).on_hover_text(key).clicked() { app.mode = m; }
             }
             ui.separator();
@@ -221,6 +221,7 @@ fn modes_panel(app: &mut App, ui: &mut egui::Ui) {
         Mode::Generate => {}
         Mode::Shapes => shapes_mode(app, ui),
         Mode::KeyPoints => keypoints_mode(app, ui),
+        Mode::Satellite => crate::satellite::panel(app, ui),
     });
 }
 
@@ -806,6 +807,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 if ui.selectable_label(app.selected_modifier == Some(*id), name).clicked() { select_modifier = Some(*id); }
             }
         });
+        crate::satellite::outliner(app, ui, &filter);
         egui::CollapsingHeader::new(tf("Generators ({0})", &[&generators.len().to_string()])).default_open(true).show(ui, |ui| {
             crate::library_ui::outliner_rows(app, ui, &generators, &filter);
         });

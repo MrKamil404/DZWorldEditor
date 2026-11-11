@@ -72,6 +72,12 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         }
         _ => {}
     }
+    // The layers of the satellite modifiers, with the original pixels under them.
+    if w.sat.is_empty() {
+        let _ = std::fs::remove_file(dir.join("satellite.mods"));
+    } else {
+        atomic_write(&dir.join("satellite.mods"), &w.sat.to_bytes())?;
+    }
     if parts.objects {
         atomic_write(&dir.join("objects.dzob"), &w.objects.to_bytes())?;
     }
@@ -211,6 +217,9 @@ pub fn load(dir: &Path) -> Result<World> {
     };
     let objects = ObjectStore::from_bytes(&std::fs::read(dir.join("objects.dzob")).context("objects.dzob")?)?;
     let mut w = World::from_parts(file.meta, base, mask, file.layers, satellite, objects, file.modifiers);
+    if let Ok(bytes) = std::fs::read(dir.join("satellite.mods")) {
+        w.sat = crate::satmod::SatLayers::from_bytes(&bytes).context("satellite.mods")?;
+    }
     if !file.object_layers.is_empty() {
         w.object_layers = file.object_layers;
         w.active_layer = file.active_layer.min(w.object_layers.len() as u16 - 1);

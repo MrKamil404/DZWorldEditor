@@ -952,6 +952,7 @@ enum Upload {
     Mask { width: i32, height: i32, data: Vec<u8> },
     MaskRect { x: i32, y: i32, w: i32, h: i32, data: Vec<u8> },
     Satellite { width: i32, height: i32, rgb: Vec<u8> },
+    SatelliteRect { x: i32, y: i32, w: i32, h: i32, rgb: Vec<u8> },
     NoSatellite,
     Detail { width: i32, height: i32, rgb: Vec<u8>, rect: [f32; 4] },
     Palette { colors: Vec<[u8; 3]>, averages: Vec<[u8; 3]> },
@@ -1180,6 +1181,26 @@ impl Renderer {
             }
             None => self.uploads.push(Upload::NoSatellite),
         }
+    }
+    /// Shows a changed part of the satellite image without sending all of it again.
+    pub fn update_satellite(&mut self, s: &dz_core::terrain::RgbImage, r: dz_core::satmod::PixelRect) {
+        // The texture is the image itself, or the image scaled to 4096 pixels a side.
+        let (tw, th) = if s.width.max(s.height) > 4096 { (4096usize, 4096usize) } else { (s.width, s.height) };
+        if s.width == 0 || s.height == 0 {
+            return;
+        }
+        let (x0, y0) = (r.x0 * tw / s.width, r.y0 * th / s.height);
+        let (x1, y1) = (((r.x1 + 1) * tw).div_ceil(s.width).min(tw).max(x0 + 1) - 1, ((r.y1 + 1) * th).div_ceil(s.height).min(th).max(y0 + 1) - 1);
+        let mut rgb = Vec::with_capacity((x1 - x0 + 1) * (y1 - y0 + 1) * 3);
+        for y in y0..=y1 {
+            let sy = ((y * 2 + 1) * s.height / (th * 2)).min(s.height - 1);
+            for x in x0..=x1 {
+                let sx = ((x * 2 + 1) * s.width / (tw * 2)).min(s.width - 1);
+                let o = (sy * s.width + sx) * 3;
+                rgb.extend_from_slice(&s.data[o..o + 3]);
+            }
+        }
+        self.uploads.push(Upload::SatelliteRect { x: x0 as i32, y: y0 as i32, w: (x1 - x0 + 1) as i32, h: (y1 - y0 + 1) as i32, rgb });
     }
     /// Sets the high resolution satellite window around a map position.
     pub fn set_detail(&mut self, s: &dz_core::terrain::RgbImage, cx: f32, cz: f32, world: f32) -> [f32; 4] {
@@ -1455,6 +1476,13 @@ impl Renderer {
                     set_filter(gl, glow::TEXTURE_2D, glow::LINEAR_MIPMAP_LINEAR, glow::LINEAR, glow::CLAMP_TO_EDGE);
                     self.sat = Some(t);
                     self.has_sat = true;
+                }
+                Upload::SatelliteRect { x, y, w, h, rgb } => {
+                    if let Some(t) = self.sat {
+                        gl.bind_texture(glow::TEXTURE_2D, Some(t));
+                        gl.tex_sub_image_2d(glow::TEXTURE_2D, 0, x, y, w, h, glow::RGB, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&rgb)));
+                        gl.generate_mipmap(glow::TEXTURE_2D);
+                    }
                 }
                 Upload::NoSatellite => {
                     self.has_sat = false;

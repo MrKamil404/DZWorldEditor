@@ -120,6 +120,8 @@ pub enum Change {
     Holes(crate::holes::Holes),
     KeyPoints(Vec<crate::keypoints::KeyPoint>),
     Generators(Vec<crate::library::GeneratorInstance>),
+    /// The satellite modifiers as they were.
+    Satellite(Vec<crate::satmod::SatModifier>),
     /// A whole-raster change produced by a generator.
     WholeHeight(Vec<f32>),
     WholeMask(Vec<u8>),
@@ -131,6 +133,8 @@ pub struct Touched {
     pub height: Option<Rect>,
     pub mask: Option<Rect>,
     pub objects: bool,
+    /// Pixels of the satellite image that changed.
+    pub satellite: Option<crate::satmod::PixelRect>,
 }
 impl Touched {
     fn merge(&mut self, o: Touched) {
@@ -143,6 +147,10 @@ impl Touched {
             (a, b) => a.or(b),
         };
         self.objects |= o.objects;
+        self.satellite = match (self.satellite, o.satellite) {
+            (Some(a), Some(b)) => Some(a.union(b)),
+            (a, b) => a.or(b),
+        };
     }
 }
 
@@ -194,6 +202,7 @@ impl Change {
             Change::Shapes(prev) => std::mem::swap(prev, &mut w.shape_layers),
             Change::KeyPoints(prev) => std::mem::swap(prev, &mut w.keypoints),
             Change::Generators(prev) => std::mem::swap(prev, &mut w.generators),
+            Change::Satellite(prev) => t.satellite = w.sat_set_modifiers(prev),
             Change::Routes(routes) => std::mem::swap(routes, &mut w.routes),
             Change::Holes(holes) => {
                 std::mem::swap(holes, &mut w.holes);
@@ -230,6 +239,8 @@ impl Change {
             Change::Holes(h) => h.len() * 8,
             Change::KeyPoints(k) => k.len() * 96,
             Change::Generators(l) => l.iter().map(|g| g.objects.len() * 4 + 4096).sum(),
+            // Tiles are shared with the live modifiers until one of them is painted on.
+            Change::Satellite(l) => l.iter().map(|m| m.tiles.len() * 4096 + 64).sum(),
             Change::Shapes(l) => l.iter().map(|s| s.shapes.iter().map(|x| x.points.len() * 8 + 64).sum::<usize>()).sum(),
             Change::WholeHeight(v) => v.len() * 4,
             Change::WholeMask(v) => v.len(),
