@@ -23,6 +23,9 @@ pub struct Lod {
     pub uvs: Vec<[f32; 2]>,
     /// Second UV set, empty when the LOD has only one.
     pub uvs2: Vec<[f32; 2]>,
+    /// Normal of each vertex as the model stores it; empty when it could not be read.
+    /// Its sign is not settled here: compare with the faces before use.
+    pub normals: Vec<[f32; 3]>,
 }
 impl Lod {
     /// First vertex of a named selection (case-insensitive).
@@ -395,8 +398,58 @@ fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
     }
     let (count, data) = r.compressed_array(12)?;
     let f = |o: usize| f32::from_le_bytes(data[o..o + 4].try_into().unwrap());
-    let vertices = (0..count).map(|i| [f(i * 12), f(i * 12 + 4), f(i * 12 + 8)]).collect();
-    Ok(Lod { resolution, vertices, selections, textures, faces, face_textures, face_materials, materials, uvs, uvs2 })
+    let vertices: Vec<[f32; 3]> = (0..count).map(|i| [f(i * 12), f(i * 12 + 4), f(i * 12 + 8)]).collect();
+    let normals = read_normals(&mut r, vertices.len()).unwrap_or_default();
+    Ok(Lod { resolution, vertices, selections, textures, faces, face_textures, face_materials, materials, uvs, uvs2, normals })
+}
+
+/// Normals follow the positions: either three floats each or packed ten bits to a component.
+/// Which of the two a file uses is told by the vectors coming out one unit long.
+fn read_normals(r: &mut Reader, vertices: usize) -> Result<Vec<[f32; 3]>> {
+    let count = r.count()?;
+    ensure!(count == vertices && count > 0, "Liczba normalnych ODOL");
+    let fill = r.u8()? != 0;
+    let start = r.p;
+    for size in [12usize, 4] {
+        r.p = start;
+        let data = if fill {
+            match r.bytes(size) {
+                Ok(d) => d.repeat(count),
+                Err(_) => continue,
+            }
+        } else {
+            match r.compressed(count * size) {
+                Ok(d) => d,
+                Err(_) => continue,
+            }
+        };
+        let normal = |i: usize| -> [f32; 3] {
+            if size == 12 {
+                std::array::from_fn(|k| f32::from_le_bytes(data[i * 12 + k * 4..i * 12 + k * 4 + 4].try_into().unwrap()))
+            } else {
+                let v = u32::from_le_bytes(data[i * 4..i * 4 + 4].try_into().unwrap());
+                std::array::from_fn(|k| {
+                    let c = ((v >> (10 * k)) & 0x3FF) as i32;
+                    (if c > 511 { c - 1024 } else { c }) as f32 / 511.0
+                })
+            }
+        };
+        let step = (count / 64).max(1);
+        // A few vertices of a model may carry no normal at all.
+        let sampled = (0..count).step_by(step).count();
+        let unit = (0..count)
+            .step_by(step)
+            .filter(|&i| {
+                let n = normal(i);
+                let l = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
+                l.is_finite() && (0.8..1.25).contains(&l)
+            })
+            .count();
+        if unit * 10 >= sampled * 8 {
+            return Ok((0..count).map(normal).collect());
+        }
+    }
+    bail!("Nieznany zapis normalnych ODOL")
 }
 
 /// The stage holding the colour of a material, by the texture naming convention.
@@ -416,35 +469,95 @@ pub struct Stage {
     pub transform: u32,
 }
 
-/// UV source and 4x3 matrix of a texture coordinate generator.
+/// UV source and 4x3 matrix (aside, up, dir, pos) of a texture coordinate generator.
 #[derive(Debug, Clone, Default)]
 pub struct TexGen {
+    /// 1 is the first UV set, 5 the second.
     pub source: u32,
     pub matrix: [f32; 12],
 }
 
-/// A binarised RVMAT.
-#[derive(Debug, Clone, Default)]
+/// `renderFlags[]` bits of a material.
+pub mod render_flag {
+    pub const ALWAYS_IN_SHADOW: u32 = 1;
+    pub const NO_Z_WRITE: u32 = 1 << 1;
+    pub const NO_COLOR_WRITE: u32 = 1 << 4;
+    pub const NO_ALPHA_WRITE: u32 = 1 << 5;
+    pub const ADD_BLEND: u32 = 1 << 6;
+    pub const ALPHA_TEST_32: u32 = 1 << 7;
+    pub const ALPHA_TEST_64: u32 = 1 << 8;
+    pub const ALPHA_TEST_128: u32 = 1 << 9;
+}
+
+/// An RVMAT, as binarised into a model or read from its file.
+#[derive(Debug, Clone)]
 pub struct Material {
     pub name: String,
+    /// Engine number of `PixelShaderID`, see `rvmat::pixel_shader_id`.
     pub pixel_shader: u32,
+    pub vertex_shader: u32,
+    pub emissive: [f32; 4],
+    pub ambient: [f32; 4],
+    pub diffuse: [f32; 4],
+    pub forced_diffuse: [f32; 4],
+    pub specular: [f32; 4],
+    pub specular_power: f32,
+    /// `render_flag` bits.
+    pub render_flags: u32,
+    /// `multiTopProjectionLayer` with the angles (degrees from straight up) it fades in over.
+    pub top_projection: Option<(u32, f32, f32)>,
+    /// Stage 0 is the texture of the face; the others follow the `StageN` classes.
     pub stages: Vec<Stage>,
     pub transforms: Vec<TexGen>,
+}
+impl Default for Material {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            pixel_shader: 0,
+            vertex_shader: 0,
+            emissive: [0.0, 0.0, 0.0, 1.0],
+            ambient: [1.0; 4],
+            diffuse: [1.0; 4],
+            forced_diffuse: [0.0; 4],
+            specular: [0.0, 0.0, 0.0, 1.0],
+            specular_power: 1.0,
+            render_flags: 0,
+            top_projection: None,
+            stages: Vec::new(),
+            transforms: Vec::new(),
+        }
+    }
 }
 
 fn read_material(r: &mut Reader) -> Result<Material> {
     let name = r.cstring()?;
     let version = r.u32()?;
-    // Eight colours and the specular power come before the shader ids.
-    r.skip(8 * 16 + 4)?;
-    let pixel_shader = r.u32()?;
-    r.skip(4 + 16)?;
-    if version >= 20 {
-        r.skip(12 * 4)?;
+    // Emissive, ambient, diffuse, forced diffuse, specular, a spare, plant wind, specular again.
+    let mut colors = [[0.0f32; 4]; 8];
+    for c in &mut colors {
+        for v in c.iter_mut() {
+            *v = r.f32()?;
+        }
     }
-    r.skip(16)?;
-    r.cstring()?;
+    let specular_power = r.f32()?;
+    // Two words, tree colorization, two more words.
+    r.skip(8 + 16 + 8)?;
+    let top_layer = r.i32()?;
+    let (top_start, top_end) = (r.f32()?, r.f32()?);
+    if version >= 20 {
+        r.skip(7 * 4)?;
+    } else {
+        // Older materials end the block before the projection settings.
+        r.p -= 20;
+    }
+    let pixel_shader = r.u32()?;
+    let vertex_shader = r.u32()?;
+    // Main light and fog mode.
     r.skip(8)?;
+    r.cstring()?;
+    r.skip(4)?;
+    let render_flags = r.u32()?;
     let stage_count = r.count()?;
     let transform_count = r.count()?;
     let mut stages = Vec::with_capacity(stage_count);
@@ -468,7 +581,27 @@ fn read_material(r: &mut Reader) -> Result<Material> {
     r.skip(4)?;
     r.cstring()?;
     r.skip(5)?;
-    Ok(Material { name, pixel_shader, stages, transforms })
+    let top_projection = (version >= 20 && top_layer >= 0).then_some((top_layer as u32, top_start, top_end));
+    Ok(Material {
+        name,
+        pixel_shader,
+        vertex_shader,
+        emissive: colors[0],
+        ambient: colors[1],
+        diffuse: colors[2],
+        forced_diffuse: colors[3],
+        specular: colors[4],
+        specular_power,
+        render_flags,
+        top_projection,
+        stages,
+        transforms,
+    })
+}
+
+/// Resolution of every LOD of an ODOL file, in the file's order.
+pub fn resolutions(b: &[u8]) -> Result<Vec<f32>> {
+    Ok(lod_table(b)?.1.into_iter().map(|l| l.0).collect())
 }
 
 /// The LODs whose resolution `want` accepts, read from an ODOL file.

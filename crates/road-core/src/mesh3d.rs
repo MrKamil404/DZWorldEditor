@@ -12,6 +12,8 @@ use std::{
 #[derive(Default)]
 pub struct Surface {
     pub texture: String,
+    /// RVMAT of the faces, empty when they have none.
+    pub material: String,
     pub positions: Vec<[f32; 3]>,
     pub uvs: Vec<[f32; 2]>,
 }
@@ -28,14 +30,15 @@ impl ModelMesh {
     }
     fn from_faces(
         vertices: &[[f32; 3]],
-        faces: impl Iterator<Item = (Vec<(usize, [f32; 2])>, String)>,
+        faces: impl Iterator<Item = MlodFace>,
     ) -> Result<Self> {
-        let mut by_texture: HashMap<String, Surface> = HashMap::new();
-        for (face, texture) in faces {
+        let mut by_texture: HashMap<(String, String), Surface> = HashMap::new();
+        for (face, texture, material) in faces {
             let s = by_texture
-                .entry(texture.to_lowercase())
+                .entry((texture.to_lowercase(), material.to_lowercase()))
                 .or_insert_with(|| Surface {
                     texture: texture.clone(),
+                    material: material.clone(),
                     ..Default::default()
                 });
             for i in 1..face.len().saturating_sub(1) {
@@ -51,7 +54,7 @@ impl ModelMesh {
         }
         let min_y = vertices.iter().map(|v| v[1]).fold(f32::INFINITY, f32::min);
         let mut surfaces: Vec<_> = by_texture.into_values().collect();
-        surfaces.sort_by(|a, b| a.texture.cmp(&b.texture));
+        surfaces.sort_by(|a, b| (&a.texture, &a.material).cmp(&(&b.texture, &b.material)));
         Ok(Self {
             surfaces,
             min_y: if min_y.is_finite() { min_y } else { 0. },
@@ -93,7 +96,7 @@ impl<'a> Reader<'a> {
     }
 }
 
-type MlodFace = (Vec<(usize, [f32; 2])>, String);
+type MlodFace = (Vec<(usize, [f32; 2])>, String, String);
 
 fn mlod(b: &[u8]) -> Result<ModelMesh> {
     let mut r = Reader { b, p: 0 };
@@ -134,8 +137,8 @@ fn mlod(b: &[u8]) -> Result<ModelMesh> {
             }
             r.u32()?;
             let texture = r.string()?;
-            r.string()?;
-            faces.push((face, texture));
+            let material = r.string()?;
+            faces.push((face, texture, material));
         }
         ensure!(r.bytes(4)? == b"TAGG", "Brak TAGG w MLOD");
         loop {
@@ -179,6 +182,7 @@ fn odol(b: &[u8]) -> Result<ModelMesh> {
                 })
                 .collect(),
             texture,
+            String::new(),
         )
     });
     ModelMesh::from_faces(&lod.vertices, faces)

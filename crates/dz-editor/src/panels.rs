@@ -1419,10 +1419,35 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
             let before = app.settings.ui_scale;
             row(ui, &t("Interface scale"), |ui| { ui.add(egui::Slider::new(&mut app.settings.ui_scale, 0.75..=2.0)); });
             if before != app.settings.ui_scale { theme::apply(ctx, app.settings.ui_scale); }
+        });
+        section(ui, &t("Graphics"), true, |ui| {
+            row(ui, &t("Quality"), |ui| {
+                let current = app.settings.graphics_preset();
+                let mut pick = None;
+                egui::ComboBox::from_id_salt("graphics_preset").selected_text(current.map_or(t("Custom"), |p| t(p.name()))).show_ui(ui, |ui| {
+                    for p in crate::settings::GraphicsPreset::ALL { if ui.selectable_label(current == Some(p), t(p.name())).clicked() { pick = Some(p); } }
+                });
+                if let Some(p) = pick { app.settings.apply_graphics(p); }
+            });
             slider(ui, &t("Terrain detail"), &mut app.settings.terrain_quality, 0.6..=3.0, false);
             slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
-            slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0, true);
+            slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
             slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
+            let choice = |ui: &mut egui::Ui, label: &str, id: &str, value: &mut u32, options: &[(u32, String)]| {
+                row(ui, label, |ui| {
+                    let shown = options.iter().find(|o| o.0 == *value).map_or_else(|| value.to_string(), |o| o.1.clone());
+                    egui::ComboBox::from_id_salt(id).selected_text(shown).show_ui(ui, |ui| {
+                        for (v, name) in options { ui.selectable_value(value, *v, name.as_str()); }
+                    });
+                });
+            };
+            choice(ui, &t("Texture detail"), "texture_size", &mut app.settings.texture_size, &[(512, "512".into()), (1024, "1024".into()), (2048, "2048".into()), (4096, t("Full"))]);
+            choice(ui, &t("Texture filtering"), "anisotropy", &mut app.settings.anisotropy, &[(1, t("Off")), (2, "2x".into()), (4, "4x".into()), (8, "8x".into()), (16, "16x".into())]);
+            choice(ui, &t("Shadow detail"), "shadow_map", &mut app.settings.shadow_map, &[(2048, "2048".into()), (4096, "4096".into()), (8192, "8192".into())]);
+            slider(ui, &t("Shadow range"), &mut app.settings.lighting.shadow_range, 60.0..=2000.0, true);
+            choice(ui, &t("Antialiasing"), "edge_smoothing", &mut app.settings.edge_smoothing, &[(0, t("Off")), (1, "FXAA".into()), (2, "FXAA + 1.5x".into()), (3, "FXAA + 2x".into())]);
+            choice(ui, &t("Ambient occlusion"), "ambient_occlusion", &mut app.settings.ambient_occlusion, &[(0, t("Off")), (8, t("Low")), (12, t("Medium")), (20, t("High"))]);
+            slider(ui, &t("Ground colour on grass"), &mut app.settings.grass_ground_color, 0.0..=1.0, false);
         });
         section(ui, &t("General"), true, |ui| {
             row(ui, &t("Autosave every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });

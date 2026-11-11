@@ -32,12 +32,35 @@ pub struct Batch {
 /// Number of texture slots of a shading.
 pub const SHADING_SLOTS: usize = 15;
 
-/// Textures of a material as the game combines them.
+/// How the renderer lights a material.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ShadingKind {
+    /// Super and the older single-layer shaders (NormalMap…, Detail…, Skin, Normal).
+    #[default]
+    Super,
+    Multi,
+    /// Tree, TreeAdv, TreeAdvTrunk, Grass and their variants.
+    Tree,
+    Glass,
+    /// CalmWater and Water.
+    Water,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Blend {
+    #[default]
+    Opaque,
+    Alpha,
+    Add,
+}
+
+/// A material as the game combines it.
 /// Super: 0 colour (from the face when empty), 1 normal, 2 detail, 3 macro, 4 ambient, 5 specular.
 /// Multi: 0-3 colour layers, 4 mask, 5 macro, 6 ambient, 7-10 layer normals, 11-14 layer `dtsmdi`.
-#[derive(Clone, Debug, Default)]
+/// Tree: 0 colour, 1 normal, 3 macro with the crown's shade in its alpha.
+#[derive(Clone, Debug)]
 pub struct Shading {
-    pub multi: bool,
+    pub kind: ShadingKind,
     pub maps: [Option<usize>; SHADING_SLOTS],
     /// aside.x, aside.y, up.x, up.y of each slot's UV transform.
     pub xf: [[f32; 4]; SHADING_SLOTS],
@@ -45,6 +68,50 @@ pub struct Shading {
     pub xo: [[f32; 3]; SHADING_SLOTS],
     /// Reflectance of the surface seen head on.
     pub reflectance: f32,
+    pub emissive: [f32; 3],
+    pub ambient: [f32; 3],
+    pub diffuse: [f32; 3],
+    pub forced_diffuse: [f32; 3],
+    pub specular: [f32; 3],
+    pub specular_power: f32,
+    /// Alpha below this is cut away; 0 leaves it to the renderer.
+    pub alpha_test: f32,
+    pub blend: Blend,
+    pub no_z_write: bool,
+    /// Passes that only write depth or shadows in the game.
+    pub hidden: bool,
+    /// Multi layer laid over upward faces: layer, cosine where it starts, cosine where it is full.
+    pub top: Option<[f32; 3]>,
+    /// Bark of a tree: lit as a solid surface, unlike the leaves of the same kind.
+    pub trunk: bool,
+}
+impl Default for Shading {
+    fn default() -> Self {
+        Self {
+            kind: ShadingKind::Super,
+            maps: [None; SHADING_SLOTS],
+            xf: [[1.0, 0.0, 0.0, 1.0]; SHADING_SLOTS],
+            xo: [[0.0; 3]; SHADING_SLOTS],
+            reflectance: 0.04,
+            emissive: [0.0; 3],
+            ambient: [1.0; 3],
+            diffuse: [1.0; 3],
+            forced_diffuse: [0.0; 3],
+            specular: [0.0; 3],
+            specular_power: 1.0,
+            alpha_test: 0.0,
+            blend: Blend::Opaque,
+            no_z_write: false,
+            hidden: false,
+            top: None,
+            trunk: false,
+        }
+    }
+}
+impl Shading {
+    pub fn multi(&self) -> bool {
+        self.kind == ShadingKind::Multi
+    }
 }
 
 /// Head-on reflectance of a stage like `#(ai,32,128,1)fresnel(2.79,4.84)` (index, absorption).
@@ -60,6 +127,8 @@ pub struct TextureImage {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
+    /// The file's own compressed mipmaps, when asked for; `rgba` is then only a small copy.
+    pub raw: Option<std::sync::Arc<paa::Raw>>,
 }
 
 #[derive(Clone, Default)]
@@ -73,6 +142,9 @@ pub struct ModelMesh {
     pub shadings: Vec<Shading>,
     pub min: [f32; 3],
     pub max: [f32; 3],
+    /// Which of the model's visual LODs this is, and how many it has.
+    pub lod: usize,
+    pub lod_count: usize,
 }
 
 impl ModelMesh {
@@ -109,16 +181,13 @@ fn describe_format_error(bytes: &[u8]) -> Option<String> {
 /// proceduralnych (`#(argb,...)`) i pustych wpisów.
 /// Solid colour of a procedural texture such as `#(argb,8,8,3)color(0.5,0.5,1,1,nohq)`.
 fn procedural_color(name: &str) -> Option<TextureImage> {
-    let args = name.trim().strip_prefix('#')?.split("color(").nth(1)?;
-    let mut values: Vec<f32> = args.split(',').take(4).filter_map(|v| v.trim().parse().ok()).collect();
-    // A flat colour carries no detail pattern, so its detail channel stays neutral.
-    if name.to_ascii_lowercase().contains("dtsmdi") && !values.is_empty() {
-        values[0] = 0.5;
-    }
+    let args = name.trim().strip_prefix('#')?.split("color(").nth(1)?.split(')').next()?;
+    let values: Vec<f32> = args.split(',').take(4).filter_map(|v| v.trim().parse().ok()).collect();
     (values.len() == 4).then(|| TextureImage {
         width: 1,
         height: 1,
         rgba: values.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8).collect(),
+        raw: None,
     })
 }
 
@@ -126,6 +195,8 @@ fn procedural_color(name: &str) -> Option<TextureImage> {
 struct MapLoader<'a> {
     root: &'a Path,
     seen: HashMap<String, Option<usize>>,
+    /// Largest side of the compressed mipmaps to keep; 0 decodes everything to RGBA instead.
+    gpu: u32,
 }
 impl MapLoader<'_> {
     fn load(&mut self, name: &str, limit: u32, mesh: &mut ModelMesh) -> Option<usize> {
@@ -138,8 +209,10 @@ impl MapLoader<'_> {
         }
         let image = procedural_color(name).or_else(|| {
             let bytes = std::fs::read(texture_path(self.root, name)?).ok()?;
-            let t = paa::decode(&bytes, limit).ok()?;
-            Some(TextureImage { width: t.width, height: t.height, rgba: t.rgba })
+            let raw = (self.gpu > 0).then(|| paa::read_raw(&bytes, self.gpu).ok()).flatten().map(std::sync::Arc::new);
+            // Nothing reads the pixels of a map the card takes compressed.
+            let t = paa::decode(&bytes, if raw.is_some() { 4 } else { limit }).ok()?;
+            Some(TextureImage { width: t.width, height: t.height, rgba: t.rgba, raw })
         });
         let slot = image.map(|i| {
             mesh.textures.push(i);
@@ -151,38 +224,173 @@ impl MapLoader<'_> {
     }
 }
 
-fn stage_is(stage: &odol::Stage, kind: &str) -> bool {
-    stage.texture.to_ascii_lowercase().contains(kind)
+/// What a stage of a single-layer material holds.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Role {
+    Normal,
+    Detail,
+    Macro,
+    Ambient,
+    Specular,
+    Skip,
+}
+impl Role {
+    fn slot(self) -> Option<usize> {
+        match self {
+            Role::Normal => Some(1),
+            Role::Detail => Some(2),
+            Role::Macro => Some(3),
+            Role::Ambient => Some(4),
+            Role::Specular => Some(5),
+            Role::Skip => None,
+        }
+    }
+}
+
+/// Lighting model and the roles of stages 1, 2, … of a pixel shader. The names of the older
+/// shaders spell out their stages: NormalMap, Detail, Macro, AS, Specular(DI)Map.
+fn shader_layout(pixel_shader: u32) -> Option<(ShadingKind, &'static [Role])> {
+    use crate::rvmat::shader as ps;
+    use Role::*;
+    use ShadingKind as K;
+    Some(match pixel_shader {
+        ps::NORMAL | ps::NORMAL_DXTA | ps::ALPHA_NO_SHADOW | ps::ALPHA_SHADOW => (K::Super, &[]),
+        ps::NORMAL_MAP | ps::NORMAL_MAP_THROUGH | ps::NORMAL_MAP_GRASS | ps::NORMAL_MAP_THROUGH_SIMPLE => (K::Super, &[Normal]),
+        ps::NORMAL_MAP_DIFFUSE => (K::Super, &[Normal, Detail]),
+        ps::DETAIL => (K::Super, &[Detail]),
+        ps::DETAIL_MACRO_AS => (K::Super, &[Detail, Macro, Ambient]),
+        ps::NORMAL_MAP_MACRO_AS => (K::Super, &[Normal, Macro, Ambient]),
+        ps::NORMAL_MAP_DIFFUSE_MACRO_AS => (K::Super, &[Normal, Detail, Macro, Ambient]),
+        ps::NORMAL_MAP_SPECULAR_MAP | ps::NORMAL_MAP_SPECULAR_DI_MAP | ps::NORMAL_MAP_SPECULAR_THROUGH => (K::Super, &[Normal, Specular]),
+        ps::NORMAL_MAP_DETAIL_SPECULAR_MAP | ps::NORMAL_MAP_DETAIL_SPECULAR_DI_MAP => (K::Super, &[Normal, Detail, Specular]),
+        ps::NORMAL_MAP_MACRO_AS_SPECULAR_MAP | ps::NORMAL_MAP_MACRO_AS_SPECULAR_DI_MAP => (K::Super, &[Normal, Macro, Ambient, Specular]),
+        ps::NORMAL_MAP_DETAIL_MACRO_AS_SPECULAR_MAP | ps::NORMAL_MAP_DETAIL_MACRO_AS_SPECULAR_DI_MAP | ps::SUPER | ps::SUPER_HAIR => (K::Super, &[Normal, Detail, Macro, Ambient, Specular]),
+        ps::SKIN => (K::Super, &[Normal, Macro, Skip, Ambient, Specular]),
+        ps::GLASS => (K::Glass, &[]),
+        ps::GRASS | ps::GRASS_ATOC => (K::Tree, &[Skip, Normal]),
+        ps::TREE..=ps::TREE_SIMPLE | ps::TREE_ATOC | ps::TREE_SN => (K::Tree, &[Normal]),
+        ps::TREE_ADV..=ps::TREE_ADV_SIMPLE_ATOC => (K::Tree, &[Normal, Macro]),
+        ps::CALM_WATER | ps::WATER | ps::WATER_SIMPLE => (K::Water, &[]),
+        ps::MULTI => (K::Multi, &[]),
+        _ => return None,
+    })
+}
+
+/// Role of a stage of a shader this reader has no layout for, from the texture's suffix.
+fn role_by_name(texture: &str) -> Role {
+    let l = texture.to_ascii_lowercase();
+    let has = |suffixes: &[&str]| suffixes.iter().any(|s| l.contains(&format!("{s}.")) || l.ends_with(&format!(",{})", s.trim_start_matches('_'))));
+    if has(&["_nohq", "_no", "_non", "_nopx", "_ns", "_nof", "_nofhq", "_novhq"]) {
+        Role::Normal
+    } else if has(&["_dt", "_cdt"]) {
+        Role::Detail
+    } else if has(&["_mc"]) {
+        Role::Macro
+    } else if has(&["_as", "_ads"]) {
+        Role::Ambient
+    } else if has(&["_smdi", "_sm"]) {
+        Role::Specular
+    } else {
+        Role::Skip
+    }
+}
+
+fn rgb(c: [f32; 4]) -> [f32; 3] {
+    [c[0], c[1], c[2]]
+}
+
+/// True for the shaders whose colour textures are stored dark and lifted by the material.
+pub fn is_foliage_shader(pixel_shader: u32) -> bool {
+    matches!(shader_layout(pixel_shader), Some((ShadingKind::Tree, _)))
 }
 
 fn build_shading(m: &odol::Material, loader: &mut MapLoader, mesh: &mut ModelMesh, max: u32) -> Option<Shading> {
+    use odol::render_flag as rf;
     let s = &m.stages;
-    let multi = s.len() >= 15 && stage_is(&s[4], "_mask");
-    let table: &[(usize, usize, u32)] = if multi {
-        &[(0, 0, max), (1, 1, max), (2, 2, max), (3, 3, max), (4, 4, 512), (5, 9, 256), (6, 10, 256), (7, 11, 256), (8, 12, 256), (9, 13, 256), (10, 14, 256), (11, 5, 256), (12, 6, 256), (13, 7, 256), (14, 8, 256)]
-    } else if s.len() >= 6 && stage_is(&s[1], "nohq") && stage_is(&s[2], "dt") && stage_is(&s[3], "mc") && stage_is(&s[4], "as") && stage_is(&s[5], "smdi") {
-        &[(1, 1, 256), (2, 2, 256), (3, 3, 256), (4, 4, 256), (5, 5, 256)]
-    } else {
+    let layout = shader_layout(m.pixel_shader);
+    // Terrain shaders and the like never sit on a model; leave such faces to their texture.
+    if layout.is_none() && m.pixel_shader != crate::rvmat::shader::UNKNOWN {
         return None;
-    };
-    let reflectance = if multi { 0.04 } else { s.get(6).and_then(|f| fresnel_reflectance(&f.texture)).unwrap_or(0.04) };
-    let mut out = Shading { multi, reflectance, ..Default::default() };
-    for slot in 0..SHADING_SLOTS {
-        out.xf[slot] = [1.0, 0.0, 0.0, 1.0];
     }
-    for &(slot, stage, limit) in table {
-        // A flat macro colour in a Multi material is a placeholder: taken at face value its full
-        // alpha would replace the base layer with one colour.
-        if multi && slot == 5 && s[stage].texture.trim_start().starts_with('#') {
-            continue;
-        }
-        out.maps[slot] = loader.load(&s[stage].texture, limit, mesh);
-        if let Some(t) = m.transforms.get(s[stage].transform as usize) {
+    let (kind, roles) = layout.unwrap_or((ShadingKind::Super, &[]));
+    let trunk = matches!(m.pixel_shader, crate::rvmat::shader::TREE_ADV_TRUNK | crate::rvmat::shader::TREE_ADV_TRUNK_SIMPLE);
+    let mut out = Shading { kind, trunk, ..Default::default() };
+    let mut place = |out: &mut Shading, slot: usize, stage: usize, limit: u32, mesh: &mut ModelMesh| {
+        let Some(st) = s.get(stage) else { return };
+        out.maps[slot] = loader.load(&st.texture, limit, mesh);
+        if let Some(t) = m.transforms.get(st.transform as usize) {
             out.xf[slot] = [t.matrix[0], t.matrix[1], t.matrix[3], t.matrix[4]];
             out.xo[slot] = [t.matrix[9], t.matrix[10], (t.source == 5) as u32 as f32];
         }
+    };
+    match kind {
+        ShadingKind::Multi => {
+            if s.len() < 5 {
+                return None;
+            }
+            const TABLE: [(usize, usize, u32); 15] = [(0, 0, 0), (1, 1, 0), (2, 2, 0), (3, 3, 0), (4, 4, 512), (5, 9, 256), (6, 10, 256), (7, 11, 256), (8, 12, 256), (9, 13, 256), (10, 14, 256), (11, 5, 256), (12, 6, 256), (13, 7, 256), (14, 8, 256)];
+            for (slot, stage, limit) in TABLE {
+                place(&mut out, slot, stage, if limit == 0 { max } else { limit }, mesh);
+                // Some materials put a plain specular map where the detail one goes; its red is
+                // not a detail pattern.
+                if slot >= 11 && s.get(stage).is_some_and(|st| !st.texture.to_ascii_lowercase().contains("dtsmdi")) {
+                    out.xo[slot][2] += 2.0;
+                }
+            }
+            out.top = m.top_projection.filter(|t| t.0 < 4).map(|(layer, start, end)| [layer as f32, start.to_radians().cos(), end.to_radians().cos()]);
+        }
+        ShadingKind::Water => {}
+        _ => {
+            for (i, st) in s.iter().enumerate().skip(1) {
+                let role = if layout.is_some() { roles.get(i - 1).copied().unwrap_or(Role::Skip) } else { role_by_name(&st.texture) };
+                if let Some(slot) = role.slot() {
+                    if out.maps[slot].is_none() {
+                        place(&mut out, slot, i, 256, mesh);
+                    }
+                }
+            }
+            if let Some(f) = s.iter().find_map(|st| fresnel_reflectance(&st.texture)) {
+                out.reflectance = f;
+            }
+        }
     }
+    // Tree and skin shaders give the colour fields other meanings, so those keep the defaults.
+    if matches!(kind, ShadingKind::Super | ShadingKind::Multi | ShadingKind::Glass) && m.pixel_shader != crate::rvmat::shader::SKIN {
+        out.emissive = rgb(m.emissive);
+        out.ambient = rgb(m.ambient);
+        out.diffuse = rgb(m.diffuse);
+        out.forced_diffuse = rgb(m.forced_diffuse);
+        out.specular = rgb(m.specular);
+        out.specular_power = m.specular_power.max(1.0);
+    }
+    let f = m.render_flags;
+    out.alpha_test = if f & rf::ALPHA_TEST_128 != 0 {
+        128.0 / 255.0
+    } else if f & rf::ALPHA_TEST_64 != 0 {
+        64.0 / 255.0
+    } else if f & rf::ALPHA_TEST_32 != 0 {
+        32.0 / 255.0
+    } else {
+        0.0
+    };
+    out.no_z_write = f & rf::NO_Z_WRITE != 0;
+    out.blend = if f & rf::ADD_BLEND != 0 {
+        Blend::Add
+    } else if kind == ShadingKind::Glass || (out.no_z_write && out.alpha_test == 0.0) {
+        Blend::Alpha
+    } else {
+        Blend::Opaque
+    };
+    out.hidden = f & rf::NO_COLOR_WRITE != 0 || m.pixel_shader == crate::rvmat::shader::ALPHA_SHADOW;
     Some(out)
+}
+
+/// Adds the shading of a material read from an RVMAT file to `mesh`, with the textures it needs.
+pub fn material_shading(m: &odol::Material, root: &Path, mesh: &mut ModelMesh, max_texture: u32, gpu_texture: u32) -> Option<usize> {
+    let mut loader = MapLoader { root, seen: mesh.texture_names.iter().enumerate().map(|(i, n)| (n.clone(), Some(i))).collect(), gpu: gpu_texture };
+    let built = build_shading(m, &mut loader, mesh, max_texture)?;
+    mesh.shadings.push(built);
+    Some(mesh.shadings.len() - 1)
 }
 
 fn texture_path(root: &Path, name: &str) -> Option<std::path::PathBuf> {
@@ -202,27 +410,44 @@ pub fn load_model(path: &Path, root: &Path, max_texture: u32) -> Result<ModelMes
 }
 
 /// Jak `load_model`, ale z LOD-em graficznym o numerze `lod` (0 = najdokładniejszy).
-/// Gdy modelu nie ma tylu LOD-ów, używa najdokładniejszego.
+/// Gdy modelu nie ma tylu LOD-ów, używa ostatniego (najprostszego).
 pub fn load_model_lod(
     path: &Path,
     root: &Path,
     max_texture: u32,
     lod: usize,
 ) -> Result<ModelMesh, String> {
+    load_model_detail(path, root, max_texture, 0, lod)
+}
+
+/// Like `load_model_lod`, and with `gpu_texture` above 0 the textures also keep the file's
+/// compressed mipmaps up to that size, for the graphics card to take as they are.
+pub fn load_model_detail(path: &Path, root: &Path, max_texture: u32, gpu_texture: u32, lod: usize) -> Result<ModelMesh, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if let Some(msg) = describe_format_error(&bytes) {
         return Err(msg);
     }
-    let mut lods = odol::read(&bytes, |i, resolution| i == 0 || (i == lod && resolution < 1000.0))
-        .map_err(|e| format!("{}: {e:#}", path.display()))?;
-    let lod = lods.pop().ok_or("Model nie ma LOD-ów")?;
-    if lod.resolution >= 1000.0 {
+    let visual: Vec<usize> = odol::resolutions(&bytes)
+        .map_err(|e| format!("{}: {e:#}", path.display()))?
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| **r < 1000.0)
+        .map(|(i, _)| i)
+        .collect();
+    if visual.is_empty() {
         return Err("Model nie ma LOD-u graficznego".into());
     }
-    build_mesh(&lod, root, max_texture)
+    let chosen = lod.min(visual.len() - 1);
+    let index = visual[chosen];
+    let mut lods = odol::read(&bytes, |i, _| i == index).map_err(|e| format!("{}: {e:#}", path.display()))?;
+    let data = lods.pop().ok_or("Model nie ma LOD-ów")?;
+    let mut mesh = build_mesh(&data, root, max_texture, gpu_texture)?;
+    mesh.lod = chosen;
+    mesh.lod_count = visual.len();
+    Ok(mesh)
 }
 
-fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32) -> Result<ModelMesh, String> {
+fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32, gpu_texture: u32) -> Result<ModelMesh, String> {
     if lod.vertices.is_empty() || lod.faces.is_empty() {
         return Err("LOD modelu jest pusty".into());
     }
@@ -230,14 +455,24 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32) -> Result<ModelMes
     let mut mesh = ModelMesh::default();
     // kolejność tekstur z modelu → miejsce w `mesh.textures`; błąd odczytu = kolor zastępczy
     let mut texture_slots: HashMap<u16, Option<usize>> = HashMap::new();
+    // Only the tree shaders lift their dark colour textures; fences and windows keep theirs.
+    let foliage: std::collections::HashSet<u16> = lod
+        .face_textures
+        .iter()
+        .zip(&lod.face_materials)
+        .filter(|(_, m)| usize::try_from(**m).ok().and_then(|i| lod.materials.get(i)).is_some_and(|m| is_foliage_shader(m.pixel_shader)))
+        .map(|(t, _)| *t)
+        .collect();
     for (i, name) in lod.textures.iter().enumerate() {
-        let image = texture_path(root, name)
-            .and_then(|p| std::fs::read(p).ok())
-            .and_then(|b| paa::decode(&b, max_texture).ok());
+        let leaves = foliage.contains(&(i as u16));
+        let bytes = texture_path(root, name).and_then(|p| std::fs::read(p).ok());
+        // Leaves are brightened pixel by pixel, so they are decoded; the rest stays compressed.
+        let raw = bytes.as_ref().filter(|_| gpu_texture > 0 && !leaves).and_then(|b| paa::read_raw(b, gpu_texture).ok()).map(std::sync::Arc::new);
+        let image = bytes.and_then(|b| paa::decode(&b, if leaves && gpu_texture > 0 { max_texture.max(gpu_texture.min(1024)) } else { max_texture }).ok());
         let slot = image
             .map(|t| {
-                let mut image = TextureImage { width: t.width, height: t.height, rgba: t.rgba };
-                prepare_foliage(&mut image);
+                let mut image = TextureImage { width: t.width, height: t.height, rgba: t.rgba, raw };
+                prepare_cutout(&mut image, leaves);
                 image
             })
             .or_else(|| procedural_color(name))
@@ -264,6 +499,18 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32) -> Result<ModelMes
         }
     }
 
+    // The model's own normals carry what its makers meant, such as the rounded shading of a
+    // crown. Their sign depends on the file, so it is taken from the faces.
+    if lod.normals.len() == normals.len() {
+        let agreement: f32 = normals.iter().zip(&lod.normals).map(|(a, b)| dot(normalize(*a), *b)).sum();
+        let sign = if agreement < 0.0 { -1.0 } else { 1.0 };
+        for (n, stored) in normals.iter_mut().zip(&lod.normals) {
+            // A vertex stored without a normal keeps the one of its faces.
+            if dot(*stored, *stored) > 0.25 {
+                *n = [stored[0] * sign, stored[1] * sign, stored[2] * sign];
+            }
+        }
+    }
     mesh.vertices = lod
         .vertices
         .iter()
@@ -277,7 +524,7 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32) -> Result<ModelMes
         .collect();
 
     // Grupowanie trójkątów po teksturze, z zachowaniem kolejności pierwszego użycia.
-    let mut loader = MapLoader { root, seen: HashMap::new() };
+    let mut loader = MapLoader { root, seen: HashMap::new(), gpu: gpu_texture };
     let mut shading_of: HashMap<i32, Option<usize>> = HashMap::new();
     let mut order: Vec<(u16, i32)> = Vec::new();
     let mut groups: HashMap<(u16, i32), Vec<u32>> = HashMap::new();
@@ -338,7 +585,7 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32) -> Result<ModelMes
 /// z rvmat (zwykle około 4). Zamiast czytać materiały wyrównujemy średnią jasność.
 /// Dodatkowo przezroczyste piksele przejmują kolor sąsiadów, inaczej filtrowanie
 /// tekstury dawałoby czarne obwódki liści.
-fn prepare_foliage(t: &mut TextureImage) {
+fn prepare_cutout(t: &mut TextureImage, brighten: bool) {
     let opaque: Vec<usize> = (0..t.rgba.len() / 4)
         .filter(|i| t.rgba[i * 4 + 3] >= ALPHA_CUTOFF)
         .collect();
@@ -353,7 +600,7 @@ fn prepare_foliage(t: &mut TextureImage) {
         .map(|i| t.rgba[i * 4..i * 4 + 3].iter().map(|&c| u64::from(c)).sum::<u64>())
         .sum();
     let mean = sum as f32 / (opaque.len() * 3) as f32;
-    let gain = (FOLIAGE_TARGET_BRIGHTNESS / mean.max(1.0)).clamp(1.0, FOLIAGE_MAX_GAIN);
+    let gain = if brighten { (FOLIAGE_TARGET_BRIGHTNESS / mean.max(1.0)).clamp(1.0, FOLIAGE_MAX_GAIN) } else { 1.0 };
     for i in &opaque {
         for c in &mut t.rgba[i * 4..i * 4 + 3] {
             *c = (f32::from(*c) * gain).min(255.0) as u8;
@@ -599,6 +846,8 @@ mod tests {
             textures: Vec::new(),
             min: [-1.0, 0.0, 0.0],
             max: [1.0, 4.0, 0.0],
+            lod: 0,
+            lod_count: 1,
         }
     }
 
@@ -624,16 +873,16 @@ mod tests {
     #[test]
     fn foliage_is_brightened_and_bleeds_into_transparent_pixels() {
         // 2x1: ciemny liść + przezroczysty czarny piksel
-        let mut t = TextureImage { width: 2, height: 1, rgba: vec![25, 25, 25, 255, 0, 0, 0, 0] };
-        prepare_foliage(&mut t);
+        let mut t = TextureImage { width: 2, height: 1, rgba: vec![25, 25, 25, 255, 0, 0, 0, 0], raw: None };
+        prepare_cutout(&mut t, true);
         assert_eq!(&t.rgba[..4], &[100, 100, 100, 255]);
         assert_eq!(&t.rgba[4..], &[100, 100, 100, 0], "alfa bez zmian, kolor od sąsiada");
     }
 
     #[test]
     fn opaque_textures_are_left_alone() {
-        let mut t = TextureImage { width: 1, height: 1, rgba: vec![25, 25, 25, 255] };
-        prepare_foliage(&mut t);
+        let mut t = TextureImage { width: 1, height: 1, rgba: vec![25, 25, 25, 255], raw: None };
+        prepare_cutout(&mut t, true);
         assert_eq!(t.rgba, vec![25, 25, 25, 255]);
     }
 
@@ -649,6 +898,8 @@ mod tests {
         let t = procedural_color("#(argb,8,8,3)color(0.5,0,1,1,nohq)").unwrap();
         assert_eq!((t.width, t.height), (1, 1));
         assert_eq!(t.rgba, vec![128, 0, 255, 255]);
+        // Older materials leave the kind of texture out.
+        assert_eq!(procedural_color("#(argb,8,8,3)color(1,0,0,1)").unwrap().rgba, vec![255, 0, 0, 255]);
         assert!(procedural_color("#(ai,32,128,1)fresnel(2.79,4.84)").is_none());
         assert!(procedural_color("dz\\a_co.paa").is_none());
     }
@@ -661,7 +912,7 @@ mod tests {
             return;
         }
         let mesh = load_model(path, Path::new("P:/"), 256).unwrap();
-        let multi = mesh.shadings.iter().find(|s| s.multi).expect("Multi shading");
+        let multi = mesh.shadings.iter().find(|s| s.multi()).expect("Multi shading");
         for slot in (0..5).chain(11..15) {
             assert!(multi.maps[slot].is_some(), "slot {slot}");
         }

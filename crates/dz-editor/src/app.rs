@@ -335,6 +335,8 @@ pub struct App {
     pub view3: ViewCache,
     pub view2: ViewCache,
     pub impostor_fits: HashMap<u32, [f32; 3]>,
+    /// Texture size and anisotropy the loaded models were made with.
+    applied_graphics: (u32, u32),
     pub detail_center: [f32; 2],
 
     pub selection: BTreeSet<u32>,
@@ -431,7 +433,7 @@ impl App {
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
-            impostor_fits: HashMap::new(), detail_center: [f32::MIN, f32::MIN],
+            impostor_fits: HashMap::new(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
             task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
@@ -798,11 +800,25 @@ impl App {
                     self.layer_averages.resize(l.index + 1, [128, 128, 128]);
                 }
                 self.layer_averages[l.index] = l.average;
-                r.set_layer(l.index, 512, l.rgba);
+                r.set_layer(l.index, 512, l.rgba, l.normal);
             }
             drop(r);
             self.push_palette();
         }
+        // Texture settings apply to what loads from now on, so a change loads the models again.
+        let graphics = (self.settings.texture_size, self.settings.anisotropy);
+        if self.applied_graphics != graphics {
+            let first = self.applied_graphics == (0, 0);
+            self.applied_graphics = graphics;
+            self.loader.set_texture_limit(graphics.0);
+            self.renderer.lock().unwrap().anisotropy = graphics.1 as f32;
+            if !first {
+                self.loader.reset();
+                self.impostor_fits.clear();
+                self.renderer.lock().unwrap().clear_models();
+            }
+        }
+        self.renderer.lock().unwrap().shadow_size = self.settings.shadow_map as i32;
         // Models arriving from the workers.
         {
             let (renderer, fits, picks) = (self.renderer.clone(), &mut self.impostor_fits, &mut self.pick_meshes);
@@ -913,7 +929,7 @@ impl App {
             }).collect()
         }).collect();
         self.clutter_models = models;
-        let list: Vec<_> = doc.world.layers.iter().enumerate().take(64).map(|(i, l)| (i, l.texture.clone(), l.color)).collect();
+        let list: Vec<_> = doc.world.layers.iter().enumerate().take(64).map(|(i, l)| (i, l.texture.clone(), l.material.clone(), l.color)).collect();
         self.layer_rx = Some(models::load_layer_textures(self.settings.tools.work_drive.clone(), list, self.ctx.clone()));
     }
 

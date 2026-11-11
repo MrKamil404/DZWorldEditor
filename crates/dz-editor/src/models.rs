@@ -10,6 +10,8 @@ use std::sync::{Arc, Condvar, Mutex};
 /// LOD slots held per model.
 pub const LOD_NEAR: u8 = 0;
 pub const LOD_FAR: u8 = 1;
+/// The LOD billboards of distant plants are drawn from.
+pub const LOD_BILLBOARD: u8 = 1;
 
 struct Queue<T> {
     items: Mutex<VecDeque<T>>,
@@ -45,6 +47,8 @@ pub struct ModelLoader {
     done: Receiver<(u64, Option<MeshData>, (u32, u8))>,
     state: HashSet<(u32, u8)>,
     generation: Arc<std::sync::atomic::AtomicU64>,
+    /// Largest side of the textures the workers load.
+    texture_limit: Arc<std::sync::atomic::AtomicU32>,
     pending: usize,
 }
 
@@ -104,22 +108,27 @@ fn from_model3d(mesh: &model3d::ModelMesh, center: [f32; 3], key: (u32, u8), wit
     }
     let batches = mesh.batches.iter().map(|b| (b.first_index, b.index_count, b.texture, b.shading)).collect();
     let textures = mesh.textures.iter().zip(&mesh.texture_names).map(|(t, n)| (n.clone(), t.width, t.height, t.rgba.clone())).collect();
+    let raw = mesh.textures.iter().map(|t| t.raw.clone()).collect();
     let mut impostor_fit = [0.0; 3];
     let impostor = with_impostor.then(|| {
         let (rgba, fit) = model3d::render_impostor(mesh, IMPOSTOR_SIZE as u32);
         impostor_fit = [fit.world_size, fit.center[0] + center[0], fit.center[1] + center[1]];
         impostor_mips(rgba, IMPOSTOR_SIZE as usize)
     });
-    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, shadings: mesh.shadings.clone(), impostor, impostor_fit, conform: false, water: false, decal: false }
+    MeshData { key, vertices, indices: mesh.indices.clone(), batches, textures, raw, lod_count: mesh.lod_count.clamp(1, 255) as u8, shadings: mesh.shadings.clone(), impostor, impostor_fit, conform: false, water: false, decal: false }
 }
 
 /// MLOD models and everything `model3d` refuses go through the road tool's reader.
-fn from_mesh3d(file: &Path, cache: &dayz_road_tool::mesh3d::Cache, key: (u32, u8)) -> Option<MeshData> {
+fn from_mesh3d(file: &Path, root: &Path, cache: &dayz_road_tool::mesh3d::Cache, key: (u32, u8), texture_limit: u32) -> Option<MeshData> {
     let m = cache.mesh(file)?;
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
     let mut batches = Vec::new();
     let mut textures = Vec::new();
+    let mut raw = Vec::new();
+    // Source models name their materials; the maps those need are gathered here.
+    let mut maps = model3d::ModelMesh::default();
+    let mut shading_of: HashMap<String, Option<usize>> = HashMap::new();
     for s in &m.surfaces {
         let first = indices.len() as u32;
         for (tri, uv) in s.positions.chunks_exact(3).zip(s.uvs.chunks_exact(3)) {
@@ -132,11 +141,30 @@ fn from_mesh3d(file: &Path, cache: &dayz_road_tool::mesh3d::Cache, key: (u32, u8
         }
         let tex = cache.texture(&s.texture, file).map(|t| {
             textures.push((s.texture.to_ascii_lowercase(), t.width, t.height, t.rgba.clone()));
+            // The cache keeps a small copy; the card takes the file's own mipmaps.
+            let mut full = root.join(s.texture.trim_start_matches(['\\', '/']).replace('\\', "/"));
+            full.set_extension("paa");
+            raw.push(std::fs::read(full).ok().and_then(|b| forest_core::paa::read_raw(&b, texture_limit).ok()).map(Arc::new));
             textures.len() - 1
         });
-        batches.push((first, indices.len() as u32 - first, tex, None));
+        let shading = *shading_of.entry(s.material.to_ascii_lowercase()).or_insert_with(|| {
+            let material = forest_core::rvmat::load(root, &s.material)?;
+            model3d::material_shading(&material, root, &mut maps, 512, texture_limit)
+        });
+        batches.push((first, indices.len() as u32 - first, tex, shading));
     }
-    (!indices.is_empty()).then_some(MeshData { key, vertices, indices, batches, textures, shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false, decal: false })
+    // Shadings index the maps after the colour textures.
+    let offset = textures.len();
+    for sh in &mut maps.shadings {
+        for slot in sh.maps.iter_mut().flatten() {
+            *slot += offset;
+        }
+    }
+    for (t, n) in maps.textures.into_iter().zip(maps.texture_names) {
+        raw.push(t.raw);
+        textures.push((n, t.width, t.height, t.rgba));
+    }
+    (!indices.is_empty()).then_some(MeshData { key: (key.0, 0), vertices, indices, batches, textures, raw, lod_count: 1, shadings: maps.shadings, impostor: None, impostor_fit: [0.0; 3], conform: false, water: false, decal: false })
 }
 
 impl ModelLoader {
@@ -144,27 +172,32 @@ impl ModelLoader {
         let queue: Arc<Queue<Job>> = Arc::new(Queue::new());
         let (tx, done) = channel();
         let generation = Arc::new(std::sync::atomic::AtomicU64::new(1));
+        let texture_limit = Arc::new(std::sync::atomic::AtomicU32::new(2048));
         let cache = dayz_road_tool::mesh3d::Cache::default();
         for _ in 0..std::thread::available_parallelism().map(|n| n.get().clamp(2, 6)).unwrap_or(3) {
-            let (q, tx, db, ctx, gens, cache) = (queue.clone(), tx.clone(), db.clone(), ctx.clone(), generation.clone(), cache.clone());
+            let (q, tx, db, ctx, gens, cache, limit) = (queue.clone(), tx.clone(), db.clone(), ctx.clone(), generation.clone(), cache.clone(), texture_limit.clone());
             std::thread::spawn(move || loop {
                 let job = q.pop();
                 if job.generation != gens.load(std::sync::atomic::Ordering::Relaxed) {
                     let _ = tx.send((job.generation, None, job.key));
                     continue;
                 }
-                let result = load(&db, &job.path, job.key, &cache);
+                let result = load(&db, &job.path, job.key, &cache, limit.load(std::sync::atomic::Ordering::Relaxed));
                 let _: Result<(), _> = tx.send((job.generation, result, job.key));
                 ctx.request_repaint();
             });
         }
-        Self { queue, done, state: HashSet::new(), generation, pending: 0 }
+        Self { queue, done, state: HashSet::new(), generation, texture_limit, pending: 0 }
     }
     /// Forget everything; used when another project is opened.
     pub fn reset(&mut self) {
         self.generation.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.state.clear();
         self.pending = 0;
+    }
+    /// Largest side of the textures of the models loaded from now on.
+    pub fn set_texture_limit(&self, pixels: u32) {
+        self.texture_limit.store(pixels.max(64), std::sync::atomic::Ordering::Relaxed);
     }
     pub fn request(&mut self, key: (u32, u8), path: &str) {
         if self.state.insert(key) {
@@ -180,6 +213,8 @@ impl ModelLoader {
             }
             self.pending = self.pending.saturating_sub(1);
             if let Some(m) = mesh {
+                // A model with fewer LODs answers with the last one it has.
+                self.state.insert(m.key);
                 f(m);
             }
         }
@@ -198,17 +233,21 @@ pub fn is_water_model(path: &str) -> bool {
     (path.contains("\\water\\") || path.contains("\\water_")) && !path.contains("streambed")
 }
 
-fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d::Cache) -> Option<MeshData> {
+fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d::Cache, texture_limit: u32) -> Option<MeshData> {
     let file = db.file(path);
     let info = db.get(path);
-    let lod = key.1 as usize;
-    let mut mesh = match model3d::load_model_lod(&file, db.root(), 512, lod) {
-        Ok(m) => Some(from_model3d(&m, info.center, key, key.1 == LOD_FAR)),
-        Err(_) => from_mesh3d(&file, cache, key),
+    let mut mesh = match model3d::load_model_detail(&file, db.root(), 256, texture_limit, key.1 as usize) {
+        Ok(m) => {
+            let billboard = m.lod == (LOD_BILLBOARD as usize).min(m.lod_count.saturating_sub(1));
+            Some(from_model3d(&m, info.center, (key.0, m.lod as u8), billboard))
+        }
+        Err(_) => from_mesh3d(&file, db.root(), cache, key, texture_limit),
     }?;
     // Water is drawn by its own shader; the game's flow maps are not colours.
-    if is_water_model(path) {
+    let water_only = !mesh.batches.is_empty() && mesh.batches.iter().all(|b| b.3.and_then(|i| mesh.shadings.get(i)).is_some_and(|s| s.kind == model3d::ShadingKind::Water));
+    if is_water_model(path) || water_only {
         mesh.textures.clear();
+        mesh.raw.clear();
         mesh.shadings.clear();
         for b in &mut mesh.batches {
             b.2 = None;
@@ -294,7 +333,7 @@ mod tests {
             vertices: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0].to_vec(),
             indices: vec![0, 1, 2],
             batches: vec![(0, 3, Some(0), None)],
-            textures: Vec::new(), shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false, decal: false,
+            textures: Vec::new(), raw: Vec::new(), lod_count: 1, shadings: Vec::new(), impostor: None, impostor_fit: [0.0; 3], conform: false, water: false, decal: false,
         };
         tessellate(&mut m, 2.0);
         assert!(m.indices.len() > 30);
@@ -348,7 +387,7 @@ fn thumbnail_mesh(file: &Path, cache: &dayz_road_tool::mesh3d::Cache) -> Option<
             }
         }
         let texture = cache.texture(&s.texture, file).map(|t| {
-            out.textures.push(model3d::TextureImage { width: t.width, height: t.height, rgba: t.rgba.clone() });
+            out.textures.push(model3d::TextureImage { width: t.width, height: t.height, rgba: t.rgba.clone(), raw: None });
             out.texture_names.push(s.texture.to_ascii_lowercase());
             out.textures.len() - 1
         });
@@ -406,7 +445,44 @@ impl Thumbnails {
 pub struct LayerTexture {
     pub index: usize,
     pub rgba: Vec<u8>,
+    /// Normal map of the surface, the same size as `rgba`.
+    pub normal: Vec<u8>,
     pub average: [u8; 3],
+}
+
+/// Normal map a surface's RVMAT names, or the one beside its colour texture, as 512 x 512 RGBA.
+fn surface_normal(root: &Path, texture: &str, material: &str) -> Vec<u8> {
+    const N: usize = 512;
+    let lower = texture.to_ascii_lowercase();
+    let beside = || {
+        let at = lower.rfind("_co.paa").or_else(|| lower.rfind("_ca.paa"))?;
+        Some(format!("{}_nopx.paa", &texture[..at]))
+    };
+    // Stage 1 of a terrain material is its normal map.
+    let named = forest_core::rvmat::load(root, material).and_then(|m| m.stages.get(1).map(|s| s.texture.clone())).filter(|t| !t.trim().is_empty() && !t.starts_with('#'));
+    let decoded = named.or_else(beside).and_then(|name| {
+        let mut file = root.join(name.trim_start_matches(['\\', '/']).replace('\\', "/"));
+        file.set_extension("paa");
+        forest_core::paa::decode(&std::fs::read(file).ok()?, N as u32).ok()
+    });
+    let mut out = Vec::with_capacity(N * N * 4);
+    match decoded {
+        Some(t) => {
+            let (w, h) = (t.width as usize, t.height as usize);
+            for y in 0..N {
+                for x in 0..N {
+                    let p = (y * h / N * w + x * w / N) * 4;
+                    out.extend_from_slice(&[t.rgba[p], t.rgba[p + 1], t.rgba[p + 2], 255]);
+                }
+            }
+        }
+        None => {
+            for _ in 0..N * N {
+                out.extend_from_slice(&[128, 128, 255, 255]);
+            }
+        }
+    }
+    out
 }
 
 /// Puts a height worked out from the surface's normal map into the alpha channel, which is
@@ -467,10 +543,10 @@ fn apply_relief(root: &Path, texture: &str, rgba: &mut [u8]) {
 }
 
 /// Reads the terrain textures of all layers on a worker thread.
-pub fn load_layer_textures(root: PathBuf, layers: Vec<(usize, String, [u8; 3])>, ctx: eframe::egui::Context) -> Receiver<LayerTexture> {
+pub fn load_layer_textures(root: PathBuf, layers: Vec<(usize, String, String, [u8; 3])>, ctx: eframe::egui::Context) -> Receiver<LayerTexture> {
     let (tx, rx) = channel();
     std::thread::spawn(move || {
-        for (index, tex, color) in layers {
+        for (index, tex, material, color) in layers {
             let file = root.join(tex.replace('\\', "/"));
             let decoded = std::fs::read(&file).ok().and_then(|b| forest_core::paa::decode(&b, 512).ok());
             let mut rgba = Vec::with_capacity(512 * 512 * 4);
@@ -499,7 +575,8 @@ pub fn load_layer_textures(root: PathBuf, layers: Vec<(usize, String, [u8; 3])>,
             }
             apply_relief(&root, &tex, &mut rgba);
             let n = 512 * 512;
-            let _ = tx.send(LayerTexture { index, rgba, average: [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8] });
+            let normal = surface_normal(&root, &tex, &material);
+            let _ = tx.send(LayerTexture { index, rgba, normal, average: [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8] });
             ctx.request_repaint();
         }
     });

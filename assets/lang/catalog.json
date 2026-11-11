@@ -131,6 +131,10 @@
   "de": "Umgebungslicht",
   "pl": "Światło otoczenia"
  },
+ "Ambient occlusion": {
+  "de": "Umgebungsverdeckung",
+  "pl": "Okluzja otoczenia"
+ },
  "Angle": {
   "de": "Winkel",
   "pl": "Kąt"
@@ -138,6 +142,10 @@
  "Another task is still running": {
   "de": "Eine andere Aufgabe läuft noch",
   "pl": "Inne zadanie nadal trwa"
+ },
+ "Antialiasing": {
+  "de": "Kantenglättung",
+  "pl": "Wygładzanie krawędzi"
  },
  "Applies the type, settings and typed points.": {
   "de": "Übernimmt Typ, Einstellungen und eingegebene Punkte.",
@@ -502,6 +510,10 @@
  "Curves": {
   "de": "Kurven",
   "pl": "Łuki"
+ },
+ "Custom": {
+  "de": "Benutzerdefiniert",
+  "pl": "Własne"
  },
  "Cut": {
   "de": "Nur abtragen",
@@ -923,6 +935,10 @@
   "de": "Aus den Arten des Projekts",
   "pl": "Z gatunków projektu"
  },
+ "Full": {
+  "de": "Voll",
+  "pl": "Pełna"
+ },
  "Full detail distance": {
   "de": "Distanz volle Details",
   "pl": "Odległość pełnych detali"
@@ -991,6 +1007,10 @@
   "de": "Gelände unter der Straße angleichen",
   "pl": "Wyprofiluj teren pod drogą"
  },
+ "Graphics": {
+  "de": "Grafik",
+  "pl": "Grafika"
+ },
  "Grass": {
   "de": "Gras",
   "pl": "Trawa"
@@ -998,6 +1018,10 @@
  "Grass under objects": {
   "de": "Gras unter Objekten",
   "pl": "Trawa pod obiektami"
+ },
+ "Ground colour on grass": {
+  "de": "Bodenfarbe auf Gras",
+  "pl": "Wpływ koloru satki na trawę"
  },
  "Height": {
   "de": "Höhe",
@@ -1030,6 +1054,10 @@
  "Help": {
   "de": "Hilfe",
   "pl": "Pomoc"
+ },
+ "High": {
+  "de": "Hoch",
+  "pl": "Wysokie"
  },
  "Hills": {
   "de": "Hügel",
@@ -1259,6 +1287,10 @@
   "de": "Ordner wird durchsucht",
   "pl": "Przeszukiwanie folderu"
  },
+ "Low": {
+  "de": "Niedrig",
+  "pl": "Niskie"
+ },
  "Lower": {
   "de": "Senken",
   "pl": "Obniż"
@@ -1334,6 +1366,10 @@
  "Max. grade %": {
   "de": "Max. Steigung %",
   "pl": "Maks. nachylenie %"
+ },
+ "Medium": {
+  "de": "Mittel",
+  "pl": "Średnie"
  },
  "Min height": {
   "de": "Min. Höhe",
@@ -1534,6 +1570,10 @@
  "Objects of roads and generators stay. Running again or deleting this generator with its objects brings the removed ones back.": {
   "de": "Objekte von Straßen und Generatoren bleiben. Erneutes Ausführen oder Löschen dieses Generators mit seinen Objekten bringt die entfernten zurück.",
   "pl": "Obiekty dróg i generatorów zostają. Ponowne uruchomienie albo usunięcie generatora razem z obiektami przywraca usunięte."
+ },
+ "Off": {
+  "de": "Aus",
+  "pl": "Wyłączone"
  },
  "Offset": {
   "de": "Versatz",
@@ -1758,6 +1798,10 @@
  "Properties": {
   "de": "Eigenschaften",
   "pl": "Właściwości"
+ },
+ "Quality": {
+  "de": "Qualität",
+  "pl": "Jakość"
  },
  "Radius": {
   "de": "Radius",
@@ -2083,6 +2127,10 @@
   "de": "Siedlung",
   "pl": "Osada"
  },
+ "Shadow detail": {
+  "de": "Schattendetails",
+  "pl": "Szczegółowość cieni"
+ },
  "Shadow range": {
   "de": "Schattenreichweite",
   "pl": "Zasięg cieni"
@@ -2343,6 +2391,14 @@
   "de": "Text",
   "pl": "Tekst"
  },
+ "Texture detail": {
+  "de": "Texturdetails",
+  "pl": "Szczegółowość tekstur"
+ },
+ "Texture filtering": {
+  "de": "Texturfilterung",
+  "pl": "Filtrowanie tekstur"
+ },
  "Texture tiles": {
   "de": "Texturkacheln",
   "pl": "Kafle tekstur"
@@ -2502,6 +2558,10 @@
  "Version {0} is available": {
   "de": "Version {0} ist verfügbar",
   "pl": "Dostępna wersja {0}"
+ },
+ "Very high": {
+  "de": "Sehr hoch",
+  "pl": "Bardzo wysokie"
  },
  "View": {
   "de": "Ansicht",
