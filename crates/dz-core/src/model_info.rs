@@ -205,6 +205,38 @@ fn read_land_contact(file: &[u8], info: &mut ModelInfo) {
     }
 }
 
+/// True when the game stands the model on its LandContact points: their place on the ground
+/// decides its height, and the height stored with the object does not count.
+fn stands_on_contacts(info: &ModelInfo) -> bool {
+    info.placement == Placement::SlopeLandContact && info.contact_count >= 2
+}
+
+/// Height correction of a tilted model with a `placement` property.
+///
+/// A level model of this kind is sheared until all its contact points lie on the ground. A
+/// tilted one cannot bend, so the game stands it on the contact point that would otherwise be
+/// highest over the ground and lets the rest go into it: the raised end of a barrier meets the
+/// level barrier beside it, whichever end that is, and its other end sinks. Measured on a
+/// built map, where this puts both such joints within centimetres of each other.
+pub fn tilted_lift(o: &crate::objects::Obj, info: &ModelInfo, height: &crate::terrain::Heightmap) -> f32 {
+    if !info.placement.skews() || info.contact_count == 0 || o.flags & crate::objects::FLAG_ABSOLUTE != 0 || (o.pitch.abs() <= 0.01 && o.roll.abs() <= 0.01) {
+        return 0.0;
+    }
+    let m = crate::objects::rotation(o.yaw, o.pitch, o.roll, o.scale);
+    // For each contact point: where the origin has to be for that point to lie on the ground.
+    let seated = info.contact[..info.contact_count as usize].iter().map(|c| {
+        let under = height.sample(o.x + m[0][0] * c[0] + m[2][0] * c[1], o.z + m[0][2] * c[0] + m[2][2] * c[1]);
+        under - (m[0][1] * c[0] + m[1][1] * info.contact_y + m[2][1] * c[1])
+    }).fold(f32::MAX, f32::min);
+    let stored = height.sample(o.x, o.z) + o.elevation;
+    if stands_on_contacts(info) {
+        seated - stored
+    } else {
+        // Other placements keep their stored height unless a contact point would stick out.
+        (seated + o.elevation - stored).min(0.0)
+    }
+}
+
 /// How the game shears a model over the terrain.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Skew {
@@ -252,7 +284,9 @@ pub fn skew(o: &crate::objects::Obj, info: &ModelInfo, height: &crate::terrain::
             (ax, az, ground(mx, mz) - ax * mx - az * mz)
         }
     };
-    Some(Skew { along_x: ax, along_z: az, lift: at_origin - height.sample(o.x, o.z) })
+    // Standing on its contact points the model takes its height from the ground under them.
+    let seat = if stands_on_contacts(info) { -o.elevation - info.contact_y * scale } else { 0.0 };
+    Some(Skew { along_x: ax, along_z: az, lift: at_origin - height.sample(o.x, o.z) + seat })
 }
 
 /// Cached model information, keyed by WRP path.
@@ -285,16 +319,33 @@ impl ModelDb {
 #[cfg(test)]
 mod tests {
     use super::*;
-    /// A tilt stored on the object stands as it is: Buldozer and the built map show a barrier
-    /// with `placement = slopelandcontact` exactly where Terrain Builder's numbers put it.
     #[test]
-    fn a_tilted_model_is_not_sheared() {
-        use crate::objects::Obj;
+    fn a_tilted_barrier_stands_on_its_raised_end_whichever_end_that_is() {
+        use crate::objects::{rotation, Obj};
         let info = ModelInfo { contact: [[-7.0, 0.0], [0.0, 0.0], [0.0, 0.0]], contact_count: 2, known: true, placement: Placement::SlopeLandContact, ..Default::default() };
         let h = crate::terrain::Heightmap::new(32, 32, 10.0, 10.0);
-        let o = Obj { x: 100.0, z: 100.0, elevation: -0.367, yaw: 25.0, pitch: 1.4, roll: -12.2, scale: 1.4, model: 0, flags: 0 };
-        assert!(skew(&o, &info, &h).is_none());
-        assert!(skew(&Obj { pitch: 0.0, roll: 0.0, ..o }, &info, &h).is_some());
+        // The stored height does not count: the game puts the contact points on the ground.
+        for (roll, elevation) in [(-12.0f32, -0.4f32), (12.0, -1.8), (-12.0, 2.0)] {
+            let o = Obj { x: 100.0, z: 100.0, elevation, yaw: 25.0, pitch: 0.0, roll, scale: 1.4, model: 0, flags: 0 };
+            let m = rotation(o.yaw, o.pitch, o.roll, o.scale);
+            let origin = 10.0 + o.elevation + tilted_lift(&o, &info, &h);
+            let far = origin + m[0][1] * -7.0;
+            // The higher end lies on the ground, the other one is in it.
+            assert!((origin.max(far) - 10.0).abs() < 0.01, "{roll}: {origin} {far}");
+            assert!(origin.min(far) < 8.5, "{roll}: {origin} {far}");
+            assert!(skew(&o, &info, &h).is_none());
+        }
+        let level = Obj { x: 100.0, z: 100.0, elevation: -0.4, yaw: 25.0, pitch: 0.0, roll: 0.0, scale: 1.4, model: 0, flags: 0 };
+        assert_eq!(tilted_lift(&level, &info, &h), 0.0);
+        // A level one is seated the same way: on the ground, whatever height is stored.
+        let s = skew(&level, &info, &h).unwrap();
+        assert!((10.0 + level.elevation + s.lift - 10.0).abs() < 0.01, "{s:?}");
+        // Without the property nothing is done.
+        let tilted = Obj { roll: -12.0, ..level };
+        assert_eq!(tilted_lift(&tilted, &ModelInfo { placement: Placement::None, ..info }, &h), 0.0);
+        // Other placements keep the stored height.
+        let slope = ModelInfo { placement: Placement::Slope, ..info };
+        assert!((skew(&level, &slope, &h).unwrap().lift).abs() < 0.01);
     }
 
     fn mlod(lods: &[&[[f32; 3]]], property: Option<&str>) -> Vec<u8> {

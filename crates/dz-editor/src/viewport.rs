@@ -295,8 +295,7 @@ fn placed_matrix(o: &Obj, info: &ModelInfo, height: &dz_core::terrain::Heightmap
             m[2][1] = s.along_z;
             (m, y + s.lift)
         }
-        // A tilted object stays where its own numbers put it, as it does in Buldozer and in the game.
-        None => (rotation(o.yaw, o.pitch, o.roll, o.scale), y),
+        None => (rotation(o.yaw, o.pitch, o.roll, o.scale), y + dz_core::model_info::tilted_lift(o, info, height)),
     }
 }
 
