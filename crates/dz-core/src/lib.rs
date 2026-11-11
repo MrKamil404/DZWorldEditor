@@ -19,6 +19,7 @@ pub mod objects;
 pub mod paa_write;
 pub mod pbo;
 pub mod project;
+pub mod satmod;
 pub mod shapes;
 pub mod terrain;
 pub mod tv4l;

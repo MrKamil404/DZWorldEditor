@@ -457,9 +457,10 @@ void main(){
   } else if (u_mode == 4) {
     c = T(u_tex, 0);
     if (c.a < cut) discard;
-    // The macro map tints the crown around mid grey; its alpha is the shade inside it.
+    // The macro map tints the crown, as the autumn colours of a birch, but does not brighten it:
+    // that of a spruce is nearly white. Its alpha is the shade inside the crown.
     vec4 mc = T(u_m3, 3);
-    c.rgb = lin(c.rgb) * mc.rgb * 2.0;
+    c.rgb = lin(c.rgb) * min(mc.rgb * 2.0, vec3(1.0));
     ao = 0.55 + 0.45 * mc.a;
     if (v_tint.a < 0.0) {
       // Grass takes the colour of the ground it stands on, as far as the setting says.
@@ -473,7 +474,7 @@ void main(){
   } else if (u_mode == 6) {
     c = T(u_tex, 0);
     if (c.a < cut) discard;
-    c.rgb = lin(c.rgb) * T(u_m3, 3).rgb * 2.0;
+    c.rgb = lin(c.rgb) * min(T(u_m3, 3).rgb * 2.0, vec3(1.0));
     N = bump(N, T(u_m1, 1).xyz * 2.0 - 1.0, UV(1));
   } else if (u_mode == 5) {
     c = T(u_tex, 0);
@@ -647,12 +648,19 @@ void main(){
 const IMPOSTOR_FS: &str = r#"#version 330 core
 in vec3 v_uv; in vec3 v_world; out vec4 o;
 uniform sampler2DArray u_tex; uniform vec3 u_eye, u_sun_col, u_amb; uniform float u_fog, u_exposure;
+vec3 lin(vec3 c){ return pow(max(c, vec3(0.0)), vec3(2.2)); }
 void main(){
   vec4 c = texture(u_tex, v_uv);
   if (c.a < 0.5) discard;
-  vec3 lit = c.rgb * (u_amb * 0.8 + u_sun_col * 0.62);
+  // Lit like the foliage of the meshes it stands in for, so a forest keeps its colour with distance.
+  vec3 A = lin(u_amb * 0.75);
+  vec3 S = lin(u_amb * 0.75 + u_sun_col * 0.92) - A;
+  vec3 lit = lin(c.rgb) * (A * 0.85 + S * 0.42);
   float dist = distance(v_world, u_eye);
-  o = vec4(mix(lit, vec3(0.73,0.79,0.86), 1.0 - exp(-dist * u_fog)) * u_exposure, 1.0);
+  lit = mix(lit, lin(vec3(0.73,0.79,0.86)), 1.0 - exp(-dist * u_fog));
+  vec3 e = pow(lit, vec3(1.0 / 2.2)) * u_exposure;
+  vec3 over = max(e - vec3(0.7), vec3(0.0));
+  o = vec4(min(e, vec3(0.7)) + 0.3 * (vec3(1.0) - exp(-over / 0.3)), 1.0);
 }"#;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -952,6 +960,7 @@ enum Upload {
     Mask { width: i32, height: i32, data: Vec<u8> },
     MaskRect { x: i32, y: i32, w: i32, h: i32, data: Vec<u8> },
     Satellite { width: i32, height: i32, rgb: Vec<u8> },
+    SatelliteRect { x: i32, y: i32, w: i32, h: i32, rgb: Vec<u8> },
     NoSatellite,
     Detail { width: i32, height: i32, rgb: Vec<u8>, rect: [f32; 4] },
     Palette { colors: Vec<[u8; 3]>, averages: Vec<[u8; 3]> },
@@ -1180,6 +1189,26 @@ impl Renderer {
             }
             None => self.uploads.push(Upload::NoSatellite),
         }
+    }
+    /// Shows a changed part of the satellite image without sending all of it again.
+    pub fn update_satellite(&mut self, s: &dz_core::terrain::RgbImage, r: dz_core::satmod::PixelRect) {
+        // The texture is the image itself, or the image scaled to 4096 pixels a side.
+        let (tw, th) = if s.width.max(s.height) > 4096 { (4096usize, 4096usize) } else { (s.width, s.height) };
+        if s.width == 0 || s.height == 0 {
+            return;
+        }
+        let (x0, y0) = (r.x0 * tw / s.width, r.y0 * th / s.height);
+        let (x1, y1) = (((r.x1 + 1) * tw).div_ceil(s.width).min(tw).max(x0 + 1) - 1, ((r.y1 + 1) * th).div_ceil(s.height).min(th).max(y0 + 1) - 1);
+        let mut rgb = Vec::with_capacity((x1 - x0 + 1) * (y1 - y0 + 1) * 3);
+        for y in y0..=y1 {
+            let sy = ((y * 2 + 1) * s.height / (th * 2)).min(s.height - 1);
+            for x in x0..=x1 {
+                let sx = ((x * 2 + 1) * s.width / (tw * 2)).min(s.width - 1);
+                let o = (sy * s.width + sx) * 3;
+                rgb.extend_from_slice(&s.data[o..o + 3]);
+            }
+        }
+        self.uploads.push(Upload::SatelliteRect { x: x0 as i32, y: y0 as i32, w: (x1 - x0 + 1) as i32, h: (y1 - y0 + 1) as i32, rgb });
     }
     /// Sets the high resolution satellite window around a map position.
     pub fn set_detail(&mut self, s: &dz_core::terrain::RgbImage, cx: f32, cz: f32, world: f32) -> [f32; 4] {
@@ -1455,6 +1484,13 @@ impl Renderer {
                     set_filter(gl, glow::TEXTURE_2D, glow::LINEAR_MIPMAP_LINEAR, glow::LINEAR, glow::CLAMP_TO_EDGE);
                     self.sat = Some(t);
                     self.has_sat = true;
+                }
+                Upload::SatelliteRect { x, y, w, h, rgb } => {
+                    if let Some(t) = self.sat {
+                        gl.bind_texture(glow::TEXTURE_2D, Some(t));
+                        gl.tex_sub_image_2d(glow::TEXTURE_2D, 0, x, y, w, h, glow::RGB, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&rgb)));
+                        gl.generate_mipmap(glow::TEXTURE_2D);
+                    }
                 }
                 Upload::NoSatellite => {
                     self.has_sat = false;
@@ -1779,7 +1815,9 @@ impl Renderer {
         gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
         gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&f.objects.shadow_instances), glow::STREAM_DRAW);
         for (key, first, count) in f.objects.shadow_groups.iter() {
-            let Some(m) = self.models.get(key).filter(|m| !m.water && m.passes & (PASS_OPAQUE | PASS_DECAL) != 0) else { continue };
+            // Road parts and decals are laid on the ground when drawn; as they stand in the model
+            // they would throw shadows from above it.
+            let Some(m) = self.models.get(key).filter(|m| !m.water && !m.conform && m.passes & (PASS_OPAQUE | PASS_DECAL) != 0) else { continue };
             gl.bind_vertex_array(Some(m.vao));
             Self::bind_mesh_instances(gl, buffer, *first);
             for ((start, n, tex, _), pass) in m.batches.iter().zip(&m.batch_pass) {

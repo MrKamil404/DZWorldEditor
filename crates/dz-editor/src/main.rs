@@ -7,6 +7,7 @@ mod library_ui;
 mod models;
 mod panels;
 mod render;
+mod satellite;
 mod settings;
 mod theme;
 mod updater;

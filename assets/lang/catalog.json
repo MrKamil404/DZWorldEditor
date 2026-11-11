@@ -151,6 +151,10 @@
   "de": "Übernimmt Typ, Einstellungen und eingegebene Punkte.",
   "pl": "Stosuje typ, ustawienia i wpisane punkty."
  },
+ "Applies to the next bake. Choose a baked modifier in the outliner to change it.": {
+  "de": "Gilt für das nächste Einbrennen. Einen eingebrannten Modifikator in der Hierarchie wählen, um ihn zu ändern.",
+  "pl": "Dotyczy następnego wypalenia. Wybierz wypalony modyfikator w hierarchii, żeby go zmienić."
+ },
  "Archipelago": {
   "de": "Archipel",
   "pl": "Archipelag"
@@ -187,6 +191,10 @@
   "de": "Gebiete aus Formen",
   "pl": "Obszary z kształtów"
  },
+ "At the camera": {
+  "de": "Bei der Kamera",
+  "pl": "Przy kamerze"
+ },
  "Author": {
   "de": "Autor",
   "pl": "Autor"
@@ -219,6 +227,26 @@
   "de": "Anzahl aufbewahrter Sicherungen",
   "pl": "Liczba zachowanych kopii"
  },
+ "Bake": {
+  "de": "Einbrennen",
+  "pl": "Wypal"
+ },
+ "Bake objects": {
+  "de": "Objekte einbrennen",
+  "pl": "Wypalanie obiektów"
+ },
+ "Baked objects {0}": {
+  "de": "Eingebrannte Objekte {0}",
+  "pl": "Wypalone obiekty {0}"
+ },
+ "Baked {0} objects into the satellite image": {
+  "de": "{0} Objekte in das Satellitenbild eingebrannt",
+  "pl": "Wypalono {0} obiektów na satce"
+ },
+ "Baking objects into the satellite": {
+  "de": "Objekte werden in das Satellitenbild eingebrannt",
+  "pl": "Wypalanie obiektów na satce"
+ },
  "Bank reach": {
   "de": "Böschungsreichweite",
   "pl": "Zasięg skarp"
@@ -250,6 +278,10 @@
  "Blend inward m": {
   "de": "Übergang nach innen m",
   "pl": "Wtapianie w głąb m"
+ },
+ "Blending": {
+  "de": "Einblenden",
+  "pl": "Wtapianie"
  },
  "Blotch size m": {
   "de": "Fleckengröße m",
@@ -347,6 +379,10 @@
   "de": "Chance pro Knoten %",
   "pl": "Szansa na węzeł %"
  },
+ "Changes: {0}": {
+  "de": "Ändert: {0}",
+  "pl": "Zmienia: {0}"
+ },
  "Check for updates": {
   "de": "Nach Updates suchen",
   "pl": "Sprawdź aktualizacje"
@@ -395,6 +431,10 @@
   "de": "Wähle mindestens ein Modell",
   "pl": "Wybierz co najmniej jeden model"
  },
+ "Choose the source point in the preview first": {
+  "de": "Zuerst den Quellpunkt in der Vorschau wählen",
+  "pl": "Najpierw wybierz punkt źródłowy w podglądzie"
+ },
  "Choose...": {
   "de": "Auswählen...",
   "pl": "Wybierz..."
@@ -418,6 +458,10 @@
  "Click a route, then drag its points. The + between two points adds one, Delete removes the marked point. Models are fitted again after each change.": {
   "de": "Klicke eine Route an und ziehe ihre Punkte. Das + zwischen zwei Punkten fügt einen hinzu, Entf löscht den markierten. Die Modelle werden nach jeder Änderung neu eingepasst.",
   "pl": "Kliknij trasę i przeciągaj jej punkty. Znak + między punktami dodaje nowy, Delete usuwa zaznaczony. Modele dopasowują się po każdej zmianie."
+ },
+ "Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it.": {
+  "de": "In die Vorschau klicken, um die Quelle zu wählen, dann auf der Karte malen. Das Mausrad zoomt die Vorschau, Ziehen verschiebt sie.",
+  "pl": "Kliknij w podglądzie, żeby wybrać miejsce źródłowe, potem maluj na mapie. Kółko przybliża podgląd, przeciąganie go przesuwa."
  },
  "Click on the map": {
   "de": "Auf die Karte klicken",
@@ -459,6 +503,14 @@
   "de": "Klick: aktive Ebene (neue Objekte landen hier). Strg+Klick: Bearbeitung ein- oder ausschalten.",
   "pl": "Kliknięcie: aktywna warstwa (tu trafiają nowe obiekty). Ctrl+kliknięcie: włącza lub wyłącza edycję."
  },
+ "Clone brush": {
+  "de": "Klonpinsel",
+  "pl": "Pędzel klonujący"
+ },
+ "Clone brush {0}": {
+  "de": "Klonpinsel {0}",
+  "pl": "Pędzel klonujący {0}"
+ },
  "Clusters per hectare": {
   "de": "Gruppen pro Hektar",
   "pl": "Skupiska na hektar"
@@ -482,6 +534,10 @@
  "Contour lines": {
   "de": "Höhenlinien",
   "pl": "Warstwice"
+ },
+ "Copy from": {
+  "de": "Kopieren aus",
+  "pl": "Kopiuj z"
  },
  "Corner tower": {
   "de": "Eckmast",
@@ -579,9 +635,17 @@
   "de": "Route löschen",
   "pl": "Usuń trasę"
  },
+ "Delete satellite modifier": {
+  "de": "Satelliten-Modifikator löschen",
+  "pl": "Usunięcie modyfikatora satki"
+ },
  "Delete shape": {
   "de": "Form löschen",
   "pl": "Usuń kształt"
+ },
+ "Delete the modifier; what it covered comes back": {
+  "de": "Modifikator löschen; das Überdeckte kehrt zurück",
+  "pl": "Usuń modyfikator; to, co zakrywał, wróci"
  },
  "Density per ha (0 = from the preset)": {
   "de": "Dichte pro ha (0 = aus dem Preset)",
@@ -646,6 +710,10 @@
  "Draw": {
   "de": "Zeichnen",
   "pl": "Rysowanie"
+ },
+ "Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted.": {
+  "de": "Zeichnet die Objekte von oben in das Satellitenbild, als Modifikator, der ausgeblendet oder gelöscht werden kann.",
+  "pl": "Rysuje obiekty widziane z góry na satce jako modyfikator, który można ukryć albo usunąć."
  },
  "Drop this generator on a line or a road, or select one first": {
   "de": "Lege diesen Generator auf einer Linie oder Straße ab oder wähle zuerst eine aus",
@@ -1023,6 +1091,10 @@
   "de": "Bodenfarbe auf Gras",
   "pl": "Wpływ koloru satki na trawę"
  },
+ "Hardness": {
+  "de": "Härte",
+  "pl": "Twardość"
+ },
  "Height": {
   "de": "Höhe",
   "pl": "Wysokość"
@@ -1074,6 +1146,10 @@
  "How far beyond a polygon, or to each side of a line.": {
   "de": "Wie weit über ein Polygon hinaus oder zu jeder Seite einer Linie.",
   "pl": "Jak daleko poza wielokątem albo po każdej stronie linii."
+ },
+ "How far the baked objects fade into the satellite image under them.": {
+  "de": "Wie stark die eingebrannten Objekte in das Satellitenbild darunter übergehen.",
+  "pl": "Jak mocno wypalone obiekty wtapiają się w satkę pod nimi."
  },
  "Hydraulic erosion": {
   "de": "Wassererosion",
@@ -1266,6 +1342,14 @@
  "Load DayZForests project...": {
   "de": "DayZForests-Projekt laden...",
   "pl": "Wczytaj projekt DayZForests..."
+ },
+ "Load a picture to copy from first": {
+  "de": "Zuerst ein Bild zum Kopieren laden",
+  "pl": "Najpierw wczytaj obraz źródłowy"
+ },
+ "Load picture…": {
+  "de": "Bild laden…",
+  "pl": "Wczytaj obraz…"
  },
  "Load zone presets...": {
   "de": "Zonen-Presets laden...",
@@ -1479,6 +1563,10 @@
   "de": "Neue Ebene",
   "pl": "Nowa warstwa"
  },
+ "New modifier": {
+  "de": "Neuer Modifikator",
+  "pl": "Nowy modyfikator"
+ },
  "New preset": {
   "de": "Neues Preset",
   "pl": "Nowy preset"
@@ -1503,6 +1591,14 @@
   "de": "In dieser Datei gibt es keine Keypoints",
   "pl": "W tym pliku nie ma keypointów"
  },
+ "No objects to bake": {
+  "de": "Keine Objekte zum Einbrennen",
+  "pl": "Brak obiektów do wypalenia"
+ },
+ "No picture": {
+  "de": "Kein Bild",
+  "pl": "Brak obrazu"
+ },
  "No release notes": {
   "de": "Keine Versionshinweise",
   "pl": "Brak opisu zmian"
@@ -1511,6 +1607,10 @@
   "de": "Entlang dieser Linie liegen keine Straßenteile",
   "pl": "Wzdłuż tej linii nie ma części drogi"
  },
+ "No source point yet": {
+  "de": "Noch kein Quellpunkt",
+  "pl": "Nie wybrano punktu źródłowego"
+ },
  "Noise": {
   "de": "Rauschen",
   "pl": "Szum"
@@ -1518,6 +1618,10 @@
  "None": {
   "de": "Keine",
   "pl": "Żadne"
+ },
+ "None of the objects could be drawn": {
+  "de": "Keines der Objekte konnte gezeichnet werden",
+  "pl": "Żadnego z obiektów nie udało się narysować"
  },
  "Noon": {
   "de": "Mittag",
@@ -1591,9 +1695,17 @@
   "de": "Nur auf Oberflächen",
   "pl": "Tylko na powierzchniach"
  },
+ "Only the selected objects ({0})": {
+  "de": "Nur die ausgewählten Objekte ({0})",
+  "pl": "Tylko zaznaczone obiekty ({0})"
+ },
  "Only these names": {
   "de": "Nur diese Namen",
   "pl": "Tylko te nazwy"
+ },
+ "Opacity": {
+  "de": "Deckkraft",
+  "pl": "Krycie"
  },
  "Open backups folder": {
   "de": "Sicherungsordner öffnen",
@@ -1710,6 +1822,10 @@
  "Pick from the map": {
   "de": "Von der Karte nehmen",
   "pl": "Pobierz z mapy"
+ },
+ "Picture": {
+  "de": "Bild",
+  "pl": "Obraz"
  },
  "Pitch": {
   "de": "Neigung",
@@ -1999,6 +2115,14 @@
   "de": "Satellitenbild...",
   "pl": "Obraz satelitarny..."
  },
+ "Satellite modifier": {
+  "de": "Satelliten-Modifikator",
+  "pl": "Modyfikator satki"
+ },
+ "Satellite modifiers ({0})": {
+  "de": "Satelliten-Modifikatoren ({0})",
+  "pl": "Modyfikatory satki ({0})"
+ },
  "Save": {
   "de": "Speichern",
   "pl": "Zapisz"
@@ -2207,6 +2331,10 @@
   "de": "Glätten",
   "pl": "Wygładź"
  },
+ "Source: {0}, {1}": {
+  "de": "Quelle: {0}, {1}",
+  "pl": "Źródło: {0}, {1}"
+ },
  "Spacing": {
   "de": "Abstand",
   "pl": "Odstęp"
@@ -2254,6 +2382,10 @@
  "Strip width": {
   "de": "Streifenbreite",
   "pl": "Szerokość pasa"
+ },
+ "Strokes go to: {0}": {
+  "de": "Striche gehen in: {0}",
+  "pl": "Pociągnięcia trafiają do: {0}"
  },
  "Sun azimuth": {
   "de": "Sonnenazimut",
@@ -2431,6 +2563,14 @@
   "de": "Der nächste Klick in einer Ansicht nimmt die Satellitenfarbe.",
   "pl": "Następne kliknięcie w widoku pobierze kolor satelity."
  },
+ "The next stroke starts a new modifier": {
+  "de": "Der nächste Strich beginnt einen neuen Modifikator",
+  "pl": "Następne pociągnięcie utworzy nowy modyfikator"
+ },
+ "The project has no satellite image": {
+  "de": "Das Projekt hat kein Satellitenbild",
+  "pl": "Projekt nie ma satki"
+ },
  "The project has unsaved changes. Close without saving?": {
   "de": "Das Projekt hat ungespeicherte Änderungen. Ohne Speichern schließen?",
   "pl": "Projekt ma niezapisane zmiany. Zamknąć bez zapisywania?"
@@ -2502,6 +2642,10 @@
  "Trees": {
   "de": "Bäume",
   "pl": "Drzewa"
+ },
+ "Trees and bushes too": {
+  "de": "Auch Bäume und Büsche",
+  "pl": "Także drzewa i krzewy"
  },
  "Turn": {
   "de": "Drehung",
@@ -2610,6 +2754,10 @@
  "Whole map": {
   "de": "Ganze Karte",
   "pl": "Cała mapa"
+ },
+ "Whole picture": {
+  "de": "Ganzes Bild",
+  "pl": "Cały obraz"
  },
  "Width": {
   "de": "Breite",

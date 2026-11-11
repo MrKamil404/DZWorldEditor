@@ -35,6 +35,7 @@ pub enum Mode {
     Generate,
     Shapes,
     KeyPoints,
+    Satellite,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -324,6 +325,8 @@ pub struct App {
 
     pub sculpt: SculptSettings,
     pub paint: PaintSettings,
+    /// The satellite tools: baking objects and the clone brush.
+    pub sat: crate::satellite::SatTool,
     pub place: PlaceSettings,
     pub line: LineSettings,
     pub stroke: Option<SculptStroke>,
@@ -433,7 +436,7 @@ impl App {
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
-            impostor_fits: HashMap::new(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
+            impostor_fits: HashMap::new(), sat: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
             task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
@@ -1063,6 +1066,9 @@ impl App {
         }
         if let Some(r) = t.mask {
             self.mask_changed(r);
+        }
+        if let Some(r) = t.satellite {
+            self.satellite_changed(r);
         }
         if t.objects {
             if let Some(d) = &mut self.doc {
@@ -1718,8 +1724,10 @@ impl App {
             let img = dz_core::terrain::RgbImage::load(&f)?;
             Ok(Box::new(move |app: &mut App| {
                 let Some(d) = &mut app.doc else { return };
-                app.renderer.lock().unwrap().set_satellite(Some(&img));
                 d.world.satellite = Some(img);
+                // The new picture is the original the satellite modifiers now lie on.
+                d.world.sat_image_replaced();
+                app.renderer.lock().unwrap().set_satellite(d.world.satellite.as_ref());
                 d.dirty.satellite = true;
                 d.history.revision += 1;
                 app.detail_center = [f32::MIN, f32::MIN];
