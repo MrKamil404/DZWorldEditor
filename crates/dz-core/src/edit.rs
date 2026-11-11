@@ -122,6 +122,8 @@ pub enum Change {
     Generators(Vec<crate::library::GeneratorInstance>),
     /// The satellite modifiers as they were.
     Satellite(Vec<crate::satmod::SatModifier>),
+    /// The mask modifiers as they were.
+    MaskMods(Vec<crate::maskmod::MaskModifier>),
     /// A whole-raster change produced by a generator.
     WholeHeight(Vec<f32>),
     WholeMask(Vec<u8>),
@@ -203,6 +205,7 @@ impl Change {
             Change::KeyPoints(prev) => std::mem::swap(prev, &mut w.keypoints),
             Change::Generators(prev) => std::mem::swap(prev, &mut w.generators),
             Change::Satellite(prev) => t.satellite = w.sat_set_modifiers(prev),
+            Change::MaskMods(prev) => t.mask = w.mask_set_modifiers(prev),
             Change::Routes(routes) => std::mem::swap(routes, &mut w.routes),
             Change::Holes(holes) => {
                 std::mem::swap(holes, &mut w.holes);
@@ -241,6 +244,7 @@ impl Change {
             Change::Generators(l) => l.iter().map(|g| g.objects.len() * 4 + 4096).sum(),
             // Tiles are shared with the live modifiers until one of them is painted on.
             Change::Satellite(l) => l.iter().map(|m| m.tiles.len() * 4096 + 64).sum(),
+            Change::MaskMods(l) => l.iter().map(|m| m.tiles.len() * 1024 + 64).sum(),
             Change::Shapes(l) => l.iter().map(|s| s.shapes.iter().map(|x| x.points.len() * 8 + 64).sum::<usize>()).sum(),
             Change::WholeHeight(v) => v.len() * 4,
             Change::WholeMask(v) => v.len(),

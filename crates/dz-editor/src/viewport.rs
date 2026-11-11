@@ -2608,6 +2608,51 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
             eprintln!("GENSTATS satmods={}", app.doc.as_ref().map_or(0, |d| d.world.sat.modifiers.len()));
         }
+        // Stamps surface `n` under every object, buildings by their footprint.
+        "maskunder" => {
+            app.mask_tool.surface = nums.first().map(|v| *v as usize).unwrap_or(0);
+            app.mask_tool.selection_only = false;
+            app.mask_tool.buildings = true;
+            crate::maskmods::stamp_under_objects(app);
+            eprintln!("GENSTATS maskmods={}", app.doc.as_ref().map_or(0, |d| d.world.mask_mods.modifiers.len()));
+        }
+        "maskstat" => {
+            if let Some(d) = &app.doc {
+                for m in &d.world.mask_mods.modifiers {
+                    eprintln!("GENSTATS maskmod {:?} {:?} tiles={} enabled={}", m.name, m.kind, m.tiles.len(), m.enabled);
+                }
+                eprintln!("GENSTATS maskmods={}", d.world.mask_mods.modifiers.len());
+            }
+        }
+        // A rectangle as a shape, and the last generator pointed at it.
+        "genshape" if nums.len() >= 4 => {
+            if let Some(d) = app.doc.as_mut() {
+                if d.world.shape_layers.is_empty() {
+                    d.world.shape_layers.push(dz_core::shapes::ShapeLayer { name: "test".into(), visible: true, shapes: Vec::new() });
+                }
+                let l = &mut d.world.shape_layers[0];
+                l.shapes.push(dz_core::shapes::MapShape { kind: dz_core::shapes::ShapeKind::Polygon, points: vec![[nums[0], nums[1]], [nums[2], nums[1]], [nums[2], nums[3]], [nums[0], nums[3]]], attributes: Vec::new() });
+                let target = dz_core::library::GenTarget::Shape { layer: l.name.clone(), index: l.shapes.len() - 1 };
+                if let Some(g) = d.world.generators.last_mut() {
+                    g.target = target;
+                }
+            }
+        }
+        "genterrain" => {
+            if let Some(dz_core::library::GeneratorKind::Terrain(p)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) {
+                if let Some(k) = gen::TerrainKind::ALL.into_iter().find(|k| k.name().to_ascii_lowercase().starts_with(&arg.to_ascii_lowercase())) {
+                    p.kind = k;
+                }
+                p.base = 260.0;
+                p.amplitude = 380.0;
+                p.feature = 900.0;
+            }
+        }
+        "maskdel" => {
+            if let Some(id) = app.doc.as_ref().and_then(|d| d.world.mask_mods.modifiers.first().map(|m| m.id)) {
+                crate::maskmods::remove(app, id, "test");
+            }
+        }
         "put" if nums.len() >= 3 => {
             if let Some(d) = app.doc.as_mut() {
                 let path = arg.split_whitespace().nth(3).unwrap_or("").to_string();

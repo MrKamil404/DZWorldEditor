@@ -4,6 +4,7 @@ mod app;
 mod camera;
 mod i18n;
 mod library_ui;
+mod maskmods;
 mod models;
 mod panels;
 mod render;

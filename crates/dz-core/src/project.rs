@@ -78,6 +78,11 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
     } else {
         atomic_write(&dir.join("satellite.mods"), &w.sat.to_bytes())?;
     }
+    if w.mask_mods.is_empty() {
+        let _ = std::fs::remove_file(dir.join("mask.mods"));
+    } else {
+        atomic_write(&dir.join("mask.mods"), &w.mask_mods.to_bytes())?;
+    }
     if parts.objects {
         atomic_write(&dir.join("objects.dzob"), &w.objects.to_bytes())?;
     }
@@ -217,6 +222,9 @@ pub fn load(dir: &Path) -> Result<World> {
     };
     let objects = ObjectStore::from_bytes(&std::fs::read(dir.join("objects.dzob")).context("objects.dzob")?)?;
     let mut w = World::from_parts(file.meta, base, mask, file.layers, satellite, objects, file.modifiers);
+    if let Ok(bytes) = std::fs::read(dir.join("mask.mods")) {
+        w.mask_mods = crate::maskmod::MaskLayers::from_bytes(&bytes).context("mask.mods")?;
+    }
     if let Ok(bytes) = std::fs::read(dir.join("satellite.mods")) {
         w.sat = crate::satmod::SatLayers::from_bytes(&bytes).context("satellite.mods")?;
     }

@@ -18,6 +18,7 @@ pub mod noise;
 pub mod objects;
 pub mod paa_write;
 pub mod pbo;
+pub mod maskmod;
 pub mod project;
 pub mod satmod;
 pub mod shapes;

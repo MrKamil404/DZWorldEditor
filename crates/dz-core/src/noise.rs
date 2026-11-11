@@ -57,6 +57,26 @@ impl Perlin {
         }
         sum / total
     }
+    /// A fractal sum whose finer octaves fade where the ground is already steep, as water
+    /// wears slopes smooth and leaves detail on flats and crests. `erosion` 0 is plain `fbm`.
+    pub fn eroded(&self, x: f32, y: f32, octaves: u32, gain: f32, lacunarity: f32, erosion: f32) -> f32 {
+        const STEP: f32 = 0.01;
+        let (mut sum, mut amp, mut freq, mut total) = (0.0, 1.0, 1.0, 0.0);
+        let (mut dx, mut dy) = (0.0f32, 0.0f32);
+        for o in 0..octaves {
+            let shift = o as f32 * 17.3;
+            let (px, py) = (x * freq + shift, y * freq - shift);
+            let n = self.get(px, py);
+            // The slope built up so far damps what comes after it.
+            dx += (self.get(px + STEP, py) - n) / STEP * amp;
+            dy += (self.get(px, py + STEP) - n) / STEP * amp;
+            sum += n * amp / (1.0 + erosion * (dx * dx + dy * dy));
+            total += amp;
+            amp *= gain;
+            freq *= lacunarity;
+        }
+        sum / total * (1.0 + erosion * 0.6)
+    }
     /// Sharp crests in 0..1.
     pub fn ridged(&self, x: f32, y: f32, octaves: u32, gain: f32, lacunarity: f32) -> f32 {
         let (mut sum, mut amp, mut freq, mut total, mut weight) = (0.0, 1.0, 1.0, 0.0, 1.0f32);

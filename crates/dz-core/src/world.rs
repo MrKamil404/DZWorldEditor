@@ -492,6 +492,8 @@ pub struct World {
     /// The image with the satellite modifiers laid over it; see `satmod`.
     pub satellite: Option<RgbImage>,
     pub sat: crate::satmod::SatLayers,
+    /// The modifiers of the surface mask; `mask` is the painted mask with them over it.
+    pub mask_mods: crate::maskmod::MaskLayers,
     pub objects: ObjectStore,
     pub modifiers: Vec<TerrainModifier>,
     /// Never empty; layer 0 cannot be deleted.
@@ -542,7 +544,7 @@ impl World {
         let base = Heightmap::new(n, n, meta.terrain_cell, base_height);
         let mask_px = (meta.size_m().round() as usize).clamp(1024, 20480);
         Self {
-            sat: Default::default(),
+            sat: Default::default(), mask_mods: Default::default(),
             holes: Default::default(),
             holes_rev: 0, keypoints: Vec::new(),
             height: base.clone(),
@@ -567,7 +569,7 @@ impl World {
     }
     pub fn from_parts(meta: WorldMeta, base: Heightmap, mask: MaskMap, layers: Vec<SurfaceLayer>, satellite: Option<RgbImage>, objects: ObjectStore, modifiers: Vec<TerrainModifier>) -> Self {
         let next_modifier = modifiers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
-        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, sat: Default::default(), objects, modifiers, holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier };
+        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, sat: Default::default(), mask_mods: Default::default(), objects, modifiers, holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier };
         w.recompose(None);
         w
     }
@@ -579,7 +581,7 @@ impl World {
         }
         World {
             meta: self.meta.clone(), base: self.base.clone(), height: self.height.clone(), mask: self.mask.clone(),
-            layers: self.layers.clone(), satellite: None, sat: Default::default(), objects, modifiers: Vec::new(), holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier: self.next_modifier,
+            layers: self.layers.clone(), satellite: None, sat: Default::default(), mask_mods: Default::default(), objects, modifiers: Vec::new(), holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, routes: Vec::new(), next_modifier: self.next_modifier,
         }
     }
     #[inline]
