@@ -8,6 +8,96 @@ pub struct Texture {
     pub rgba: Vec<u8>,
 }
 
+/// A texture as the file stores it: DXT blocks of every mipmap, ready for the graphics card.
+#[derive(Debug)]
+pub struct Raw {
+    /// DXT5 when true, DXT1 otherwise.
+    pub dxt5: bool,
+    /// Sources of A, R, G, B as in the file: 0..3 are A, R, G, B, 4..7 the same inverted, 8 is one.
+    pub swizzle: [u8; 4],
+    /// (width, height, blocks), largest first.
+    pub mips: Vec<(u32, u32, Vec<u8>)>,
+}
+
+/// DXT1 has no alpha channel: a detail map that asks for it keeps its grey in the colour.
+fn fix_swizzle(kind: u16, mut order: [u8; 4]) -> [u8; 4] {
+    if kind == 0xFF01 {
+        for (target, source) in order.iter_mut().enumerate().skip(1) {
+            if *source == 0 || *source == 4 {
+                *source = target as u8;
+            }
+        }
+    }
+    order
+}
+
+/// The mipmaps with sides of at most `max` pixels, still compressed. Only DXT1 and DXT5 files.
+pub fn read_raw(b: &[u8], max: u32) -> Result<Raw> {
+    ensure!(b.len() > 8, "Plik PAA jest za krótki");
+    let kind = u16::from_le_bytes([b[0], b[1]]);
+    ensure!(kind == 0xFF01 || kind == 0xFF05, "PAA bez kompresji DXT");
+    let mut p = 2;
+    let mut swizzle = [0, 1, 2, 3];
+    while b.get(p..p + 4) == Some(b"GGAT") {
+        let len = u32::from_le_bytes(b.get(p + 8..p + 12).unwrap_or(&[0; 4]).try_into()?) as usize;
+        if b.get(p + 4..p + 8) == Some(b"ZIWS") && len == 4 {
+            if let Some(v) = b.get(p + 12..p + 16) {
+                swizzle = [v[0], v[1], v[2], v[3]];
+            }
+        }
+        p += 12 + len;
+    }
+    let palette = u16::from_le_bytes(b.get(p..p + 2).unwrap_or(&[0; 2]).try_into()?) as usize;
+    p += 2 + palette * 3;
+    let block = if kind == 0xFF05 { 16 } else { 8 };
+    let mut mips: Vec<(u32, u32, Vec<u8>)> = Vec::new();
+    let mut smallest = None;
+    while p + 7 <= b.len() {
+        let w = u16::from_le_bytes([b[p], b[p + 1]]);
+        let h = u16::from_le_bytes([b[p + 2], b[p + 3]]);
+        if w == 0 || h == 0 {
+            break;
+        }
+        let size = u32::from_le_bytes([b[p + 4], b[p + 5], b[p + 6], 0]) as usize;
+        let start = p + 7;
+        let Some(data) = b.get(start..start + size) else { break };
+        p = start + size;
+        let lzo = w & 0x8000 != 0;
+        let (w, h) = ((w & 0x7fff) as u32, h as u32);
+        // Each level halves the one before it; anything else cannot be given to the card.
+        if let Some(&(pw, ph, _)) = mips.last() {
+            if w != (pw / 2).max(1) || h != (ph / 2).max(1) {
+                break;
+            }
+        }
+        if w.max(h) > max {
+            smallest = Some((w, h, lzo, data));
+            continue;
+        }
+        let expected = w.div_ceil(4) as usize * h.div_ceil(4) as usize * block;
+        let blocks = if lzo {
+            match crate::odol::lzo1x_decompress(data, expected) {
+                Ok((d, _)) => d,
+                Err(_) => break,
+            }
+        } else if data.len() == expected {
+            data.to_vec()
+        } else {
+            break;
+        };
+        mips.push((w, h, blocks));
+    }
+    if mips.is_empty() {
+        // Every level is larger than asked for: take the smallest of them.
+        let (w, h, lzo, data) = smallest.ok_or_else(|| anyhow::anyhow!("Brak mipmap w PAA"))?;
+        let expected = w.div_ceil(4) as usize * h.div_ceil(4) as usize * block;
+        let blocks = if lzo { crate::odol::lzo1x_decompress(data, expected)?.0 } else { data.to_vec() };
+        ensure!(blocks.len() == expected, "Uszkodzony mipmap PAA");
+        mips.push((w, h, blocks));
+    }
+    Ok(Raw { dxt5: kind == 0xFF05, swizzle: fix_swizzle(kind, swizzle), mips })
+}
+
 /// Decodes the largest mipmap whose sides are at most `max` pixels (or the smallest one).
 pub fn decode(b: &[u8], max: u32) -> Result<Texture> {
     ensure!(b.len() > 8, "Plik PAA jest za krótki");
@@ -90,7 +180,7 @@ pub fn decode(b: &[u8], max: u32) -> Result<Texture> {
         }
     }
     if let Some(order) = swizzle {
-        apply_swizzle(&mut rgba, order);
+        apply_swizzle(&mut rgba, fix_swizzle(kind, order));
     }
     Ok(Texture {
         width: w,

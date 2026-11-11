@@ -46,7 +46,7 @@ impl Lighting {
             sun: self.sun_direction(),
             sun_color: [self.color[0] * k * day, self.color[1] * k * day, self.color[2] * k * day],
             ambient: [0.56 * a * (0.25 + 0.75 * day), 0.60 * a * (0.25 + 0.75 * day), 0.68 * a * (0.3 + 0.7 * day)],
-            fog: 0.00007 * self.fog,
+            fog: 0.00016 * self.fog,
             exposure: self.exposure,
         }
     }
@@ -83,6 +83,63 @@ pub struct Settings {
     /// Height of the sea swell in metres.
     pub sea_waves: f32,
     pub lighting: Lighting,
+    /// Largest side of object textures, in pixels.
+    pub texture_size: u32,
+    /// Anisotropic filtering of textures, 1 is off.
+    pub anisotropy: u32,
+    /// Side of the shadow map, in pixels.
+    pub shadow_map: u32,
+    /// Edge smoothing: 0 off, 1 FXAA, 2 with the view drawn at 1.5 times its size, 3 at twice.
+    pub edge_smoothing: u32,
+    /// Samples of ambient occlusion per pixel; 0 turns it off.
+    pub ambient_occlusion: u32,
+    /// How far ground clutter takes the colour of the satellite image under it, 0 to 1.
+    pub grass_ground_color: f32,
+}
+
+/// A ready set of the graphics settings of the 3D view.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GraphicsPreset {
+    Low,
+    Medium,
+    High,
+    VeryHigh,
+}
+impl GraphicsPreset {
+    pub const ALL: [GraphicsPreset; 4] = [GraphicsPreset::Low, GraphicsPreset::Medium, GraphicsPreset::High, GraphicsPreset::VeryHigh];
+    pub fn name(self) -> &'static str {
+        match self {
+            GraphicsPreset::Low => "Low",
+            GraphicsPreset::Medium => "Medium",
+            GraphicsPreset::High => "High",
+            GraphicsPreset::VeryHigh => "Very high",
+        }
+    }
+    /// Terrain detail, draw distance, full detail distance, surface range, texture size,
+    /// anisotropy, shadow map and shadow range.
+    fn values(self) -> (f32, f32, f32, f32, u32, u32, u32, f32) {
+        match self {
+            GraphicsPreset::Low => (0.8, 1200.0, 40.0, 120.0, 512, 2, 2048, 150.0),
+            GraphicsPreset::Medium => (1.0, 2000.0, 80.0, 190.0, 1024, 4, 4096, 250.0),
+            GraphicsPreset::High => (1.5, 3000.0, 150.0, 300.0, 2048, 8, 4096, 350.0),
+            GraphicsPreset::VeryHigh => (2.0, 5000.0, 300.0, 500.0, 4096, 16, 8192, 500.0),
+        }
+    }
+}
+
+impl Settings {
+    pub fn apply_graphics(&mut self, preset: GraphicsPreset) {
+        let v = preset.values();
+        (self.terrain_quality, self.draw_distance, self.near_detail, self.surface_range) = (v.0, v.1, v.2, v.3);
+        (self.texture_size, self.anisotropy, self.shadow_map, self.lighting.shadow_range) = (v.4, v.5, v.6, v.7);
+    }
+    /// The preset the current values match, if any.
+    pub fn graphics_preset(&self) -> Option<GraphicsPreset> {
+        GraphicsPreset::ALL.into_iter().find(|p| {
+            let v = p.values();
+            (self.terrain_quality, self.draw_distance, self.near_detail, self.surface_range) == (v.0, v.1, v.2, v.3) && (self.texture_size, self.anisotropy, self.shadow_map, self.lighting.shadow_range) == (v.4, v.5, v.6, v.7)
+        })
+    }
 }
 
 impl Default for Settings {
@@ -91,6 +148,7 @@ impl Default for Settings {
             language: "pl".into(), ui_scale: 1.0, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
             check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_blend: 3.0, surface_range: 190.0, sea_waves: 0.6, camera_speed: 60.0, lighting: Lighting::default(),
+            texture_size: 2048, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6,
         }
     }
 }

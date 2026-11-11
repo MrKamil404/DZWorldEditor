@@ -4,7 +4,7 @@ use crate::app::ShapeTool;
 use crate::app::{App, Finish, Gizmo, LineAction, Mode, ViewMode};
 use crate::camera::{add, dot, mul, norm, sub, View, V3};
 use crate::i18n::{t, tf};
-use crate::models::{LOD_FAR, LOD_NEAR};
+use crate::models::{LOD_BILLBOARD, LOD_FAR, LOD_NEAR};
 use crate::render::{self, BrushView, Frame, ObjectDraw, Shading};
 use crate::theme;
 use dz_core::edit::{Brush, Change, MaskStroke, SculptStroke, SculptTool};
@@ -28,7 +28,7 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
-    toggles: Option<(bool, bool, Shading, i32, bool, u32)>,
+    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -333,7 +333,7 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     // The top view lists more than is on screen, so panning needs no rebuild until it nears the edge.
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
     let shadow_range = app.settings.lighting.shadow_range;
-    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev);
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32);
     let toggled = cache.toggles != Some(toggles);
     let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
@@ -402,6 +402,8 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
         let mut triangles_left: i64 = 9_000_000;
         // Models with no billboard to fall back on draw from a budget of their own.
         let mut no_billboard_left: i64 = 4_000_000;
+        // Only plants turn into billboards; buildings go down their own LODs instead.
+        let plants: Vec<bool> = world.objects.models.iter().map(|m| is_plant(&m.path)).collect();
         // Nearest cells first: the triangle budget has to go to what is close to the camera.
         let mut order: Vec<(i32, i32, i32)> = Vec::with_capacity(((2 * cells + 1) * (2 * cells + 1)) as usize);
         for gz in kz - cells..=kz + cells {
@@ -437,41 +439,42 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                     let tint = if sel { SELECT_TINT } else { [1.0, 1.0, 1.0, 0.0] };
                     let (placed_m, y) = placed_matrix(o, &infos[o.model as usize], &world.height, y);
                     let (m0, m1) = (o.model, renderer.impostor_layers.get(&o.model));
-                    if d < near {
-                        if let Some(n) = renderer.model_triangles((m0, LOD_NEAR)).filter(|_| triangles_left > 0) {
-                            triangles_left -= n as i64;
-                            write_instance(instances.entry((m0, LOD_NEAR)).or_default(), &placed_m, [o.x, y, o.z], tint);
-                            let key = if renderer.model_triangles((m0, LOD_FAR)).is_some() { (m0, LOD_FAR) } else { (m0, LOD_NEAR) };
-                            write_instance(shadow.entry(key).or_default(), &placed_m, [o.x, y, o.z], tint);
-                            continue;
-                        }
-                    }
-                    // Models without a billboard (water, roads) stay as meshes at any distance.
-                    if d < far || sel || m1.is_none() {
-                        if let Some(n) = renderer.model_triangles((m0, LOD_FAR)).filter(|_| triangles_left > 0 || (m1.is_none() && no_billboard_left > 0)) {
+                    let last = renderer.lod_count(m0).map_or(u8::MAX, |c| c.saturating_sub(1));
+                    // Each LOD of the model takes over at twice the distance of the one before it;
+                    // large models keep theirs for longer.
+                    let step = near * (size / 12.0).clamp(0.6, 3.0);
+                    let want = if d < step { 0 } else { ((d / step).log2().floor() as u8).saturating_add(1) }.min(12).min(last);
+                    let billboard = m1.filter(|_| plants.get(m0 as usize).copied().unwrap_or(false));
+                    if d < far || sel || billboard.is_none() {
+                        if let Some((lod, n)) = renderer.best_lod(m0, want).filter(|_| triangles_left > 0 || (billboard.is_none() && no_billboard_left > 0)) {
                             if triangles_left > 0 {
                                 triangles_left -= n as i64;
                             } else {
                                 no_billboard_left -= n as i64;
                             }
-                            write_instance(instances.entry((m0, LOD_FAR)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                            write_instance(instances.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
                             if d < shadow_range {
-                                write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                                // Shadows are cast by the next coarser LOD when it is there.
+                                let caster = renderer.best_lod(m0, want.saturating_add(1).min(last)).map_or(lod, |l| l.0);
+                                write_instance(shadow.entry((m0, caster)).or_default(), &placed_m, [o.x, y, o.z], tint);
                             }
-                            if d < near {
-                                requests.push((m0, LOD_NEAR));
+                            if lod != want {
+                                requests.push((m0, want));
+                            }
+                            if billboard.is_none() && m1.is_none() && plants.get(m0 as usize).copied().unwrap_or(false) {
+                                requests.push((m0, LOD_BILLBOARD.min(last)));
                             }
                             continue;
                         }
                     }
-                    requests.push((m0, LOD_FAR));
-                    if d < near {
-                        requests.push((m0, LOD_NEAR));
+                    requests.push((m0, want));
+                    if m1.is_none() {
+                        requests.push((m0, LOD_BILLBOARD.min(last)));
                     }
                     if d < shadow_range && app.show_shadows {
-                        if let Some(n) = renderer.model_triangles((m0, LOD_FAR)).filter(|_| shadow_triangles > 0) {
+                        if let Some((lod, n)) = renderer.best_lod(m0, want).filter(|_| shadow_triangles > 0) {
                             shadow_triangles -= n as i64;
-                            write_instance(shadow.entry((m0, LOD_FAR)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                            write_instance(shadow.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
                         }
                     }
                     if let Some(layer) = m1 {
@@ -495,6 +498,15 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
             let (ex, ez) = (v.eye[0].round() as i32, v.eye[2].round() as i32);
             let size = world.meta.size_m();
             let mut triangles_left: i64 = 5_000_000;
+            // Colour of the satellite image under a clump, and how far it takes that colour.
+            let ground = app.settings.grass_ground_color.clamp(0.0, 1.0);
+            let ground_tint = |x: f32, z: f32| -> [f32; 4] {
+                let Some(s) = world.satellite.as_ref().filter(|s| ground > 0.0 && s.width > 0 && s.height > 0) else { return [1.0, 1.0, 1.0, 0.0] };
+                let px = ((x / size * s.width as f32) as usize).min(s.width - 1);
+                let py = (((1.0 - z / size) * s.height as f32).max(0.0) as usize).min(s.height - 1);
+                let i = (py * s.width + px) * 3;
+                [s.data[i] as f32 / 255.0, s.data[i + 1] as f32 / 255.0, s.data[i + 2] as f32 / 255.0, -ground]
+            };
             // The game keeps clutter off roads: (x, z, sin, cos, half width, half length).
             // Grass is ruled out cell by cell, one metre to a cell.
             let side = (2 * (RANGE + 3) + 1) as usize;
@@ -570,17 +582,20 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                         continue;
                     }
                     let id = CLUTTER_BASE + model;
-                    let lod = if d < 25.0 { LOD_NEAR } else { LOD_FAR };
-                    let Some(n) = renderer.model_triangles((id, lod)).filter(|_| triangles_left > 0) else {
-                        clutter_requests.push((model, lod));
+                    let want = if d < 25.0 { LOD_NEAR } else { LOD_FAR }.min(renderer.lod_count(id).map_or(u8::MAX, |c| c.saturating_sub(1)));
+                    let Some((lod, n)) = renderer.best_lod(id, want).filter(|_| triangles_left > 0) else {
+                        clutter_requests.push((model, want));
                         continue;
                     };
+                    if lod != want {
+                        clutter_requests.push((model, want));
+                    }
                     triangles_left -= n as i64;
                     let k = ((r >> 16) & 1023) as f32 / 1023.0;
                     // Shrinks toward the edge of the range so grass does not pop in.
                     let fade = ((RANGE as f32 - d) / 18.0).clamp(0.0, 1.0);
                     let yaw = ((r >> 5) & 511) as f32 * 0.7045;
-                    write_instance(instances.entry((id, lod)).or_default(), &rotation(yaw, 0.0, 0.0, (a + (b - a) * k) * fade), [wx, y, wz], [1.0, 1.0, 1.0, 0.0]);
+                    write_instance(instances.entry((id, lod)).or_default(), &rotation(yaw, 0.0, 0.0, (a + (b - a) * k) * fade), [wx, y, wz], ground_tint(wx, wz));
                 }
             }
         }
@@ -2202,6 +2217,8 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         time: ctx.input(|i| i.time) as f32,
         light: (!top && app.show_shadows && app.settings.lighting.elevation > 1.0).then(|| sun_matrix(&v, app.settings.lighting.sun_direction(), app.settings.lighting.shadow_range)),
         shadow_bias: shadow_bias(app.settings.lighting.shadow_range),
+        ao: if top || (if top { app.shading2 } else { app.shading3 }) != Shading::Lit { 0 } else { app.settings.ambient_occlusion },
+        smoothing: app.settings.edge_smoothing,
     };
     // The sea moves on its own, also when nothing else makes the window redraw.
     if !top && app.show_water && app.settings.sea_waves > 0.0 && doc.height_range[0] < meta.sea_level {
@@ -2529,6 +2546,13 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "shot" => {
             app.pending_shot(arg, ctx);
+        }
+        "put" if nums.len() >= 3 => {
+            if let Some(d) = app.doc.as_mut() {
+                let path = arg.split_whitespace().nth(3).unwrap_or("").to_string();
+                let model = d.world.objects.intern(&path);
+                d.world.objects.insert(dz_core::objects::Obj { x: nums[0], z: nums[1], elevation: 0.0, yaw: nums[2].to_radians(), pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 });
+            }
         }
         "mouse" if nums.len() >= 2 => app.synthetic.push(egui::Event::PointerMoved(pos2(nums[0], nums[1]))),
         "press" | "release" if nums.len() >= 2 => {

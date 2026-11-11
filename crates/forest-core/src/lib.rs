@@ -13,6 +13,7 @@ pub mod model3d;
 pub mod odol;
 pub mod paa;
 pub mod preset;
+pub mod rvmat;
 pub mod saved;
 pub mod scatter;
 pub mod shp;

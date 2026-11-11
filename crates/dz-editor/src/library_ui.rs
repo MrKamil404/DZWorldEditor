@@ -728,12 +728,6 @@ fn preview_texture(app: &mut App, ctx: &egui::Context, preview: &Preview) -> Opt
 fn folder_list(ui: &mut egui::Ui, current: &mut Option<String>, folders: &[String], new_name: &mut String) -> (Option<(LibDrag, String)>, Option<String>) {
     let mut moved = None;
     let mut created = None;
-    if ui.selectable_label(current.is_none(), t("All")).clicked() { *current = None; }
-    for f in folders {
-        let r = ui.selectable_label(current.as_deref() == Some(f.as_str()), f);
-        if r.clicked() { *current = Some(f.clone()); }
-        if let Some(p) = r.dnd_release_payload::<LibDrag>() { moved = Some(((*p).clone(), f.clone())); }
-    }
     ui.separator();
     ui.horizontal(|ui| {
         ui.add(egui::TextEdit::singleline(new_name).hint_text(t("New folder")).desired_width(110.0));
@@ -742,6 +736,12 @@ fn folder_list(ui: &mut egui::Ui, current: &mut Option<String>, folders: &[Strin
             new_name.clear();
         }
     });
+    if ui.selectable_label(current.is_none(), t("All")).clicked() { *current = None; }
+    for f in folders {
+        let r = ui.selectable_label(current.as_deref() == Some(f.as_str()), f);
+        if r.clicked() { *current = Some(f.clone()); }
+        if let Some(p) = r.dnd_release_payload::<LibDrag>() { moved = Some(((*p).clone(), f.clone())); }
+    }
     (moved, created)
 }
 
