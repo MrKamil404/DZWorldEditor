@@ -2,6 +2,8 @@
 //! outliner and details on the right, content browser and log at the bottom.
 use crate::app::*;
 use crate::i18n::{t, tf};
+use crate::icons;
+use crate::keys::{Action, Hold};
 use crate::theme::{self, row, section, tool_button};
 use crate::viewport;
 use dz_core::edit::SculptTool;
@@ -31,23 +33,25 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
     egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::DARK)).show(ctx, |ui| viewport::central(app, ui));
     dialogs(app, ctx);
     app.updater.window(ctx);
+    crate::asset_browser::drag_ghost(app, ctx);
 }
 
 /// What the viewports draw; shared by the View menu and the viewport toolbar.
 pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
-    ui.checkbox(&mut app.show_objects, t("Objects"));
-    ui.checkbox(&mut app.show_grass, t("Grass"));
+    let keys = app.settings.keys.clone();
+    ui.checkbox(&mut app.show_objects, t("Objects")).on_hover_text(keys.tip(Action::ToggleObjects));
+    ui.checkbox(&mut app.show_grass, t("Grass")).on_hover_text(keys.tip(Action::ToggleGrass));
     ui.add_enabled(app.show_grass, egui::Checkbox::new(&mut app.grass_under_objects, t("Grass under objects")));
     ui.checkbox(&mut app.show_shadows, t("Shadows"));
     ui.checkbox(&mut app.show_water, t("Water"));
     ui.checkbox(&mut app.show_lines, t("Roads and lines"));
-    ui.checkbox(&mut app.show_shapes, t("Shapes"));
+    ui.checkbox(&mut app.show_shapes, t("Shapes")).on_hover_text(keys.tip(Action::ToggleShapes));
     ui.checkbox(&mut app.show_keypoints, t("Key points"));
     ui.checkbox(&mut app.show_contours, t("Contour lines"));
     if app.show_contours {
         row(ui, &t("Interval"), |ui| { ui.add(egui::DragValue::new(&mut app.contour_interval).speed(0.5).range(1.0..=200.0).suffix(" m")); });
     }
-    ui.checkbox(&mut app.camera_under, format!("{} (B)", t("Camera below the terrain")));
+    ui.checkbox(&mut app.camera_under, t("Camera below the terrain")).on_hover_text(keys.tip(Action::CameraBelow));
 }
 
 fn guard_close(app: &mut App, ctx: &egui::Context) {
@@ -64,19 +68,20 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
     egui::TopBottomPanel::top("menu").show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
             let has = app.doc.is_some();
+            let keys = app.settings.keys.clone();
             ui.menu_button(t("File"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-                if ui.button(t("New project...")).clicked() { app.dialog = new_project_dialog(); ui.close_menu(); }
-                if ui.button(t("Open project...")).clicked() { ui.close_menu(); app.pick_and_open(); }
-                ui.menu_button(t("Recent projects"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
+                if ui.add(egui::Button::new(icons::with(icons::FILE_PLUS, &t("New project..."))).shortcut_text(keys.text(Action::NewProject))).clicked() { app.dialog = new_project_dialog(); ui.close_menu(); }
+                if ui.add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Open project..."))).shortcut_text(keys.text(Action::Open))).clicked() { ui.close_menu(); app.pick_and_open(); }
+                ui.menu_button(icons::with(icons::CLOCK, &t("Recent projects")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                     for d in app.settings.recent.clone() {
                         if ui.button(d.display().to_string()).clicked() { ui.close_menu(); app.open_project(d); }
                     }
                 });
                 ui.separator();
-                if ui.add_enabled(has, egui::Button::new(t("Save")).shortcut_text("Ctrl+S")).clicked() { ui.close_menu(); app.save(None); }
-                if ui.add_enabled(has, egui::Button::new(t("Save as..."))).clicked() { ui.close_menu(); app.save_as(); }
+                if ui.add_enabled(has, egui::Button::new(icons::with(icons::FLOPPY_DISK, &t("Save"))).shortcut_text(keys.text(Action::Save))).clicked() { ui.close_menu(); app.save(None); }
+                if ui.add_enabled(has, egui::Button::new(icons::with(icons::FLOPPY_DISK_BACK, &t("Save as..."))).shortcut_text(keys.text(Action::SaveAs))).clicked() { ui.close_menu(); app.save_as(); }
                 ui.separator();
-                ui.menu_button(t("Import"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
+                ui.menu_button(icons::with(icons::DOWNLOAD_SIMPLE, &t("Import")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                     if ui.button(t("Terrain Builder or built map folder...")).clicked() { ui.close_menu(); app.import_folder(); }
                     if ui.button(t("WRP world...")).clicked() { ui.close_menu(); app.import_wrp(); }
                     ui.separator();
@@ -93,20 +98,21 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                         if ui.button(t("Shapes (SHP, TV4S)...")).clicked() { ui.close_menu(); app.import_shapes(); }
                     });
                 });
-                if ui.add_enabled(has, egui::Button::new(t("Export shapes (SHP)..."))).clicked() { ui.close_menu(); app.export_shapes(); }
+                if ui.add_enabled(has, egui::Button::new(icons::with(icons::EXPORT, &t("Export shapes (SHP)...")))).clicked() { ui.close_menu(); app.export_shapes(); }
                 ui.separator();
-                if ui.button(t("Project settings...")).clicked() { app.dialog = Dialog::ProjectSettings; ui.close_menu(); }
-                if ui.button(t("Exit")).clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
+                if ui.button(icons::with(icons::SLIDERS_HORIZONTAL, &t("Project settings..."))).clicked() { app.dialog = Dialog::ProjectSettings; ui.close_menu(); }
+                if ui.button(icons::with(icons::SIGN_OUT, &t("Exit"))).clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
             });
             ui.menu_button(t("Edit"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 let (u, r) = app.doc.as_ref().map(|d| (d.history.undo_label().map(str::to_string), d.history.redo_label().map(str::to_string))).unwrap_or((None, None));
-                if ui.add_enabled(u.is_some(), egui::Button::new(format!("{} {}", t("Undo"), u.unwrap_or_default())).shortcut_text("Ctrl+Z")).clicked() { app.undo(); ui.close_menu(); }
-                if ui.add_enabled(r.is_some(), egui::Button::new(format!("{} {}", t("Redo"), r.unwrap_or_default())).shortcut_text("Ctrl+Y")).clicked() { app.redo(); ui.close_menu(); }
+                if ui.add_enabled(u.is_some(), egui::Button::new(icons::with(icons::ARROW_COUNTER_CLOCKWISE, &format!("{} {}", t("Undo"), u.unwrap_or_default()))).shortcut_text(keys.text(Action::Undo))).clicked() { app.undo(); ui.close_menu(); }
+                if ui.add_enabled(r.is_some(), egui::Button::new(icons::with(icons::ARROW_CLOCKWISE, &format!("{} {}", t("Redo"), r.unwrap_or_default()))).shortcut_text(keys.text(Action::Redo))).clicked() { app.redo(); ui.close_menu(); }
                 ui.separator();
-                if ui.add(egui::Button::new(t("Duplicate")).shortcut_text("Ctrl+D")).clicked() { app.duplicate_selection(); ui.close_menu(); }
-                if ui.add(egui::Button::new(t("Delete")).shortcut_text("Del")).clicked() { app.delete_selection(); ui.close_menu(); }
+                if ui.add(egui::Button::new(icons::with(icons::COPY, &t("Duplicate"))).shortcut_text(keys.text(Action::Duplicate))).clicked() { app.duplicate_selection(); ui.close_menu(); }
+                if ui.add(egui::Button::new(icons::with(icons::TRASH, &t("Delete"))).shortcut_text(keys.text(Action::Delete))).clicked() { app.delete_selection(); ui.close_menu(); }
                 ui.separator();
-                if ui.button(t("Settings...")).clicked() { app.dialog = Dialog::Settings; ui.close_menu(); }
+                if ui.add(egui::Button::new(icons::with(icons::GEAR, &t("Settings..."))).shortcut_text(keys.text(Action::Settings))).clicked() { app.dialog = Dialog::Settings; ui.close_menu(); }
+                if ui.add(egui::Button::new(icons::with(icons::KEYBOARD, &t("Keyboard shortcuts..."))).shortcut_text(keys.text(Action::Shortcuts))).clicked() { app.dialog = Dialog::Shortcuts; ui.close_menu(); }
             });
             ui.menu_button(t("View"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 visibility_toggles(app, ui);
@@ -118,8 +124,8 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                 ui.add_enabled_ui(has, |ui| {
                     if ui.button(t("Export files for the PBO")).clicked() { ui.close_menu(); app.export_map(false); }
                     if ui.button(t("Export with Terrain Builder sources")).clicked() { ui.close_menu(); app.export_map(true); }
-                    if ui.button(t("Build PBO")).clicked() { ui.close_menu(); app.build(false); }
-                    if ui.button(t("Build and play")).clicked() { ui.close_menu(); app.build(true); }
+                    if ui.add(egui::Button::new(icons::with(icons::HAMMER, &t("Build PBO"))).shortcut_text(keys.text(Action::Build))).clicked() { ui.close_menu(); app.build(false); }
+                    if ui.add(egui::Button::new(icons::with(icons::PLAY, &t("Build and play"))).shortcut_text(keys.text(Action::Play))).clicked() { ui.close_menu(); app.build(true); }
                     ui.separator();
                     if ui.button(t("Generate navmesh...")).clicked() { ui.close_menu(); app.generate_navmesh(); }
                 });
@@ -138,7 +144,8 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                 }
             });
             ui.menu_button(t("Help"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-                if ui.button(t("About")).clicked() { app.dialog = Dialog::About; ui.close_menu(); }
+                if ui.add(egui::Button::new(icons::with(icons::KEYBOARD, &t("Keyboard shortcuts..."))).shortcut_text(keys.text(Action::Shortcuts))).clicked() { app.dialog = Dialog::Shortcuts; ui.close_menu(); }
+                if ui.button(icons::with(icons::INFO, &t("About"))).clicked() { app.dialog = Dialog::About; ui.close_menu(); }
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 app.updater.bar(ui);
@@ -147,35 +154,99 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
     });
 }
 
+/// An icon button of the toolbar, lit when `active`, with the action's name and key as tip.
+fn icon_tool(ui: &mut egui::Ui, active: bool, icon: &str, label: Option<&str>, tip: String) -> egui::Response {
+    let text = match label { Some(l) => format!("{icon} {l}"), None => icon.to_string() };
+    let r = ui.add(egui::Button::new(RichText::new(text).size(14.0).color(if active { Color32::WHITE } else { theme::TEXT })).fill(if active { theme::ACCENT } else { Color32::from_rgb(56, 56, 56) }).min_size(vec2(26.0, 24.0)));
+    r.on_hover_text(tip)
+}
+
+/// The modes with their icons and keys.
+pub const MODES: [(Mode, &str, &str, Action); 8] = [
+    (Mode::Select, icons::CURSOR, "Select", Action::ModeSelect),
+    (Mode::Landscape, icons::MOUNTAINS, "Sculpt", Action::ModeSculpt),
+    (Mode::Paint, icons::PAINT_BRUSH, "Paint", Action::ModePaint),
+    (Mode::Place, icons::TREE_EVERGREEN, "Place", Action::ModePlace),
+    (Mode::Lines, icons::ROAD_HORIZON, "Roads", Action::ModeRoads),
+    (Mode::Shapes, icons::POLYGON, "Shapes", Action::ModeShapes),
+    (Mode::KeyPoints, icons::MAP_PIN, "Key points", Action::ModeKeyPoints),
+    (Mode::Satellite, icons::GLOBE_HEMISPHERE_WEST, "Satellite", Action::ModeSatellite),
+];
+
 fn toolbar(app: &mut App, ctx: &egui::Context) {
     egui::TopBottomPanel::top("toolbar").frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 4))).show(ctx, |ui| {
         ui.horizontal(|ui| {
-            if ui.button(t("Save")).on_hover_text("Ctrl+S").clicked() { app.save(None); }
+            let keys = app.settings.keys.clone();
+            let has = app.doc.is_some();
+            ui.add_enabled_ui(has, |ui| {
+                if icon_tool(ui, false, icons::FLOPPY_DISK, None, keys.tip(Action::Save)).clicked() { app.save(None); }
+                let (u, r) = app.doc.as_ref().map(|d| (d.history.undo_label().map(str::to_string), d.history.redo_label().map(str::to_string))).unwrap_or((None, None));
+                let undo = format!("{}: {}", keys.tip(Action::Undo), u.clone().unwrap_or_default());
+                if ui.add_enabled_ui(u.is_some(), |ui| icon_tool(ui, false, icons::ARROW_COUNTER_CLOCKWISE, None, undo)).inner.clicked() { app.undo(); }
+                let redo = format!("{}: {}", keys.tip(Action::Redo), r.clone().unwrap_or_default());
+                if ui.add_enabled_ui(r.is_some(), |ui| icon_tool(ui, false, icons::ARROW_CLOCKWISE, None, redo)).inner.clicked() { app.redo(); }
+            });
             ui.separator();
-            for (m, name, key) in [(Mode::Select, "Select", "1"), (Mode::Landscape, "Sculpt", "2"), (Mode::Paint, "Paint", "3"), (Mode::Place, "Place", "4"), (Mode::Lines, "Roads", "5"), (Mode::Shapes, "Shapes", "6"), (Mode::KeyPoints, "Key points", "7"), (Mode::Satellite, "Satellite", "8")] {
-                if tool_button(ui, app.mode == m, &t(name)).on_hover_text(key).clicked() { app.mode = m; }
+            // The modes show their names while there is room for them.
+            let named = ui.available_width() > 1100.0;
+            for (m, icon, name, action) in MODES {
+                if icon_tool(ui, app.mode == m, icon, named.then(|| t(name)).as_deref(), keys.tip(action)).clicked() { app.mode = m; }
             }
             ui.separator();
             ui.add_enabled_ui(app.mode == Mode::Select, |ui| {
-                for (g, name, key) in [(Gizmo::Move, "Move", "W"), (Gizmo::Rotate, "Rotate", "E"), (Gizmo::Scale, "Scale", "R")] {
-                    if tool_button(ui, app.gizmo == g, &t(name)).on_hover_text(key).clicked() { app.gizmo = g; }
+                for (g, icon, action) in [(Gizmo::Move, icons::ARROWS_OUT_CARDINAL, Action::GizmoMove), (Gizmo::Rotate, icons::ARROWS_CLOCKWISE, Action::GizmoRotate), (Gizmo::Scale, icons::ARROWS_OUT, Action::GizmoScale)] {
+                    if icon_tool(ui, app.gizmo == g, icon, None, keys.tip(action)).clicked() { app.gizmo = g; }
                 }
             });
             ui.separator();
-            for (v, name) in [(ViewMode::Perspective, "3D"), (ViewMode::Top, "2D"), (ViewMode::Split, "3D | 2D")] {
-                if tool_button(ui, app.view_mode == v, name).clicked() { app.view_mode = v; }
+            for (v, icon, name, action) in [(ViewMode::Perspective, icons::CUBE, "3D", Action::View3d), (ViewMode::Top, icons::SQUARE, "2D", Action::View2d), (ViewMode::Split, icons::COLUMNS, "3D | 2D", Action::ViewSplit)] {
+                if icon_tool(ui, app.view_mode == v, icon, Some(name), keys.tip(action)).clicked() { app.view_mode = v; }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let has = app.doc.is_some() && app.task.is_none();
+                let free = has && app.task.is_none();
                 if app.session.is_some() {
-                    if ui.add(egui::Button::new(RichText::new(format!("■ {}", t("Stop"))).color(Color32::WHITE)).fill(theme::ERROR)).clicked() { app.stop_session(); }
-                } else if ui.add_enabled(has, egui::Button::new(RichText::new(format!("▶ {}", t("Play"))).color(Color32::WHITE)).fill(theme::PLAY)).on_hover_text(t("Export, binarise and start the map in DayZ")).clicked() {
+                    if ui.add(egui::Button::new(RichText::new(format!("{} {}", icons::STOP, t("Stop"))).color(Color32::WHITE)).fill(theme::ERROR)).clicked() { app.stop_session(); }
+                } else if ui.add_enabled(free, egui::Button::new(RichText::new(format!("{} {}", icons::PLAY, t("Play"))).color(Color32::WHITE)).fill(theme::PLAY)).on_hover_text(format!("{}\n{}", keys.tip(Action::Play), t("Export, binarise and start the map in DayZ"))).clicked() {
                     app.build(true);
                 }
-                if ui.add_enabled(has, egui::Button::new(t("Build"))).on_hover_text(t("Export and binarise the PBO")).clicked() { app.build(false); }
+                if ui.add_enabled(free, egui::Button::new(format!("{} {}", icons::HAMMER, t("Build")))).on_hover_text(format!("{}\n{}", keys.tip(Action::Build), t("Export and binarise the PBO"))).clicked() { app.build(false); }
+                if ui.add(egui::Button::new(icons::KEYBOARD).frame(false)).on_hover_text(keys.tip(Action::Shortcuts)).clicked() { app.dialog = Dialog::Shortcuts; }
             });
         });
     });
+}
+
+/// Keys shown next to what they do, as small key caps.
+pub fn key_hints(ui: &mut egui::Ui, rows: &[(String, String)]) {
+    egui::Grid::new(ui.next_auto_id()).num_columns(2).spacing(vec2(8.0, 3.0)).show(ui, |ui| {
+        for (keys, what) in rows {
+            if keys.is_empty() { continue; }
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 3.0;
+                for (n, k) in keys.split(" / ").enumerate() {
+                    if n > 0 { ui.weak("/"); }
+                    egui::Frame::new().fill(Color32::from_rgb(30, 30, 30)).stroke(egui::Stroke::new(1.0f32, Color32::from_rgb(78, 78, 78))).corner_radius(3).inner_margin(egui::Margin::symmetric(4, 1)).show(ui, |ui| {
+                        ui.label(RichText::new(k).monospace().size(11.0).color(Color32::from_gray(220)));
+                    });
+                }
+            });
+            ui.label(RichText::new(what).small().color(theme::TEXT_DIM));
+            ui.end_row();
+        }
+    });
+}
+
+/// The keys of the brush of the current tool, from the key map.
+pub fn brush_hints(app: &App, ui: &mut egui::Ui, invert: Option<&str>, smooth: bool, strength: bool, noise: bool) {
+    let k = &app.settings.keys;
+    let wheel = |h: Hold| format!("{}+{}", k.hold(h).name(), t("wheel"));
+    let both = |a: Action, b: Action| [k.text(a), k.text(b)].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ");
+    let mut rows = vec![(format!("{} / {}", both(Action::BrushSmaller, Action::BrushBigger), wheel(Hold::WheelSize)), t("Brush size"))];
+    if strength { rows.push((format!("{} / {}", both(Action::BrushWeaker, Action::BrushStronger), wheel(Hold::WheelStrength)), t("Strength"))); }
+    if noise { rows.push((wheel(Hold::WheelNoise), t("Edge noise"))); }
+    if let Some(what) = invert { rows.push((k.hold(Hold::Invert).name().to_string(), t(what))); }
+    if smooth { rows.push((k.hold(Hold::Smooth).name().to_string(), t("Smooth"))); }
+    key_hints(ui, &rows);
 }
 
 fn status_bar(app: &mut App, ctx: &egui::Context) {
@@ -226,19 +297,25 @@ fn modes_panel(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn select_mode(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Selection"), true, |ui| {
+    section(ui, &icons::with(icons::CURSOR_CLICK, &t("Selection")), true, |ui| {
         ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
-        ui.weak(t("Click to select, drag for a box, Shift adds. W, E, R change the gizmo. F frames the selection."));
-        ui.weak(t("Shift or Ctrl held while dragging a selected object rotates or scales it."));
+        ui.weak(t("Click to select, drag for a box, Shift adds. Shift or Ctrl held while dragging a selected object rotates or scales it."));
         ui.checkbox(&mut app.select_whole, t("Select whole roads and generators"));
-        ui.weak(t("U sets the underground flag of the selection, B lets the camera below the terrain."));
+        let k = &app.settings.keys;
+        key_hints(ui, &[
+            (format!("{} / {} / {}", k.text(Action::GizmoMove), k.text(Action::GizmoRotate), k.text(Action::GizmoScale)), t("Move, rotate, scale")),
+            (k.text(Action::Focus), t(Action::Focus.name())),
+            (k.text(Action::Duplicate), t(Action::Duplicate.name())),
+            (k.text(Action::Underground), t(Action::Underground.name())),
+            (k.text(Action::CameraBelow), t(Action::CameraBelow.name())),
+        ]);
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             if ui.button(t("Duplicate")).clicked() { app.duplicate_selection(); }
             if ui.button(t("Delete")).clicked() { app.delete_selection(); }
         });
     });
-    section(ui, &t("Terrain under objects"), true, |ui| {
+    section(ui, &icons::with(icons::STACK, &t("Terrain under objects")), true, |ui| {
         ui.weak(t("A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched."));
         let mut changed = pad_sliders(app, ui);
         if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("Add modifier to selection"))).clicked() {
@@ -291,30 +368,30 @@ pub(crate) fn grading_ui(ui: &mut egui::Ui, g: &mut dz_core::world::RoadGrading,
 }
 
 fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Sculpt tool"), true, |ui| {
+    section(ui, &icons::with(icons::MOUNTAINS, &t("Sculpt tool")), true, |ui| {
         ui.horizontal_wrapped(|ui| {
             for (tool, name) in [(SculptTool::Raise, "Raise"), (SculptTool::Lower, "Lower"), (SculptTool::Smooth, "Smooth"), (SculptTool::Flatten, "Flatten"), (SculptTool::Noise, "Noise"), (SculptTool::Ramp, "Ramp")] {
                 if tool_button(ui, app.sculpt.tool == tool && !app.hole_tool, &t(name)).clicked() { app.sculpt.tool = tool; app.hole_tool = false; }
             }
             if tool_button(ui, app.hole_tool, &t("Terrain holes")).clicked() { app.hole_tool = !app.hole_tool; }
         });
-        ui.weak(t("Ctrl inverts raise and lower, Shift smooths. [ and ] or Shift+wheel change the size."));
     });
     if app.hole_tool {
-        section(ui, &t("Terrain holes"), true, |ui| {
+        section(ui, &icons::with(icons::CIRCLE_DASHED, &t("Terrain holes")), true, |ui| {
             slider(ui, &t("Radius"), &mut app.hole_radius, 0.5..=100.0, true);
-            ui.weak(t("Paint the cells the game should not draw, Ctrl removes them. Objects under the terrain need the underground flag (U), and they cost performance."));
+            ui.weak(t("Paint the cells the game should not draw. Objects under the terrain need the underground flag, and they cost performance."));
+            brush_hints(app, ui, Some("Remove the holes"), false, false, false);
             if let Some(d) = &app.doc { ui.label(tf("{0} cells", &[&d.world.holes.len().to_string()])); }
         });
         return;
     }
-    section(ui, &t("Brush"), true, |ui| {
+    section(ui, &icons::with(icons::PAINT_BRUSH_BROAD, &t("Brush")), true, |ui| {
         brush_shape_row(ui, &mut app.sculpt.shape);
         slider(ui, &t("Radius"), &mut app.sculpt.radius, 2.0..=3000.0, true);
         slider(ui, &t("Falloff"), &mut app.sculpt.falloff, 0.0..=1.0, false);
         slider(ui, &t("Strength"), &mut app.sculpt.strength, 0.5..=200.0, true);
         slider(ui, &t("Edge noise"), &mut app.sculpt.noise, 0.0..=1.0, false);
-        ui.weak(t("Shift+wheel: size. Ctrl+wheel: edge noise. Alt+wheel: strength and falloff."));
+        brush_hints(app, ui, Some("Lower instead of raise"), true, true, true);
     });
 }
 
@@ -334,11 +411,11 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Brush"), true, |ui| {
+    section(ui, &icons::with(icons::PAINT_BRUSH_BROAD, &t("Brush")), true, |ui| {
         brush_shape_row(ui, &mut app.paint.shape);
         slider(ui, &t("Radius"), &mut app.paint.radius, 0.5..=2000.0, true);
         slider(ui, &t("Edge noise"), &mut app.paint.scatter, 0.0..=0.8, false);
-        if tool_button(ui, app.paint.picking, &t("Eyedropper")).on_hover_text(t("Takes the surface under the cursor. Alt+click does the same.")).clicked() { app.paint.picking = !app.paint.picking; }
+        if tool_button(ui, app.paint.picking, &t("Eyedropper")).on_hover_text(t("Takes the surface under the cursor.")).clicked() { app.paint.picking = !app.paint.picking; }
         let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
         row(ui, &t("Paint only on"), |ui| {
             let shown = app.paint.only_on.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| t("(none)"));
@@ -347,10 +424,12 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
                 for (i, n) in names.iter().enumerate() { ui.selectable_value(&mut app.paint.only_on, Some(i), n); }
             });
         });
-        ui.weak(t("Shift+wheel: size. Ctrl+wheel: edge noise."));
+        let pick = app.settings.keys.hold(Hold::Pick).name().to_string();
+        brush_hints(app, ui, None, false, false, true);
+        key_hints(ui, &[(format!("{pick}+{}", t("click")), t("Take the surface under the cursor"))]);
     });
     crate::maskmods::panel(app, ui);
-    section(ui, &t("Surface layers"), true, |ui| {
+    section(ui, &icons::with(icons::STACK, &t("Surface layers")), true, |ui| {
         layer_list(app, ui);
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
@@ -381,7 +460,7 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn place_mode(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Place objects"), true, |ui| {
+    section(ui, &icons::with(icons::TREE_EVERGREEN, &t("Place objects")), true, |ui| {
         let presets: Vec<(u64, String)> = app.library.objects.iter().map(|p| (p.id, p.name.clone())).collect();
         row(ui, &t("Object preset"), |ui| {
             let shown = app.place.preset.and_then(|id| presets.iter().find(|p| p.0 == id)).map(|p| p.1.clone()).unwrap_or_else(|| t("(none)"));
@@ -401,7 +480,8 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
         if app.place.brush {
             slider(ui, &t("Radius"), &mut app.place.brush_radius, 1.0..=300.0, true);
             slider(ui, &t("Spacing"), &mut app.place.brush_spacing, 0.3..=60.0, true);
-            ui.weak(t("Hold the button to paint objects, Ctrl to remove them."));
+            ui.weak(t("Hold the button to paint objects."));
+            brush_hints(app, ui, Some("Remove objects"), false, true, false);
         }
         match &app.place.model {
             Some(m) => { ui.label(RichText::new(m.rsplit('\\').next().unwrap_or(m)).color(Color32::WHITE)); }
@@ -413,14 +493,14 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
         slider(ui, &t("Max scale"), &mut app.place.scale_max, 0.1..=4.0, false);
         if app.place.scale_max < app.place.scale_min { app.place.scale_max = app.place.scale_min; }
     });
-    section(ui, &t("Terrain under objects"), true, |ui| {
+    section(ui, &icons::with(icons::STACK, &t("Terrain under objects")), true, |ui| {
         ui.checkbox(&mut app.place.auto_pad, t("Level the ground when placing"));
         slider(ui, &t("Blend"), &mut app.place.pad_falloff, 0.0..=60.0, false);
     });
 }
 
 fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Draw"), true, |ui| {
+    section(ui, &icons::with(icons::PATH, &t("Draw")), true, |ui| {
         ui.horizontal(|ui| {
             for (tool, name) in [(ShapeTool::Edit, "Edit"), (ShapeTool::Polygon, "Polygon"), (ShapeTool::Polyline, "Polyline"), (ShapeTool::Point, "Point")] {
                 if tool_button(ui, app.shape.tool == tool, &t(name)).clicked() {
@@ -436,31 +516,31 @@ fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
             ui.label(tf("{0} points", &[&app.shape.points.len().to_string()]));
         }
     });
-    section(ui, &t("Files"), true, |ui| {
+    section(ui, &icons::with(icons::FOLDER_OPEN, &t("Files")), true, |ui| {
         ui.horizontal(|ui| {
             if ui.button(t("Import...")).on_hover_text("SHP, TV4S").clicked() { app.import_shapes(); }
             if ui.button(t("Export...")).on_hover_text("SHP").clicked() { app.export_shapes(); }
         });
     });
-    section(ui, &t("Selected shape"), true, |ui| shape_details(app, ui));
+    section(ui, &icons::with(icons::POLYGON, &t("Selected shape")), true, |ui| shape_details(app, ui));
 }
 
 fn keypoints_mode(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Draw"), true, |ui| {
+    section(ui, &icons::with(icons::PATH, &t("Draw")), true, |ui| {
         ui.horizontal(|ui| {
             if tool_button(ui, !app.shape.keypoint_adding, &t("Edit")).clicked() { app.shape.keypoint_adding = false; }
             if tool_button(ui, app.shape.keypoint_adding, &t("Add")).clicked() { app.shape.keypoint_adding = true; }
         });
         ui.weak(if app.shape.keypoint_adding { t("Click on the map adds a key point.") } else { t("Click selects a key point. Drag moves it, Delete removes it.") });
     });
-    section(ui, &t("Key points"), true, |ui| keypoints_ui(app, ui));
+    section(ui, &icons::with(icons::MAP_PIN, &t("Key points")), true, |ui| keypoints_ui(app, ui));
 }
 
 /// The key points of the map, as Terrain Builder's selection properties show them.
 fn keypoints_ui(app: &mut App, ui: &mut egui::Ui) {
     use dz_core::keypoints::TYPES;
     if ui.button(t("Import...")).on_hover_text("TV4P, HPP").clicked() { app.import_keypoints(); }
-    ui.add(egui::TextEdit::singleline(&mut app.shape.keypoint_filter).hint_text(t("Search...")));
+    ui.add(egui::TextEdit::singleline(&mut app.shape.keypoint_filter).hint_text(format!("{} {}", icons::MAGNIFYING_GLASS, t("Search..."))));
     let filter = app.shape.keypoint_filter.to_lowercase();
     let Some(doc) = &app.doc else { return };
     let names: Vec<(usize, String)> = doc.world.keypoints.iter().enumerate().filter(|(_, k)| k.name.to_lowercase().contains(&filter)).map(|(i, k)| (i, k.name.clone())).collect();
@@ -699,12 +779,12 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
 fn lines_mode(app: &mut App, ui: &mut egui::Ui) {
     lines_tool_panel(app, ui);
     if app.line.action == LineAction::Edit {
-        section(ui, &t("Selected route"), true, |ui| route_details(app, ui));
+        section(ui, &icons::with(icons::ROAD_HORIZON, &t("Selected route")), true, |ui| route_details(app, ui));
     }
 }
 
 fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Draw"), true, |ui| {
+    section(ui, &icons::with(icons::PATH, &t("Draw")), true, |ui| {
         ui.horizontal(|ui| {
             for (a, n) in [(LineAction::Road, "Road"), (LineAction::Fence, "Objects"), (LineAction::Plain, "Line"), (LineAction::Edit, "Edit routes")] {
                 if tool_button(ui, app.line.action == a, &t(n)).clicked() { app.line.action = a; }
@@ -775,7 +855,7 @@ fn panel_title(ui: &mut egui::Ui, title: &str) {
 }
 
 fn outliner(app: &mut App, ui: &mut egui::Ui) {
-    panel_title(ui, &t("Outliner"));
+    panel_title(ui, &icons::with(icons::TREE_STRUCTURE, &t("Outliner")));
     ui.add(egui::TextEdit::singleline(&mut app.outliner_filter).hint_text(t("Search...")).desired_width(f32::INFINITY));
     let Some(doc) = &app.doc else { return };
     let filter = app.outliner_filter.to_ascii_lowercase();
@@ -810,24 +890,24 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut start_rename = None;
     let mut select_modifier = None;
     egui::ScrollArea::vertical().id_salt("outl").auto_shrink([false, false]).show(ui, |ui| {
-        egui::CollapsingHeader::new(tf("Terrain modifiers ({0})", &[&mods.len().to_string()])).default_open(true).show(ui, |ui| {
+        egui::CollapsingHeader::new(icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()]))).default_open(true).show(ui, |ui| {
             for (id, name) in mods.iter().filter(|(_, n)| n.to_ascii_lowercase().contains(&filter)) {
                 if ui.selectable_label(app.selected_modifier == Some(*id), name).clicked() { select_modifier = Some(*id); }
             }
         });
         crate::maskmods::outliner(app, ui, &filter);
         crate::satellite::outliner(app, ui, &filter);
-        egui::CollapsingHeader::new(tf("Generators ({0})", &[&generators.len().to_string()])).default_open(true).show(ui, |ui| {
+        egui::CollapsingHeader::new(icons::with(icons::MAGIC_WAND, &tf("Generators ({0})", &[&generators.len().to_string()]))).default_open(true).show(ui, |ui| {
             crate::library_ui::outliner_rows(app, ui, &generators, &filter);
         });
-        egui::CollapsingHeader::new(tf("Routes ({0})", &[&routes.len().to_string()])).default_open(true).show(ui, |ui| {
+        egui::CollapsingHeader::new(icons::with(icons::ROAD_HORIZON, &tf("Routes ({0})", &[&routes.len().to_string()]))).default_open(true).show(ui, |ui| {
             for (i, name, family) in routes.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
                 let row = ui.selectable_label(app.line.selected_route == Some(*i), format!("{name}  ({family})"));
                 if row.clicked() { select_route = Some(*i); }
                 row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); } });
             }
         });
-        egui::CollapsingHeader::new(tf("Shape layers ({0})", &[&shape_rows.len().to_string()])).default_open(true).show(ui, |ui| {
+        egui::CollapsingHeader::new(icons::with(icons::POLYGON, &tf("Shape layers ({0})", &[&shape_rows.len().to_string()]))).default_open(true).show(ui, |ui| {
             if ui.small_button(format!("+ {}", t("New layer"))).clicked() { shape_action = Some(ShapeAction::New); }
             for (i, name, visible, count) in shape_rows.iter().filter(|(_, n, _, _)| n.to_ascii_lowercase().contains(&filter)) {
                 ui.horizontal(|ui| {
@@ -867,7 +947,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         let live = layers.iter().filter(|l| !l.deleted).count();
-        egui::CollapsingHeader::new(tf("Object layers ({0})", &[&live.to_string()])).default_open(true).show(ui, |ui| {
+        egui::CollapsingHeader::new(icons::with(icons::STACK, &tf("Object layers ({0})", &[&live.to_string()]))).default_open(true).show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.small_button(format!("+ {}", t("New layer"))).clicked() { layer_action = Some(LayerAction::New); }
                 if ui.small_button(t("Edit all")).clicked() { layer_action = Some(LayerAction::EditAll); }
@@ -910,7 +990,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
         });
-        egui::CollapsingHeader::new(tf("Objects ({0})", &[&total_objects.to_string()])).default_open(true).show(ui, |ui| {
+        egui::CollapsingHeader::new(icons::with(icons::CUBE, &tf("Objects ({0})", &[&total_objects.to_string()]))).default_open(true).show(ui, |ui| {
             for (k, (m, count)) in hist.iter().enumerate() {
                 let name = paths[k].rsplit('\\').next().unwrap_or(&paths[k]);
                 if !filter.is_empty() && !name.contains(&filter) { continue; }
@@ -1005,7 +1085,7 @@ fn object_details(app: &mut App, ui: &mut egui::Ui) {
     let mut o = before;
     let path = doc.world.objects.model_path(&o).to_string();
     let mut done = false;
-    section(ui, &t("Transform"), true, |ui| {
+    section(ui, &icons::with(icons::ARROWS_OUT_CARDINAL, &t("Transform")), true, |ui| {
         ui.label(RichText::new(path.rsplit('\\').next().unwrap_or(&path)).color(Color32::WHITE)).on_hover_text(&path);
         let mut f = |ui: &mut egui::Ui, label: String, v: &mut f32, speed: f64| {
             row(ui, &label, |ui| {
@@ -1049,7 +1129,7 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     let Some(index) = doc.world.modifiers.iter().position(|m| m.id == id) else { app.selected_modifier = None; return };
     let mut m = doc.world.modifiers[index].clone();
     let mut remove = false;
-    section(ui, &t("Terrain modifier"), true, |ui| {
+    section(ui, &icons::with(icons::MOUNTAINS, &t("Terrain modifier")), true, |ui| {
         row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut m.name); });
         ui.checkbox(&mut m.enabled, t("Enabled"));
         row(ui, &t("Effect"), |ui| {
@@ -1108,12 +1188,12 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
 
 fn bottom_panel(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        for (tab, name) in [(BottomTab::Content, "Content Browser"), (BottomTab::Output, "Output Log"), (BottomTab::Build, "Build")] {
-            if tool_button(ui, app.bottom == tab, &t(name)).clicked() { app.bottom = tab; }
+        for (tab, icon, name) in [(BottomTab::Content, icons::SQUARES_FOUR, "Content Browser"), (BottomTab::Output, icons::TERMINAL_WINDOW, "Output Log"), (BottomTab::Build, icons::HAMMER, "Build")] {
+            if tool_button(ui, app.bottom == tab, &icons::with(icon, &t(name))).clicked() { app.bottom = tab; }
         }
         if app.bottom == BottomTab::Content {
             ui.separator();
-            ui.add(egui::Slider::new(&mut app.settings.library_tile, 48.0..=240.0).show_value(false).text(t("Size")));
+            ui.add(egui::Slider::new(&mut app.settings.library_tile, 48.0..=240.0).show_value(false).text(icons::MAGNIFYING_GLASS_PLUS));
         }
     });
     match app.bottom {
@@ -1306,6 +1386,14 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
         }
         Dialog::RoadCatalog => crate::library_ui::road_catalog_window(app, ctx, &mut open),
         Dialog::Settings => settings_window(app, ctx, &mut open),
+        Dialog::Shortcuts => {
+            let mut keys = app.settings.keys.clone();
+            crate::keys::window(ctx, &mut keys, &mut app.key_capture, &mut open);
+            if keys != app.settings.keys {
+                app.settings.keys = keys;
+                app.settings.save();
+            }
+        }
         Dialog::ProjectSettings => project_window(app, ctx, &mut open),
         Dialog::About => {
             egui::Window::new(t("About")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
@@ -1333,7 +1421,7 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
 
 fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     egui::Window::new(t("Settings")).collapsible(false).default_width(520.0).open(open).show(ctx, |ui| {
-        section(ui, &t("Paths"), true, |ui| {
+        section(ui, &icons::with(icons::FOLDER_OPEN, &t("Paths")), true, |ui| {
             let mut changed = false;
             let mut path_row = |ui: &mut egui::Ui, label: String, p: &mut std::path::PathBuf| {
                 row(ui, &label, |ui| {
@@ -1351,7 +1439,7 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
             if changed { app.db = dz_core::model_info::ModelDb::new(app.settings.tools.work_drive.clone()); }
             for p in app.settings.tools.check() { ui.colored_label(theme::WARN, p); }
         });
-        section(ui, &t("Display"), true, |ui| {
+        section(ui, &icons::with(icons::EYE, &t("Display")), true, |ui| {
             row(ui, &t("Language"), |ui| {
                 let cur = crate::i18n::current();
                 let names = crate::i18n::languages();
@@ -1366,7 +1454,7 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
             row(ui, &t("Interface scale"), |ui| { ui.add(egui::Slider::new(&mut app.settings.ui_scale, 0.75..=2.0)); });
             if before != app.settings.ui_scale { theme::apply(ctx, app.settings.ui_scale); }
         });
-        section(ui, &t("Graphics"), true, |ui| {
+        section(ui, &icons::with(icons::SUN, &t("Graphics")), true, |ui| {
             row(ui, &t("Quality"), |ui| {
                 let current = app.settings.graphics_preset();
                 let mut pick = None;
@@ -1395,11 +1483,11 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
             choice(ui, &t("Ambient occlusion"), "ambient_occlusion", &mut app.settings.ambient_occlusion, &[(0, t("Off")), (8, t("Low")), (12, t("Medium")), (20, t("High"))]);
             slider(ui, &t("Ground colour on grass"), &mut app.settings.grass_ground_color, 0.0..=1.0, false);
         });
-        section(ui, &t("General"), true, |ui| {
+        section(ui, &icons::with(icons::GEAR, &t("General")), true, |ui| {
             row(ui, &t("Autosave every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
             ui.checkbox(&mut app.settings.check_updates, t("Check for updates at start"));
         });
-        section(ui, &t("Backups"), true, |ui| {
+        section(ui, &icons::with(icons::CLOCK, &t("Backups")), true, |ui| {
             ui.checkbox(&mut app.settings.backup_enabled, t("Make backups automatically"));
             ui.add_enabled_ui(app.settings.backup_enabled, |ui| {
                 row(ui, &t("Back up every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.backup_minutes, 5..=240).suffix(" min")); });

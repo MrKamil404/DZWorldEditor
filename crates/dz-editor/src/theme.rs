@@ -98,3 +98,49 @@ pub fn tool_button(ui: &mut egui::Ui, active: bool, text: &str) -> egui::Respons
     let b = egui::Button::new(egui::RichText::new(text).color(if active { Color32::WHITE } else { TEXT })).fill(if active { ACCENT } else { Color32::from_rgb(56, 56, 56) });
     ui.add(b)
 }
+
+/// Marks a place that takes what is being dragged: a light frame while anything it takes is
+/// dragged, a strong one with a fill while the pointer is over it.
+pub fn drop_zone(resp: &egui::Response, takes: bool) {
+    if !takes {
+        return;
+    }
+    // Only the part that can be seen: rows scrolled out of a list are laid out but clipped.
+    let visible = resp.interact_rect;
+    if !visible.is_positive() {
+        return;
+    }
+    let over = resp.contains_pointer();
+    let p = resp.ctx.layer_painter(resp.layer_id).with_clip_rect(visible.expand(1.0));
+    let r = resp.rect.shrink(1.0);
+    if over {
+        p.rect_filled(r, 3.0, Color32::from_rgba_unmultiplied(0, 112, 224, 40));
+        p.rect_stroke(r, 3.0, Stroke::new(2.0_f32, ACCENT), egui::StrokeKind::Inside);
+    } else {
+        p.rect_stroke(r, 3.0, Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 112, 224, 150)), egui::StrokeKind::Inside);
+    }
+}
+
+/// True while a model (or several things) is being dragged.
+pub fn dragging_models(ctx: &egui::Context) -> bool {
+    egui::DragAndDrop::has_payload_of_type::<String>(ctx) || egui::DragAndDrop::has_payload_of_type::<crate::asset_browser::Dragged>(ctx)
+}
+
+/// The models dropped on a place this frame: one dragged alone or all of several.
+pub fn dropped_models(resp: &egui::Response) -> Vec<std::sync::Arc<String>> {
+    let mut out: Vec<std::sync::Arc<String>> = crate::theme::take::<String>(&resp).into_iter().collect();
+    if let Some(d) = crate::theme::take::<crate::asset_browser::Dragged>(&resp) {
+        out.extend(d.0.iter().filter_map(|p| if let crate::asset_browser::Pick::Model(m) = p { Some(std::sync::Arc::new(m.clone())) } else { None }));
+    }
+    out
+}
+
+/// What was dropped on a place this frame, if it is of this type. egui throws away a payload
+/// asked for as another type, so the type is checked before it is taken.
+pub fn take<T: std::any::Any + Send + Sync>(resp: &egui::Response) -> Option<std::sync::Arc<T>> {
+    if egui::DragAndDrop::has_payload_of_type::<T>(&resp.ctx) {
+        resp.dnd_release_payload::<T>()
+    } else {
+        None
+    }
+}

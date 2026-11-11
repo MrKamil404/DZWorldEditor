@@ -214,7 +214,7 @@ pub fn bake(app: &mut App) {
 pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str) {
     let rows: Vec<(u32, String, bool, SatKind)> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter().map(|m| (m.id, m.name.clone(), m.enabled, m.kind)).collect()).unwrap_or_default();
     let (mut toggle, mut delete) = (None, None);
-    egui::CollapsingHeader::new(tf("Satellite modifiers ({0})", &[&rows.len().to_string()])).default_open(true).show(ui, |ui| {
+    egui::CollapsingHeader::new(crate::icons::with(crate::icons::IMAGE, &tf("Satellite modifiers ({0})", &[&rows.len().to_string()]))).default_open(true).show(ui, |ui| {
         for (id, name, enabled, kind) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
@@ -353,7 +353,7 @@ fn preview(app: &mut App, ui: &mut egui::Ui) {
 }
 
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Bake objects"), true, |ui| {
+    section(ui, &crate::icons::with(crate::icons::STAMP, &t("Bake objects")), true, |ui| {
         ui.weak(t("Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted."));
         let selected = app.selection.len();
         ui.checkbox(&mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
@@ -397,8 +397,9 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             bake(app);
         }
     });
-    section(ui, &t("Clone brush"), true, |ui| {
+    section(ui, &crate::icons::with(crate::icons::PAINT_BRUSH, &t("Clone brush")), true, |ui| {
         ui.weak(t("Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it."));
+        crate::panels::brush_hints(app, ui, None, false, true, true);
         row(ui, &t("Copy from"), |ui| {
             let before = app.sat.from_file;
             ui.selectable_value(&mut app.sat.from_file, false, t("Satellite"));

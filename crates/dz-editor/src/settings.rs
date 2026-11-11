@@ -95,6 +95,8 @@ pub struct Settings {
     pub ambient_occlusion: u32,
     /// How far ground clutter takes the colour of the satellite image under it, 0 to 1.
     pub grass_ground_color: f32,
+    /// The keyboard shortcuts the user chose.
+    pub keys: crate::keys::KeyMap,
 }
 
 /// A ready set of the graphics settings of the 3D view.
@@ -148,7 +150,7 @@ impl Default for Settings {
             language: "pl".into(), ui_scale: 1.0, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
             check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_blend: 3.0, surface_range: 190.0, sea_waves: 0.6, camera_speed: 60.0, lighting: Lighting::default(),
-            texture_size: 2048, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6,
+            texture_size: 2048, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6, keys: Default::default(),
         }
     }
 }

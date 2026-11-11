@@ -73,7 +73,8 @@ fn model_field(ui: &mut egui::Ui, label: String, value: &mut String, selected: &
     row(ui, &label, |ui| {
         let name = value.rsplit('\\').next().unwrap_or("").to_string();
         let shown = ui.add(egui::Label::new(if name.is_empty() { t("none") } else { name }).sense(egui::Sense::hover())).on_hover_text(value.as_str());
-        if let Some(p) = shown.dnd_release_payload::<String>() {
+        crate::theme::drop_zone(&shown, crate::theme::dragging_models(&shown.ctx));
+        for p in crate::theme::dropped_models(&shown) {
             *value = (*p).clone();
         }
         if ui.small_button(t("Use selected")).clicked() {
@@ -105,7 +106,8 @@ fn models_list(ui: &mut egui::Ui, models: &mut Vec<(String, f32)>, cx: &KindCont
             });
         }
     }).response;
-    if let Some(p) = list.dnd_release_payload::<String>() { if !models.iter().any(|m| m.0 == *p) { models.push(((*p).clone(), 1.0)); } }
+    crate::theme::drop_zone(&list, crate::theme::dragging_models(&list.ctx));
+    for p in crate::theme::dropped_models(&list) { if !models.iter().any(|m| m.0 == *p) { models.push(((*p).clone(), 1.0)); } }
     if let Some(i) = remove { models.remove(i); }
     if ui.button(format!("+ {}", t("Add selected model"))).on_hover_text(t("Models can also be dropped here.")).clicked() {
         if let Some(m) = &cx.model { if !models.iter().any(|x| x.0 == *m) { models.push((m.clone(), 1.0)); } }
@@ -382,7 +384,8 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     });
                 }
             }).response;
-            if let Some(p) = list.dnd_release_payload::<String>() { if !s.buildings.contains(&p) { s.buildings.push((*p).clone()); } }
+            crate::theme::drop_zone(&list, crate::theme::dragging_models(&list.ctx));
+            for p in crate::theme::dropped_models(&list) { if !s.buildings.contains(&p) { s.buildings.push((*p).clone()); } }
             if let Some(i) = remove { s.buildings.remove(i); }
             if ui.button(format!("+ {}", t("Add selected model"))).clicked() {
                 if let Some(m) = &cx.model { if !s.buildings.contains(m) { s.buildings.push(m.clone()); } }
@@ -863,7 +866,8 @@ fn forest_preset_details(app: &mut App, ui: &mut egui::Ui, name: &str) {
         }
     }).response;
     let stem = |m: &str| m.rsplit('\\').next().unwrap_or(m).trim_end_matches(".p3d").to_string();
-    if let Some(m) = list.dnd_release_payload::<String>() { let s = stem(&m); if !p.weights.iter().any(|w| w.0 == s) { p.weights.push((s, 1.0)); } }
+    crate::theme::drop_zone(&list, crate::theme::dragging_models(&list.ctx));
+    for m in crate::theme::dropped_models(&list) { let s = stem(&m); if !p.weights.iter().any(|w| w.0 == s) { p.weights.push((s, 1.0)); } }
     if let Some(i) = remove { p.weights.remove(i); }
     if ui.button(format!("+ {}", t("Add selected model"))).on_hover_text(t("Models can also be dropped here.")).clicked() {
         if let Some(m) = &model { let s = stem(m); if !p.weights.iter().any(|w| w.0 == s) { p.weights.push((s, 1.0)); } }
@@ -895,7 +899,8 @@ fn object_preset_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
             });
         }
     }).response;
-    if let Some(m) = list.dnd_release_payload::<String>() { if !p.items.iter().any(|i| i.0 == *m) { p.items.push(((*m).clone(), 1.0)); } }
+    crate::theme::drop_zone(&list, crate::theme::dragging_models(&list.ctx));
+    for m in crate::theme::dropped_models(&list) { if !p.items.iter().any(|i| i.0 == *m) { p.items.push(((*m).clone(), 1.0)); } }
     if let Some(i) = remove { p.items.remove(i); }
     if ui.button(format!("+ {}", t("Add selected model"))).on_hover_text(t("Models can also be dropped here.")).clicked() {
         if let Some(m) = selected { if !p.items.iter().any(|i| i.0 == m) { p.items.push((m, 1.0)); } }
@@ -1611,7 +1616,8 @@ pub fn road_catalog_window(app: &mut App, ctx: &egui::Context, open: &mut bool) 
                         });
                     }
                 }).response;
-                if let Some(p) = frame.dnd_release_payload::<String>() { dropped = Some((category, (*p).clone())); }
+                crate::theme::drop_zone(&frame, crate::theme::dragging_models(&frame.ctx));
+                for p in crate::theme::dropped_models(&frame) { dropped = Some((category, (*p).clone())); }
             }
         });
         ui.separator();

@@ -158,7 +158,7 @@ pub fn stamp_ui(ui: &mut egui::Ui, s: &mut StampSettings, salt: &str) {
 
 /// The section of the paint panel that stamps a surface under objects.
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &t("Surface under objects"), false, |ui| {
+    section(ui, &crate::icons::with(crate::icons::STAMP, &t("Surface under objects")), false, |ui| {
         ui.weak(t("Paints a surface under objects as a mask modifier, which can be hidden or deleted in the outliner."));
         let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
         row(ui, &t("Surface"), |ui| {
@@ -190,14 +190,14 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
 pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str) {
     let rows: Vec<(u32, String, bool)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter().map(|m| (m.id, m.name.clone(), m.enabled)).collect()).unwrap_or_default();
     let (mut toggle, mut delete) = (None, None);
-    egui::CollapsingHeader::new(tf("Mask modifiers ({0})", &[&rows.len().to_string()])).default_open(true).show(ui, |ui| {
+    egui::CollapsingHeader::new(crate::icons::with(crate::icons::STACK, &tf("Mask modifiers ({0})", &[&rows.len().to_string()]))).default_open(true).show(ui, |ui| {
         for (id, name, enabled) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if ui.add(egui::Button::new("👁").small().selected(*enabled)).on_hover_text(t("Visible")).clicked() {
+                if ui.add(egui::Button::new(crate::icons::EYE).small().selected(*enabled)).on_hover_text(t("Visible")).clicked() {
                     toggle = Some((*id, !*enabled));
                 }
-                if ui.add(egui::Button::new("✖").small()).on_hover_text(t("Delete the modifier; what it covered comes back")).clicked() {
+                if ui.add(egui::Button::new(crate::icons::TRASH).small()).on_hover_text(t("Delete the modifier; what it covered comes back")).clicked() {
                     delete = Some(*id);
                 }
                 ui.label(name).context_menu(|ui| {

@@ -263,6 +263,7 @@ pub enum Dialog {
     Settings,
     ProjectSettings,
     About,
+    Shortcuts,
     Confirm { text: String, action: fn(&mut App) },
 }
 
@@ -357,6 +358,10 @@ pub struct App {
     pub dialog: Dialog,
     pub filter: String,
     pub browser: crate::asset_browser::Browser,
+    /// The action of the shortcut window waiting for its new key.
+    pub key_capture: Option<crate::keys::Action>,
+    /// Puts the keyboard into the search of the Content Browser on the next frame.
+    pub focus_search: bool,
     pub outliner_filter: String,
     pub outliner_cache: Option<OutlinerCache>,
     pub layer_rename: Option<(u16, String)>,
@@ -410,6 +415,7 @@ impl App {
         let settings = Settings::load();
         crate::i18n::load_user_languages(&data_dir().join("lang"));
         crate::i18n::set_language(&settings.language);
+        crate::icons::install(&ctx);
         theme::apply(&ctx, settings.ui_scale);
         let root = settings.tools.work_drive.clone();
         let db = ModelDb::new(root.clone());
@@ -439,7 +445,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
+            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
