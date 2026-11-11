@@ -19,9 +19,21 @@
   "de": "2. PBO erstellen",
   "pl": "2. Zbuduj PBO"
  },
+ "2D view": {
+  "de": "2D-Ansicht",
+  "pl": "Widok 2D"
+ },
  "3. Build and play": {
   "de": "3. Erstellen und starten",
   "pl": "3. Zbuduj i uruchom"
+ },
+ "3D and 2D side by side": {
+  "de": "3D und 2D nebeneinander",
+  "pl": "3D i 2D obok siebie"
+ },
+ "3D view": {
+  "de": "3D-Ansicht",
+  "pl": "Widok 3D"
  },
  "A Terrain Builder template library (.tml) of the project, with the models selected in the browser.": {
   "de": "Eine Terrain-Builder-Vorlagenbibliothek (.tml) des Projekts, mit den im Browser ausgewählten Modellen.",
@@ -319,6 +331,10 @@
   "de": "Bézierkurve",
   "pl": "Krzywa Beziera"
  },
+ "Bigger brush": {
+  "de": "Größerer Pinsel",
+  "pl": "Większy pędzel"
+ },
  "Blend": {
   "de": "Übergang",
   "pl": "Przejście"
@@ -346,6 +362,14 @@
  "Brush": {
   "de": "Pinsel",
   "pl": "Pędzel"
+ },
+ "Brush size": {
+  "de": "Pinselgröße",
+  "pl": "Rozmiar pędzla"
+ },
+ "Brushes": {
+  "de": "Pinsel",
+  "pl": "Pędzle"
  },
  "Build": {
   "de": "Erstellen",
@@ -418,6 +442,10 @@
  "Camera": {
   "de": "Kamera",
   "pl": "Kamera"
+ },
+ "Camera (with the right mouse button held)": {
+  "de": "Kamera (mit gehaltener rechter Maustaste)",
+  "pl": "Kamera (z wciśniętym prawym przyciskiem myszy)"
  },
  "Camera below the terrain": {
   "de": "Kamera unter dem Gelände",
@@ -531,6 +559,10 @@
   "de": "Klicke eine Route an und ziehe ihre Punkte. Das + zwischen zwei Punkten fügt einen hinzu, Entf löscht den markierten. Die Modelle werden nach jeder Änderung neu eingepasst.",
   "pl": "Kliknij trasę i przeciągaj jej punkty. Znak + między punktami dodaje nowy, Delete usuwa zaznaczony. Modele dopasowują się po każdej zmianie."
  },
+ "Click a shortcut and press the new key with its modifiers. Esc cancels, Backspace leaves the action without a key.": {
+  "de": "Auf einen Kurzbefehl klicken und die neue Taste mit ihren Modifikatoren drücken. Esc bricht ab, Rücktaste entfernt die Taste.",
+  "pl": "Kliknij skrót i naciśnij nowy klawisz z modyfikatorami. Esc anuluje, Backspace zostawia akcję bez klawisza."
+ },
  "Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it.": {
   "de": "In die Vorschau klicken, um die Quelle zu wählen, dann auf der Karte malen. Das Mausrad zoomt die Vorschau, Ziehen verschiebt sie.",
   "pl": "Kliknij w podglądzie, żeby wybrać miejsce źródłowe, potem maluj na mapie. Kółko przybliża podgląd, przeciąganie go przesuwa."
@@ -566,6 +598,10 @@
  "Click to add points. Enter or a double click finishes, Backspace removes the last point, Esc cancels.": {
   "de": "Klicke, um Punkte hinzuzufügen. Enter oder Doppelklick beendet, Rücktaste entfernt den letzten Punkt, Esc bricht ab.",
   "pl": "Klikaj, aby dodawać punkty. Enter lub dwuklik kończy, Backspace usuwa ostatni punkt, Esc anuluje."
+ },
+ "Click to select, drag for a box, Shift adds. Shift or Ctrl held while dragging a selected object rotates or scales it.": {
+  "de": "Klicken wählt, Ziehen zieht einen Rahmen, Umschalt fügt hinzu. Umschalt oder Strg beim Ziehen eines gewählten Objekts dreht oder skaliert es.",
+  "pl": "Kliknięcie zaznacza, przeciągnięcie zaznacza ramką, Shift dodaje. Shift lub Ctrl przy przeciąganiu zaznaczonego obiektu obraca go lub skaluje."
  },
  "Click to select, drag for a box, Shift adds. W, E, R change the gizmo. F frames the selection.": {
   "de": "Klicken wählt aus, Ziehen zieht einen Rahmen, Shift ergänzt. W, E, R wechseln das Gizmo. F zeigt die Auswahl.",
@@ -678,6 +714,10 @@
  "DayZForests project...": {
   "de": "DayZForests-Projekt...",
   "pl": "Projekt DayZForests..."
+ },
+ "Default": {
+  "de": "Standard",
+  "pl": "Domyślnie"
  },
  "Delete": {
   "de": "Löschen",
@@ -1103,6 +1143,34 @@
   "de": "Ebnen (Rechteck)",
   "pl": "Wyrównanie (prostokąt)"
  },
+ "Fly back": {
+  "de": "Zurück fliegen",
+  "pl": "Leć do tyłu"
+ },
+ "Fly down": {
+  "de": "Nach unten fliegen",
+  "pl": "Leć w dół"
+ },
+ "Fly faster": {
+  "de": "Schneller fliegen",
+  "pl": "Leć szybciej"
+ },
+ "Fly forward": {
+  "de": "Vorwärts fliegen",
+  "pl": "Leć do przodu"
+ },
+ "Fly left": {
+  "de": "Nach links fliegen",
+  "pl": "Leć w lewo"
+ },
+ "Fly right": {
+  "de": "Nach rechts fliegen",
+  "pl": "Leć w prawo"
+ },
+ "Fly up": {
+  "de": "Nach oben fliegen",
+  "pl": "Leć w górę"
+ },
  "Fog": {
   "de": "Nebel",
   "pl": "Mgła"
@@ -1154,6 +1222,10 @@
  "Forward": {
   "de": "Vorwärts",
   "pl": "Dalej"
+ },
+ "Frame the selection": {
+  "de": "Auswahl einpassen",
+  "pl": "Pokaż zaznaczenie"
  },
  "From the project species": {
   "de": "Aus den Arten des Projekts",
@@ -1279,6 +1351,10 @@
   "de": "Die Höhen dieser Route folgen den Grenzen für Steigung, Einschnitt und Damm. Ändere sie in den Routeneinstellungen und passe neu an.",
   "pl": "Wysokości na tej trasie wynikają z limitów spadku, wykopu i nasypu. Zmień je w ustawieniach trasy i dopasuj ponownie."
  },
+ "Held while using a brush": {
+  "de": "Beim Malen gehalten",
+  "pl": "Trzymane podczas używania pędzla"
+ },
  "Help": {
   "de": "Hilfe",
   "pl": "Pomoc"
@@ -1302,6 +1378,10 @@
  "Hold the button to paint objects, Ctrl to remove them.": {
   "de": "Taste halten, um Objekte zu setzen, mit Strg zum Entfernen.",
   "pl": "Przytrzymaj przycisk, aby malować obiekty, z Ctrl, aby je usuwać."
+ },
+ "Hold the button to paint objects.": {
+  "de": "Taste halten, um Objekte zu malen.",
+  "pl": "Przytrzymaj przycisk, aby malować obiekty."
  },
  "How far beyond a polygon, or to each side of a line.": {
   "de": "Wie weit über ein Polygon hinaus oder zu jeder Seite einer Linie.",
@@ -1411,6 +1491,10 @@
   "de": "Abstand",
   "pl": "Odstęp"
  },
+ "Invert the brush (lower, erase)": {
+  "de": "Pinsel umkehren (absenken, löschen)",
+  "pl": "Odwróć pędzel (obniżaj, usuwaj)"
+ },
  "Island": {
   "de": "Insel",
   "pl": "Wyspa"
@@ -1438,6 +1522,14 @@
  "Key points": {
   "de": "Keypoints",
   "pl": "Keypointy"
+ },
+ "Keyboard shortcuts": {
+  "de": "Tastenkürzel",
+  "pl": "Skróty klawiszowe"
+ },
+ "Keyboard shortcuts...": {
+  "de": "Tastenkürzel...",
+  "pl": "Skróty klawiszowe..."
  },
  "Kind": {
   "de": "Art",
@@ -1558,6 +1650,10 @@
  "Lower": {
   "de": "Senken",
   "pl": "Obniż"
+ },
+ "Lower instead of raise": {
+  "de": "Absenken statt anheben",
+  "pl": "Obniżaj zamiast podnosić"
  },
  "Make a preset of them": {
   "de": "Preset daraus machen",
@@ -1742,6 +1838,10 @@
  "Move to layer": {
   "de": "In Ebene verschieben",
   "pl": "Przenieś do warstwy"
+ },
+ "Move, rotate, scale": {
+  "de": "Verschieben, drehen, skalieren",
+  "pl": "Przesuń, obróć, skaluj"
  },
  "Movement speed": {
   "de": "Bewegungstempo",
@@ -1987,6 +2087,10 @@
   "de": "Kartenordner öffnen",
   "pl": "Otwórz folder mapy"
  },
+ "Open project": {
+  "de": "Projekt öffnen",
+  "pl": "Otwórz projekt"
+ },
  "Open project...": {
   "de": "Projekt öffnen...",
   "pl": "Otwórz projekt..."
@@ -2050,6 +2154,10 @@
  "Paint the cells the game should not draw, Ctrl removes them. Objects under the terrain need the underground flag (U), and they cost performance.": {
   "de": "Male die Zellen, die das Spiel nicht zeichnen soll, Strg entfernt sie. Objekte unter dem Gelände brauchen die Underground-Markierung (U) und kosten Leistung.",
   "pl": "Maluj komórki terenu, których gra ma nie rysować, Ctrl je usuwa. Obiekty pod terenem potrzebują flagi underground (U) i obciążają wydajność."
+ },
+ "Paint the cells the game should not draw. Objects under the terrain need the underground flag, and they cost performance.": {
+  "de": "Male die Zellen, die das Spiel nicht zeichnen soll. Objekte unter dem Gelände brauchen das Untergrund-Flag und kosten Leistung.",
+  "pl": "Maluj komórki, których gra ma nie rysować. Obiekty pod terenem potrzebują flagi podziemnej i kosztują wydajność."
  },
  "Paint the ground under the trees": {
   "de": "Boden unter den Bäumen malen",
@@ -2122,6 +2230,10 @@
  "Pick from the map": {
   "de": "Von der Karte nehmen",
   "pl": "Pobierz z mapy"
+ },
+ "Pick the surface under the cursor": {
+  "de": "Oberfläche unter dem Cursor aufnehmen",
+  "pl": "Pobierz powierzchnię spod kursora"
  },
  "Picture": {
   "de": "Bild",
@@ -2202,6 +2314,10 @@
  "Presets": {
   "de": "Presets",
   "pl": "Presety"
+ },
+ "Press a key...": {
+  "de": "Taste drücken...",
+  "pl": "Naciśnij klawisz..."
  },
  "Program update": {
   "de": "Programmupdate",
@@ -2287,6 +2403,10 @@
   "de": "Objekte entfernen",
   "pl": "Usuwanie obiektów"
  },
+ "Remove the holes": {
+  "de": "Löcher entfernen",
+  "pl": "Usuń dziury"
+ },
  "Removes the generator and what it made.": {
   "de": "Entfernt den Generator und was er erzeugt hat.",
   "pl": "Usuwa generator i to, co stworzył."
@@ -2306,6 +2426,10 @@
  "Reset": {
   "de": "Zurücksetzen",
   "pl": "Przywróć domyślne"
+ },
+ "Reset all to defaults": {
+  "de": "Alles zurücksetzen",
+  "pl": "Przywróć wszystkie domyślne"
  },
  "Restart": {
   "de": "Neu starten",
@@ -2447,6 +2571,10 @@
   "de": "Speichern",
   "pl": "Zapisz"
  },
+ "Save as": {
+  "de": "Speichern unter",
+  "pl": "Zapisz jako"
+ },
  "Save as preset": {
   "de": "Als Preset speichern",
   "pl": "Zapisz jako preset"
@@ -2526,6 +2654,10 @@
  "Search step m": {
   "de": "Suchschritt m",
   "pl": "Krok szukania m"
+ },
+ "Search the Content Browser": {
+  "de": "Im Content Browser suchen",
+  "pl": "Szukaj w przeglądarce assetów"
  },
  "Search...": {
   "de": "Suchen...",
@@ -2635,9 +2767,17 @@
   "de": "Alle anzeigen",
   "pl": "Pokaż wszystkie"
  },
+ "Show grass": {
+  "de": "Gras zeigen",
+  "pl": "Pokaż trawę"
+ },
  "Show in its folder": {
   "de": "Im Ordner zeigen",
   "pl": "Pokaż w folderze"
+ },
+ "Show objects": {
+  "de": "Objekte zeigen",
+  "pl": "Pokaż obiekty"
  },
  "Show on map": {
   "de": "Auf der Karte anzeigen",
@@ -2646,6 +2786,10 @@
  "Show project areas as shapes": {
   "de": "Projektgebiete als Formen anzeigen",
   "pl": "Pokaż obszary projektu jako kształty"
+ },
+ "Show shapes": {
+  "de": "Formen zeigen",
+  "pl": "Pokaż kształty"
  },
  "Size": {
   "de": "Größe",
@@ -2667,9 +2811,21 @@
   "de": "Steigungsgewicht",
   "pl": "Waga nachylenia"
  },
+ "Smaller brush": {
+  "de": "Kleinerer Pinsel",
+  "pl": "Mniejszy pędzel"
+ },
  "Smooth": {
   "de": "Glätten",
   "pl": "Wygładź"
+ },
+ "Smooth instead": {
+  "de": "Stattdessen glätten",
+  "pl": "Wygładzaj zamiast tego"
+ },
+ "Some actions share a key; only the first of them will work.": {
+  "de": "Einige Aktionen teilen eine Taste; nur die erste davon wirkt.",
+  "pl": "Niektóre akcje mają ten sam klawisz; zadziała tylko pierwsza z nich."
  },
  "Source: {0}, {1}": {
   "de": "Quelle: {0}, {1}",
@@ -2726,6 +2882,10 @@
  "Strokes go to: {0}": {
   "de": "Striche gehen in: {0}",
   "pl": "Pociągnięcia trafiają do: {0}"
+ },
+ "Stronger brush": {
+  "de": "Stärkerer Pinsel",
+  "pl": "Silniejszy pędzel"
  },
  "Sun azimuth": {
   "de": "Sonnenazimut",
@@ -2807,9 +2967,17 @@
   "de": "Oberflächen pro Kachel",
   "pl": "Powierzchnie na kafel"
  },
+ "Take the surface under the cursor": {
+  "de": "Oberfläche unter dem Cursor aufnehmen",
+  "pl": "Pobierz powierzchnię spod kursora"
+ },
  "Take the width from the road model": {
   "de": "Breite vom Straßenmodell übernehmen",
   "pl": "Weź szerokość z modelu drogi"
+ },
+ "Takes the surface under the cursor.": {
+  "de": "Nimmt die Oberfläche unter dem Cursor auf.",
+  "pl": "Pobiera powierzchnię spod kursora."
  },
  "Takes the surface under the cursor. Alt+click does the same.": {
   "de": "Übernimmt die Oberfläche unter dem Cursor. Alt+Klick tut dasselbe.",
@@ -2999,6 +3167,10 @@
   "de": "Die Straße kreuzt ein Gleis in einer Kurve oder zu schräg, daher wurde dort kein Bahnübergang gelegt",
   "pl": "Droga przecina tor na łuku lub pod zbyt małym kątem, więc nie położono tam przejazdu"
  },
+ "The same for every brush: sculpting, painting, holes, placing and the clone brush.": {
+  "de": "Für jeden Pinsel gleich: Formen, Malen, Löcher, Platzieren und Klonpinsel.",
+  "pl": "Tak samo dla każdego pędzla: rzeźbienia, malowania, dziur, stawiania i klonowania."
+ },
  "The shape this generator works on no longer exists": {
   "de": "Die Form dieses Generators existiert nicht mehr",
   "pl": "Kształt, na którym działa generator, już nie istnieje"
@@ -3034,6 +3206,10 @@
  "Tolerance m": {
   "de": "Toleranz m",
   "pl": "Tolerancja m"
+ },
+ "Tools": {
+  "de": "Werkzeuge",
+  "pl": "Narzędzia"
  },
  "Top": {
   "de": "Draufsicht",
@@ -3090,6 +3266,10 @@
  "Underground": {
   "de": "Unterirdisch",
   "pl": "Pod ziemią"
+ },
+ "Underground flag": {
+  "de": "Untergrund-Flag",
+  "pl": "Flaga podziemna"
  },
  "Underground flag cleared on {0} objects": {
   "de": "Underground-Markierung bei {0} Objekten entfernt",
@@ -3179,9 +3359,25 @@
   "de": "Wassermodell",
   "pl": "Model wody"
  },
+ "Weaker brush": {
+  "de": "Schwächerer Pinsel",
+  "pl": "Słabszy pędzel"
+ },
  "What to remove": {
   "de": "Was entfernt wird",
   "pl": "Co usuwać"
+ },
+ "Wheel: brush size": {
+  "de": "Rad: Pinselgröße",
+  "pl": "Kółko: rozmiar pędzla"
+ },
+ "Wheel: brush strength": {
+  "de": "Rad: Pinselstärke",
+  "pl": "Kółko: siła pędzla"
+ },
+ "Wheel: edge noise": {
+  "de": "Rad: Randrauschen",
+  "pl": "Kółko: szum krawędzi"
  },
  "When a tile really uses 6, the whole map is exported like Terrain Builder's 6-material mode (TerrainX), without satellite normal maps.": {
   "de": "Wenn eine Kachel wirklich 6 verwendet, wird die ganze Karte wie im 6-Material-Modus des Terrain Builders (TerrainX) exportiert, ohne Satelliten-Normalenkarten.",
@@ -3259,6 +3455,10 @@
   "de": "backups im Projektordner",
   "pl": "backups w folderze projektu"
  },
+ "click": {
+  "de": "Klick",
+  "pl": "klik"
+ },
  "copy": {
   "de": "Kopie",
   "pl": "kopia"
@@ -3278,6 +3478,10 @@
  "objects": {
   "de": "Objekte",
   "pl": "obiektów"
+ },
+ "wheel": {
+  "de": "Rad",
+  "pl": "kółko"
  },
  "{0} cells": {
   "de": "{0} Zellen",

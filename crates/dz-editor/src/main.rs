@@ -4,6 +4,8 @@ mod app;
 mod asset_browser;
 mod camera;
 mod i18n;
+mod icons;
+mod keys;
 mod library_ui;
 mod maskmods;
 mod models;

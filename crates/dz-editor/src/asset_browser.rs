@@ -282,11 +282,13 @@ pub struct Browser {
     /// (folder, new name) while a folder is being renamed.
     rename: Option<(String, String)>,
     templates: Templates,
+    /// What follows the cursor while something is dragged out of the browser.
+    ghost: Option<(Vec<egui::TextureId>, String, Color32, &'static str)>,
 }
 
 impl Default for Browser {
     fn default() -> Self {
-        Self { source: Source::Drive(String::new()), back: Vec::new(), forward: Vec::new(), selected: Vec::new(), anchor: None, kind: 0, tree: DriveTree::default(), preview: Preview3d::default(), preview_item: None, rename: None, templates: Templates::default() }
+        Self { source: Source::Drive(String::new()), back: Vec::new(), forward: Vec::new(), selected: Vec::new(), anchor: None, kind: 0, tree: DriveTree::default(), preview: Preview3d::default(), preview_item: None, rename: None, templates: Templates::default(), ghost: None }
     }
 }
 
@@ -385,16 +387,9 @@ const STRIPE_MODIFIER: Color32 = Color32::from_rgb(205, 175, 60);
 
 /// A small padlock for what cannot be changed.
 fn lock_icon(p: &egui::Painter, at: egui::Pos2, size: f32) {
-    let body = Rect::from_min_size(at + vec2(0.0, size * 0.45), vec2(size, size * 0.55));
-    let c = Color32::from_rgb(235, 200, 90);
-    let shackle: Vec<egui::Pos2> = (0..=12).map(|k| {
-        let a = std::f32::consts::PI * k as f32 / 12.0;
-        pos2(body.center().x - a.cos() * size * 0.3, body.top() - a.sin() * size * 0.38 + 0.5)
-    }).collect();
-    p.rect_filled(body.expand(1.0), 2.0, Color32::from_black_alpha(150));
-    p.add(egui::Shape::line(shackle, Stroke::new(size * 0.16, c)));
-    p.rect_filled(body, 1.5, c);
-    p.circle_filled(body.center(), size * 0.08, Color32::from_rgb(90, 70, 20));
+    let r = Rect::from_min_size(at, vec2(size, size));
+    p.circle_filled(r.center(), size * 0.62, Color32::from_black_alpha(140));
+    p.text(r.center(), egui::Align2::CENTER_CENTER, crate::icons::LOCK_SIMPLE, egui::FontId::proportional(size * 1.05), Color32::from_rgb(240, 200, 90));
 }
 
 fn folder_icon(p: &egui::Painter, r: Rect, locked: bool) {
@@ -742,11 +737,9 @@ fn template_menu(ui: &mut egui::Ui, libraries: &[String], models: &[String], act
 
 /// Takes models dropped on a template library.
 fn take_template_drop(resp: &egui::Response, library: usize, acts: &mut Vec<Act>) {
-    if resp.dnd_hover_payload::<String>().is_some() || resp.dnd_hover_payload::<Dragged>().is_some() {
-        resp.ctx.debug_painter().rect_stroke(resp.rect, 3.0, Stroke::new(2.0f32, theme::ACCENT), egui::StrokeKind::Inside);
-    }
-    let mut models: Vec<String> = resp.dnd_release_payload::<String>().map(|m| vec![(*m).clone()]).unwrap_or_default();
-    if let Some(d) = resp.dnd_release_payload::<Dragged>() {
+    theme::drop_zone(resp, theme::dragging_models(&resp.ctx));
+    let mut models: Vec<String> = crate::theme::take::<String>(&resp).map(|m| vec![(*m).clone()]).unwrap_or_default();
+    if let Some(d) = crate::theme::take::<Dragged>(&resp) {
         models.extend(d.0.iter().filter_map(|p| if let Pick::Model(m) = p { Some(m.clone()) } else { None }));
     }
     if !models.is_empty() {
@@ -756,19 +749,17 @@ fn take_template_drop(resp: &egui::Response, library: usize, acts: &mut Vec<Act>
 
 /// Takes what was dropped on a folder of the user.
 fn take_drop(resp: &egui::Response, folder: &str, acts: &mut Vec<Act>) {
-    let hovered = resp.dnd_hover_payload::<String>().is_some() || resp.dnd_hover_payload::<Dragged>().is_some() || resp.dnd_hover_payload::<LibDrag>().is_some_and(|d| matches!(*d, LibDrag::ObjectPreset(_)));
-    if hovered {
-        resp.ctx.debug_painter().rect_stroke(resp.rect, 3.0, Stroke::new(2.0f32, theme::ACCENT), egui::StrokeKind::Inside);
-    }
-    if let Some(m) = resp.dnd_release_payload::<String>() {
+    let preset = egui::DragAndDrop::payload::<LibDrag>(&resp.ctx).is_some_and(|d| matches!(*d, LibDrag::ObjectPreset(_)));
+    theme::drop_zone(resp, theme::dragging_models(&resp.ctx) || preset);
+    if let Some(m) = crate::theme::take::<String>(&resp) {
         acts.push(Act::AddTo(folder.to_string(), vec![(*m).clone()], Vec::new()));
     }
-    if let Some(d) = resp.dnd_release_payload::<LibDrag>() {
+    if let Some(d) = crate::theme::take::<LibDrag>(&resp) {
         if let LibDrag::ObjectPreset(id) = *d {
             acts.push(Act::AddTo(folder.to_string(), Vec::new(), vec![id]));
         }
     }
-    if let Some(d) = resp.dnd_release_payload::<Dragged>() {
+    if let Some(d) = crate::theme::take::<Dragged>(&resp) {
         let models = d.0.iter().filter_map(|p| if let Pick::Model(m) = p { Some(m.clone()) } else { None }).collect();
         let presets = d.0.iter().filter_map(|p| if let Pick::Preset(id) = p { Some(*id) } else { None }).collect();
         acts.push(Act::AddTo(folder.to_string(), models, presets));
@@ -776,9 +767,20 @@ fn take_drop(resp: &egui::Response, folder: &str, acts: &mut Vec<Act>) {
 }
 
 fn source_row(ui: &mut egui::Ui, current: &Source, s: Source, text: String, acts: &mut Vec<Act>) -> egui::Response {
-    if matches!(s, Source::Drive(_) | Source::Folder(_) | Source::Templates(_) | Source::Group(Group::Library | Group::LibraryGenerators | Group::LibraryPresets)) {
-        let (r, _) = ui.allocate_exact_size(vec2(15.0, 14.0), egui::Sense::hover());
-        folder_icon(ui.painter(), r, false);
+    let icon = match &s {
+        Source::Folder(n) if n.is_empty() => Some(crate::icons::STAR),
+        Source::Templates(None) => Some(crate::icons::BOOKS),
+        Source::Templates(Some(_)) => Some(crate::icons::BOOK_OPEN),
+        Source::Drive(p) if p.is_empty() => Some(crate::icons::HARD_DRIVES),
+        Source::Surfaced => Some(crate::icons::PALETTE),
+        Source::Drive(_) | Source::Folder(_) => Some(if *current == s { crate::icons::FOLDER_OPEN } else { crate::icons::FOLDER }),
+        Source::Group(Group::Library) => Some(crate::icons::BOOKS),
+        Source::Group(Group::LibraryGenerators) => Some(crate::icons::MAGIC_WAND),
+        Source::Group(Group::LibraryPresets) => Some(crate::icons::SQUARES_FOUR),
+        _ => None,
+    };
+    if let Some(icon) = icon {
+        ui.label(egui::RichText::new(icon).color(Color32::from_rgb(214, 178, 100)));
     }
     let width = ui.fonts(|f| f.layout_no_wrap(text.clone(), egui::TextStyle::Button.resolve(ui.style()), Color32::WHITE).size().x);
     let cut = width + ui.spacing().button_padding.x * 2.0 > ui.available_width();
@@ -904,7 +906,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         // Long names are cut to the width of the panel, so that it can always be made narrower.
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
         ui.horizontal(|ui| {
-            ui.menu_button(egui::RichText::new(format!("+ {}", t("Add"))).color(Color32::WHITE), |ui| {
+            ui.menu_button(egui::RichText::new(format!("{} {}", crate::icons::PLUS, t("Add"))).color(Color32::WHITE), |ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 if ui.button(t("New folder")).on_hover_text(t("A folder of your own; models and presets are put into it without moving their files.")).clicked() {
                     let parent = if let Source::Folder(n) = &app.browser.source { n.clone() } else { String::new() };
@@ -923,7 +925,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 if ui.add_enabled(app.doc.is_some(), egui::Button::new(t("New template library..."))).on_hover_text(t("A Terrain Builder template library (.tml) of the project, with the models selected in the browser.")).clicked() { acts.push(Act::NewTemplateLibrary(app.browser.models())); ui.close_menu(); }
                 if ui.add_enabled(app.doc.is_some(), egui::Button::new(t("Load template libraries..."))).clicked() { acts.push(Act::LoadTemplates); ui.close_menu(); }
             });
-            if ui.button("↻").on_hover_text(t("Scan the work drive again")).clicked() { app.rescan_assets(); }
+            if ui.button(crate::icons::ARROWS_CLOCKWISE).on_hover_text(t("Scan the work drive again")).clicked() { app.rescan_assets(); }
         });
         egui::ScrollArea::vertical().id_salt("sources").auto_shrink([false, false]).show(ui, |ui| {
             let id = ui.make_persistent_id("my_folders");
@@ -972,7 +974,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         *t = text;
     }
 
-    egui::SidePanel::right("asset_details").resizable(true).default_width(290.0).frame(egui::Frame::new().inner_margin(egui::Margin { left: 6, ..Default::default() })).show_inside(ui, |ui| {
+    egui::SidePanel::right("asset_details").resizable(true).default_width(290.0).width_range(180.0..=520.0).frame(egui::Frame::new().inner_margin(egui::Margin { left: 6, ..Default::default() })).show_inside(ui, |ui| {
+        // Long names wrap, so that they never push the panel wider than it is.
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         egui::ScrollArea::vertical().id_salt("asset_details_scroll").auto_shrink([false, false]).show(ui, |ui| details(app, ui, &layers, &mut acts));
     });
 
@@ -986,16 +990,17 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.selectable_value(&mut app.browser.kind, k as u8, t(n));
                     }
                 });
-                ui.add(egui::TextEdit::singleline(&mut app.filter).hint_text(tf("Search in {0}...", &[&source.label()])).desired_width((ui.available_width() * 0.35).clamp(70.0, 200.0)));
+                let search = ui.add(egui::TextEdit::singleline(&mut app.filter).hint_text(format!("{} {}", crate::icons::MAGNIFYING_GLASS, tf("Search in {0}...", &[&source.label()]))).desired_width((ui.available_width() * 0.35).clamp(70.0, 200.0)));
+                if std::mem::take(&mut app.focus_search) { search.request_focus(); }
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
-                if ui.add_enabled(!app.browser.back.is_empty(), egui::Button::new("◀").small()).on_hover_text(t("Back")).clicked() {
+                if ui.add_enabled(!app.browser.back.is_empty(), egui::Button::new(crate::icons::CARET_LEFT).small()).on_hover_text(t("Back")).clicked() {
                     if let Some(s) = app.browser.back.pop() { app.browser.forward.push(std::mem::replace(&mut app.browser.source, s)); }
                 }
-                if ui.add_enabled(!app.browser.forward.is_empty(), egui::Button::new("▶").small()).on_hover_text(t("Forward")).clicked() {
+                if ui.add_enabled(!app.browser.forward.is_empty(), egui::Button::new(crate::icons::CARET_RIGHT).small()).on_hover_text(t("Forward")).clicked() {
                     if let Some(s) = app.browser.forward.pop() { app.browser.back.push(std::mem::replace(&mut app.browser.source, s)); }
                 }
-                if ui.add_enabled(source.parent().is_some(), egui::Button::new("⬆").small()).on_hover_text(t("Up")).clicked() {
+                if ui.add_enabled(source.parent().is_some(), egui::Button::new(crate::icons::ARROW_UP).small()).on_hover_text(t("Up")).clicked() {
                     if let Some(p) = source.parent() { acts.push(Act::Go(p)); }
                 }
                 let crumbs = source.crumbs();
@@ -1077,8 +1082,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 draw_tile(ui, rect, side, &look, selected, resp.hovered(), false);
                                 let resp = resp.on_hover_text(&look.tooltip);
                                 if let Pick::Preset(id) = pick {
-                                    let mut dropped: Vec<String> = resp.dnd_release_payload::<String>().map(|m| vec![(*m).clone()]).unwrap_or_default();
-                                    if let Some(d) = resp.dnd_release_payload::<Dragged>() {
+                                    theme::drop_zone(&resp, theme::dragging_models(ui.ctx()) && !selected);
+                                    let mut dropped: Vec<String> = crate::theme::take::<String>(&resp).map(|m| vec![(*m).clone()]).unwrap_or_default();
+                                    if let Some(d) = crate::theme::take::<Dragged>(&resp) {
                                         dropped.extend(d.0.iter().filter_map(|p| if let Pick::Model(m) = p { Some(m.clone()) } else { None }));
                                     }
                                     if !dropped.is_empty() { acts.push(Act::IntoPreset(*id, dropped)); }
@@ -1099,13 +1105,14 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         Pick::Road(_) | Pick::Modifier(_) => resp.dnd_set_drag_payload(Dragged(group.clone())),
                                     }
                                 }
-                                if resp.dragged() {
-                                    if let Some(p) = ui.ctx().pointer_interact_pos() {
-                                        let text = if group.len() > 1 { tf("{0} items", &[&group.len().to_string()]) } else { look.name.clone() };
-                                        egui::Area::new(egui::Id::new("asset_drag_label")).fixed_pos(p + vec2(14.0, 10.0)).order(egui::Order::Tooltip).interactable(false).show(ui.ctx(), |ui| {
-                                            egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(text));
-                                        });
+                                if resp.drag_started() {
+                                    // What follows the cursor: the pictures of what is dragged.
+                                    let mut images = Vec::new();
+                                    for p in group.iter().take(3) {
+                                        images.extend(look_of(app, ui.ctx(), p, &layers).images.into_iter().take(1));
                                     }
+                                    let text = if group.len() > 1 { tf("{0} items", &[&group.len().to_string()]) } else { look.name.clone() };
+                                    app.browser.ghost = Some((images, text, look.color, look.letter));
                                 }
                                 let models: Vec<String> = group.iter().filter_map(|p| if let Pick::Model(m) = p { Some(m.clone()) } else { None }).collect();
                                 let presets: Vec<u64> = group.iter().filter_map(|p| if let Pick::Preset(id) = p { Some(*id) } else { None }).collect();
@@ -1466,13 +1473,12 @@ fn duplicate(app: &mut App, pick: &Pick) {
 }
 
 fn info_rows(ui: &mut egui::Ui, rows: &[(String, String)]) {
-    egui::Grid::new(ui.next_auto_id()).num_columns(2).spacing(vec2(8.0, 2.0)).show(ui, |ui| {
-        for (k, v) in rows {
+    for (k, v) in rows {
+        ui.horizontal_wrapped(|ui| {
             ui.weak(k);
             ui.label(v);
-            ui.end_row();
-        }
-    });
+        });
+    }
 }
 
 /// The big turning view of a model.
@@ -1687,6 +1693,131 @@ fn details(app: &mut App, ui: &mut egui::Ui, layers: &[(String, [u8; 3])], acts:
     }
 }
 
+/// Draws what is being dragged next to the cursor, until it is dropped.
+pub fn drag_ghost(app: &mut App, ctx: &egui::Context) {
+    if !egui::DragAndDrop::has_any_payload(ctx) {
+        app.browser.ghost = None;
+        return;
+    }
+    let (Some((images, text, color, letter)), Some(p)) = (app.browser.ghost.as_ref(), ctx.pointer_latest_pos()) else { return };
+    egui::Area::new(egui::Id::new("asset_drag_ghost")).fixed_pos(p + vec2(16.0, 12.0)).order(egui::Order::Tooltip).interactable(false).show(ctx, |ui| {
+        egui::Frame::popup(ui.style()).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                const SIDE: f32 = 56.0;
+                let n = images.len().max(1);
+                // Several pictures lie over each other like a fanned stack.
+                let (rect, _) = ui.allocate_exact_size(vec2(SIDE + (n - 1) as f32 * 10.0, SIDE + (n - 1) as f32 * 6.0), egui::Sense::hover());
+                let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+                if images.is_empty() {
+                    let r = Rect::from_min_size(rect.min, vec2(SIDE, SIDE));
+                    ui.painter().rect_filled(r, 3.0, *color);
+                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, *letter, egui::FontId::proportional(24.0), Color32::WHITE);
+                }
+                for (k, img) in images.iter().enumerate().rev() {
+                    let r = Rect::from_min_size(rect.min + vec2(k as f32 * 10.0, k as f32 * 6.0), vec2(SIDE, SIDE));
+                    ui.painter().rect_filled(r, 3.0, Color32::from_rgb(46, 46, 50));
+                    ui.painter().image(*img, r, uv, Color32::WHITE);
+                    ui.painter().rect_stroke(r, 3.0, Stroke::new(1.0f32, Color32::from_gray(90)), egui::StrokeKind::Inside);
+                }
+                ui.label(egui::RichText::new(text).strong());
+            });
+        });
+    });
+}
+
+/// What is being dragged, as the browser's picks.
+pub fn dragged_picks(ctx: &egui::Context) -> Vec<Pick> {
+    if let Some(d) = egui::DragAndDrop::payload::<Dragged>(ctx) {
+        return d.0.clone();
+    }
+    if let Some(m) = egui::DragAndDrop::payload::<String>(ctx) {
+        return vec![Pick::Model((*m).clone())];
+    }
+    match egui::DragAndDrop::payload::<LibDrag>(ctx).map(|d| (*d).clone()) {
+        Some(LibDrag::ObjectPreset(id)) => vec![Pick::Preset(id)],
+        Some(LibDrag::Generator(id)) => vec![Pick::Generator(id)],
+        Some(LibDrag::ForestPreset(n)) => vec![Pick::Forest(n)],
+        None => Vec::new(),
+    }
+}
+
+/// Where the models of a drop stand round its point: (model, x offset, z offset).
+fn drop_layout(app: &App, models: &[(String, f32)]) -> Vec<(String, f32, f32)> {
+    if models.is_empty() {
+        return Vec::new();
+    }
+    let cell = models.iter().map(|(m, scale)| { let i = app.db.get(m); let (hx, hz) = if i.known { i.footprint() } else { (2.0, 2.0) }; hx.max(hz) * 2.0 * scale.max(1.0) }).fold(1.0f32, f32::max) + 1.0;
+    let columns = (models.len() as f32).sqrt().ceil() as usize;
+    let rows = models.len().div_ceil(columns);
+    models.iter().enumerate().map(|(k, (m, _))| {
+        let (c, r) = (k % columns, k / columns);
+        (m.clone(), (c as f32 - (columns - 1) as f32 * 0.5) * cell, -(r as f32 - (rows - 1) as f32 * 0.5) * cell)
+    }).collect()
+}
+
+/// The outline of what is dragged over the map, where it would land.
+pub fn drop_preview(app: &App, painter: &egui::Painter, v: &crate::camera::View, at: [f32; 3]) {
+    let picks = dragged_picks(painter.ctx());
+    let Some(d) = &app.doc else { return };
+    let h = &d.world.height;
+    let color = Color32::from_rgb(90, 190, 255);
+    let line = |a: [f32; 3], b: [f32; 3], w: f32| {
+        if let (Some(p), Some(q)) = (v.project(a), v.project(b)) {
+            painter.line_segment([p, q], Stroke::new(w, color));
+        }
+    };
+    let ring = |x: f32, z: f32, r: f32| {
+        let pts: Vec<egui::Pos2> = (0..=40).filter_map(|k| {
+            let a = k as f32 / 40.0 * std::f32::consts::TAU;
+            let (px, pz) = (x + a.cos() * r, z + a.sin() * r);
+            v.project([px, h.sample(px, pz) + 0.2, pz])
+        }).collect();
+        painter.add(egui::Shape::line(pts, Stroke::new(1.5f32, color)));
+    };
+    let models: Vec<(String, f32)> = picks.iter().filter_map(|p| match p {
+        Pick::Model(m) => Some((m.clone(), app.place.scale_max)),
+        Pick::Preset(id) => app.library.objects.iter().find(|x| x.id == *id).and_then(|x| x.items.first().map(|i| (i.0.clone(), x.scale_max))),
+        _ => None,
+    }).collect();
+    // A mark at the point itself, seen also from far away where the outline is tiny.
+    if let Some(c) = v.project([at[0], at[1] + 0.2, at[2]]) {
+        painter.circle_stroke(c, 9.0, Stroke::new(2.0f32, color));
+        painter.circle_filled(c, 2.5, color);
+    }
+    for (m, dx, dz) in drop_layout(app, &models) {
+        let (x, z) = (at[0] + dx, at[2] + dz);
+        let info = app.db.get(&m);
+        let (min, max) = if info.known { (info.min, info.max) } else { ([-2.0, 0.0, -2.0], [2.0, 4.0, 2.0]) };
+        let y = h.sample(x, z);
+        let c = |i: usize| [x + if i & 1 == 0 { min[0] } else { max[0] }, y + if i & 2 == 0 { min[1].max(0.0) } else { max[1] }, z + if i & 4 == 0 { min[2] } else { max[2] }];
+        // The footprint on the ground, filled, and the box above it.
+        let foot: Vec<egui::Pos2> = [0usize, 1, 5, 4].iter().filter_map(|&i| { let p = c(i); v.project([p[0], h.sample(p[0], p[2]) + 0.1, p[2]]) }).collect();
+        if foot.len() == 4 {
+            painter.add(egui::Shape::convex_polygon(foot, Color32::from_rgba_unmultiplied(90, 190, 255, 45), Stroke::new(2.0f32, color)));
+        }
+        for (a, b) in [(0, 1), (1, 5), (5, 4), (4, 0), (2, 3), (3, 7), (7, 6), (6, 2), (0, 2), (1, 3), (4, 6), (5, 7)] {
+            line(c(a), c(b), 1.0);
+        }
+    }
+    for (k, p) in picks.iter().enumerate() {
+        match p {
+            Pick::Modifier(i) => {
+                let tpl = &MODIFIERS[*i];
+                let r = match (tpl.shape)() { ModShape::Circle { radius } => radius, ModShape::Rect { half_x, half_z } => half_x.max(half_z), _ => 10.0 };
+                let x = at[0] + k as f32 * 35.0;
+                ring(x, at[2], r);
+                ring(x, at[2], r + tpl.falloff);
+            }
+            Pick::Generator(_) | Pick::Forest(_) => {
+                ring(at[0], at[2], 12.0);
+                line([at[0] - 16.0, at[1] + 0.2, at[2]], [at[0] + 16.0, at[1] + 0.2, at[2]], 1.5);
+                line([at[0], at[1] + 0.2, at[2] - 16.0], [at[0], at[1] + 0.2, at[2] + 16.0], 1.5);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Places what was dragged out of the browser together, side by side round the point.
 pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32) {
     use dz_core::edit::Change;
@@ -1710,15 +1841,11 @@ pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32) {
         }
     }
     if !placed.is_empty() {
-        let cell = placed.iter().map(|(m, s)| { let i = app.db.get(m); let (hx, hz) = if i.known { i.footprint() } else { (2.0, 2.0) }; hx.max(hz) * 2.0 * s.3.max(1.0) }).fold(1.0f32, f32::max) + 1.0;
-        let columns = (placed.len() as f32).sqrt().ceil() as usize;
-        let rows = placed.len().div_ceil(columns);
+        let layout = drop_layout(app, &placed.iter().map(|(m, s)| (m.clone(), s.3)).collect::<Vec<_>>());
         let mut change = Vec::new();
         let mut ids = Vec::new();
-        for (k, (m, options)) in placed.iter().enumerate() {
-            let (c, r) = (k % columns, k / columns);
-            let px = x + (c as f32 - (columns - 1) as f32 * 0.5) * cell;
-            let pz = z - (r as f32 - (rows - 1) as f32 * 0.5) * cell;
+        for ((m, options), (_, dx, dz)) in placed.iter().zip(layout) {
+            let (px, pz) = (x + dx, z + dz);
             (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = *options;
             if let Some((id, o)) = crate::viewport::insert_placed(app, m, px, pz) {
                 change.push((id, None, Some(o)));

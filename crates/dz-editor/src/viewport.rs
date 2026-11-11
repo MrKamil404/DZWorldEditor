@@ -4,6 +4,7 @@ use crate::app::ShapeTool;
 use crate::app::{App, Finish, Gizmo, LineAction, Mode, ViewMode};
 use crate::camera::{add, dot, mul, norm, sub, View, V3};
 use crate::i18n::{t, tf};
+use crate::keys::{Action, Hold};
 use crate::models::{LOD_BILLBOARD, LOD_FAR, LOD_NEAR};
 use crate::render::{self, BrushView, Frame, ObjectDraw, Shading};
 use crate::theme;
@@ -997,7 +998,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         let drag = if resp.dragged_by(PointerButton::Middle) || resp.dragged_by(PointerButton::Secondary) { resp.drag_delta() } else { vec2(0.0, 0.0) };
         app.top_center[0] -= drag.x * app.top_mpp;
         app.top_center[1] += drag.y * app.top_mpp;
-        if hover && scroll != 0.0 && !modifiers.shift && !(modifiers.alt && matches!(app.mode, Mode::Landscape | Mode::Paint)) {
+        if hover && scroll != 0.0 && !brush_wheel(app, modifiers) {
             if let Some(m) = resp.hover_pos() {
                 let (ox, oz) = ((m.x - v.rect.center().x) * app.top_mpp, (v.rect.center().y - m.y) * app.top_mpp);
                 let before = [app.top_center[0] + ox, app.top_center[1] + oz];
@@ -1017,7 +1018,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
             app.camera.speed = (app.camera.speed * (scroll * 0.002).exp()).clamp(1.0, 4000.0);
             app.settings.camera_speed = app.camera.speed;
         }
-    } else if hover && scroll != 0.0 && !modifiers.shift && !(modifiers.alt && matches!(app.mode, Mode::Landscape | Mode::Paint)) {
+    } else if hover && scroll != 0.0 && !brush_wheel(app, modifiers) {
         let f = app.camera.forward();
         let clearance = app.doc.as_ref().map(|d| (app.camera.pos[1] - d.world.height.sample(app.camera.pos[0], app.camera.pos[2])).abs()).unwrap_or(50.0);
         app.camera.pos = add(app.camera.pos, mul(f, scroll * (clearance * 0.0035).max(0.15)));
@@ -1031,17 +1032,18 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
     }
     if (looking || hover) && !typing {
         let (mut mv, mut fast) = ([0.0f32; 3], false);
+        let keys = &app.settings.keys;
         ctx.input(|i| {
             let f = app.camera.forward();
             let r = app.camera.right();
-            fast = i.modifiers.shift;
-            if looking || !i.modifiers.any() {
-                if i.key_down(Key::W) && looking { mv = add(mv, f); }
-                if i.key_down(Key::S) && looking { mv = sub(mv, f); }
-                if i.key_down(Key::D) && looking { mv = add(mv, r); }
-                if i.key_down(Key::A) && looking { mv = sub(mv, r); }
-                if i.key_down(Key::E) && looking { mv = add(mv, [0.0, 1.0, 0.0]); }
-                if i.key_down(Key::Q) && looking { mv = sub(mv, [0.0, 1.0, 0.0]); }
+            fast = keys.held(Hold::Fast, i.modifiers);
+            if looking {
+                if keys.down(i, Action::CameraForward) { mv = add(mv, f); }
+                if keys.down(i, Action::CameraBack) { mv = sub(mv, f); }
+                if keys.down(i, Action::CameraRight) { mv = add(mv, r); }
+                if keys.down(i, Action::CameraLeft) { mv = sub(mv, r); }
+                if keys.down(i, Action::CameraUp) { mv = add(mv, [0.0, 1.0, 0.0]); }
+                if keys.down(i, Action::CameraDown) { mv = sub(mv, [0.0, 1.0, 0.0]); }
             }
             if i.key_down(Key::ArrowUp) { mv = add(mv, f); }
             if i.key_down(Key::ArrowDown) { mv = sub(mv, f); }
@@ -1070,7 +1072,9 @@ fn focus_selection(app: &mut App) {
 }
 
 fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View) {
-    let Some(mouse) = resp.hover_pos().or_else(|| resp.interact_pointer_pos()) else { return };
+    // While something is dragged onto the view egui does not count it as hovered, so the drop
+    // takes the pointer as it is.
+    let Some(mouse) = resp.hover_pos().or_else(|| resp.interact_pointer_pos()).or_else(|| resp.contains_pointer().then(|| ctx.pointer_latest_pos()).flatten()) else { return };
     let dt = ctx.input(|i| i.stable_dt).min(0.1);
     let Some(doc) = &app.doc else { return };
     let (o, d) = v.ray(mouse);
@@ -1087,7 +1091,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         return;
     }
     // Generators and presets dropped from their libraries.
-    if let Some(p) = resp.dnd_release_payload::<crate::library_ui::LibDrag>() {
+    if let Some(p) = crate::theme::take::<crate::library_ui::LibDrag>(&resp) {
         if let Some(h) = hit {
             use crate::library_ui::LibDrag as L;
             match (*p).clone() {
@@ -1105,14 +1109,14 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         return;
     }
     // Several things dragged out of the content browser at once.
-    if let Some(p) = resp.dnd_release_payload::<crate::asset_browser::Dragged>() {
+    if let Some(p) = crate::theme::take::<crate::asset_browser::Dragged>(&resp) {
         if let Some(h) = hit {
             crate::asset_browser::drop_many(app, &p.0, h[0], h[2]);
         }
         return;
     }
     // Models dropped from the content browser.
-    if let Some(p) = resp.dnd_release_payload::<String>() {
+    if let Some(p) = crate::theme::take::<String>(&resp) {
         if let Some(h) = hit {
             let m = (*p).clone();
             place_model(app, &m, h[0], h[2]);
@@ -1120,11 +1124,14 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         return;
     }
 
+    // The modifiers held while using a brush, the same for every brush.
+    let keys = &app.settings.keys;
+    let (invert, smooth, pick) = (keys.held(Hold::Invert, modifiers), keys.held(Hold::Smooth, modifiers), keys.held(Hold::Pick, modifiers));
     match app.mode {
         Mode::Landscape if app.hole_tool => {
-            if primary_down && !modifiers.alt && resp.contains_pointer() {
+            if primary_down && resp.contains_pointer() {
                 if let Some(h) = hit {
-                    paint_holes(app, h[0], h[2], modifiers.command);
+                    paint_holes(app, h[0], h[2], invert);
                     ctx.request_repaint();
                 }
             } else if let Some(before) = app.hole_before.take() {
@@ -1146,17 +1153,18 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
             }
         }
         Mode::Landscape | Mode::Paint => {
-            // The eyedropper: the tool's button, or Alt+click while painting.
-            if pressed && app.mode == Mode::Paint && (app.paint.picking || modifiers.alt) {
+            // The eyedropper: the tool's button, or a click with the pick modifier while painting.
+            let pick = pick && app.mode == Mode::Paint;
+            if pressed && app.mode == Mode::Paint && (app.paint.picking || pick) {
                 if let (Some(h), Some(d)) = (hit, &app.doc) {
                     app.paint.layer = d.world.mask.sample(h[0], h[2], d.world.meta.size_m()) as usize;
                 }
                 app.paint.picking = false;
                 return;
             }
-            if pressed && !modifiers.alt {
+            if pressed && !pick {
                 if let Some(h) = hit {
-                    begin_paint_or_sculpt(app, h, modifiers.ctrl, modifiers.shift);
+                    begin_paint_or_sculpt(app, h, invert, smooth);
                 }
             }
             if !primary_down {
@@ -1184,9 +1192,9 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
             }
         }
         Mode::Place if app.place.brush => {
-            if primary_down && !modifiers.alt && resp.contains_pointer() {
+            if primary_down && resp.contains_pointer() {
                 if let Some(h) = hit {
-                    brush_objects(app, h[0], h[2], modifiers.command);
+                    brush_objects(app, h[0], h[2], invert);
                     ctx.request_repaint();
                 }
             } else {
@@ -2100,8 +2108,8 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
 
 fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let area = Rect::from_min_size(rect.min + vec2(6.0, 5.0), vec2(rect.width() - 12.0, 24.0));
-    let width: f32 = if top { 190.0 } else { 660.0 };
-    ui.painter().rect_filled(Rect::from_min_size(rect.min + vec2(2.0, 2.0), vec2(width.min(rect.width() - 4.0), 30.0)), 3.0, Color32::from_black_alpha(150));
+    // The backing is sized to the controls once they are laid out, so it always takes all of them.
+    let backing = ui.painter().add(egui::Shape::Noop);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::left_to_right(egui::Align::Center)));
     let shading = if top { &mut app.shading2 } else { &mut app.shading3 };
     egui::ComboBox::from_id_salt(if top { "shade2" } else { "shade3" }).selected_text(t(shading.name())).width(110.0).show_ui(&mut child, |ui| {
@@ -2111,7 +2119,7 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     });
     child.label(egui::RichText::new(if top { t("Top") } else { t("Perspective") }).color(Color32::WHITE).background_color(Color32::from_black_alpha(100)));
     if !top {
-        child.checkbox(&mut app.wireframe, t("Wireframe"));
+        child.checkbox(&mut app.wireframe, crate::icons::with(crate::icons::CUBE_TRANSPARENT, &t("Wireframe")));
         let mut speed = app.camera.speed;
         child.add(egui::Slider::new(&mut speed, 1.0..=4000.0).logarithmic(true).suffix(" m/s").show_value(true).text(""));
         app.camera.speed = speed;
@@ -2119,10 +2127,13 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         show_menu(app, &mut child);
         camera_menu(app, &mut child);
     }
+    let used = child.min_rect();
+    let back = Rect::from_min_max(rect.min + vec2(2.0, 2.0), pos2((used.right() + 6.0).min(rect.right() - 2.0), rect.top() + 32.0));
+    ui.painter().set(backing, egui::Shape::rect_filled(back, 3.0, Color32::from_black_alpha(150)));
 }
 
 fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
-    ui.menu_button(t("Camera"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
+    ui.menu_button(crate::icons::with(crate::icons::CAMERA, &t("Camera")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
         ui.set_min_width(280.0);
         let row = |ui: &mut egui::Ui, label: String, v: &mut f32, range: std::ops::RangeInclusive<f32>| {
             ui.add(egui::Slider::new(v, range).text(label));
@@ -2140,12 +2151,12 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn show_menu(app: &mut App, ui: &mut egui::Ui) {
-    ui.menu_button(t("Show"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); crate::panels::visibility_toggles(app, ui) });
+    ui.menu_button(crate::icons::with(crate::icons::EYE, &t("Show")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); crate::panels::visibility_toggles(app, ui) });
 }
 
 fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
     use crate::settings::Lighting;
-    ui.menu_button(t("Lighting"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
+    ui.menu_button(crate::icons::with(crate::icons::SUN, &t("Lighting")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
         ui.set_min_width(260.0);
         let l = &mut app.settings.lighting;
         ui.horizontal_wrapped(|ui| {
@@ -2259,6 +2270,20 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     }
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
     draw_overlays(app, ui, &v, &resp);
+    if egui::DragAndDrop::has_any_payload(&ctx) {
+        let painter = ui.painter_at(rect);
+        let over = resp.contains_pointer();
+        painter.rect_stroke(rect.shrink(1.0), 0.0, Stroke::new(if over { 3.0_f32 } else { 1.5 }, if over { theme::ACCENT } else { Color32::from_rgba_unmultiplied(0, 112, 224, 150) }), egui::StrokeKind::Inside);
+        let at = ctx.pointer_latest_pos().filter(|_| over).and_then(|m| {
+            let d = app.doc.as_ref()?;
+            let (o, dir) = v.ray(m);
+            pick_terrain(&d.world.height, o, dir, v.ortho)
+        });
+        if let Some(at) = at {
+            crate::asset_browser::drop_preview(app, &painter, &v, at);
+        }
+        ctx.request_repaint();
+    }
     view_header(app, ui, rect, top);
     resp.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
         let Some(m) = ctx.input(|i| i.pointer.latest_pos()) else { return };
@@ -2286,23 +2311,66 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     });
 }
 
+/// The brush of the current tool, if it has one.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ActiveBrush {
+    Sculpt,
+    Paint,
+    Holes,
+    Objects,
+    Clone,
+}
+
+pub fn active_brush(app: &App) -> Option<ActiveBrush> {
+    match app.mode {
+        Mode::Landscape if app.hole_tool => Some(ActiveBrush::Holes),
+        Mode::Landscape => Some(ActiveBrush::Sculpt),
+        Mode::Paint => Some(ActiveBrush::Paint),
+        Mode::Place if app.place.brush => Some(ActiveBrush::Objects),
+        Mode::Satellite => Some(ActiveBrush::Clone),
+        _ => None,
+    }
+}
+
+/// Changes the brush of the current tool: its size and strength by factors, its edge noise by
+/// a step. Every brush takes the same keys and wheel.
+pub fn adjust_brush(app: &mut App, size: f32, strength: f32, noise: f32) {
+    match active_brush(app) {
+        Some(ActiveBrush::Sculpt) => {
+            app.sculpt.radius = (app.sculpt.radius * size).clamp(2.0, 3000.0);
+            app.sculpt.strength = (app.sculpt.strength * strength).clamp(0.5, 200.0);
+            app.sculpt.noise = (app.sculpt.noise + noise).clamp(0.0, 1.0);
+        }
+        Some(ActiveBrush::Paint) => {
+            app.paint.radius = (app.paint.radius * size).clamp(0.5, 2000.0);
+            app.paint.scatter = (app.paint.scatter + noise).clamp(0.0, 0.8);
+        }
+        Some(ActiveBrush::Holes) => app.hole_radius = (app.hole_radius * size).clamp(0.5, 200.0),
+        Some(ActiveBrush::Objects) => {
+            app.place.brush_radius = (app.place.brush_radius * size).clamp(1.0, 300.0);
+            // A stronger brush places objects closer together.
+            app.place.brush_spacing = (app.place.brush_spacing / strength).clamp(0.5, 100.0);
+        }
+        Some(ActiveBrush::Clone) => {
+            app.sat.radius = (app.sat.radius * size).clamp(0.5, 500.0);
+            app.sat.opacity = (app.sat.opacity * strength).clamp(0.02, 1.0);
+            app.sat.hardness = (app.sat.hardness - noise).clamp(0.0, 1.0);
+        }
+        None => {}
+    }
+}
+
+/// True when the wheel belongs to the brush, because one of its wheel modifiers is held.
+pub fn brush_wheel(app: &App, m: egui::Modifiers) -> bool {
+    let k = &app.settings.keys;
+    active_brush(app).is_some() && [Hold::WheelSize, Hold::WheelStrength, Hold::WheelNoise].iter().any(|h| k.held(*h, m))
+}
+
 fn shortcuts(app: &mut App, ctx: &egui::Context) {
-    if ctx.wants_keyboard_input() {
+    if ctx.wants_keyboard_input() || app.key_capture.is_some() {
         return;
     }
     let looking = ctx.input(|i| i.pointer.secondary_down());
-    let (undo, redo, save, select_all, dup, del, focus, esc) = ctx.input_mut(|i| {
-        (
-            i.consume_key(egui::Modifiers::COMMAND, Key::Z),
-            i.consume_key(egui::Modifiers::COMMAND, Key::Y),
-            i.consume_key(egui::Modifiers::COMMAND, Key::S),
-            i.consume_key(egui::Modifiers::COMMAND, Key::A),
-            i.consume_key(egui::Modifiers::COMMAND, Key::D),
-            i.key_pressed(Key::Delete),
-            i.key_pressed(Key::F),
-            i.key_pressed(Key::Escape),
-        )
-    });
     if app.selection.is_empty() { app.whole = None; }
     if let Some(d) = &app.doc {
         if app.holes_seen != d.world.holes_rev {
@@ -2310,70 +2378,75 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
             app.renderer.lock().unwrap().set_holes(&d.world.holes, d.world.height.cols, d.world.height.rows);
         }
     }
-    if !looking && !ctx.wants_keyboard_input() {
-        let (under, below) = ctx.input(|i| (i.modifiers.is_none() && i.key_pressed(Key::U), i.modifiers.is_none() && i.key_pressed(Key::B)));
-        if under { app.toggle_underground(); }
-        if below { app.camera_under = !app.camera_under; }
+    let keys = app.settings.keys.clone();
+    let k = |a: Action| keys.pressed(ctx, a);
+    // These work everywhere, also while flying.
+    if k(Action::Undo) { app.undo(); }
+    if k(Action::Redo) { app.redo(); }
+    if k(Action::Save) { app.save(None); }
+    if k(Action::SaveAs) { app.save_as(); }
+    if k(Action::Open) { app.pick_and_open(); }
+    if k(Action::NewProject) { app.dialog = crate::panels::new_project_dialog(); }
+    if k(Action::Settings) { app.dialog = crate::app::Dialog::Settings; }
+    if k(Action::Shortcuts) { app.dialog = crate::app::Dialog::Shortcuts; }
+    if k(Action::Build) && app.doc.is_some() && app.task.is_none() { app.build(false); }
+    if k(Action::Play) && app.doc.is_some() && app.task.is_none() { app.build(true); }
+    if k(Action::SearchAssets) {
+        app.bottom = crate::app::BottomTab::Content;
+        app.focus_search = true;
     }
-    if undo { app.undo(); }
-    if redo { app.redo(); }
-    if save { app.save(None); }
-    if del && !matches!(app.mode, Mode::Shapes | Mode::KeyPoints) { app.delete_selection(); }
-    if dup { app.duplicate_selection(); }
-    if focus { focus_selection(app); }
-    if esc && app.mode == Mode::Select {
+    if looking {
+        // The fly keys are read by the camera.
+        return;
+    }
+    if k(Action::Duplicate) { app.duplicate_selection(); }
+    if k(Action::Delete) && !matches!(app.mode, Mode::Shapes | Mode::KeyPoints) { app.delete_selection(); }
+    if k(Action::Focus) { focus_selection(app); }
+    if k(Action::Underground) { app.toggle_underground(); }
+    if k(Action::CameraBelow) { app.camera_under = !app.camera_under; }
+    if k(Action::ToggleGrass) { app.show_grass = !app.show_grass; }
+    if k(Action::ToggleObjects) { app.show_objects = !app.show_objects; }
+    if k(Action::ToggleShapes) { app.show_shapes = !app.show_shapes; }
+    if k(Action::Deselect) && app.mode == Mode::Select {
         app.selection.clear();
         app.selection_rev += 1;
     }
-    if select_all && app.mode == Mode::Shapes {
-        if let Some(d) = &app.doc {
-            app.shape.selection = d.world.shape_layers.iter().enumerate().filter(|(_, l)| l.visible).flat_map(|(li, l)| (0..l.shapes.len()).map(move |si| (li, si))).collect();
-        }
-    } else if select_all {
-        if let Some(d) = &app.doc {
+    if k(Action::SelectAll) {
+        if app.mode == Mode::Shapes {
+            if let Some(d) = &app.doc {
+                app.shape.selection = d.world.shape_layers.iter().enumerate().filter(|(_, l)| l.visible).flat_map(|(li, l)| (0..l.shapes.len()).map(move |si| (li, si))).collect();
+            }
+        } else if let Some(d) = &app.doc {
             app.selection = d.world.objects.iter().filter(|(_, o)| d.world.object_interactive(o)).map(|(id, _)| id).collect();
             app.selection_rev += 1;
         }
     }
-    if !looking {
-        ctx.input(|i| {
-            if i.modifiers.is_none() {
-                if i.key_pressed(Key::W) { app.gizmo = Gizmo::Move; }
-                if i.key_pressed(Key::E) { app.gizmo = Gizmo::Rotate; }
-                if i.key_pressed(Key::R) { app.gizmo = Gizmo::Scale; }
-                if i.key_pressed(Key::Num1) { app.mode = Mode::Select; }
-                if i.key_pressed(Key::Num2) { app.mode = Mode::Landscape; }
-                if i.key_pressed(Key::Num3) { app.mode = Mode::Paint; }
-                if i.key_pressed(Key::Num4) { app.mode = Mode::Place; }
-                if i.key_pressed(Key::Num5) { app.mode = Mode::Lines; }
-                if i.key_pressed(Key::Num6) { app.mode = Mode::Shapes; }
-                if i.key_pressed(Key::Num7) { app.mode = Mode::KeyPoints; }
-                if i.key_pressed(Key::Num8) { app.mode = Mode::Satellite; }
-                let f = if i.key_pressed(Key::CloseBracket) { 1.25 } else if i.key_pressed(Key::OpenBracket) { 0.8 } else { 1.0 };
-                if f != 1.0 {
-                    app.sculpt.radius = (app.sculpt.radius * f).clamp(2.0, 3000.0);
-                    app.paint.radius = (app.paint.radius * f).clamp(0.5, 2000.0);
-                }
-            }
-        });
+    for (a, m) in [(Action::ModeSelect, Mode::Select), (Action::ModeSculpt, Mode::Landscape), (Action::ModePaint, Mode::Paint), (Action::ModePlace, Mode::Place), (Action::ModeRoads, Mode::Lines), (Action::ModeShapes, Mode::Shapes), (Action::ModeKeyPoints, Mode::KeyPoints), (Action::ModeSatellite, Mode::Satellite)] {
+        if k(a) { app.mode = m; }
     }
+    for (a, g) in [(Action::GizmoMove, Gizmo::Move), (Action::GizmoRotate, Gizmo::Rotate), (Action::GizmoScale, Gizmo::Scale)] {
+        if k(a) { app.gizmo = g; }
+    }
+    for (a, v) in [(Action::View3d, ViewMode::Perspective), (Action::View2d, ViewMode::Top), (Action::ViewSplit, ViewMode::Split)] {
+        if k(a) { app.view_mode = v; }
+    }
+    if k(Action::BrushSmaller) { adjust_brush(app, 0.8, 1.0, 0.0); }
+    if k(Action::BrushBigger) { adjust_brush(app, 1.25, 1.0, 0.0); }
+    if k(Action::BrushWeaker) { adjust_brush(app, 1.0, 0.8, 0.0); }
+    if k(Action::BrushStronger) { adjust_brush(app, 1.0, 1.25, 0.0); }
     // Holding a modifier turns the wheel into a brush control. egui reports Shift+wheel as
-    // sideways scrolling and Ctrl+wheel as zoom.
-    if matches!(app.mode, Mode::Landscape | Mode::Paint) {
-        let (delta, zoom, mods) = ctx.input(|i| (i.smooth_scroll_delta.x + i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers));
-        if mods.shift && delta != 0.0 {
+    // sideways scrolling and Ctrl+wheel as zoom, so all of them are added up.
+    if active_brush(app).is_some() {
+        let (scroll, zoom, mods) = ctx.input(|i| (i.smooth_scroll_delta.x + i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers));
+        let delta = if mods.ctrl || mods.command { scroll + (zoom - 1.0) * 400.0 } else { scroll };
+        if delta != 0.0 && ctx.is_pointer_over_area() {
             let f = (delta * 0.003).exp();
-            app.sculpt.radius = (app.sculpt.radius * f).clamp(2.0, 3000.0);
-            app.paint.radius = (app.paint.radius * f).clamp(0.5, 2000.0);
-        }
-        if mods.command && zoom != 1.0 {
-            let step = (zoom - 1.0) * 0.5;
-            app.sculpt.noise = (app.sculpt.noise + step).clamp(0.0, 1.0);
-            app.paint.scatter = (app.paint.scatter + step).clamp(0.0, 0.8);
-        }
-        if mods.alt && delta != 0.0 {
-            app.sculpt.strength = (app.sculpt.strength * (delta * 0.003).exp()).clamp(0.5, 200.0);
-            app.sculpt.falloff = (app.sculpt.falloff + delta * 0.0005).clamp(0.0, 1.0);
+            let size = if keys.held(Hold::WheelSize, mods) { f } else { 1.0 };
+            let strength = if keys.held(Hold::WheelStrength, mods) { f } else { 1.0 };
+            let noise = if keys.held(Hold::WheelNoise, mods) { delta * 0.0012 } else { 0.0 };
+            if size != 1.0 || strength != 1.0 || noise != 0.0 {
+                adjust_brush(app, size, strength, noise);
+            }
         }
     }
 }
