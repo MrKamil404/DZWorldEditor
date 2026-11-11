@@ -368,7 +368,7 @@ fn thumb_path(dir: &Path, model: &str) -> PathBuf {
 const THUMB: u32 = 128;
 
 /// Road parts are kept as editable MLOD files, which the ODOL reader does not take.
-fn thumbnail_mesh(file: &Path, cache: &dayz_road_tool::mesh3d::Cache) -> Option<model3d::ModelMesh> {
+pub(crate) fn thumbnail_mesh(file: &Path, cache: &dayz_road_tool::mesh3d::Cache) -> Option<model3d::ModelMesh> {
     let m = cache.mesh(file)?;
     let mut out = model3d::ModelMesh::default();
     let (mut min, mut max) = ([f32::MAX; 3], [f32::MIN; 3]);

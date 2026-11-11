@@ -38,6 +38,8 @@ struct ProjectFile {
     #[serde(default)]
     road_project: Option<PathBuf>,
     #[serde(default)]
+    template_libraries: Vec<PathBuf>,
+    #[serde(default)]
     routes: Vec<crate::world::RoadRoute>,
     #[serde(default)]
     holes: crate::holes::Holes,
@@ -122,6 +124,7 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         road_removed: w.road_removed.clone(),
         road_added: w.road_added.clone(),
         road_project: w.road_project.clone(),
+        template_libraries: w.template_libraries.clone(),
         routes,
     };
     atomic_write(&dir.join(PROJECT_FILE), &serde_json::to_vec_pretty(&file)?)
@@ -238,6 +241,7 @@ pub fn load(dir: &Path) -> Result<World> {
     w.road_removed = file.road_removed;
     w.road_added = file.road_added;
     w.road_project = file.road_project;
+    w.template_libraries = file.template_libraries;
     w.routes = file.routes;
     w.holes = file.holes;
     w.keypoints = file.keypoints;

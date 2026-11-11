@@ -718,6 +718,7 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
         }
     }
     w.road_project = plan.tv4p.clone();
+    w.template_libraries = plan.libraries.clone();
     if let Some(p) = &plan.tv4p {
         job.stage("Placing roads");
         // A built world already holds the road parts as objects.

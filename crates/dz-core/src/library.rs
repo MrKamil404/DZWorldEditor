@@ -581,6 +581,29 @@ pub struct Library {
     /// Surface layer painted under a model, by model path (see `model_key`). Trees take it as
     /// the colour of the mask under them, as species do in a DayZ Forests project.
     pub model_surfaces: std::collections::BTreeMap<String, String>,
+    /// Folders of the asset browser made by the user.
+    pub asset_folders: Vec<AssetFolder>,
+}
+
+/// A folder of the asset browser made by the user, holding models and object presets that
+/// stay where they are on the work drive. Its name is a path with `/` between the folders it
+/// lies in.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AssetFolder {
+    pub name: String,
+    pub models: Vec<String>,
+    pub presets: Vec<u64>,
+}
+
+/// The folder that holds `name`, or "" for one at the top.
+pub fn parent_folder(name: &str) -> &str {
+    name.rsplit_once('/').map_or("", |p| p.0)
+}
+
+/// True when `name` is `folder` or lies inside it.
+pub fn in_folder(name: &str, folder: &str) -> bool {
+    name == folder || name.strip_prefix(folder).is_some_and(|r| r.starts_with('/'))
 }
 
 /// The form of a model path the library keys models by.
@@ -600,6 +623,79 @@ impl Library {
             out.push(UserPreset { group: p.folder.clone(), name: p.name.clone(), density_per_ha: 300.0, weights });
         }
         out
+    }
+    pub fn folder(&self, name: &str) -> Option<&AssetFolder> {
+        self.asset_folders.iter().find(|f| f.name == name)
+    }
+    /// Makes a folder inside `parent` ("" for the top) with a name not yet taken there.
+    pub fn new_folder(&mut self, parent: &str, base: &str) -> String {
+        let at = |n: &str| if parent.is_empty() { n.to_string() } else { format!("{parent}/{n}") };
+        let mut name = at(base);
+        let mut k = 2;
+        while self.folder(&name).is_some() {
+            name = at(&format!("{base} {k}"));
+            k += 1;
+        }
+        // The folders it lies in exist too.
+        let mut up = parent_folder(&name).to_string();
+        while !up.is_empty() {
+            if self.folder(&up).is_none() {
+                self.asset_folders.push(AssetFolder { name: up.clone(), ..Default::default() });
+            }
+            up = parent_folder(&up).to_string();
+        }
+        self.asset_folders.push(AssetFolder { name: name.clone(), ..Default::default() });
+        self.asset_folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        name
+    }
+    /// Renames a folder and the folders inside it. False when the new name is taken or empty.
+    pub fn rename_folder(&mut self, old: &str, new_leaf: &str) -> bool {
+        let leaf = new_leaf.trim().replace('/', "-");
+        let parent = parent_folder(old);
+        let new = if parent.is_empty() { leaf.clone() } else { format!("{parent}/{leaf}") };
+        if new == old {
+            return true;
+        }
+        if leaf.is_empty() || self.folder(&new).is_some() {
+            return false;
+        }
+        for f in &mut self.asset_folders {
+            if in_folder(&f.name, old) {
+                f.name = format!("{new}{}", &f.name[old.len()..]);
+            }
+        }
+        self.asset_folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        true
+    }
+    /// Deletes a folder and the folders inside it; the models and presets stay where they are.
+    pub fn delete_folder(&mut self, name: &str) {
+        self.asset_folders.retain(|f| !in_folder(&f.name, name));
+    }
+    /// Puts models and presets into a folder, made if it is missing.
+    pub fn add_to_folder(&mut self, name: &str, models: &[String], presets: &[u64]) {
+        if self.folder(name).is_none() {
+            let (parent, leaf) = name.rsplit_once('/').unwrap_or(("", name));
+            let made = self.new_folder(parent, leaf);
+            debug_assert_eq!(made, name);
+        }
+        let Some(f) = self.asset_folders.iter_mut().find(|f| f.name == name) else { return };
+        for m in models {
+            let key = model_key(m);
+            if !f.models.contains(&key) {
+                f.models.push(key);
+            }
+        }
+        for p in presets {
+            if !f.presets.contains(p) {
+                f.presets.push(*p);
+            }
+        }
+    }
+    pub fn remove_from_folder(&mut self, name: &str, models: &[String], presets: &[u64]) {
+        let Some(f) = self.asset_folders.iter_mut().find(|f| f.name == name) else { return };
+        let keys: Vec<String> = models.iter().map(|m| model_key(m)).collect();
+        f.models.retain(|m| !keys.contains(m));
+        f.presets.retain(|p| !presets.contains(p));
     }
     /// The surface layer assigned to a model, if any.
     pub fn surface_of(&self, model: &str) -> Option<&str> {
@@ -699,6 +795,26 @@ pub fn new_id() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn folders_nest_rename_with_what_lies_in_them_and_delete_alone() {
+        let mut l = super::Library::default();
+        let trees = l.new_folder("", "Trees");
+        let birch = l.new_folder(&trees, "Birch");
+        assert_eq!(birch, "Trees/Birch");
+        assert_eq!(l.new_folder("", "Trees"), "Trees 2");
+        l.add_to_folder(&birch, &[r"DZ\plants\tree\t_betula.p3d".to_string()], &[7]);
+        l.add_to_folder(&birch, &[r"dz\plants\tree\t_betula.p3d".to_string()], &[7]);
+        assert_eq!((l.folder(&birch).unwrap().models.len(), l.folder(&birch).unwrap().presets.len()), (1, 1));
+        assert!(l.rename_folder("Trees", "Forest"));
+        assert!(l.folder("Forest/Birch").is_some());
+        assert!(!l.rename_folder("Forest", "Trees 2"), "the name is taken");
+        // A folder named with a path brings the folders above it.
+        l.add_to_folder("Rocks/Big", &[], &[1]);
+        assert!(l.folder("Rocks").is_some());
+        l.delete_folder("Forest");
+        assert!(l.folder("Forest/Birch").is_none() && l.folder("Trees 2").is_some());
+        assert!(super::in_folder("Rocks/Big", "Rocks") && !super::in_folder("Rocksy", "Rocks"));
+    }
     #[test]
     fn a_model_keeps_its_surface_whatever_the_form_of_its_path() {
         let mut l = super::Library::default();

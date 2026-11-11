@@ -105,8 +105,6 @@ pub enum ViewMode {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BottomTab {
     Content,
-    Generators,
-    Presets,
     Output,
     Build,
 }
@@ -152,6 +150,9 @@ pub struct PlaceSettings {
     pub brush_spacing: f32,
     /// Places models of this object preset instead of `model`.
     pub preset: Option<u64>,
+    /// Models selected together in the browser; one of them is placed at random when
+    /// `model` is among them.
+    pub pool: Vec<String>,
     pub auto_pad: bool,
     pub pad_falloff: f32,
     /// Extra ground levelled around an object, in metres.
@@ -355,7 +356,7 @@ pub struct App {
     pub status: String,
     pub dialog: Dialog,
     pub filter: String,
-    pub browser_folder: Option<String>,
+    pub browser: crate::asset_browser::Browser,
     pub outliner_filter: String,
     pub outliner_cache: Option<OutlinerCache>,
     pub layer_rename: Option<(u16, String)>,
@@ -377,9 +378,7 @@ pub struct App {
     pub edit_object: Option<u64>,
     /// Name of the forest preset being looked at.
     pub edit_forest: Option<String>,
-    pub gen_folder: Option<String>,
     pub preset_folder: Option<String>,
-    pub new_folder: String,
     /// The generator or preset waiting for a satellite colour from the map.
     pub sampling: Option<u64>,
     pub lib_dirty: bool,
@@ -433,14 +432,14 @@ impl App {
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), only_on: None, picking: false },
-            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0 },
+            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0 },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
+            task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
@@ -1545,7 +1544,15 @@ impl App {
             anyhow::ensure!(!libraries.is_empty(), "No TemplateLibs folder next to the layers");
             let before = lite.object_layers.len();
             dz_core::import::add_tb_layers(&mut lite, &layers, &libraries, &db, job)?;
-            Ok(Box::new(move |app: &mut App| app.merge_layers(lite, before)) as Finish)
+            Ok(Box::new(move |app: &mut App| {
+                // The libraries stay with the project, for the content browser to show.
+                if let Some(d) = app.doc.as_mut() {
+                    for l in libraries {
+                        if !d.world.template_libraries.contains(&l) { d.world.template_libraries.push(l); }
+                    }
+                }
+                app.merge_layers(lite, before)
+            }) as Finish)
         });
     }
 

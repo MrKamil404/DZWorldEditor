@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! DZ World Editor: terrain, objects and roads for DayZ maps.
 mod app;
+mod asset_browser;
 mod camera;
 mod i18n;
 mod library_ui;
