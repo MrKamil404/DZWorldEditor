@@ -191,6 +191,10 @@
   "de": "Gebiete aus Formen",
   "pl": "Obszary z kształtów"
  },
+ "Assigned in the asset browser, with the right mouse button on a model or a folder. The surface above is for the other models.": {
+  "de": "Wird im Asset-Browser mit der rechten Maustaste auf einem Modell oder Ordner zugewiesen. Die Oberfläche oben gilt für die übrigen Modelle.",
+  "pl": "Przypisuje się ją w przeglądarce assetów prawym przyciskiem na modelu lub folderze. Powierzchnia powyżej dotyczy pozostałych modeli."
+ },
  "At the camera": {
   "de": "Bei der Kamera",
   "pl": "Przy kamerze"
@@ -282,6 +286,10 @@
  "Blending": {
   "de": "Einblenden",
   "pl": "Wtapianie"
+ },
+ "Blob": {
+  "de": "Klecks",
+  "pl": "Plama nieregularna"
  },
  "Blotch size m": {
   "de": "Fleckengröße m",
@@ -427,6 +435,10 @@
   "de": "Zuerst ein Modell im Inhaltsbrowser wählen",
   "pl": "Najpierw wybierz model w bibliotece"
  },
+ "Choose a surface first": {
+  "de": "Zuerst eine Oberfläche wählen",
+  "pl": "Najpierw wybierz powierzchnię"
+ },
  "Choose at least one model": {
   "de": "Wähle mindestens ein Modell",
   "pl": "Wybierz co najmniej jeden model"
@@ -438,6 +450,10 @@
  "Choose...": {
   "de": "Auswählen...",
   "pl": "Wybierz..."
+ },
+ "Circle": {
+  "de": "Kreis",
+  "pl": "Koło"
  },
  "Clear project areas": {
   "de": "Projektgebiete löschen",
@@ -627,6 +643,10 @@
   "de": "Ebene löschen, Objekte behalten",
   "pl": "Usuń warstwę, zachowaj obiekty"
  },
+ "Delete mask modifier": {
+  "de": "Masken-Modifikator löschen",
+  "pl": "Usunięcie modyfikatora maski"
+ },
  "Delete objects": {
   "de": "Objekte löschen",
   "pl": "Usuń obiekty"
@@ -746,6 +766,10 @@
  "Easting offset": {
   "de": "Easting-Versatz",
   "pl": "Przesunięcie easting"
+ },
+ "Edge blend in a shape": {
+  "de": "Randübergang in einer Form",
+  "pl": "Wtopienie krawędzi w kształcie"
  },
  "Edge density": {
   "de": "Randdichte",
@@ -926,6 +950,10 @@
  "Fill": {
   "de": "Nur auffüllen",
   "pl": "Tylko podnoś"
+ },
+ "Fill the footprint of buildings": {
+  "de": "Grundriss von Gebäuden füllen",
+  "pl": "Wypełnij obrys budynków"
  },
  "Finds the road through the clicked points within the grade limits, around water and forbidden areas, with bridges. Off: road parts follow the clicked line.": {
   "de": "Sucht die Straße durch die geklickten Punkte innerhalb der Steigung, um Wasser und Sperrgebiete herum, mit Brücken. Aus: Teile folgen der geklickten Linie.",
@@ -1131,6 +1159,10 @@
   "de": "Hoch",
   "pl": "Wysokie"
  },
+ "Highlands": {
+  "de": "Hochland",
+  "pl": "Wyżyna"
+ },
  "Hills": {
   "de": "Hügel",
   "pl": "Wzgórza"
@@ -1262,6 +1294,10 @@
  "Keep free of trees": {
   "de": "Baumfrei halten",
   "pl": "Bez drzew"
+ },
+ "Kept as a mask modifier of this generator: running it again repaints it, deleting it brings the mask back.": {
+  "de": "Bleibt als Masken-Modifikator dieses Generators: erneutes Ausführen malt ihn neu, Löschen stellt die Maske wieder her.",
+  "pl": "Zostaje jako modyfikator maski tego generatora: ponowne uruchomienie maluje go od nowa, usunięcie przywraca maskę."
  },
  "Key point": {
   "de": "Keypoint",
@@ -1411,6 +1447,14 @@
   "de": "Maskenbild...",
   "pl": "Obraz maski..."
  },
+ "Mask modifier": {
+  "de": "Masken-Modifikator",
+  "pl": "Modyfikator maski"
+ },
+ "Mask modifiers ({0})": {
+  "de": "Masken-Modifikatoren ({0})",
+  "pl": "Modyfikatory maski ({0})"
+ },
  "Max height": {
   "de": "Max. Höhe",
   "pl": "Maks. wysokość"
@@ -1495,6 +1539,10 @@
   "de": "Modelle nicht auf dem Arbeitslaufwerk gefunden ({0}), ohne Höhenkorrektur platziert",
   "pl": "Nie znaleziono modeli na dysku roboczym ({0}), postawiono bez korekty wysokości"
  },
+ "Models with a surface assigned in the asset browser get that one.": {
+  "de": "Modelle mit einer im Asset-Browser zugewiesenen Oberfläche erhalten diese.",
+  "pl": "Modele z powierzchnią przypisaną w przeglądarce assetów dostają właśnie ją."
+ },
  "Models: pick in the Content Browser and press Add.": {
   "de": "Modelle: im Inhaltsbrowser wählen und Hinzufügen drücken.",
   "pl": "Modele: wybierz w bibliotece i naciśnij Dodaj."
@@ -1502,6 +1550,10 @@
  "Modify the terrain": {
   "de": "Gelände verändern",
   "pl": "Modyfikuj teren"
+ },
+ "Moraine lowland": {
+  "de": "Moränentiefland",
+  "pl": "Nizina morenowa"
  },
  "More presets in shapes": {
   "de": "Weitere Presets in Formen",
@@ -1594,6 +1646,10 @@
  "No objects to bake": {
   "de": "Keine Objekte zum Einbrennen",
   "pl": "Brak obiektów do wypalenia"
+ },
+ "No objects to paint under": {
+  "de": "Keine Objekte zum Untermalen",
+  "pl": "Brak obiektów do podmalowania"
  },
  "No picture": {
   "de": "Kein Bild",
@@ -1707,6 +1763,10 @@
   "de": "Deckkraft",
   "pl": "Krycie"
  },
+ "Open a project with surface layers to choose from them.": {
+  "de": "Öffne ein Projekt mit Oberflächenebenen, um daraus zu wählen.",
+  "pl": "Otwórz projekt z warstwami powierzchni, aby z nich wybrać."
+ },
  "Open backups folder": {
   "de": "Sicherungsordner öffnen",
   "pl": "Otwórz folder kopii"
@@ -1779,9 +1839,25 @@
   "de": "Male die Zellen, die das Spiel nicht zeichnen soll, Strg entfernt sie. Objekte unter dem Gelände brauchen die Underground-Markierung (U) und kosten Leistung.",
   "pl": "Maluj komórki terenu, których gra ma nie rysować, Ctrl je usuwa. Obiekty pod terenem potrzebują flagi underground (U) i obciążają wydajność."
  },
+ "Paint the ground under the trees": {
+  "de": "Boden unter den Bäumen malen",
+  "pl": "Maluj podłoże pod drzewami"
+ },
+ "Paint under objects": {
+  "de": "Unter Objekten malen",
+  "pl": "Maluj pod obiektami"
+ },
  "Paint with a brush": {
   "de": "Mit Pinsel setzen",
   "pl": "Maluj pędzlem"
+ },
+ "Painted the surface under {0} objects": {
+  "de": "Oberfläche unter {0} Objekten gemalt",
+  "pl": "Pomalowano powierzchnię pod {0} obiektami"
+ },
+ "Paints a surface under objects as a mask modifier, which can be hidden or deleted in the outliner.": {
+  "de": "Malt eine Oberfläche unter Objekte als Masken-Modifikator, der in der Hierarchie ausgeblendet oder gelöscht werden kann.",
+  "pl": "Maluje powierzchnię pod obiektami jako modyfikator maski, który można ukryć albo usunąć w hierarchii."
  },
  "Part removed": {
   "de": "Entfernter Anteil",
@@ -1802,6 +1878,18 @@
  "Patch coverage": {
   "de": "Fleckenanteil",
   "pl": "Pokrycie plackami"
+ },
+ "Patch grows with the object": {
+  "de": "Fleck wächst mit dem Objekt",
+  "pl": "Plama rośnie ze skalą obiektu"
+ },
+ "Patch shape": {
+  "de": "Fleckform",
+  "pl": "Kształt plamy"
+ },
+ "Patch size": {
+  "de": "Fleckgröße",
+  "pl": "Rozmiar plamy"
  },
  "Patches per hectare": {
   "de": "Flecken pro Hektar",
@@ -1938,6 +2026,10 @@
  "Random rotation": {
   "de": "Zufällige Drehung",
   "pl": "Losowy obrót"
+ },
+ "Random rotation of patches": {
+  "de": "Zufällige Drehung der Flecken",
+  "pl": "Losowy obrót plam"
  },
  "Reading road types": {
   "de": "Straßentypen werden gelesen",
@@ -2315,6 +2407,10 @@
   "de": "Größe",
   "pl": "Rozmiar"
  },
+ "Size variation": {
+  "de": "Größenstreuung",
+  "pl": "Losowość rozmiaru"
+ },
  "Slope": {
   "de": "Neigung",
   "pl": "Spadek"
@@ -2403,6 +2499,10 @@
   "de": "Sonnenstärke",
   "pl": "Siła słońca"
  },
+ "Surface": {
+  "de": "Oberfläche",
+  "pl": "Powierzchnia"
+ },
  "Surface layers": {
   "de": "Oberflächenebenen",
   "pl": "Warstwy powierzchni"
@@ -2411,6 +2511,10 @@
   "de": "Oberflächen malen",
   "pl": "Malowanie powierzchni"
  },
+ "Surface taken from {0} models": {
+  "de": "Oberfläche von {0} Modellen entfernt",
+  "pl": "Usunięto powierzchnię z {0} modeli"
+ },
  "Surface texture range m": {
   "de": "Reichweite der Oberflächentexturen m",
   "pl": "Zasięg tekstur z maski m"
@@ -2418,6 +2522,30 @@
  "Surface transition m": {
   "de": "Oberflächenübergang m",
   "pl": "Przejście powierzchni m"
+ },
+ "Surface under all models in the folder": {
+  "de": "Oberfläche unter allen Modellen im Ordner",
+  "pl": "Powierzchnia pod wszystkimi modelami w folderze"
+ },
+ "Surface under it: {0}": {
+  "de": "Oberfläche darunter: {0}",
+  "pl": "Powierzchnia pod nim: {0}"
+ },
+ "Surface under objects": {
+  "de": "Oberfläche unter Objekten",
+  "pl": "Powierzchnia pod obiektami"
+ },
+ "Surface under objects {0}": {
+  "de": "Oberfläche unter Objekten {0}",
+  "pl": "Powierzchnia pod obiektami {0}"
+ },
+ "Surface under the model": {
+  "de": "Oberfläche unter dem Modell",
+  "pl": "Powierzchnia pod modelem"
+ },
+ "Surface {0} assigned to {1} models": {
+  "de": "Oberfläche {0} {1} Modellen zugewiesen",
+  "pl": "Powierzchnię {0} przypisano do {1} modeli"
  },
  "Surfaces (layers.cfg)": {
   "de": "Oberflächen (layers.cfg)",
@@ -2551,6 +2679,10 @@
   "de": "Die Höhe wird dann ab Meeresspiegel gemessen",
   "pl": "Wysokość jest wtedy liczona od poziomu morza"
  },
+ "The forest has no surface to paint under its trees: choose one in the generator": {
+  "de": "Der Wald hat keine Oberfläche für den Boden unter den Bäumen: im Generator eine wählen",
+  "pl": "Las nie ma powierzchni do pomalowania pod drzewami: wybierz ją w generatorze"
+ },
  "The game blends at most five surfaces per texture tile; if a tile uses more, the rarest are replaced on export.": {
   "de": "Das Spiel mischt höchstens fünf Oberflächen pro Kachel; bei mehr werden die seltensten beim Export ersetzt.",
   "pl": "Gra miesza najwyżej pięć powierzchni na kafel; gdy kafel ma ich więcej, najrzadsze zostaną zastąpione przy eksporcie."
@@ -2559,6 +2691,10 @@
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
   "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
  },
+ "The mask colour painted under the model, by trees as their forest ground and by the tool that paints under objects.": {
+  "de": "Die Maskenfarbe unter dem Modell: für Bäume als Waldboden und für das Werkzeug, das unter Objekte malt.",
+  "pl": "Kolor maski malowany pod modelem: przez drzewa jako podłoże lasu i przez narzędzie malujące pod obiektami."
+ },
  "The next click in a view takes the satellite colour there.": {
   "de": "Der nächste Klick in einer Ansicht nimmt die Satellitenfarbe.",
   "pl": "Następne kliknięcie w widoku pobierze kolor satelity."
@@ -2566,6 +2702,10 @@
  "The next stroke starts a new modifier": {
   "de": "Der nächste Strich beginnt einen neuen Modifikator",
   "pl": "Następne pociągnięcie utworzy nowy modyfikator"
+ },
+ "The patch size is then the margin round the footprint.": {
+  "de": "Die Fleckgröße ist dann der Rand um den Grundriss.",
+  "pl": "Rozmiar plamy jest wtedy marginesem wokół obrysu."
  },
  "The project has no satellite image": {
   "de": "Das Projekt hat kein Satellitenbild",
@@ -2659,6 +2799,14 @@
   "de": "U schaltet die Underground-Markierung der Auswahl um, B lässt die Kamera unter das Gelände.",
   "pl": "U przełącza flagę underground zaznaczenia, B pozwala kamerze zejść pod teren."
  },
+ "Under buildings and other objects": {
+  "de": "Unter Gebäuden und anderen Objekten",
+  "pl": "Pod budynkami i innymi obiektami"
+ },
+ "Under trees and bushes": {
+  "de": "Unter Bäumen und Büschen",
+  "pl": "Pod drzewami i krzewami"
+ },
  "Underground": {
   "de": "Unterirdisch",
   "pl": "Pod ziemią"
@@ -2694,6 +2842,10 @@
  "Use the project folder": {
   "de": "Projektordner verwenden",
   "pl": "Użyj folderu projektu"
+ },
+ "Use the surface assigned to each model": {
+  "de": "Jedem Modell zugewiesene Oberfläche verwenden",
+  "pl": "Użyj powierzchni przypisanej do modelu"
  },
  "Version": {
   "de": "Version",
@@ -2782,6 +2934,10 @@
  "Works on": {
   "de": "Wirkt auf",
   "pl": "Działa na"
+ },
+ "Worn slopes": {
+  "de": "Abgetragene Hänge",
+  "pl": "Wygładzenie zboczy (erozja)"
  },
  "Write the newer WRP format with underground flag": {
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",
@@ -2878,6 +3034,10 @@
  "{0} shapes selected": {
   "de": "{0} Formen ausgewählt",
   "pl": "Zaznaczone kształty: {0}"
+ },
+ "{0} species have a surface of their own in the forest project and keep it": {
+  "de": "{0} Arten haben im Waldprojekt eine eigene Oberfläche und behalten sie",
+  "pl": "{0} gatunków ma własną powierzchnię w projekcie lasu i ją zachowuje"
  },
  "{0} species, {1} areas, {2} zones in the project": {
   "de": "Im Projekt: {0} Arten, {1} Gebiete, {2} Zonen",

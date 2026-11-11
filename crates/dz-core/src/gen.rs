@@ -24,9 +24,13 @@ pub enum TerrainKind {
     Valley,
     Canyons,
     Coast,
+    /// A plateau cut by branching valleys.
+    Highlands,
+    /// Lowland left by an ice sheet: low rolling ground with kettle holes and eskers.
+    Moraine,
 }
 impl TerrainKind {
-    pub const ALL: [TerrainKind; 8] = [Self::Hills, Self::Mountains, Self::Plains, Self::Island, Self::Archipelago, Self::Valley, Self::Canyons, Self::Coast];
+    pub const ALL: [TerrainKind; 10] = [Self::Hills, Self::Mountains, Self::Highlands, Self::Moraine, Self::Plains, Self::Island, Self::Archipelago, Self::Valley, Self::Canyons, Self::Coast];
     pub fn name(self) -> &'static str {
         match self {
             Self::Hills => "Hills",
@@ -37,11 +41,14 @@ impl TerrainKind {
             Self::Valley => "River valley",
             Self::Canyons => "Canyons",
             Self::Coast => "Coast",
+            Self::Highlands => "Highlands",
+            Self::Moraine => "Moraine lowland",
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TerrainParams {
     pub kind: TerrainKind,
     pub seed: u64,
@@ -57,25 +64,39 @@ pub struct TerrainParams {
     pub warp: f32,
     /// Blend with what is already there: 1 replaces it.
     pub blend: f32,
+    /// How far slopes are worn smooth, leaving detail on flats and crests; 0 is plain noise.
+    pub erosion: f32,
+    /// Width over which the result fades into the terrain at the edge of a shape, in metres.
+    pub edge: f32,
 }
 impl Default for TerrainParams {
     fn default() -> Self {
-        Self { kind: TerrainKind::Hills, seed: 1, base: 120.0, amplitude: 160.0, feature: 2400.0, octaves: 8, roughness: 0.5, warp: 200.0, blend: 1.0 }
+        Self { kind: TerrainKind::Hills, seed: 1, base: 120.0, amplitude: 160.0, feature: 2400.0, octaves: 8, roughness: 0.5, warp: 200.0, blend: 1.0, erosion: 0.5, edge: 150.0 }
     }
 }
 
 pub fn generate_terrain(h: &mut Heightmap, p: &TerrainParams, job: &Job) {
+    generate_terrain_in(h, p, None, job)
+}
+
+/// Like `generate_terrain`, shaped to fit `frame` (west, south, east, north in metres): an
+/// island or a valley then lies within that rectangle, and nothing outside it is touched.
+pub fn generate_terrain_in(h: &mut Heightmap, p: &TerrainParams, frame: Option<[f32; 4]>, job: &Job) {
     let noise = Perlin::new(p.seed);
     let warp_x = Perlin::new(p.seed ^ 0xA5A5);
     let warp_z = Perlin::new(p.seed ^ 0x5A5A);
     let (cols, rows, cell) = (h.cols, h.rows, h.cell);
     let side = cols.max(rows) as f32 * cell;
+    let [fx0, fz0, fx1, fz1] = frame.unwrap_or([0.0, 0.0, side, side]);
     let f = 1.0 / p.feature.max(10.0);
     let done = std::sync::atomic::AtomicUsize::new(0);
     h.data.par_chunks_mut(cols).enumerate().for_each(|(j, row)| {
         for (i, v) in row.iter_mut().enumerate() {
             let (mut x, mut z) = (i as f32 * cell, j as f32 * cell);
-            let (u, w) = (x / side * 2.0 - 1.0, z / side * 2.0 - 1.0);
+            if x < fx0 - cell || z < fz0 - cell || x > fx1 + cell || z > fz1 + cell {
+                continue;
+            }
+            let (u, w) = ((x - fx0) / (fx1 - fx0).max(1.0) * 2.0 - 1.0, (z - fz0) / (fz1 - fz0).max(1.0) * 2.0 - 1.0);
             if p.warp > 0.0 {
                 let (ox, oz) = (x, z);
                 x += warp_x.fbm(ox * f * 1.7, oz * f * 1.7, 3, 0.5, 2.0) * p.warp;
@@ -83,18 +104,37 @@ pub fn generate_terrain(h: &mut Heightmap, p: &TerrainParams, job: &Job) {
             }
             let (nx, nz) = (x * f, z * f);
             let fbm = noise.fbm(nx, nz, p.octaves, p.roughness, 2.0);
+            // The same sum with its slopes worn smooth, for the land that should look weathered.
+            let worn = noise.eroded(nx, nz, p.octaves, p.roughness, 2.0, p.erosion);
             let radial = (u * u + w * w).sqrt();
             let height = match p.kind {
-                TerrainKind::Hills => p.base + fbm * p.amplitude * 0.75,
+                TerrainKind::Hills => p.base + worn * p.amplitude * 0.75,
                 TerrainKind::Plains => p.base + noise.fbm(nx * 0.6, nz * 0.6, p.octaves, p.roughness * 0.7, 2.0) * p.amplitude * 0.25,
                 TerrainKind::Mountains => {
                     let r = noise.ridged(nx, nz, p.octaves, p.roughness + 0.05, 2.1);
                     let mask = (noise.fbm(nx * 0.35 + 9.0, nz * 0.35, 3, 0.5, 2.0) + 0.55).clamp(0.0, 1.0);
-                    p.base + (r.powf(1.4) * mask * 1.4 + fbm * 0.12) * p.amplitude
+                    // Crests stay sharp, the flanks between them are worn and valley floors widen.
+                    let relief = r.powf(1.4) * mask * 1.4 + worn * 0.2;
+                    let floor = smooth(0.0, 0.22, relief);
+                    p.base + relief * (0.55 + 0.45 * floor) * p.amplitude
+                }
+                TerrainKind::Highlands => {
+                    let plateau = 0.72 + worn * 0.14;
+                    // Valleys follow the crest lines of a coarse ridged noise and branch with it.
+                    let lines = noise.ridged(nx * 0.8 + 3.0, nz * 0.8, 4, 0.5, 2.0);
+                    let cut = smooth(0.58, 0.93, lines);
+                    p.base + (plateau - cut * (0.6 + 0.15 * fbm)) * p.amplitude
+                }
+                TerrainKind::Moraine => {
+                    let rolling = noise.eroded(nx * 1.6, nz * 1.6, p.octaves, p.roughness * 0.9, 2.0, p.erosion) * 0.22;
+                    // Kettle holes where blocks of ice melted, and eskers left by the streams under it.
+                    let kettles = smooth(0.52, 0.8, noise.get(nx * 6.0 + 40.0, nz * 6.0)) * 0.11;
+                    let eskers = smooth(0.84, 0.96, noise.ridged(nx * 2.3, nz * 2.3 + 11.0, 2, 0.5, 2.0)) * 0.07;
+                    p.base + (rolling - kettles + eskers) * p.amplitude
                 }
                 TerrainKind::Island => {
                     let edge = 1.0 - smooth(0.45, 0.95, radial + fbm * 0.18);
-                    -18.0 + edge * (p.base + 18.0 + (fbm + 0.25).max(0.0) * p.amplitude * edge)
+                    -18.0 + edge * (p.base + 18.0 + (worn + 0.25).max(0.0) * p.amplitude * edge)
                 }
                 TerrainKind::Archipelago => {
                     let n = noise.fbm(nx * 2.2, nz * 2.2, p.octaves, p.roughness, 2.0);
@@ -117,7 +157,7 @@ pub fn generate_terrain(h: &mut Heightmap, p: &TerrainParams, job: &Job) {
                 TerrainKind::Coast => {
                     let shore = u + fbm * 0.35;
                     let land = smooth(-0.15, 0.25, shore);
-                    -20.0 + land * (p.base + 20.0 + (fbm + 0.3).max(0.0) * p.amplitude * smooth(0.0, 0.8, shore))
+                    -20.0 + land * (p.base + 20.0 + (worn + 0.3).max(0.0) * p.amplitude * smooth(0.0, 0.8, shore))
                 }
             };
             *v += (height - *v) * p.blend;
@@ -125,6 +165,47 @@ pub fn generate_terrain(h: &mut Heightmap, p: &TerrainParams, job: &Job) {
         let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         job.set_progress(n as f32 / rows as f32);
     });
+}
+
+/// Keeps `result` only inside `area`, fading into `original` over `feather` metres at its edge.
+pub fn blend_in_area(original: &Heightmap, result: &mut Heightmap, area: &crate::shapes::PolygonIndex, feather: f32) {
+    let (cols, rows, cell) = (original.cols, original.rows, original.cell);
+    let reach = (feather / cell).max(0.0);
+    // Distance of every vertex from the outside of the area, in cells, by two sweeps.
+    let mut dist: Vec<f32> = (0..rows * cols).into_par_iter().map(|k| if area.contains((k % cols) as f32 * cell, (k / cols) as f32 * cell) { f32::MAX } else { 0.0 }).collect();
+    const DIAGONAL: f32 = std::f32::consts::SQRT_2;
+    for j in 0..rows {
+        for i in 0..cols {
+            let k = j * cols + i;
+            if dist[k] == 0.0 {
+                continue;
+            }
+            let mut d = dist[k];
+            if i > 0 { d = d.min(dist[k - 1] + 1.0); }
+            if j > 0 { d = d.min(dist[k - cols] + 1.0); }
+            if i > 0 && j > 0 { d = d.min(dist[k - cols - 1] + DIAGONAL); }
+            if i + 1 < cols && j > 0 { d = d.min(dist[k - cols + 1] + DIAGONAL); }
+            dist[k] = d;
+        }
+    }
+    for j in (0..rows).rev() {
+        for i in (0..cols).rev() {
+            let k = j * cols + i;
+            if dist[k] == 0.0 {
+                continue;
+            }
+            let mut d = dist[k];
+            if i + 1 < cols { d = d.min(dist[k + 1] + 1.0); }
+            if j + 1 < rows { d = d.min(dist[k + cols] + 1.0); }
+            if i + 1 < cols && j + 1 < rows { d = d.min(dist[k + cols + 1] + DIAGONAL); }
+            if i > 0 && j + 1 < rows { d = d.min(dist[k + cols - 1] + DIAGONAL); }
+            dist[k] = d;
+        }
+    }
+    for (k, v) in result.data.iter_mut().enumerate() {
+        let w = if dist[k] == 0.0 { 0.0 } else if reach <= 0.0 { 1.0 } else { smooth(0.0, reach, dist[k]) };
+        *v = original.data[k] + (*v - original.data[k]) * w;
+    }
 }
 
 #[inline]
@@ -2532,6 +2613,23 @@ mod tests {
             assert!(b - a > 1.0, "{kind:?} is flat");
         }
     }
+    #[test]
+    fn a_shape_keeps_the_generator_inside_and_fades_at_its_edge() {
+        use crate::shapes::{MapShape, PolygonIndex, ShapeKind, ShapeLayer};
+        let original = Heightmap::new(128, 128, 10.0, 50.0);
+        let mut result = original.clone();
+        let frame = [300.0, 300.0, 900.0, 900.0];
+        generate_terrain_in(&mut result, &TerrainParams { kind: TerrainKind::Mountains, base: 400.0, ..Default::default() }, Some(frame), &Job::default());
+        assert_eq!(result.at(5, 5), 50.0, "nothing is generated outside the frame");
+        let square = MapShape { kind: ShapeKind::Polygon, points: vec![[300.0, 300.0], [900.0, 300.0], [900.0, 900.0], [300.0, 900.0]], attributes: Vec::new() };
+        let area = PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: vec![square] });
+        blend_in_area(&original, &mut result, &area, 100.0);
+        assert_eq!(result.at(20, 20), 50.0, "outside the shape the terrain stays");
+        assert!(result.at(60, 60) > 200.0, "in the middle the mountains stand: {}", result.at(60, 60));
+        // Just inside the edge the result is still close to what was there.
+        assert!((result.at(31, 60) - 50.0).abs() < (result.at(60, 60) - 50.0) * 0.2, "{}", result.at(31, 60));
+    }
+
     #[test]
     fn island_is_surrounded_by_sea() {
         let mut h = Heightmap::new(256, 256, 16.0, 0.0);

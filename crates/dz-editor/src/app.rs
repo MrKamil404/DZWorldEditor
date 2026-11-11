@@ -327,6 +327,8 @@ pub struct App {
     pub paint: PaintSettings,
     /// The satellite tools: baking objects and the clone brush.
     pub sat: crate::satellite::SatTool,
+    /// The tool that stamps a surface under objects.
+    pub mask_tool: crate::maskmods::MaskTool,
     pub place: PlaceSettings,
     pub line: LineSettings,
     pub stroke: Option<SculptStroke>,
@@ -436,7 +438,7 @@ impl App {
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
-            impostor_fits: HashMap::new(), sat: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
+            impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
             task: None, log: Vec::new(), status: String::new(), dialog: Dialog::None, filter: String::new(), browser_folder: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, gen_folder: None, preset_folder: None, new_folder: String::new(), sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
@@ -1090,6 +1092,8 @@ impl App {
     pub fn mask_changed(&mut self, r: Rect) {
         let Some(doc) = &mut self.doc else { return };
         doc.dirty.mask = true;
+        // What was painted goes under the mask modifiers, which stay on top of it.
+        let r = doc.world.mask_painted(r).map_or(r, |m| m.union(r));
         self.renderer.lock().unwrap().update_mask(&doc.world.mask, r);
     }
 
@@ -1106,6 +1110,8 @@ impl App {
     pub fn whole_mask_changed(&mut self) {
         let Some(doc) = &mut self.doc else { return };
         doc.dirty.mask = true;
+        let all = Rect { x0: 0, y0: 0, x1: doc.world.mask.width.saturating_sub(1), y1: doc.world.mask.height.saturating_sub(1) };
+        doc.world.mask_painted(all);
         self.renderer.lock().unwrap().set_mask(&doc.world.mask);
     }
 

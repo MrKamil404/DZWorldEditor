@@ -31,11 +31,26 @@ pub struct ForestGen {
     pub avoid_roads: Option<f32>,
     /// Margin from buildings in metres, when they are avoided.
     pub avoid_buildings: Option<f32>,
+    /// A surface painted under the trees, as a mask modifier.
+    #[serde(default)]
+    pub ground: ForestGround,
+}
+
+/// The surface a forest generator paints under its trees. A species with a layer of its own in
+/// the forest project takes that one.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ForestGround {
+    pub enabled: bool,
+    /// Name of the surface layer for species without one of their own.
+    pub surface: String,
+    pub stamp: crate::maskmod::StampSettings,
 }
 
 impl Default for ForestGen {
     fn default() -> Self {
         Self {
+            ground: ForestGround::default(),
             // Clearings are a choice: by default a forest fills the whole shape.
             project: ForestProject { clearing_strength: 0.0, ..Default::default() },
             preset: crate::gen::forest_preset_names().into_iter().next().unwrap_or_default(),
@@ -495,7 +510,8 @@ impl GeneratorKind {
             GeneratorKind::Settlement(_) => TargetKind::Point,
             GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::River(_) | GeneratorKind::Line(_) | GeneratorKind::LineTerrain(_) => TargetKind::Line,
             GeneratorKind::Remove(_) => TargetKind::Any,
-            GeneratorKind::Terrain(_) | GeneratorKind::Erosion(_) | GeneratorKind::ThermalErosion { .. } | GeneratorKind::Terraces { .. } => TargetKind::Map,
+            // Terrain generators work on the whole map or inside shapes, fading out at their edge.
+            GeneratorKind::Terrain(_) | GeneratorKind::Erosion(_) | GeneratorKind::ThermalErosion { .. } | GeneratorKind::Terraces { .. } => TargetKind::Area,
         }
     }
     /// Name of the built-in generator this one derives from.
@@ -562,6 +578,14 @@ pub struct Library {
     pub forest_presets: Vec<UserPreset>,
     pub generator_folders: Vec<String>,
     pub object_folders: Vec<String>,
+    /// Surface layer painted under a model, by model path (see `model_key`). Trees take it as
+    /// the colour of the mask under them, as species do in a DayZ Forests project.
+    pub model_surfaces: std::collections::BTreeMap<String, String>,
+}
+
+/// The form of a model path the library keys models by.
+pub fn model_key(path: &str) -> String {
+    path.trim().trim_start_matches(['\\', '/']).replace('/', "\\").to_ascii_lowercase()
 }
 
 impl Library {
@@ -576,6 +600,21 @@ impl Library {
             out.push(UserPreset { group: p.folder.clone(), name: p.name.clone(), density_per_ha: 300.0, weights });
         }
         out
+    }
+    /// The surface layer assigned to a model, if any.
+    pub fn surface_of(&self, model: &str) -> Option<&str> {
+        self.model_surfaces.get(&model_key(model)).map(String::as_str).filter(|s| !s.is_empty())
+    }
+    /// Assigns a surface layer to a model, or takes it away with `None`.
+    pub fn set_surface(&mut self, model: &str, surface: Option<&str>) {
+        match surface.filter(|s| !s.is_empty()) {
+            Some(s) => {
+                self.model_surfaces.insert(model_key(model), s.to_string());
+            }
+            None => {
+                self.model_surfaces.remove(&model_key(model));
+            }
+        }
     }
     pub fn load(path: &Path) -> Self {
         std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
@@ -645,6 +684,9 @@ pub struct GeneratorInstance {
     /// What this generator took off the map.
     #[serde(default)]
     pub removed: Vec<RemovedObject>,
+    /// The mask modifier this generator made, if any.
+    #[serde(default)]
+    pub mask_modifier: Option<u32>,
 }
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -657,6 +699,17 @@ pub fn new_id() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_model_keeps_its_surface_whatever_the_form_of_its_path() {
+        let mut l = super::Library::default();
+        l.set_surface(r"DZ\plants\tree\t_BetulaPendula_3s.p3d", Some("forest"));
+        assert_eq!(l.surface_of(r"\dz\plants\tree\t_betulapendula_3s.p3d"), Some("forest"));
+        assert_eq!(l.surface_of("dz/plants/tree/t_betulapendula_3s.p3d"), Some("forest"));
+        let back: super::Library = serde_json::from_slice(&serde_json::to_vec(&l).unwrap()).unwrap();
+        assert_eq!(back.surface_of(r"dz\plants\tree\t_betulapendula_3s.p3d"), Some("forest"));
+        l.set_surface(r"dz\plants\tree\t_betulapendula_3s.p3d", None);
+        assert!(l.model_surfaces.is_empty());
+    }
     use super::*;
 
     #[test]

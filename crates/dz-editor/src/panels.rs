@@ -349,6 +349,7 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
         });
         ui.weak(t("Shift+wheel: size. Ctrl+wheel: edge noise."));
     });
+    crate::maskmods::panel(app, ui);
     section(ui, &t("Surface layers"), true, |ui| {
         layer_list(app, ui);
         ui.add_space(4.0);
@@ -807,6 +808,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 if ui.selectable_label(app.selected_modifier == Some(*id), name).clicked() { select_modifier = Some(*id); }
             }
         });
+        crate::maskmods::outliner(app, ui, &filter);
         crate::satellite::outliner(app, ui, &filter);
         egui::CollapsingHeader::new(tf("Generators ({0})", &[&generators.len().to_string()])).default_open(true).show(ui, |ui| {
             crate::library_ui::outliner_rows(app, ui, &generators, &filter);
@@ -1172,8 +1174,37 @@ fn build_tab(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
+/// Menu that assigns the surface painted under models, for one model or a whole folder.
+/// Returns the chosen surface: `Some(None)` takes the assignment away.
+fn surface_menu(ui: &mut egui::Ui, layers: &[(String, [u8; 3])], current: Option<&str>) -> Option<Option<String>> {
+    let mut chosen = None;
+    ui.weak(t("The mask colour painted under the model, by trees as their forest ground and by the tool that paints under objects."));
+    if ui.selectable_label(current.is_none(), t("(none)")).clicked() {
+        chosen = Some(None);
+        ui.close_menu();
+    }
+    for (name, c) in layers {
+        ui.horizontal(|ui| {
+            let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), egui::Sense::hover());
+            ui.painter().rect_filled(r, 2.0, Color32::from_rgb(c[0], c[1], c[2]));
+            if ui.selectable_label(current.is_some_and(|x| x.eq_ignore_ascii_case(name)), name).clicked() {
+                chosen = Some(Some(name.clone()));
+                ui.close_menu();
+            }
+        });
+    }
+    if layers.is_empty() {
+        ui.weak(t("Open a project with surface layers to choose from them."));
+    }
+    chosen
+}
+
 fn content_browser(app: &mut App, ui: &mut egui::Ui) {
     let assets = app.assets.clone();
+    let layers: Vec<(String, [u8; 3])> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| (l.name.clone(), l.color)).collect()).unwrap_or_default();
+    let colour_of = |name: &str| layers.iter().find(|l| l.0.eq_ignore_ascii_case(name)).map_or(Color32::GRAY, |l| Color32::from_rgb(l.1[0], l.1[1], l.1[2]));
+    // (models, surface) assigned from a menu this frame
+    let mut assign: Option<(Vec<String>, Option<String>)> = None;
     egui::SidePanel::left("folders").resizable(true).default_width(260.0).frame(egui::Frame::new()).show_inside(ui, |ui| {
         ui.add(egui::TextEdit::singleline(&mut app.filter).hint_text(t("Search models...")).desired_width(f32::INFINITY));
         ui.horizontal(|ui| {
@@ -1184,9 +1215,19 @@ fn content_browser(app: &mut App, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().id_salt("f").auto_shrink([false, false]).show_rows(ui, 18.0, folders.len(), |ui, range| {
             for f in &folders[range] {
                 let n = assets.by_folder[*f].len();
-                if ui.selectable_label(app.browser_folder.as_deref() == Some(f.as_str()), format!("{f}  ({n})")).clicked() {
+                let resp = ui.selectable_label(app.browser_folder.as_deref() == Some(f.as_str()), format!("{f}  ({n})"));
+                if resp.clicked() {
                     app.browser_folder = Some((*f).clone());
                 }
+                resp.context_menu(|ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    ui.menu_button(t("Surface under all models in the folder"), |ui| {
+                        ui.set_max_width(260.0);
+                        if let Some(s) = surface_menu(ui, &layers, None) {
+                            assign = Some((assets.by_folder[*f].iter().map(|&i| assets.assets[i as usize].path.clone()).collect(), s));
+                        }
+                    });
+                });
             }
         });
     });
@@ -1201,6 +1242,7 @@ fn content_browser(app: &mut App, ui: &mut egui::Ui) {
     items.truncate(3000);
     if items.is_empty() {
         ui.centered_and_justified(|ui| { ui.weak(t("Choose a folder or type at least two letters")); });
+        apply_surfaces(app, assign);
         return;
     }
     let side = app.settings.library_tile;
@@ -1223,7 +1265,27 @@ fn content_browser(app: &mut App, ui: &mut egui::Ui) {
                     }
                     let name: String = if a.name.chars().count() > 15 { a.name.chars().take(14).chain(['…']).collect() } else { a.name.clone() };
                     ui.painter().text(egui::pos2(rect.center().x, rect.bottom() - 11.0), egui::Align2::CENTER_CENTER, name, egui::FontId::proportional(11.0), theme::TEXT);
-                    let resp = resp.on_hover_text(&a.path);
+                    let surface = app.library.surface_of(&a.path).map(str::to_string);
+                    if let Some(s) = &surface {
+                        // The mask colour assigned to the model, in the corner of its tile.
+                        let mark = egui::Rect::from_min_size(egui::pos2(img.right() - 14.0, img.top() + 2.0), vec2(12.0, 12.0));
+                        ui.painter().rect_filled(mark, 2.0, colour_of(s));
+                        ui.painter().rect_stroke(mark, 2.0, egui::Stroke::new(1.0f32, Color32::BLACK), egui::StrokeKind::Outside);
+                    }
+                    let resp = resp.on_hover_text(match &surface {
+                        Some(s) => format!("{}
+{}", a.path, tf("Surface under it: {0}", &[s])),
+                        None => a.path.clone(),
+                    });
+                    resp.context_menu(|ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        ui.menu_button(t("Surface under the model"), |ui| {
+                            ui.set_max_width(260.0);
+                            if let Some(s) = surface_menu(ui, &layers, surface.as_deref()) {
+                                assign = Some((vec![a.path.clone()], s));
+                            }
+                        });
+                    });
                     if resp.clicked() {
                         app.place.model = Some(a.path.clone());
                         if app.mode == Mode::Select { app.mode = Mode::Place; }
@@ -1233,6 +1295,19 @@ fn content_browser(app: &mut App, ui: &mut egui::Ui) {
             });
         }
     });
+    apply_surfaces(app, assign);
+}
+
+fn apply_surfaces(app: &mut App, assign: Option<(Vec<String>, Option<String>)>) {
+    let Some((models, surface)) = assign else { return };
+    for m in &models {
+        app.library.set_surface(m, surface.as_deref());
+    }
+    app.lib_dirty = true;
+    app.status = match surface {
+        Some(s) => tf("Surface {0} assigned to {1} models", &[&s, &models.len().to_string()]),
+        None => tf("Surface taken from {0} models", &[&models.len().to_string()]),
+    };
 }
 
 fn path_choice(ui: &mut egui::Ui, label: &str, value: &mut Option<std::path::PathBuf>, choices: &[std::path::PathBuf], pick: impl FnOnce() -> Option<std::path::PathBuf>) {

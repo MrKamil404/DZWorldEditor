@@ -164,7 +164,20 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             ui.horizontal_wrapped(|ui| {
                 if ui.button(t("Load DayZForests project...")).clicked() {
                     if let Some(f) = rfd::FileDialog::new().add_filter("DayZForests", &["json"]).pick_file() {
-                        if let Some(p) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice(&b).ok()) { g.project = p; }
+                        if let Some(p) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<forest_core::preset::ForestProject>(&b).ok()) {
+                            // The project's settings for its tree layer become those of the ground.
+                            let png = &p.png_settings;
+                            g.ground.stamp.size_m = png.dot_size_m as f32;
+                            g.ground.stamp.randomize_size = png.randomize_size as f32;
+                            g.ground.stamp.randomize_rotation = png.randomize_rotation;
+                            g.ground.stamp.shape = match png.shape {
+                                forest_core::preset::PngShape::Circle => dz_core::maskmod::StampShape::Circle,
+                                forest_core::preset::PngShape::Square => dz_core::maskmod::StampShape::Square,
+                                forest_core::preset::PngShape::Diamond => dz_core::maskmod::StampShape::Diamond,
+                                forest_core::preset::PngShape::Blob => dz_core::maskmod::StampShape::Blob,
+                            };
+                            g.project = p;
+                        }
                     }
                 }
                 if ui.button(t("Load zone presets...")).on_hover_text("zones.json, presets_user.json").clicked() {
@@ -173,6 +186,21 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     }
                 }
             });
+            // The ground under the trees, with the settings DayZ Forests has for its tree layer.
+            ui.checkbox(&mut g.ground.enabled, t("Paint the ground under the trees")).on_hover_text(t("Kept as a mask modifier of this generator: running it again repaints it, deleting it brings the mask back."));
+            if g.ground.enabled {
+                row(ui, &t("Surface"), |ui| {
+                    let shown = if g.ground.surface.is_empty() { t("(none)") } else { g.ground.surface.clone() };
+                    egui::ComboBox::from_id_salt("ground_surface").selected_text(shown).show_ui(ui, |ui| {
+                        for n in &cx.layers { ui.selectable_value(&mut g.ground.surface, n.clone(), n); }
+                    });
+                });
+                let own = g.project.species_layers.len();
+                if own > 0 { ui.weak(tf("{0} species have a surface of their own in the forest project and keep it", &[&own.to_string()])); }
+                ui.weak(t("Models with a surface assigned in the asset browser get that one."));
+                crate::maskmods::stamp_ui(ui, &mut g.ground.stamp, "ground_shape");
+                ui.separator();
+            }
             let p = &mut g.project;
             ui.weak(tf("{0} species, {1} areas, {2} zones in the project", &[&p.species.len().to_string(), &p.areas.len().to_string(), &p.zones.len().to_string()]));
             row(ui, &t("Preset in shapes"), |ui| preset_combo(ui, "area", &mut g.preset, &cx.presets));
@@ -546,7 +574,9 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             row(ui, &t("Detail"), |ui| { ui.add(egui::Slider::new(&mut g.octaves, 1..=12)); });
             number(ui, t("Roughness"), &mut g.roughness, 0.2..=0.8);
             number(ui, t("Warp"), &mut g.warp, 0.0..=2000.0);
+            number(ui, t("Worn slopes"), &mut g.erosion, 0.0..=1.5);
             number(ui, t("Blend"), &mut g.blend, 0.0..=1.0);
+            number(ui, t("Edge blend in a shape"), &mut g.edge, 0.0..=1000.0);
         }
         GeneratorKind::Erosion(e) => {
             row(ui, &t("Droplets"), |ui| { ui.add(egui::Slider::new(&mut e.droplets, 10_000..=4_000_000).logarithmic(true)); });
@@ -1265,6 +1295,9 @@ pub fn delete_instance(app: &mut App, id: u64, with_objects: bool) {
         app.selection_rev += 1;
     }
     if app.selected_generator == Some(id) { app.selected_generator = None; }
+    if let (true, Some(m)) = (with_objects, g.mask_modifier) {
+        crate::maskmods::remove(app, m, &t("Delete generator"));
+    }
     if let (true, Some(m)) = (with_objects, g.modifier) {
         app.set_modifiers(&t("Delete generator"), |list| list.retain(|x| x.id != m));
     }
@@ -1322,7 +1355,7 @@ fn add_kind(app: &mut App, kind: GeneratorKind, name: String, drop: Option<Dropp
         GeneratorKind::Fence(g) => !g.model.is_empty() || g.preset.is_some(),
         _ => true,
     };
-    doc.world.generators.push(GeneratorInstance { id, name, kind, target, objects: Vec::new(), modifier: None, removed: Vec::new() });
+    doc.world.generators.push(GeneratorInstance { id, name, kind, target, objects: Vec::new(), modifier: None, mask_modifier: None, removed: Vec::new() });
     doc.history.push(t("Add generator"), Change::Generators(before));
     app.selected_generator = Some(id);
     app.selected_modifier = None;
@@ -1396,12 +1429,31 @@ pub fn run_generator(app: &mut App, id: u64) {
                 }).collect()).unwrap_or_default();
                 gen::KeepOut { roads: if forest.avoid_roads.is_some() { world.routes.iter().map(|r| r.centerline.clone()).collect() } else { Vec::new() }, road_margin: forest.avoid_roads.unwrap_or(0.0), buildings, building_margin: forest.avoid_buildings.unwrap_or(0.0) }
             });
+            let ground = forest.ground.clone();
+            let species_layers = forest.project.species_layers.clone();
             let req = gen::ForestRequest { project: forest.project, zones, areas, area_density: None, satellite, color_filter: forest.color_filter, edge_presets: forest.edge_presets, user_presets: forest.user_presets, skip_surfaces, keep_out };
             app.spawn(label, move |job| {
                 let (objects, notes) = gen::generate_forest_layers(&mut lite, &assets, req, layer_shapes, &layers, job)?;
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| {
+                    // The ground under the trees, as the generator's own mask modifier.
+                    let stamps = a.doc.as_ref().filter(|_| ground.enabled).map(|d| crate::maskmods::forest_stamps(&d.world, &a.library, &models, &objects, &ground, &species_layers));
+                    let name = a.doc.as_ref().and_then(|d| d.world.generators.iter().find(|g| g.id == id)).map(|g| g.name.clone()).unwrap_or_default();
                     store_generated(a, id, models, objects);
+                    match stamps {
+                        Some(stamps) if !stamps.is_empty() => {
+                            let tiles = a.doc.as_ref().map(|d| dz_core::maskmod::stamp_tiles(&stamps, &ground.stamp, d.world.mask.width, d.world.mask.height, d.world.meta.size_m())).unwrap_or_default();
+                            crate::maskmods::store(a, Some(id), dz_core::maskmod::MaskKind::Forest, name.clone(), tiles);
+                            if let Some(d) = a.doc.as_mut() { d.history.group_last(2, name); }
+                        }
+                        Some(_) => a.warn(t("The forest has no surface to paint under its trees: choose one in the generator")),
+                        None => {
+                            // Painting was switched off: the ground of an earlier run goes.
+                            if let Some(m) = a.doc.as_ref().and_then(|d| d.world.generators.iter().find(|g| g.id == id)).and_then(|g| g.mask_modifier) {
+                                crate::maskmods::remove(a, m, &name);
+                            }
+                        }
+                    }
                     for n in notes { a.info(n); }
                 }) as Finish)
             });
@@ -1414,7 +1466,16 @@ pub fn run_generator(app: &mut App, id: u64) {
                 w.mask.data = gen::auto_paint(&w, &rules, seed as u64, index.as_ref(), job);
                 dz_core::mask_limit::enforce(&mut w);
                 let data = w.mask.data;
-                Ok(Box::new(move |a: &mut App| a.apply_mask(&name, data)) as Finish)
+                Ok(Box::new(move |a: &mut App| {
+                    // What the rules changed becomes the generator's mask modifier; the pixels of
+                    // its earlier run stay part of it, so running again replaces them.
+                    let Some(d) = a.doc.as_ref() else { return };
+                    if d.world.mask.data.len() != data.len() { return; }
+                    let old = d.world.generators.iter().find(|g| g.id == id).and_then(|g| g.mask_modifier);
+                    let tiles = dz_core::maskmod::diff_tiles(&d.world.mask.data, &data, d.world.mask.width, d.world.mask.height, |x, y| old.is_some_and(|m| d.world.mask_covered(m, x, y)));
+                    crate::maskmods::store(a, Some(id), dz_core::maskmod::MaskKind::Paint, name.clone(), tiles);
+                    a.info(name);
+                }) as Finish)
             });
         }
         GeneratorKind::Settlement(rule) => {
@@ -1535,10 +1596,15 @@ pub fn run_generator(app: &mut App, id: u64) {
                 }) as Finish)
             });
         }
-        GeneratorKind::Terrain(p) => height_job(app, label, move |h, job| gen::generate_terrain(h, &p, job)),
-        GeneratorKind::Erosion(p) => height_job(app, label, move |h, job| gen::hydraulic_erosion(h, &p, job)),
-        GeneratorKind::ThermalErosion { iterations, talus } => height_job(app, label, move |h, job| gen::thermal_erosion(h, iterations, talus, job)),
-        GeneratorKind::Terraces { step, sharpness } => height_job(app, label, move |h, _| gen::terrace(h, step, sharpness)),
+        GeneratorKind::Terrain(p) => {
+            let size = world.meta.size_m();
+            let (area, frame) = area_bounds(&polygons, size);
+            let (edge, inside) = (p.edge, area.is_some());
+            height_job(app, label, area, edge, move |h, job| gen::generate_terrain_in(h, &p, inside.then_some(frame), job))
+        }
+        GeneratorKind::Erosion(p) => { let area = area_bounds(&polygons, world.meta.size_m()).0; height_job(app, label, area, AREA_EDGE, move |h, job| gen::hydraulic_erosion(h, &p, job)) }
+        GeneratorKind::ThermalErosion { iterations, talus } => { let area = area_bounds(&polygons, world.meta.size_m()).0; height_job(app, label, area, AREA_EDGE, move |h, job| gen::thermal_erosion(h, iterations, talus, job)) }
+        GeneratorKind::Terraces { step, sharpness } => { let area = area_bounds(&polygons, world.meta.size_m()).0; height_job(app, label, area, AREA_EDGE, move |h, _| gen::terrace(h, step, sharpness)) }
     }
 }
 
@@ -1596,12 +1662,21 @@ fn area_bounds(polygons: &[MapShape], size: f32) -> (Option<dz_core::shapes::Pol
     (Some(dz_core::shapes::PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: polygons.to_vec() })), b)
 }
 
-fn height_job(app: &mut App, title: String, f: impl FnOnce(&mut dz_core::terrain::Heightmap, &dz_core::Job) + Send + 'static) {
+/// Width over which erosion and terraces fade out at the edge of a shape, in metres.
+const AREA_EDGE: f32 = 40.0;
+
+/// Runs a terrain generator on the base terrain. With an area the result is kept only inside
+/// it, fading into the terrain around over `edge` metres.
+fn height_job(app: &mut App, title: String, area: Option<dz_core::shapes::PolygonIndex>, edge: f32, f: impl FnOnce(&mut dz_core::terrain::Heightmap, &dz_core::Job) + Send + 'static) {
     let Some(doc) = &app.doc else { return };
     let mut base = doc.world.base.clone();
     let label = title.clone();
     app.spawn(title, move |job| {
+        let original = area.as_ref().map(|_| base.clone());
         f(&mut base, job);
+        if let (Some(area), Some(original)) = (&area, &original) {
+            gen::blend_in_area(original, &mut base, area, edge);
+        }
         job.check()?;
         Ok(Box::new(move |a: &mut App| a.apply_heights(&label, base.data)) as Finish)
     });
