@@ -175,6 +175,8 @@ pub struct LineSettings {
     pub grading: dz_core::world::RoadGrading,
     /// Clicks add points to this end of the selected route: true for its start.
     pub extend: Option<bool>,
+    /// A route lengthened at one end has only the new stretch fitted.
+    pub extend_only: bool,
     pub selected_route: Option<usize>,
     pub selected_point: Option<usize>,
     /// Waypoints before the drag in progress.
@@ -264,6 +266,7 @@ pub enum Dialog {
     ProjectSettings,
     About,
     Shortcuts,
+    Delete(crate::deleting::Plan),
     Confirm { text: String, action: fn(&mut App) },
 }
 
@@ -292,6 +295,8 @@ pub struct App {
 
     pub mode: Mode,
     pub gizmo: Gizmo,
+    /// The gizmo moves and turns along the axes of the object instead of the world.
+    pub gizmo_local: bool,
     pub view_mode: ViewMode,
     pub shading3: Shading,
     pub shading2: Shading,
@@ -433,13 +438,13 @@ impl App {
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
             doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
-            mode: Mode::Select, gizmo: Gizmo::Move, view_mode: ViewMode::Perspective,
+            mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), only_on: None, picking: false },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0 },
-            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
+            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
@@ -489,7 +494,7 @@ impl App {
         let world = self.doc.as_ref().map(|d| &d.world);
         let forbidden = self.line.forbidden.and_then(|i| world?.shape_layers.get(i)).map(|l| l.shapes.iter().filter(|s| s.kind == ShapeKind::Polygon).map(|s| s.points.clone()).collect()).unwrap_or_default();
         let roads = world.map(|w| w.routes.iter().filter(|r| !dayz_road_tool::rails::is_track_family(&r.family)).map(|r| r.centerline.clone()).collect()).unwrap_or_default();
-        gen::RouteRequest { family, points, terrain_route, settings, forbidden, roads }
+        gen::RouteRequest { family, points, terrain_route, settings, forbidden, roads, start: None }
     }
 
     /// Makes the terrain modifier of a route match its line and options. Returns what to undo.
@@ -628,17 +633,19 @@ impl App {
                 r.grade |= !road.decks.is_empty();
                 r.decks = road.decks;
                 r.profile = road.profile;
+                r.parts = road.parts;
                 i
             }
             None => {
                 let n = doc.world.routes.len() + 1;
                 let kind = if dayz_road_tool::rails::is_track_family(&req.family) { "Track" } else { "Road" };
-                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, id: dz_core::library::new_id(), grading: self.line.grading, profile: road.profile, decks: road.decks.clone(), terrain_route: req.terrain_route, settings: req.settings, grade: grade || !road.decks.is_empty(), grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None });
+                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, id: dz_core::library::new_id(), grading: self.line.grading, profile: road.profile, decks: road.decks.clone(), terrain_route: req.terrain_route, settings: req.settings, grade: grade || !road.decks.is_empty(), grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None, parts: road.parts.clone(), fitted: Vec::new() });
                 doc.world.routes.len() - 1
             }
         };
         // A designed line stands on its earthworks.
         if !doc.world.routes[index].profile.is_empty() { doc.world.routes[index].grade = true; }
+        doc.world.routes[index].fitted = doc.world.routes[index].points.clone();
         let label = t("Build road");
         doc.history.push(label.clone(), Change::Objects(change));
         doc.history.push(label.clone(), Change::Routes(previous));
@@ -665,8 +672,184 @@ impl App {
             self.warn(t("Another task is still running"));
             return;
         }
+        if self.line.extend_only {
+            if let Some((at_end, from)) = extension(&r) {
+                self.extend_route(i, at_end, from, before);
+                return;
+            }
+        }
         let req = self.route_request(r.family, r.points, r.terrain_route, r.settings);
         self.start_route(req, Some(i), Some(before), false);
+    }
+
+    /// Fits only the stretch added at one end of route `i`, from its open end, and joins it
+    /// to the models already there. `from` is how many of the new waypoints come first.
+    fn extend_route(&mut self, i: usize, at_end: bool, new: Vec<[f32; 2]>, before: Vec<[f32; 2]>) {
+        let Some(r) = self.doc.as_ref().and_then(|d| d.world.routes.get(i)).cloned() else { return };
+        let catalog = self.road_catalog.clone();
+        // The open end, with its end piece taken off: from the pieces the route keeps, or for
+        // a route imported or built before it kept them, from its models.
+        let mut parts = r.parts.clone();
+        let found = if parts.is_empty() {
+            self.open_end_from_objects(&r, at_end)
+        } else {
+            let cap = if at_end { parts.last() } else { parts.first() }.filter(|p| dayz_road_tool::roads::is_cap(p, &catalog)).cloned();
+            if cap.is_some() {
+                if at_end { parts.pop(); } else { parts.remove(0); }
+            }
+            let port = if at_end { dayz_road_tool::roads::endpoint(&parts, &catalog) } else { dayz_road_tool::roads::startpoint(&parts, &catalog) };
+            port.ok().map(|port| (port, cap.and_then(|c| self.cap_object(&r, &c))))
+        };
+        let Some((port, cap)) = found else {
+            self.warn(t("The open end of the route was not found among its models, so the whole route is fitted again"));
+            let req = self.route_request(r.family, r.points, r.terrain_route, r.settings);
+            self.start_route(req, Some(i), Some(before), false);
+            return;
+        };
+        // The road leaves the old end along its heading and turns towards the new points on a
+        // curve it can take, so a point ahead of the end gives that curve room.
+        let mut points = vec![[port.p[0] as f32, port.p[1] as f32]];
+        if let Some(&next) = new.first() {
+            let (dx, dz) = (next[0] as f64 - port.p[0], next[1] as f64 - port.p[1]);
+            let dist = dx.hypot(dz);
+            let turn = (port.outward[0] * dz - port.outward[1] * dx).atan2(port.outward[0] * dx + port.outward[1] * dz).abs();
+            if dist > 1.0 && turn > 0.05 {
+                // The curve's tangent may take at most 45 % of each leg next to it.
+                let ahead = (r.settings.min_radius * (turn * 0.55).min(1.3).tan() / 0.4 + 2.0).min(dist * 0.5);
+                points.push([(port.p[0] + port.outward[0] * ahead) as f32, (port.p[1] + port.outward[1] * ahead) as f32]);
+            }
+        }
+        points.extend(new);
+        let mut req = self.route_request(r.family.clone(), points, r.terrain_route, r.settings.clone());
+        req.start = Some(port);
+        let Some(doc) = &self.doc else { return };
+        let mut lite = doc.world.lite();
+        let db = self.db.clone();
+        self.spawn(t("Extending road"), move |job| {
+            let built = gen::build_route(&mut lite, &db, &req, &catalog, job);
+            let models: Vec<String> = lite.objects.models.iter().map(|m| m.path.clone()).collect();
+            Ok(Box::new(move |app: &mut App| match built {
+                Ok(road) => app.store_extension(i, at_end, cap, parts, road, models),
+                Err(e) => {
+                    if let Some(d) = &mut app.doc {
+                        if let Some(r) = d.world.routes.get_mut(i) { r.points = before; }
+                    }
+                    app.error(format!("{}: {e:#}", t("The new stretch could not be fitted; Fit again with the option off fits the whole route")));
+                }
+            }) as Finish)
+        });
+    }
+
+    /// Joins a stretch fitted from one end of route `i` to it: its end piece goes, the new
+    /// models come, and everything else stays as it was.
+    /// The object of an end piece the route keeps among its pieces.
+    fn cap_object(&self, r: &dz_core::world::RoadRoute, cap: &dayz_road_tool::roads::PlacedPart) -> Option<u32> {
+        let w = &self.doc.as_ref()?.world;
+        let closing = gen::closing_cap(cap.position, cap.rotation).0;
+        r.objects.iter().copied().filter(|id| w.objects.get(*id).is_some_and(|o| w.objects.model_path(o).to_ascii_lowercase().ends_with(&cap.model.to_ascii_lowercase()))).min_by(|a, b| {
+            let d = |id: &u32| { let o = w.objects.get(*id).unwrap(); [cap.position, closing].iter().map(|p| (o.x as f64 - p[0]).hypot(o.z as f64 - p[1])).fold(f64::MAX, f64::min) };
+            d(a).total_cmp(&d(b))
+        })
+    }
+
+    /// The open end of a route that keeps no pieces, from the model at that end of its centre
+    /// line: where the road goes on and which way, and the end piece to take off there.
+    fn open_end_from_objects(&self, r: &dz_core::world::RoadRoute, at_end: bool) -> Option<(dayz_road_tool::geometry::Port, Option<u32>)> {
+        use dayz_road_tool::geometry::Port;
+        use dayz_road_tool::roads::{endpoint, startpoint, PlacedPart};
+        let w = &self.doc.as_ref()?.world;
+        let line: Vec<[f64; 2]> = r.centerline.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
+        if line.len() < 2 { return None; }
+        let end = if at_end { *line.last()? } else { line[0] };
+        let to_line = |p: [f64; 2]| line.windows(2).map(|s| {
+            let (ab, ap) = ([s[1][0] - s[0][0], s[1][1] - s[0][1]], [p[0] - s[0][0], p[1] - s[0][1]]);
+            let t = ((ap[0] * ab[0] + ap[1] * ab[1]) / (ab[0] * ab[0] + ab[1] * ab[1]).max(1e-9)).clamp(0.0, 1.0);
+            (p[0] - s[0][0] - ab[0] * t).hypot(p[1] - s[0][1] - ab[1] * t)
+        }).fold(f64::MAX, f64::min);
+        let mut best: Option<(f64, Port, Option<u32>)> = None;
+        for id in &r.objects {
+            let Some(o) = w.objects.get(*id) else { continue };
+            if (o.x as f64 - end[0]).hypot(o.z as f64 - end[1]) > 40.0 { continue; }
+            let path = w.objects.model_path(o);
+            let file = path.rsplit('\\').next().unwrap_or(path).to_ascii_lowercase();
+            let Some(item) = self.road_catalog.iter().find(|c| c.path.rsplit(['\\', '/']).next().unwrap_or(&c.path).eq_ignore_ascii_case(&file)) else { continue };
+            let cap = item.category == 6;
+            // The object stands at the piece's origin, or at its middle for pieces fitted to the ground.
+            let c = self.db.get(path).center;
+            let m = dz_core::objects::rotation(o.yaw, o.pitch, o.roll, 1.0);
+            let origins = [[o.x as f64, o.z as f64], [(o.x + m[0][0] * c[0] + m[2][0] * c[2]) as f64, (o.z + m[0][2] * c[0] + m[2][2] * c[2]) as f64]];
+            for origin in origins {
+                for closing in [false, true] {
+                    if closing && !cap { continue; }
+                    let (position, rotation) = if closing { gen::closing_cap_placement(origin, o.yaw as f64) } else { (origin, o.yaw as f64) };
+                    let part = [PlacedPart { model: item.path.clone(), reverse: false, position, rotation }];
+                    let (Ok(entry), Ok(exit)) = (startpoint(&part, &self.road_catalog), endpoint(&part, &self.road_catalog)) else { continue };
+                    for (open, inner) in [(exit, entry), (entry, exit)] {
+                        let score = (open.p[0] - end[0]).hypot(open.p[1] - end[1]) + to_line(inner.p);
+                        // Without its end piece the road goes on from the cap's inner side.
+                        let found = if cap { (Port { p: inner.p, outward: [-inner.outward[0], -inner.outward[1]] }, Some(*id)) } else { (open, None) };
+                        if best.as_ref().is_none_or(|b| score < b.0) { best = Some((score, found.0, found.1)); }
+                    }
+                }
+            }
+        }
+        best.filter(|b| b.0 < 1.5).map(|b| (b.1, b.2))
+    }
+
+    fn store_extension(&mut self, i: usize, at_end: bool, cap: Option<u32>, kept: Vec<dayz_road_tool::roads::PlacedPart>, road: gen::RoadResult, models: Vec<String>) {
+        let Some(doc) = &mut self.doc else { return };
+        let Some(route) = doc.world.routes.get(i).cloned() else { return };
+        let previous = doc.world.routes.clone();
+        let mut change = Vec::new();
+        let mut objects = route.objects.clone();
+        // The end piece that closed the road where it now goes on.
+        if let Some(id) = cap {
+            if let Some(o) = doc.world.objects.remove(id) { change.push((id, Some(o), None)); }
+            objects.retain(|x| *x != id);
+        }
+        let layer = route.objects.first().and_then(|id| doc.world.objects.get(*id)).map(|o| o.layer()).unwrap_or_else(|| doc.world.target_layer());
+        let map: Vec<u32> = models.iter().map(|m| doc.world.objects.intern(m)).collect();
+        for mut o in road.objects {
+            o.model = map[o.model as usize];
+            o.set_layer(layer);
+            let id = doc.world.objects.insert(o);
+            change.push((id, None, Some(o)));
+            objects.push(id);
+        }
+        let r = &mut doc.world.routes[i];
+        let mut line = road.centerline;
+        let whole = !kept.is_empty();
+        let nearest = |l: &[[f32; 2]], p: [f32; 2]| (0..l.len()).min_by(|a, b| { let d = |k: &usize| (l[*k][0] - p[0]).hypot(l[*k][1] - p[1]); d(a).total_cmp(&d(b)) }).unwrap_or(0);
+        if at_end {
+            if let Some(&joint) = line.first() { let k = nearest(&r.centerline, joint); r.centerline.truncate(k + 1); }
+            r.centerline.extend(line.into_iter().skip(1));
+            r.parts = if whole { kept.into_iter().chain(road.parts).collect() } else { Vec::new() };
+            r.profile.extend(road.profile);
+        } else {
+            if let Some(&joint) = line.first() { let k = nearest(&r.centerline, joint); r.centerline.drain(..k); }
+            line.reverse();
+            line.pop();
+            r.centerline = line.into_iter().chain(r.centerline.drain(..)).collect();
+            r.parts = if whole { dayz_road_tool::roads::flip(&road.parts).into_iter().chain(kept).collect() } else { Vec::new() };
+            let mut profile = road.profile;
+            profile.reverse();
+            r.profile = profile.into_iter().chain(r.profile.drain(..)).collect();
+        }
+        r.decks.extend(road.decks);
+        r.objects = objects;
+        r.fitted = r.points.clone();
+        let label = t("Extend road");
+        doc.history.push(label.clone(), Change::Objects(change));
+        doc.history.push(label.clone(), Change::Routes(previous));
+        doc.dirty.objects = true;
+        let parts = match self.sync_route_and_crossings(i) {
+            Some(before) => {
+                self.doc.as_mut().unwrap().history.push(label.clone(), Change::Modifiers(before));
+                3
+            }
+            None => 2,
+        };
+        self.doc.as_mut().unwrap().history.group_last(parts, label);
     }
 
     pub fn delete_route(&mut self, i: usize) {
@@ -1186,13 +1369,13 @@ impl App {
     pub fn delete_selection(&mut self) {
         match self.whole.take() {
             Some(SelectedWhole::Route(id)) => {
-                if let Some(i) = self.doc.as_ref().and_then(|d| d.world.routes.iter().position(|r| r.id == id)) { self.delete_route(i); }
+                crate::deleting::request(self, crate::deleting::Target::Route(id));
                 self.selection.clear();
                 self.selection_rev += 1;
                 return;
             }
             Some(SelectedWhole::Generator(id)) => {
-                crate::library_ui::delete_instance(self, id, true);
+                crate::deleting::request(self, crate::deleting::Target::Generator(id));
                 self.selection.clear();
                 self.selection_rev += 1;
                 return;
@@ -1971,4 +2154,67 @@ fn route_decks(world: &dz_core::world::World, i: usize) -> Vec<dz_core::world::B
         decks.extend(gen::crossing_decks(&route.centerline, &line, &gaps, lift, &route.decks));
     }
     decks
+}
+
+/// When a route was only lengthened at one end since its last fit: whether at its end, and
+/// its new waypoints beyond the old end, nearest first.
+fn extension(r: &dz_core::world::RoadRoute) -> Option<(bool, Vec<[f32; 2]>)> {
+    let (old, now) = (&r.fitted, &r.points);
+    if r.parts.is_empty() || old.len() < 2 {
+        return beyond_centerline(r);
+    }
+    if now.len() <= old.len() {
+        return None;
+    }
+    let extra = now.len() - old.len();
+    if now[..old.len()] == old[..] {
+        return Some((true, now[old.len()..].to_vec()));
+    }
+    if now[extra..] == old[..] {
+        return Some((false, now[..extra].iter().rev().copied().collect()));
+    }
+    None
+}
+
+/// For a route without a record of its last fit: the waypoints past either end of its centre
+/// line are the new ones, when there are some at one end only.
+fn beyond_centerline(r: &dz_core::world::RoadRoute) -> Option<(bool, Vec<[f32; 2]>)> {
+    let (line, points) = (&r.centerline, &r.points);
+    let (Some(&first), Some(&last)) = (line.first(), line.last()) else { return None };
+    let d = |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).hypot(a[1] - b[1]);
+    let near = |end: [f32; 2]| (0..points.len()).min_by(|a, b| d(points[*a], end).total_cmp(&d(points[*b], end))).filter(|k| d(points[*k], end) < 15.0);
+    let (at_start, at_end) = (near(first)?, near(last)?);
+    match (at_start > 0, at_end + 1 < points.len()) {
+        (false, true) => Some((true, points[at_end + 1..].to_vec())),
+        (true, false) => Some((false, points[..at_start].iter().rev().copied().collect())),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod extension_tests {
+    #[test]
+    fn a_route_lengthened_at_one_end_is_told_apart() {
+        let mut r: dz_core::world::RoadRoute = serde_json::from_value(serde_json::json!({
+            "name": "r", "family": "f", "points": [[0.0, 0.0], [10.0, 0.0]], "centerline": [], "objects": [],
+            "terrain_route": false, "settings": dayz_road_tool::document::RoutingSettings::default(),
+        })).unwrap();
+        r.fitted = r.points.clone();
+        r.parts = vec![dayz_road_tool::roads::PlacedPart { model: "a".into(), reverse: false, position: [0.0, 0.0], rotation: 0.0 }];
+        r.points.push([20.0, 5.0]);
+        assert_eq!(super::extension(&r), Some((true, vec![[20.0, 5.0]])));
+        r.points = vec![[-20.0, 0.0], [-10.0, 0.0], [0.0, 0.0], [10.0, 0.0]];
+        assert_eq!(super::extension(&r), Some((false, vec![[-10.0, 0.0], [-20.0, 0.0]])));
+        // A point moved inside the route needs the whole fit.
+        r.points = vec![[0.0, 1.0], [10.0, 0.0], [20.0, 0.0]];
+        assert_eq!(super::extension(&r), None);
+        // A route that keeps no record is told from its centre line.
+        r.parts.clear();
+        r.fitted.clear();
+        r.centerline = vec![[0.0, 0.0], [5.0, 0.0], [10.0, 0.0]];
+        r.points = vec![[0.0, 0.0], [10.0, 0.0], [30.0, 0.0], [40.0, 5.0]];
+        assert_eq!(super::extension(&r), Some((true, vec![[30.0, 0.0], [40.0, 5.0]])));
+        r.points = vec![[-30.0, 0.0], [0.0, 0.0], [10.0, 0.0]];
+        assert_eq!(super::extension(&r), Some((false, vec![[-30.0, 0.0]])));
+    }
 }

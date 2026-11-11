@@ -211,13 +211,7 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str) {
         }
     });
     if let Some(id) = delete {
-        remove(app, id, &t("Delete mask modifier"));
-        // The generator that made it starts afresh the next time it runs.
-        if let Some(d) = app.doc.as_mut() {
-            for g in d.world.generators.iter_mut().filter(|g| g.mask_modifier == Some(id)) {
-                g.mask_modifier = None;
-            }
-        }
+        crate::deleting::request(app, crate::deleting::Target::MaskModifier(id));
     } else if let Some((id, on)) = toggle {
         let Some(d) = app.doc.as_mut() else { return };
         let before = d.world.mask_mods.modifiers.clone();

@@ -1092,6 +1092,111 @@ fn fit_bridged(
     s: &RoutingSettings,
     allowed: impl Fn(Point, Point) -> bool + Copy,
 ) -> Result<Planned> {
+    fit_bridged_with(path, spans, kit, catalog, |stretch| crate::roads::fit_path(stretch, family, catalog, s, allowed))
+}
+
+/// [`fit_bridged`] for a road fitted straight along its waypoints: `points` holds the
+/// waypoints with the ends of every span among them, as [`waypoint_spans`] gives them.
+pub fn fit_waypoints_bridged(
+    points: &[Point],
+    spans: &[(Point, Point, usize)],
+    kit: &crate::rails::BridgeKit,
+    family: &str,
+    catalog: &[crate::roads::CatalogPart],
+    s: &RoutingSettings,
+) -> Result<Planned> {
+    fit_bridged_with(points, spans, kit, catalog, |stretch| crate::roads::fit(stretch, family, catalog, s, |_, _| true))
+}
+
+/// Where a road drawn straight along its waypoints needs bridges: on a straight leg, from the
+/// brink where the ground falls away steeper than the maximum grade, or into water, to the
+/// first point the deck can land on within `bridge_max`, with the supports reaching the
+/// ground and the gap deeper than an embankment of `max_fill` could fill. Returns the
+/// waypoints with the ends of the spans put in, and the spans.
+pub fn waypoint_spans(
+    points: &[Point],
+    ground: impl Fn(Point) -> f64,
+    water: impl Fn(Point) -> bool,
+    kit: &crate::rails::BridgeKit,
+    s: &RoutingSettings,
+) -> (Vec<Point>, Vec<(Point, Point, usize)>) {
+    let module = kit.length();
+    let mut out = points.first().copied().into_iter().collect::<Vec<_>>();
+    let mut spans = Vec::new();
+    if module < 1. || s.bridge_max < module || s.bridge_height <= 0. || points.len() < 2 {
+        return (points.to_vec(), spans);
+    }
+    let grade = (s.max_grade / 100.).max(0.01);
+    let most = ((s.bridge_max / module).floor() as usize).min(kit.max_pieces).max(1);
+    let reach = kit.pier.min(s.bridge_height);
+    const STEP: f64 = 2.;
+    for w in points.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let length = norm(sub(b, a));
+        if length < module {
+            out.push(b);
+            continue;
+        }
+        let dir = mul(sub(b, a), 1. / length);
+        let at = |t: f64| add(a, mul(dir, t));
+        let mut t = 0.;
+        while t + module <= length {
+            let deck = ground(at(t));
+            // Only at a brink: the ground just ahead drops away, or water begins.
+            // The deck starts on the bank, not already part way down the side.
+            let bank = t < STEP || (ground(at(t - STEP)) - deck).abs() <= grade * STEP * 2.;
+            let drops = bank && (ground(at(t + STEP)) < deck - grade * STEP * 2. || (!water(at(t)) && water(at(t + STEP))));
+            let found = drops.then(|| (1..=most).find_map(|count| {
+                let span = count as f64 * module;
+                if t + span > length {
+                    return None;
+                }
+                let landing = ground(at(t + span));
+                if (landing - deck).abs() > grade * span || water(at(t + span)) {
+                    return None;
+                }
+                // It lands on the other bank, where the road can go on.
+                if t + span + STEP <= length && (ground(at(t + span + STEP)) - landing).abs() > grade * STEP * 2. {
+                    return None;
+                }
+                let steps = (span / STEP).ceil() as usize;
+                let (mut deepest, mut wet) = (0f64, false);
+                for i in 1..steps {
+                    let f = i as f64 / steps as f64;
+                    let p = at(t + span * f);
+                    let surface = deck + (landing - deck) * f;
+                    let z = ground(p);
+                    wet |= water(p);
+                    if z > surface + 0.5 || surface - z > reach {
+                        return None;
+                    }
+                    deepest = deepest.max(surface - z);
+                }
+                (wet || deepest > s.max_fill.max(1.)).then_some((count, span))
+            })).flatten();
+            match found {
+                Some((count, span)) => {
+                    let (p, q) = (at(t), at(t + span));
+                    if norm(sub(p, *out.last().unwrap())) > 1e-6 { out.push(p); }
+                    out.push(q);
+                    spans.push((p, q, count));
+                    t += span + STEP;
+                }
+                None => t += STEP,
+            }
+        }
+        if norm(sub(b, *out.last().unwrap())) > 1e-6 { out.push(b); }
+    }
+    (out, spans)
+}
+
+fn fit_bridged_with(
+    path: &[Point],
+    spans: &[(Point, Point, usize)],
+    kit: &crate::rails::BridgeKit,
+    catalog: &[crate::roads::CatalogPart],
+    fit: impl Fn(&[Point]) -> Result<Vec<crate::roads::PlacedPart>>,
+) -> Result<Planned> {
     let at = |p: Point, from: usize| path[from..].iter().position(|q| norm(sub(*q, p)) < 1e-6).map(|i| i + from).context("Most poza trasą");
     let mut planned = Planned::default();
     let mut from = 0;
@@ -1102,7 +1207,7 @@ fn fit_bridged(
         if let Some(p) = start {
             stretch[0] = p;
         }
-        planned.parts.extend(crate::roads::fit_path(&stretch, family, catalog, s, allowed)?);
+        planned.parts.extend(fit(&stretch)?);
         let end = crate::roads::endpoint(&planned.parts, catalog)?.p;
         let d = sub(b, end);
         let (pieces, exit) = kit.lay(end, d[1].atan2(d[0]), count);
@@ -1114,7 +1219,7 @@ fn fit_bridged(
     if let Some(p) = start {
         stretch[0] = p;
     }
-    planned.parts.extend(crate::roads::fit_path(&stretch, family, catalog, s, allowed)?);
+    planned.parts.extend(fit(&stretch)?);
     Ok(planned)
 }
 /// Terrain route through `waypoints` fitted with models of `family`. The fitted models may
@@ -1943,6 +2048,31 @@ mod tests {
     }
 
     #[test]
+    fn a_road_along_its_waypoints_bridges_a_gorge_and_water() {
+        let kit = kit();
+        let s = RoutingSettings { bridge_max: 150., max_fill: 6., max_cut: 5., ..Default::default() };
+        let gorge = |p: Point| if (270. ..330.).contains(&p[0]) { 85. } else { 100. };
+        let (points, spans) = waypoint_spans(&[[100., 300.], [500., 300.]], gorge, |_| false, &kit, &s);
+        assert_eq!(spans.len(), 1, "{spans:?}");
+        let (p, q, count) = spans[0];
+        assert!(p[0] < 272. && q[0] > 330. && p[0] > 250., "{p:?} {q:?}");
+        assert!((norm(sub(q, p)) - count as f64 * 25.).abs() < 1e-6);
+        assert_eq!(points.len(), 4, "{points:?}");
+        // A dip an embankment can fill is left to the road.
+        let dip = |p: Point| if (270. ..330.).contains(&p[0]) { 96. } else { 100. };
+        assert!(waypoint_spans(&[[100., 300.], [500., 300.]], dip, |_| false, &kit, &s).1.is_empty());
+        // Water on flat ground still takes a bridge.
+        let river = |p: Point| (290. ..310.).contains(&p[0]);
+        assert_eq!(waypoint_spans(&[[100., 300.], [500., 300.]], |_| 100., river, &kit, &s).1.len(), 1);
+        // Deeper than the supports reach, the gorge takes no bridge rather than one landing on its floor.
+        let deep = |p: Point| if (270. ..330.).contains(&p[0]) { 70. } else { 100. };
+        assert!(waypoint_spans(&[[100., 300.], [500., 300.]], deep, |_| false, &kit, &s).1.is_empty());
+        // Without bridges allowed there is none.
+        let off = RoutingSettings { bridge_max: 0., ..s.clone() };
+        assert!(waypoint_spans(&[[100., 300.], [500., 300.]], gorge, |_| false, &kit, &off).1.is_empty());
+    }
+
+    #[test]
     fn a_viaduct_needs_a_gap_its_supports_can_reach() {
         // A 60 m wide, deep gorge across a flat plain.
         let dir = std::env::temp_dir().join(format!("road-gorge-{}", std::process::id()));
@@ -1979,6 +2109,13 @@ mod tests {
         let fill = RoutingSettings { max_fill: 6., max_grade: 100., ..s.clone() };
         let (_, spans) = find_spans(&shallow, &[a, b], &fill, &Obstacles::none(), Some(&kit), &cancel).unwrap();
         assert!(spans.is_empty(), "{spans:?}");
+        // Cut and fill limits that cannot make up the gorge still leave it to a bridge.
+        let earth = RoutingSettings { max_cut: 5., max_fill: 6., ..s.clone() };
+        let (_, spans) = find_spans(&reachable, &[a, b], &earth, &Obstacles::none(), Some(&kit), &cancel).unwrap();
+        assert_eq!(spans.len(), 1, "a bridge with earthworks allowed: {spans:?}");
+        // Only when earthworks cost next to nothing does going down into the gorge win.
+        let cheap = RoutingSettings { earth_weight: 0.05, ..earth.clone() };
+        assert!(find_spans(&reachable, &[a, b], &cheap, &Obstacles::none(), Some(&kit), &cancel).unwrap().1.is_empty());
         drop((reachable, too_deep, shallow));
         let _ = std::fs::remove_dir_all(dir);
     }

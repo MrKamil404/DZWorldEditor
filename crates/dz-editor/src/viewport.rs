@@ -38,7 +38,10 @@ enum Handle {
     X,
     Y,
     Z,
-    Ring,
+    /// Turning about the X, Y or Z axis of the gizmo.
+    RotX,
+    RotY,
+    RotZ,
     Scale,
     /// Turning with the mouse held on the object itself.
     Spin,
@@ -861,6 +864,34 @@ fn selection_pivot(app: &App) -> Option<V3> {
     (n > 0.0).then(|| mul(s, 1.0 / n))
 }
 
+/// The axes the gizmo moves and turns along: those of the world, or of the first selected
+/// object when local axes are chosen.
+fn gizmo_axes(app: &App) -> [V3; 3] {
+    let world = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    if !app.gizmo_local {
+        return world;
+    }
+    let Some(o) = app.selection.iter().next().and_then(|id| app.doc.as_ref()?.world.objects.get(*id)) else { return world };
+    let m = rotation(o.yaw, o.pitch, o.roll, 1.0);
+    [norm(m[0]), norm(m[1]), norm(m[2])]
+}
+
+/// Points of the ring the gizmo turns about `axis` with, and the two axes it spans.
+fn ring_points(p: V3, axes: &[V3; 3], axis: usize, radius: f32) -> Vec<V3> {
+    let (u, w) = (axes[(axis + 1) % 3], axes[(axis + 2) % 3]);
+    (0..=48).map(|k| {
+        let a = k as f32 / 48.0 * std::f32::consts::TAU;
+        add(p, add(mul(u, a.cos() * radius), mul(w, a.sin() * radius)))
+    }).collect()
+}
+
+/// Turns `v` about the unit `axis` by `angle` radians, by the right hand.
+fn turn(v: V3, axis: V3, angle: f32) -> V3 {
+    let (s, c) = angle.sin_cos();
+    let cr = crate::camera::cross(axis, v);
+    add(add(mul(v, c), mul(cr, s)), mul(axis, dot(axis, v) * (1.0 - c)))
+}
+
 fn gizmo_size(v: &View, p: V3) -> f32 {
     if v.ortho {
         v.mpp * 90.0
@@ -877,13 +908,14 @@ fn gizmo_handle(app: &App, v: &View, p: V3, mouse: Pos2) -> Option<(Handle, egui
             if (mouse - c).length() < 9.0 {
                 return Some((Handle::Plane, vec2(0.0, 0.0), [0.0; 3], 0.0));
             }
-            let mut axes = vec![(Handle::X, [1.0, 0.0, 0.0]), (Handle::Z, [0.0, 0.0, 1.0])];
-            if !v.ortho {
-                axes.push((Handle::Y, [0.0, 1.0, 0.0]));
-            }
-            for (h, a) in axes {
+            let g = gizmo_axes(app);
+            for (h, a) in [(Handle::X, g[0]), (Handle::Z, g[2]), (Handle::Y, g[1])] {
                 let Some(e) = v.project(add(p, mul(a, size))) else { continue };
                 let (dir, len) = ((e - c).normalized(), (e - c).length());
+                // An axis seen end on cannot be dragged along.
+                if len < 12.0 {
+                    continue;
+                }
                 let along = (mouse - c).dot(dir);
                 let off = ((mouse - c) - dir * along).length();
                 if along > 8.0 && along < len + 8.0 && off < 6.0 {
@@ -893,8 +925,22 @@ fn gizmo_handle(app: &App, v: &View, p: V3, mouse: Pos2) -> Option<(Handle, egui
             None
         }
         Gizmo::Rotate => {
-            let r = 80.0;
-            ((mouse - c).length() - r).abs().lt(&8.0).then_some((Handle::Ring, vec2(0.0, 0.0), [0.0; 3], 0.0))
+            // Three rings, one about each axis; seen from above only the one about the vertical.
+            let g = gizmo_axes(app);
+            let mut best: Option<(f32, Handle, V3)> = None;
+            for (k, h) in [(0, Handle::RotX), (1, Handle::RotY), (2, Handle::RotZ)] {
+                if v.ortho && !app.gizmo_local && k != 1 {
+                    continue;
+                }
+                let pts: Vec<Pos2> = ring_points(p, &g, k, size * 0.85).into_iter().filter_map(|q| v.project(q)).collect();
+                for s in pts.windows(2) {
+                    let d = near_segment(mouse, s[0], s[1]);
+                    if d < 7.0 && best.is_none_or(|b| d < b.0) {
+                        best = Some((d, h, g[k]));
+                    }
+                }
+            }
+            best.map(|(_, h, a)| (h, vec2(0.0, 0.0), a, 0.0))
         }
         Gizmo::Scale => (mouse - c).length().lt(&60.0).then_some((Handle::Scale, vec2(0.0, 0.0), [0.0; 3], 0.0)),
     }
@@ -932,13 +978,48 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
             dy = drag.axis.1[1] * along;
             dz = drag.axis.1[2] * along;
         }
-        Handle::Ring => {
+        Handle::RotX | Handle::RotY | Handle::RotZ => {
+            let axis = norm(drag.axis.1);
             let c = v.project(drag.pivot).unwrap_or(drag.start);
-            let (a0, a1) = ((drag.start - c).angle(), (mouse - c).angle());
-            dyaw = (a1 - a0).to_degrees();
-            if snap {
-                dyaw = (dyaw / 15.0).round() * 15.0;
+            let mut a = (mouse - c).angle() - (drag.start - c).angle();
+            a = (a + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+            // Which way the ring runs on screen decides which way the mouse turns it.
+            let (u, w) = { let n = if axis[1].abs() < 0.9 { [0.0, 1.0, 0.0] } else { [1.0, 0.0, 0.0] }; let u = norm(crate::camera::cross(n, axis)); (u, crate::camera::cross(axis, u)) };
+            let size = gizmo_size(v, drag.pivot);
+            if let (Some(pu), Some(pw)) = (v.project(add(drag.pivot, mul(u, size))), v.project(add(drag.pivot, mul(w, size)))) {
+                let (su, sw) = (pu - c, pw - c);
+                if su.x * sw.y - su.y * sw.x < 0.0 { a = -a; }
             }
+            let mut deg = a.to_degrees();
+            if snap { deg = (deg / 15.0).round() * 15.0; }
+            let angle = deg.to_radians();
+            let mut updates = Vec::new();
+            for (id, b) in &drag.before {
+                let mut o = *b;
+                let m = rotation(b.yaw, b.pitch, b.roll, 1.0);
+                let rows = [turn(m[0], axis, angle), turn(m[1], axis, angle), turn(m[2], axis, angle)];
+                let (yaw, pitch, roll, _) = dz_core::objects::angles(&rows);
+                (o.yaw, o.pitch, o.roll) = (yaw, pitch, roll);
+                // Several objects turn about their common middle.
+                let rel = [b.x - drag.pivot[0], ObjectStore::origin_y(b, &world.height) - drag.pivot[1], b.z - drag.pivot[2]];
+                let moved = turn(rel, axis, angle);
+                o.x = drag.pivot[0] + moved[0];
+                o.z = drag.pivot[2] + moved[2];
+                o.elevation = b.elevation + (moved[1] - rel[1]);
+                updates.push((*id, o));
+            }
+            for (id, o) in updates {
+                world.objects.update(id, o);
+                if let Some(r) = world.sync_attached(id) {
+                    area = Some(area.map_or(r, |a| a.union(r)));
+                }
+            }
+            doc.dirty.objects = true;
+            app.drag = Some(drag);
+            if let Some(r) = area {
+                app.height_changed(r);
+            }
+            return;
         }
         Handle::Scale => {
             factor = (1.0 + delta.x * 0.01).max(0.05);
@@ -1389,8 +1470,9 @@ fn draw_gizmo(app: &App, painter: &egui::Painter, v: &View, p: V3, hover: Option
     let color = |h: Handle, base: Color32| if hover == Some(h) { Color32::YELLOW } else { base };
     match app.gizmo {
         Gizmo::Move => {
-            for (h, a, col) in [(Handle::X, [1.0, 0.0, 0.0], Color32::from_rgb(230, 60, 60)), (Handle::Y, [0.0, 1.0, 0.0], Color32::from_rgb(70, 200, 70)), (Handle::Z, [0.0, 0.0, 1.0], Color32::from_rgb(70, 110, 240))] {
-                if v.ortho && h == Handle::Y {
+            let g = gizmo_axes(app);
+            for (h, a, col) in [(Handle::X, g[0], Color32::from_rgb(230, 60, 60)), (Handle::Y, g[1], Color32::from_rgb(70, 200, 70)), (Handle::Z, g[2], Color32::from_rgb(70, 110, 240))] {
+                if v.project(add(p, mul(a, size))).is_none_or(|e| (e - c).length() < 12.0) {
                     continue;
                 }
                 if let Some(e) = v.project(add(p, mul(a, size))) {
@@ -1402,7 +1484,21 @@ fn draw_gizmo(app: &App, painter: &egui::Painter, v: &View, p: V3, hover: Option
             painter.circle_filled(c, 7.0, color(Handle::Plane, Color32::from_rgb(230, 230, 80)));
         }
         Gizmo::Rotate => {
-            painter.circle_stroke(c, 80.0, Stroke::new(3.0_f32, color(Handle::Ring, Color32::from_rgb(70, 200, 70))));
+            let g = gizmo_axes(app);
+            for (k, h, col) in [(0, Handle::RotX, Color32::from_rgb(230, 60, 60)), (1, Handle::RotY, Color32::from_rgb(70, 200, 70)), (2, Handle::RotZ, Color32::from_rgb(70, 110, 240))] {
+                if v.ortho && !app.gizmo_local && k != 1 {
+                    continue;
+                }
+                let pts: Vec<Pos2> = ring_points(p, &g, k, size * 0.85).into_iter().filter_map(|q| v.project(q)).collect();
+                painter.add(egui::Shape::line(pts, Stroke::new(if hover == Some(h) { 3.5_f32 } else { 2.5 }, color(h, col))));
+            }
+            // The angle while turning.
+            if let Some(d) = app.drag.as_ref().filter(|d| matches!(d.handle, Handle::RotX | Handle::RotY | Handle::RotZ)) {
+                if let (Some(b), Some(o)) = (d.before.first(), app.selection.iter().next().and_then(|id| app.doc.as_ref()?.world.objects.get(*id))) {
+                    let text = format!("Y {:.1}°  P {:.1}°  R {:.1}°", o.yaw - b.1.yaw, o.pitch - b.1.pitch, o.roll - b.1.roll);
+                    painter.text(c + vec2(0.0, -size.min(400.0) * 0.0 - 24.0), egui::Align2::CENTER_BOTTOM, text, egui::FontId::proportional(12.0), Color32::WHITE);
+                }
+            }
         }
         Gizmo::Scale => {
             painter.rect_filled(Rect::from_center_size(c, vec2(14.0, 14.0)), 1.0, color(Handle::Scale, Color32::from_rgb(90, 170, 240)));
@@ -2427,6 +2523,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     for (a, g) in [(Action::GizmoMove, Gizmo::Move), (Action::GizmoRotate, Gizmo::Rotate), (Action::GizmoScale, Gizmo::Scale)] {
         if k(a) { app.gizmo = g; }
     }
+    if k(Action::GizmoSpace) { app.gizmo_local = !app.gizmo_local; }
     for (a, v) in [(Action::View3d, ViewMode::Perspective), (Action::View2d, ViewMode::Top), (Action::ViewSplit, ViewMode::Split)] {
         if k(a) { app.view_mode = v; }
     }
@@ -2811,6 +2908,18 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "save" => app.save(Some(arg.into())),
         "build" => app.build(false),
         "browse" => app.filter = arg,
+        // Asks to delete the first terrain modifier, mask modifier, generator or route.
+        "askdelete" => {
+            use crate::deleting::Target;
+            let target = app.doc.as_ref().and_then(|d| match arg.as_str() {
+                "mask" => d.world.mask_mods.modifiers.first().map(|m| Target::MaskModifier(m.id)),
+                "generator" => d.world.generators.first().map(|g| Target::Generator(g.id)),
+                "route" => d.world.routes.first().map(|r| Target::Route(r.id)),
+                _ => d.world.modifiers.first().map(|m| Target::Modifier(m.id)),
+            });
+            if let Some(t) = target { crate::deleting::request(app, t); }
+            eprintln!("GENSTATS modifiers={} objects={}", app.doc.as_ref().map_or(0, |d| d.world.modifiers.len()), app.doc.as_ref().map_or(0, |d| d.world.objects.len()));
+        }
         "browser" | "browsersel" | "browseradd" | "browserdrop" | "browsertemplates" | "browsertpladd" => crate::asset_browser::script(app, cmd, &arg),
         "log" => {
             for l in &app.log { eprintln!("LOG {}", l.text); }
@@ -3066,6 +3175,17 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     }
                     eprintln!("GENSTATS check {:?} profile={} grade={} decks={} ground_miss={miss:.2} cut={cut:.2} fill={fill:.2} objects={} object_gap={gap:.2}", r.name, r.profile.len(), r.grade, r.decks.len(), r.objects.len());
                     if let Some(p) = r.profile.get(r.profile.len() / 2) { eprintln!("GENSTATS mid {:?}", p); }
+                }
+            }
+        }
+        // Makes route n look like one imported or built before routes kept their pieces.
+        "routeforget" => {
+            if let Some(r) = app.doc.as_mut().and_then(|d| d.world.routes.get_mut(nums.first().map(|v| *v as usize).unwrap_or(0))) { r.parts.clear(); r.fitted.clear(); }
+        }
+        "routeobjs" => {
+            if let Some(d) = &app.doc {
+                if let Some(r) = d.world.routes.get(nums.first().map(|v| *v as usize).unwrap_or(0)) {
+                    for id in &r.objects { if let Some(o) = d.world.objects.get(*id) { eprintln!("ROBJ {id} {:.3} {:.3} {:.2} {}", o.x, o.z, o.yaw, d.world.objects.model_path(o)); } }
                 }
             }
         }

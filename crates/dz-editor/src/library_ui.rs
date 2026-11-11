@@ -997,7 +997,7 @@ fn instance_buttons(app: &mut App, ui: &mut egui::Ui, id: u64) {
     if ui.button(t("Select objects")).clicked() { select_objects(app, id); }
     if ui.button(t("Save as preset")).clicked() { save_as_preset(app, id); }
     if ui.button(t("Duplicate")).clicked() { duplicate_instance(app, id); }
-    if ui.button(t("Delete generator")).on_hover_text(t("Removes the generator and what it made.")).clicked() { delete_instance(app, id, true); }
+    if ui.button(t("Delete generator...")).on_hover_text(t("Removes the generator and what it made; asks what of it to keep.")).clicked() { crate::deleting::request(app, crate::deleting::Target::Generator(id)); }
 }
 
 /// Rows of the generators in the outliner.
@@ -1007,7 +1007,7 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
         let row = ui.selectable_label(app.selected_generator == Some(*id), format!("{name}  [{}]  ({count})", t(kind)));
         if row.clicked() { action = Some((*id, 0)); }
         row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-            for (code, label) in [(1u8, "Generate"), (2, "Select objects"), (3, "Duplicate"), (4, "Save as preset"), (5, "Delete generator"), (6, "Delete generator, keep objects")] {
+            for (code, label) in [(1u8, "Generate"), (2, "Select objects"), (3, "Duplicate"), (4, "Save as preset"), (5, "Delete generator...")] {
                 if ui.button(t(label)).clicked() { action = Some((*id, code)); ui.close_menu(); }
             }
         });
@@ -1022,8 +1022,7 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
             2 => select_objects(app, id),
             3 => duplicate_instance(app, id),
             4 => save_as_preset(app, id),
-            5 => delete_instance(app, id, true),
-            _ => delete_instance(app, id, false),
+            _ => crate::deleting::request(app, crate::deleting::Target::Generator(id)),
         }
     }
 }
@@ -1053,36 +1052,6 @@ fn duplicate_instance(app: &mut App, id: u64) {
     app.selected_generator = Some(g.id);
     doc.world.generators.push(g);
     doc.history.push(t("Duplicate"), Change::Generators(before));
-}
-
-pub fn delete_instance(app: &mut App, id: u64, with_objects: bool) {
-    let Some(doc) = &mut app.doc else { return };
-    let Some(g) = doc.world.generators.iter().find(|g| g.id == id).cloned() else { return };
-    let before = doc.world.generators.clone();
-    doc.world.generators.retain(|x| x.id != id);
-    let label = t("Delete generator");
-    doc.history.push(label.clone(), Change::Generators(before));
-    if with_objects {
-        let mut change: Vec<_> = g.objects.iter().filter_map(|id| doc.world.objects.remove(*id).map(|o| (*id, Some(o), None))).collect();
-        for saved in &g.removed {
-            let model = doc.world.objects.intern(&saved.model);
-            let o = saved.object(model);
-            change.push((doc.world.objects.insert(o), None, Some(o)));
-        }
-        doc.history.push(label.clone(), Change::Objects(change));
-        doc.history.group_last(2, label);
-        doc.dirty.objects = true;
-        let doc = app.doc.as_ref().unwrap();
-        app.selection.retain(|i| doc.world.objects.get(*i).is_some());
-        app.selection_rev += 1;
-    }
-    if app.selected_generator == Some(id) { app.selected_generator = None; }
-    if let (true, Some(m)) = (with_objects, g.mask_modifier) {
-        crate::maskmods::remove(app, m, &t("Delete generator"));
-    }
-    if let (true, Some(m)) = (with_objects, g.modifier) {
-        app.set_modifiers(&t("Delete generator"), |list| list.retain(|x| x.id != m));
-    }
 }
 
 /// Puts a library generator into the project. It works on what it was dropped on, the
