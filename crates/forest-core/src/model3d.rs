@@ -354,6 +354,21 @@ fn build_shading(m: &odol::Material, loader: &mut MapLoader, mesh: &mut ModelMes
             }
         }
     }
+    // The tree shaders give the colour fields their own meanings. One of them still counts here:
+    // the leaf textures are evened out to one brightness, and `diffuse` is what tells a dark
+    // spruce from a bright birch.
+    if kind == ShadingKind::Tree && !trunk && m.pixel_shader != crate::rvmat::shader::GRASS && m.pixel_shader != crate::rvmat::shader::GRASS_ATOC {
+        let level = ((m.diffuse[0] + m.diffuse[1] + m.diffuse[2]) / 3.0).clamp(0.45, 1.25);
+        out.ambient = [level; 3];
+        out.diffuse = [level; 3];
+    }
+    // Bark takes its colour from what the material lets through: the brown of a spruce is in
+    // `diffuse`, the white of a birch in `forcedDiffuse`.
+    if kind == ShadingKind::Tree && trunk {
+        let tint: [f32; 3] = std::array::from_fn(|k| (m.diffuse[k] + m.forced_diffuse[k]).clamp(0.15, 1.2));
+        out.ambient = tint;
+        out.diffuse = tint;
+    }
     // Tree and skin shaders give the colour fields other meanings, so those keep the defaults.
     if matches!(kind, ShadingKind::Super | ShadingKind::Multi | ShadingKind::Glass) && m.pixel_shader != crate::rvmat::shader::SKIN {
         out.emissive = rgb(m.emissive);
@@ -727,6 +742,11 @@ fn render_view(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32) -> (Vec<u8>, V
     let light = normalize([0.45, 0.8, -0.4]);
     for batch in &mesh.batches {
         let texture = batch.texture.map(|t| &mesh.textures[t]);
+        // What the material of a tree does to its colour, in the terms of this picture.
+        let level: [f32; 3] = match batch.shading.and_then(|i| mesh.shadings.get(i)) {
+            Some(s) if s.kind == ShadingKind::Tree => s.diffuse.map(|v| v.powf(1.0 / 2.2)),
+            _ => [1.0; 3],
+        };
         let range = batch.first_index as usize..(batch.first_index + batch.index_count) as usize;
         for tri in mesh.indices[range].chunks_exact(3) {
             let v = [
@@ -787,9 +807,9 @@ fn render_view(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32) -> (Vec<u8>, V
                     ]);
                     let shade = 0.55 + 0.6 * dot(n, light).abs();
                     color[o] = [
-                        (albedo[0] * shade * 255.0).min(255.0) as u8,
-                        (albedo[1] * shade * 255.0).min(255.0) as u8,
-                        (albedo[2] * shade * 255.0).min(255.0) as u8,
+                        (albedo[0] * level[0] * shade * 255.0).min(255.0) as u8,
+                        (albedo[1] * level[1] * shade * 255.0).min(255.0) as u8,
+                        (albedo[2] * level[2] * shade * 255.0).min(255.0) as u8,
                         255,
                     ];
                 }

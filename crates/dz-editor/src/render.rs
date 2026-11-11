@@ -457,9 +457,10 @@ void main(){
   } else if (u_mode == 4) {
     c = T(u_tex, 0);
     if (c.a < cut) discard;
-    // The macro map tints the crown around mid grey; its alpha is the shade inside it.
+    // The macro map tints the crown, as the autumn colours of a birch, but does not brighten it:
+    // that of a spruce is nearly white. Its alpha is the shade inside the crown.
     vec4 mc = T(u_m3, 3);
-    c.rgb = lin(c.rgb) * mc.rgb * 2.0;
+    c.rgb = lin(c.rgb) * min(mc.rgb * 2.0, vec3(1.0));
     ao = 0.55 + 0.45 * mc.a;
     if (v_tint.a < 0.0) {
       // Grass takes the colour of the ground it stands on, as far as the setting says.
@@ -473,7 +474,7 @@ void main(){
   } else if (u_mode == 6) {
     c = T(u_tex, 0);
     if (c.a < cut) discard;
-    c.rgb = lin(c.rgb) * T(u_m3, 3).rgb * 2.0;
+    c.rgb = lin(c.rgb) * min(T(u_m3, 3).rgb * 2.0, vec3(1.0));
     N = bump(N, T(u_m1, 1).xyz * 2.0 - 1.0, UV(1));
   } else if (u_mode == 5) {
     c = T(u_tex, 0);
@@ -647,12 +648,19 @@ void main(){
 const IMPOSTOR_FS: &str = r#"#version 330 core
 in vec3 v_uv; in vec3 v_world; out vec4 o;
 uniform sampler2DArray u_tex; uniform vec3 u_eye, u_sun_col, u_amb; uniform float u_fog, u_exposure;
+vec3 lin(vec3 c){ return pow(max(c, vec3(0.0)), vec3(2.2)); }
 void main(){
   vec4 c = texture(u_tex, v_uv);
   if (c.a < 0.5) discard;
-  vec3 lit = c.rgb * (u_amb * 0.8 + u_sun_col * 0.62);
+  // Lit like the foliage of the meshes it stands in for, so a forest keeps its colour with distance.
+  vec3 A = lin(u_amb * 0.75);
+  vec3 S = lin(u_amb * 0.75 + u_sun_col * 0.92) - A;
+  vec3 lit = lin(c.rgb) * (A * 0.85 + S * 0.42);
   float dist = distance(v_world, u_eye);
-  o = vec4(mix(lit, vec3(0.73,0.79,0.86), 1.0 - exp(-dist * u_fog)) * u_exposure, 1.0);
+  lit = mix(lit, lin(vec3(0.73,0.79,0.86)), 1.0 - exp(-dist * u_fog));
+  vec3 e = pow(lit, vec3(1.0 / 2.2)) * u_exposure;
+  vec3 over = max(e - vec3(0.7), vec3(0.0));
+  o = vec4(min(e, vec3(0.7)) + 0.3 * (vec3(1.0) - exp(-over / 0.3)), 1.0);
 }"#;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -1807,7 +1815,9 @@ impl Renderer {
         gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
         gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&f.objects.shadow_instances), glow::STREAM_DRAW);
         for (key, first, count) in f.objects.shadow_groups.iter() {
-            let Some(m) = self.models.get(key).filter(|m| !m.water && m.passes & (PASS_OPAQUE | PASS_DECAL) != 0) else { continue };
+            // Road parts and decals are laid on the ground when drawn; as they stand in the model
+            // they would throw shadows from above it.
+            let Some(m) = self.models.get(key).filter(|m| !m.water && !m.conform && m.passes & (PASS_OPAQUE | PASS_DECAL) != 0) else { continue };
             gl.bind_vertex_array(Some(m.vao));
             Self::bind_mesh_instances(gl, buffer, *first);
             for ((start, n, tex, _), pass) in m.batches.iter().zip(&m.batch_pass) {
