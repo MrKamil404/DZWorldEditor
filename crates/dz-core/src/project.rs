@@ -337,7 +337,7 @@ mod tests {
         let gone = w.objects.insert(o);
         let kept = w.objects.insert(Obj { x: 9.0, ..o });
         w.objects.remove(gone);
-        w.routes.push(crate::world::RoadRoute { name: "r".into(), family: "asf2".into(), points: vec![], centerline: vec![], objects: vec![kept], id: 1, grading: Default::default(), profile: Vec::new(), decks: vec![], terrain_route: true, settings: Default::default(), grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None });
+        w.routes.push(crate::world::RoadRoute { name: "r".into(), family: "asf2".into(), points: vec![], centerline: vec![], objects: vec![kept], id: 1, grading: Default::default(), profile: Vec::new(), decks: vec![], terrain_route: true, settings: Default::default(), grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None, parts: Vec::new(), fitted: Vec::new() });
         save(&w, d.path(), SaveParts::ALL).unwrap();
         let r = load(d.path()).unwrap();
         assert_eq!(r.objects.get(r.routes[0].objects[0]).unwrap().x, 9.0);

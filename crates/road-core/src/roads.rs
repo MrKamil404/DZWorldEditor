@@ -335,6 +335,63 @@ pub fn fit_path(
     s: &RoutingSettings,
     allowed: impl Fn(Point, Point) -> bool,
 ) -> Result<Vec<PlacedPart>> {
+    fit_path_inner(points, family, catalog, s, allowed, None)
+}
+
+/// [`fit`] that goes on from `start`, the open end of a road already laid: it keeps that
+/// heading and puts no end piece there, so the new models join the old ones.
+pub fn fit_from(
+    start: Port,
+    points: &[Point],
+    family: &str,
+    catalog: &[CatalogPart],
+    s: &RoutingSettings,
+    allowed: impl Fn(Point, Point) -> bool,
+) -> Result<Vec<PlacedPart>> {
+    ensure!(points.len() >= 2, "Wskaż przynajmniej dwa punkty");
+    let smoothed = smooth(points, s.min_radius)?;
+    fit_path_inner(&smoothed, family, catalog, s, allowed, Some(start))
+}
+
+/// [`fit_path`] from `start` along a path searched or drawn from it.
+pub fn fit_path_from(
+    start: Port,
+    points: &[Point],
+    family: &str,
+    catalog: &[CatalogPart],
+    s: &RoutingSettings,
+    allowed: impl Fn(Point, Point) -> bool,
+) -> Result<Vec<PlacedPart>> {
+    fit_path_inner(points, family, catalog, s, allowed, Some(start))
+}
+
+/// The same parts run the other way: last first, each entered by its other port.
+pub fn flip(parts: &[PlacedPart]) -> Vec<PlacedPart> {
+    parts.iter().rev().map(|p| PlacedPart { reverse: !p.reverse, ..p.clone() }).collect()
+}
+
+/// The open start of a road, pointing away from it.
+pub fn startpoint(parts: &[PlacedPart], catalog: &[CatalogPart]) -> Result<Port> {
+    let p = parts.first().context("Pusta droga")?;
+    let m = &catalog.iter().find(|m| m.path == p.model).context("Brak modelu")?.model;
+    let port = m.ports[usize::from(p.reverse)].context("Brak wejścia modelu")?;
+    let angle = -p.rotation.to_radians();
+    Ok(Port { p: add(rotate(port.p, angle), p.position), outward: rotate(port.outward, angle) })
+}
+
+/// True for the end piece (konec) of a road.
+pub fn is_cap(part: &PlacedPart, catalog: &[CatalogPart]) -> bool {
+    catalog.iter().any(|m| m.path == part.model && m.category == 6)
+}
+
+fn fit_path_inner(
+    points: &[Point],
+    family: &str,
+    catalog: &[CatalogPart],
+    s: &RoutingSettings,
+    allowed: impl Fn(Point, Point) -> bool,
+    start: Option<Port>,
+) -> Result<Vec<PlacedPart>> {
     ensure!(points.len() >= 2, "Wskaż przynajmniej dwa punkty");
     let track = crate::rails::is_track_family(family);
     let cap = if track {
@@ -374,13 +431,13 @@ pub fn fit_path(
     let end = *points.last().unwrap();
     let initial = sub(points[1], points[0]);
     ensure!(
-        length >= 2. * cap_length && norm(initial) > 1e-6,
+        length >= if start.is_some() { 1. } else { 2. } * cap_length && norm(initial) > 1e-6,
         "Trasa jest za krótka na dwa segmenty konec lub ma powtórzone punkty"
     );
-    let mut at = Port {
+    let mut at = start.unwrap_or(Port {
         p: points[0],
         outward: mul(initial, 1. / norm(initial)),
-    };
+    });
     // Search only the stretch of line a single model can cover from the current progress.
     let ahead = choices
         .iter()
@@ -400,7 +457,7 @@ pub fn fit_path(
             && world.windows(2).all(|w| allowed(w[0], w[1]))
     };
     let mut parts = Vec::new();
-    if let Some(cap) = cap {
+    if let Some(cap) = cap.filter(|_| start.is_none()) {
         let first = place(cap, at, false)?;
         ensure!(
             valid_part(&first, &cap.model, 0.),

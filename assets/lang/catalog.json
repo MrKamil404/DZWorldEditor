@@ -63,9 +63,17 @@
   "de": "Ein eigener Ordner; Modelle und Presets werden hineingelegt, ohne ihre Dateien zu verschieben.",
   "pl": "Własny folder; modele i presety trafiają do niego bez przenoszenia ich plików."
  },
+ "A metre of bridge counts as this many metres of road. Lower it when cheap earthworks lead the road down into valleys instead of over them.": {
+  "de": "Ein Meter Brücke zählt so viele Meter Straße. Senken, wenn billige Erdarbeiten die Straße in Täler statt darüber führen.",
+  "pl": "Metr mostu liczy się jak tyle metrów drogi. Zmniejsz, gdy tanie roboty ziemne sprowadzają drogę w doliny zamiast nad nimi."
+ },
  "A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched.": {
   "de": "Ein Modifikator ebnet das Gelände unter dem Objekt und folgt ihm. Das modellierte Gelände bleibt unverändert.",
   "pl": "Modyfikator wyrównuje teren pod obiektem i podąża za nim. Rzeźbiony teren pozostaje nienaruszony."
+ },
+ "A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route.": {
+  "de": "Eine am Anfang oder Ende verlängerte Route behält ihre Modelle; Neu einpassen legt Modelle nur vom alten Ende zu den neuen Punkten. Das Verschieben anderer Punkte passt weiterhin die ganze Route ein.",
+  "pl": "Trasa przedłużona na początku lub końcu zachowuje swoje modele; Dopasuj ponownie układa modele tylko od starego końca do nowych punktów. Przesunięcie innych punktów nadal dopasowuje całą trasę."
  },
  "About": {
   "de": "Über",
@@ -174,6 +182,18 @@
  "Along the line": {
   "de": "Entlang der Linie",
   "pl": "Po linii"
+ },
+ "Also the generator {0} that made it": {
+  "de": "Auch den Generator {0}, der ihn erzeugt hat",
+  "pl": "Także generator {0}, który go utworzył"
+ },
+ "Also the object {0} it levels the ground under": {
+  "de": "Auch das Objekt {0}, unter dem er den Boden ebnet",
+  "pl": "Także obiekt {0}, pod którym wyrównuje teren"
+ },
+ "Also the route {0} it levels the terrain for": {
+  "de": "Auch die Route {0}, für die er das Gelände ebnet",
+  "pl": "Także trasę {0}, dla której wyrównuje teren"
  },
  "Always keep": {
   "de": "Immer behalten",
@@ -354,6 +374,10 @@
  "Blotch size m": {
   "de": "Fleckengröße m",
   "pl": "Wielkość plam m"
+ },
+ "Bridge cost": {
+  "de": "Brückenkosten",
+  "pl": "Koszt mostu"
  },
  "Bridges may cross forbidden areas and water": {
   "de": "Brücken dürfen Sperrgebiete und Wasser queren",
@@ -731,9 +755,17 @@
   "de": "Generator löschen",
   "pl": "Usuń generator"
  },
+ "Delete generator {0}": {
+  "de": "Generator {0} löschen",
+  "pl": "Usuń generator {0}"
+ },
  "Delete generator, keep objects": {
   "de": "Generator löschen, Objekte behalten",
   "pl": "Usuń generator, zachowaj obiekty"
+ },
+ "Delete generator...": {
+  "de": "Generator löschen...",
+  "pl": "Usuń generator..."
  },
  "Delete key point": {
   "de": "Keypoint löschen",
@@ -755,6 +787,10 @@
   "de": "Masken-Modifikator löschen",
   "pl": "Usunięcie modyfikatora maski"
  },
+ "Delete mask modifier {0}": {
+  "de": "Maskenmodifikator {0} löschen",
+  "pl": "Usuń modyfikator maski {0}"
+ },
  "Delete objects": {
   "de": "Objekte löschen",
   "pl": "Usuń obiekty"
@@ -762,6 +798,10 @@
  "Delete route": {
   "de": "Route löschen",
   "pl": "Usuń trasę"
+ },
+ "Delete route {0}": {
+  "de": "Route {0} löschen",
+  "pl": "Usuń trasę {0}"
  },
  "Delete satellite modifier": {
   "de": "Satelliten-Modifikator löschen",
@@ -771,9 +811,17 @@
   "de": "Form löschen",
   "pl": "Usuń kształt"
  },
+ "Delete terrain modifier {0}": {
+  "de": "Geländemodifikator {0} löschen",
+  "pl": "Usuń modyfikator terenu {0}"
+ },
  "Delete the modifier; what it covered comes back": {
   "de": "Modifikator löschen; das Überdeckte kehrt zurück",
   "pl": "Usuń modyfikator; to, co zakrywał, wróci"
+ },
+ "Delete with it:": {
+  "de": "Mit löschen:",
+  "pl": "Usuń razem z nim:"
  },
  "Density per ha (0 = from the preset)": {
   "de": "Dichte pro ha (0 = aus dem Preset)",
@@ -1059,9 +1107,17 @@
   "de": "Ende verlängern",
   "pl": "Wydłuż koniec"
  },
+ "Extend road": {
+  "de": "Straße verlängern",
+  "pl": "Przedłuż drogę"
+ },
  "Extend start": {
   "de": "Anfang verlängern",
   "pl": "Wydłuż początek"
+ },
+ "Extending road": {
+  "de": "Straße wird verlängert",
+  "pl": "Przedłużanie drogi"
  },
  "Eyedropper": {
   "de": "Pipette",
@@ -1114,6 +1170,10 @@
  "Fit again": {
   "de": "Neu einpassen",
   "pl": "Dopasuj ponownie"
+ },
+ "Fit only the new stretch when extending": {
+  "de": "Beim Verlängern nur das neue Stück einpassen",
+  "pl": "Przy przedłużaniu dopasuj tylko nowy odcinek"
  },
  "Fix tiles": {
   "de": "Kacheln korrigieren",
@@ -1499,6 +1559,14 @@
   "de": "Insel",
   "pl": "Wyspa"
  },
+ "Its change of the terrain": {
+  "de": "Seine Geländeänderung",
+  "pl": "Jego zmianę terenu"
+ },
+ "Its models ({0})": {
+  "de": "Ihre Modelle ({0})",
+  "pl": "Jej modele ({0})"
+ },
  "Jagged edge m": {
   "de": "Unregelmäßiger Rand m",
   "pl": "Poszarpanie granicy m"
@@ -1630,6 +1698,10 @@
  "Loading models: {0}": {
   "de": "Modelle werden geladen: {0}",
   "pl": "Wczytywanie modeli: {0}"
+ },
+ "Local": {
+  "de": "Lokal",
+  "pl": "Lokalnie"
  },
  "Log": {
   "de": "Protokoll",
@@ -2339,6 +2411,10 @@
   "de": "Eigenschaften",
   "pl": "Właściwości"
  },
+ "Put back the objects it removed ({0})": {
+  "de": "Die entfernten Objekte zurücklegen ({0})",
+  "pl": "Przywróć usunięte przez niego obiekty ({0})"
+ },
  "Quality": {
   "de": "Qualität",
   "pl": "Jakość"
@@ -2410,6 +2486,10 @@
  "Removes the generator and what it made.": {
   "de": "Entfernt den Generator und was er erzeugt hat.",
   "pl": "Usuwa generator i to, co stworzył."
+ },
+ "Removes the generator and what it made; asks what of it to keep.": {
+  "de": "Entfernt den Generator und was er erzeugt hat; fragt, was bleiben soll.",
+  "pl": "Usuwa generator i to, co utworzył; pyta, co zostawić."
  },
  "Rename": {
   "de": "Umbenennen",
@@ -3115,6 +3195,10 @@
   "de": "Das Spiel mischt höchstens fünf Oberflächen pro Kachel; bei mehr werden die seltensten beim Export ersetzt.",
   "pl": "Gra miesza najwyżej pięć powierzchni na kafel; gdy kafel ma ich więcej, najrzadsze zostaną zastąpione przy eksporcie."
  },
+ "The generators along it and what they made ({0})": {
+  "de": "Die Generatoren entlang der Route und was sie erzeugt haben ({0})",
+  "pl": "Generatory wzdłuż niej i to, co utworzyły ({0})"
+ },
  "The heightmap has {0} columns, the project {1}": {
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
   "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
@@ -3135,6 +3219,10 @@
   "de": "Die Modelle sind bereits in {0}",
   "pl": "Te modele już są w {0}"
  },
+ "The new stretch could not be fitted; Fit again with the option off fits the whole route": {
+  "de": "Das neue Stück ließ sich nicht einpassen; Neu einpassen ohne die Option passt die ganze Route ein",
+  "pl": "Nie udało się dopasować nowego odcinka; Dopasuj ponownie z wyłączoną opcją dopasuje całą trasę"
+ },
  "The next click in a view takes the satellite colour there.": {
   "de": "Der nächste Klick in einer Ansicht nimmt die Satellitenfarbe.",
   "pl": "Następne kliknięcie w widoku pobierze kolor satelity."
@@ -3142,6 +3230,14 @@
  "The next stroke starts a new modifier": {
   "de": "Der nächste Strich beginnt einen neuen Modifikator",
   "pl": "Następne pociągnięcie utworzy nowy modyfikator"
+ },
+ "The objects it placed ({0})": {
+  "de": "Die von ihm gesetzten Objekte ({0})",
+  "pl": "Obiekty, które postawił ({0})"
+ },
+ "The open end of the route was not found among its models, so the whole route is fitted again": {
+  "de": "Das offene Ende der Route wurde unter ihren Modellen nicht gefunden, daher wird die ganze Route neu eingepasst",
+  "pl": "Nie znaleziono otwartego końca trasy wśród jej modeli, więc dopasowywana jest cała trasa"
  },
  "The patch size is then the margin round the footprint.": {
   "de": "Die Fleckgröße ist dann der Rand um den Grundriss.",
@@ -3174,6 +3270,14 @@
  "The shape this generator works on no longer exists": {
   "de": "Die Form dieses Generators existiert nicht mehr",
   "pl": "Kształt, na którym działa generator, już nie istnieje"
+ },
+ "The surface it painted": {
+  "de": "Die von ihm gemalte Oberfläche",
+  "pl": "Powierzchnię, którą namalował"
+ },
+ "The terrain levelled under it": {
+  "de": "Das unter ihr geebnete Gelände",
+  "pl": "Teren wyrównany pod nią"
  },
  "The water stands at the lowest ground around the shape.": {
   "de": "Das Wasser steht auf der Höhe des tiefsten Geländes rund um die Form.",
@@ -3363,6 +3467,10 @@
   "de": "Schwächerer Pinsel",
   "pl": "Słabszy pędzel"
  },
+ "What is not ticked stays on the map. All of it can be undone in one step.": {
+  "de": "Was nicht angehakt ist, bleibt auf der Karte. Alles lässt sich in einem Schritt rückgängig machen.",
+  "pl": "To, co nie jest zaznaczone, zostaje na mapie. Całość można cofnąć jednym krokiem."
+ },
  "What to remove": {
   "de": "Was entfernt wird",
   "pl": "Co usuwać"
@@ -3418,6 +3526,18 @@
  "Works on": {
   "de": "Wirkt auf",
   "pl": "Działa na"
+ },
+ "World": {
+  "de": "Welt",
+  "pl": "Świat"
+ },
+ "World or local axes": {
+  "de": "Welt- oder lokale Achsen",
+  "pl": "Osie świata lub lokalne"
+ },
+ "World: the gizmo follows the axes of the map. Local: those of the selected object.": {
+  "de": "Welt: der Gizmo folgt den Achsen der Karte. Lokal: denen des gewählten Objekts.",
+  "pl": "Świat: gizmo podąża za osiami mapy. Lokalnie: za osiami zaznaczonego obiektu."
  },
  "Worn slopes": {
   "de": "Abgetragene Hänge",

@@ -814,7 +814,7 @@ fn chain_pieces(pieces: Vec<(Vec<[f32; 2]>, Vec<u32>)>) -> Vec<(Vec<[f32; 2]>, V
 fn road_route(name: String, family: String, centerline: Vec<[f32; 2]>, objects: Vec<u32>) -> RoadRoute {
     // Terrain Builder roads may turn tighter than new ones are allowed to.
     let settings = dayz_road_tool::document::RoutingSettings { min_radius: 10.0, ..Default::default() };
-    RoadRoute { name, family, points: crate::gen::simplify_line(&centerline, 2.0), centerline, objects, id: crate::library::new_id(), decks: Vec::new(), grading: Default::default(), profile: Vec::new(), terrain_route: false, settings, grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None }
+    RoadRoute { name, family, points: crate::gen::simplify_line(&centerline, 2.0), centerline, objects, id: crate::library::new_id(), decks: Vec::new(), grading: Default::default(), profile: Vec::new(), terrain_route: false, settings, grade: false, grade_width: 9.0, grade_falloff: 12.0, modifier: None, parts: Vec::new(), fitted: Vec::new() }
 }
 
 /// Turns the road lines of projects saved by older versions into routes, and other lines

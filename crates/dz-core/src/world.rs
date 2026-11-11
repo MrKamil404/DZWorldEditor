@@ -438,6 +438,13 @@ pub struct RoadRoute {
     /// The modifier that levels the terrain under this route.
     #[serde(default)]
     pub modifier: Option<u64>,
+    /// The road pieces of the last fit, in order, so the route can go on from either end
+    /// without fitting the rest again.
+    #[serde(default)]
+    pub parts: Vec<dayz_road_tool::roads::PlacedPart>,
+    /// The waypoints of the last fit.
+    #[serde(default)]
+    pub fitted: Vec<[f32; 2]>,
 }
 
 fn default_grade_width() -> f32 {

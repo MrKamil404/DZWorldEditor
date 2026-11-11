@@ -110,6 +110,7 @@ pub enum Action {
     GizmoMove,
     GizmoRotate,
     GizmoScale,
+    GizmoSpace,
     View3d,
     View2d,
     ViewSplit,
@@ -131,11 +132,11 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 45] = [
+    pub const ALL: [Action; 46] = [
         Action::NewProject, Action::Open, Action::Save, Action::SaveAs, Action::Undo, Action::Redo, Action::Settings, Action::Shortcuts, Action::Build, Action::Play,
         Action::SelectAll, Action::Deselect, Action::Duplicate, Action::Delete, Action::Focus, Action::Underground,
         Action::ModeSelect, Action::ModeSculpt, Action::ModePaint, Action::ModePlace, Action::ModeRoads, Action::ModeShapes, Action::ModeKeyPoints, Action::ModeSatellite,
-        Action::GizmoMove, Action::GizmoRotate, Action::GizmoScale,
+        Action::GizmoMove, Action::GizmoRotate, Action::GizmoScale, Action::GizmoSpace,
         Action::View3d, Action::View2d, Action::ViewSplit, Action::CameraBelow, Action::ToggleGrass, Action::ToggleObjects, Action::ToggleShapes,
         Action::BrushSmaller, Action::BrushBigger, Action::BrushWeaker, Action::BrushStronger, Action::SearchAssets,
         Action::CameraForward, Action::CameraBack, Action::CameraLeft, Action::CameraRight, Action::CameraUp, Action::CameraDown,
@@ -169,6 +170,7 @@ impl Action {
             Action::GizmoMove => "Move",
             Action::GizmoRotate => "Rotate",
             Action::GizmoScale => "Scale",
+            Action::GizmoSpace => "World or local axes",
             Action::View3d => "3D view",
             Action::View2d => "2D view",
             Action::ViewSplit => "3D and 2D side by side",
@@ -194,7 +196,7 @@ impl Action {
         match self {
             NewProject | Open | Save | SaveAs | Undo | Redo | Settings | Shortcuts | Build | Play => "General",
             SelectAll | Deselect | Duplicate | Delete | Focus | Underground => "Selection",
-            ModeSelect | ModeSculpt | ModePaint | ModePlace | ModeRoads | ModeShapes | ModeKeyPoints | ModeSatellite | GizmoMove | GizmoRotate | GizmoScale => "Tools",
+            ModeSelect | ModeSculpt | ModePaint | ModePlace | ModeRoads | ModeShapes | ModeKeyPoints | ModeSatellite | GizmoMove | GizmoRotate | GizmoScale | GizmoSpace => "Tools",
             View3d | View2d | ViewSplit | CameraBelow | ToggleGrass | ToggleObjects | ToggleShapes | SearchAssets => "View",
             BrushSmaller | BrushBigger | BrushWeaker | BrushStronger => "Brushes",
             CameraForward | CameraBack | CameraLeft | CameraRight | CameraUp | CameraDown => "Camera (with the right mouse button held)",
@@ -230,6 +232,7 @@ impl Action {
             GizmoMove => Shortcut::new(Key::W),
             GizmoRotate => Shortcut::new(Key::E),
             GizmoScale => Shortcut::new(Key::R),
+            GizmoSpace => Shortcut::new(Key::L),
             View3d => Shortcut::ctrl(Key::Num1),
             View2d => Shortcut::ctrl(Key::Num2),
             ViewSplit => Shortcut::ctrl(Key::Num3),

@@ -1072,6 +1072,8 @@ pub struct RoadResult {
     pub decks: Vec<crate::world::BridgeDeck>,
     /// (x, z, height) of the designed line, empty when the road just follows the terrain.
     pub profile: Vec<[f32; 3]>,
+    /// The road pieces laid, in order, for going on from either end later.
+    pub parts: Vec<dayz_road_tool::roads::PlacedPart>,
 }
 
 /// Length of the end pieces of roads, which are all `*_6konec`.
@@ -1083,6 +1085,14 @@ const CAP_LENGTH: f64 = 6.25;
 pub fn closing_cap(position: [f64; 2], yaw: f64) -> ([f64; 2], f64) {
     let (s, c) = yaw.to_radians().sin_cos();
     ([position[0] + s * CAP_LENGTH, position[1] + c * CAP_LENGTH], yaw + 180.0)
+}
+
+/// The pose a closing cap was placed with, from the pose of its object: the reverse of
+/// [`closing_cap`].
+pub fn closing_cap_placement(at: [f64; 2], yaw: f64) -> ([f64; 2], f64) {
+    let yaw = yaw - 180.0;
+    let (s, c) = yaw.to_radians().sin_cos();
+    ([at[0] - s * CAP_LENGTH, at[1] - c * CAP_LENGTH], yaw)
 }
 
 /// Position and yaw of a piece of a road as an object.
@@ -1104,7 +1114,7 @@ pub fn build_road(w: &mut World, points: &[[f32; 2]], family: &str, catalog: &[d
         let (at, yaw) = road_part_pose(&parts, k);
         objects.push(Obj { x: at[0] as f32, z: at[1] as f32, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 });
     }
-    Ok(RoadResult { objects, centerline: center.iter().map(|p| [p[0] as f32, p[1] as f32]).collect(), decks: Vec::new(), profile: Vec::new() })
+    Ok(RoadResult { objects, centerline: center.iter().map(|p| [p[0] as f32, p[1] as f32]).collect(), decks: Vec::new(), profile: Vec::new(), parts })
 }
 
 /// Road types of a Terrain Builder project, as Terrain Builder itself defines them.
@@ -1187,6 +1197,9 @@ pub struct RouteRequest {
     pub forbidden: Vec<Vec<[f32; 2]>>,
     /// Centre lines of roads, for level crossings of tracks.
     pub roads: Vec<Vec<[f32; 2]>>,
+    /// The open end of a road this one goes on from: it starts there with that heading and
+    /// without an end piece.
+    pub start: Option<dayz_road_tool::geometry::Port>,
 }
 
 /// Track pieces, which are not part of a road project.
@@ -1230,6 +1243,11 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
             let polygons: Vec<Vec<[f64; 2]>> = req.forbidden.iter().map(|r| r.iter().map(|p| [p[0] as f64, p[1] as f64]).collect()).collect();
             let water = WaterSettings { enabled: true, level: w.meta.sea_level as f64 };
             let obstacles = routing::Obstacles::new(&polygons, &[], &water, Some(&terrain), &cancel)?;
+            if let Some(start) = req.start {
+                let path = routing::find(&terrain, &line, &req.settings, &obstacles, &cancel)?;
+                let parts = roads::fit_path_from(start, &path, &req.family, catalog, &req.settings, |_, _| true)?;
+                return Ok(Planned { parts, ..Default::default() });
+            }
             let bridge = if rail { BridgeKit::for_track(tracks, &req.family) } else { BridgeKit::for_road(&road_folder, &req.family, catalog) };
             routing::plan(&terrain, &line, &req.family, catalog, &req.settings, &obstacles, &crossings.with_bridge(bridge), &cancel)
         })();
@@ -1239,7 +1257,10 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
         // A crossing has to land inside one straight, so a track that puts a joint on a road
         // starts a little later and tries again.
         let attempt = |points: &[[f64; 2]]| -> Result<(Vec<_>, Vec<_>)> {
-            let mut parts = roads::fit(points, &req.family, catalog, &req.settings, |_, _| true)?;
+            let mut parts = match req.start {
+                Some(start) => roads::fit_from(start, points, &req.family, catalog, &req.settings, |_, _| true)?,
+                None => roads::fit(points, &req.family, catalog, &req.settings, |_, _| true)?,
+            };
             let extras = crossings.apply(&mut parts, catalog)?;
             Ok((parts, extras))
         };
@@ -1247,7 +1268,7 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
         let (dx, dz) = (line[1][0] - line[0][0], line[1][1] - line[0][1]);
         let first = dx.hypot(dz);
         for shift in (1..=12).map(|k| k as f64 * 2.0) {
-            if result.is_ok() || crossings.is_empty() || shift + 1.0 >= first {
+            if result.is_ok() || crossings.is_empty() || req.start.is_some() || shift + 1.0 >= first {
                 break;
             }
             let mut later = line.clone();
@@ -1255,7 +1276,19 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
             result = attempt(&later);
         }
         let (parts, extras) = result?;
-        Planned { parts, extras, ..Default::default() }
+        // Gorges and water along the drawn line take bridges too, where a kit exists.
+        let bridge = if rail { BridgeKit::for_track(tracks, &req.family) } else { BridgeKit::for_road(&road_folder, &req.family, catalog) };
+        let bridged = bridge.as_ref().filter(|_| req.start.is_none()).and_then(|kit| {
+            let (height, sea) = (&w.height, w.meta.sea_level);
+            let (points, spans) = routing::waypoint_spans(&line, |p| height.sample(p[0] as f32, p[1] as f32) as f64, |p| height.sample(p[0] as f32, p[1] as f32) < sea, kit, &req.settings);
+            if spans.is_empty() {
+                return None;
+            }
+            let mut planned = routing::fit_waypoints_bridged(&points, &spans, kit, &req.family, catalog, &req.settings).ok()?;
+            planned.extras = crossings.apply(&mut planned.parts, catalog).ok()?;
+            Some(planned)
+        });
+        bridged.unwrap_or(Planned { parts, extras, ..Default::default() })
     };
     let route = Route { name: String::new(), family: req.family.clone(), points: line, parts: planned.parts, replaces: None, rail, extras: planned.extras, grading: None, bridges: planned.bridges };
     let stretches: Vec<Vec<[f64; 2]>> = route.stretches().into_iter().map(|s| roads::centerline(s, catalog)).collect();
@@ -1334,7 +1367,7 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
         };
         objects.push(obj);
     }
-    Ok(RoadResult { objects, centerline: center.iter().map(|p| [p[0] as f32, p[1] as f32]).collect(), decks, profile: bed.or(designed).unwrap_or_default() })
+    Ok(RoadResult { objects, centerline: center.iter().map(|p| [p[0] as f32, p[1] as f32]).collect(), decks, profile: bed.or(designed).unwrap_or_default(), parts: route.parts.clone() })
 }
 
 /// Keeps the points that matter to a line's shape, to `tolerance` metres.
@@ -2570,6 +2603,71 @@ mod tests {
         assert!(!project.roads.is_empty());
     }
 
+    /// A road drawn straight across a gorge gets a bridge, with or without earthworks, when P: is mounted.
+    #[test]
+    fn a_straight_road_bridges_a_gorge() {
+        let parts = Path::new("P:/dz/structures/roads/parts");
+        if !parts.exists() { return; }
+        let catalog = road_catalog(parts).unwrap();
+        let Some(family) = dayz_road_tool::rails::BridgeKit::for_road(parts, "asf2", &catalog).map(|_| "asf2".to_string()).or_else(|| road_families(&catalog).into_iter().find(|f| dayz_road_tool::rails::BridgeKit::for_road(parts, f, &catalog).is_some())) else { return };
+        let mut w = World::new(crate::world::WorldMeta::new("B", 128, 8.0), 100.0);
+        for j in 0..w.base.rows {
+            for i in 0..w.base.cols {
+                let x = i as f32 * w.base.cell;
+                if (480.0..540.0).contains(&x) { let c = w.base.cols; w.base.data[j * c + i] = 88.0; }
+            }
+        }
+        w.recompose(None);
+        for (cut, fill) in [(0.0, 0.0), (5.0, 6.0)] {
+            let settings = dayz_road_tool::document::RoutingSettings { max_cut: cut, max_fill: fill, ..Default::default() };
+            let req = RouteRequest { family: family.clone(), points: vec![[200.0, 500.0], [800.0, 500.0]], terrain_route: false, settings, forbidden: vec![], roads: vec![], start: None };
+            let r = build_route(&mut w, &crate::model_info::ModelDb::new("Z:/none"), &req, &catalog, &Job::default()).unwrap();
+            assert!(!r.decks.is_empty(), "no bridge with cut {cut} and fill {fill}");
+            let d = r.decks[0];
+            assert!(d.from[0] < 482.0 && d.to[0] > 538.0 && d.height > 95.0, "{d:?}");
+        }
+    }
+
+    /// A road goes on from either open end: the new pieces join the old ones in one chain,
+    /// with an end piece only at the new end, when P: is mounted.
+    #[test]
+    fn a_road_goes_on_from_either_end_without_refitting() {
+        use dayz_road_tool::roads::{endpoint, flip, is_cap, startpoint};
+        let parts = Path::new("P:/dz/structures/roads/parts");
+        if !parts.exists() { return; }
+        let catalog = road_catalog(parts).unwrap();
+        let family = if road_families(&catalog).iter().any(|f| f == "asf2") { "asf2".to_string() } else { road_families(&catalog)[0].clone() };
+        let mut w = World::new(crate::world::WorldMeta::new("E", 128, 8.0), 100.0);
+        let db = crate::model_info::ModelDb::new("Z:/none");
+        let req = |points: Vec<[f32; 2]>, start| RouteRequest { family: family.clone(), points, terrain_route: false, settings: Default::default(), forbidden: vec![], roads: vec![], start };
+        let first = build_route(&mut w, &db, &req(vec![[300.0, 500.0], [500.0, 500.0]], None), &catalog, &Job::default()).unwrap();
+        assert!(is_cap(first.parts.last().unwrap(), &catalog) && is_cap(&first.parts[0], &catalog));
+        let joined = |chain: &[dayz_road_tool::roads::PlacedPart]| {
+            for k in 0..chain.len() - 1 {
+                let (out, next) = (endpoint(&chain[..=k], &catalog).unwrap(), startpoint(&chain[k + 1..], &catalog).unwrap());
+                let gap = (out.p[0] - next.p[0]).hypot(out.p[1] - next.p[1]);
+                let facing = out.outward[0] * next.outward[0] + out.outward[1] * next.outward[1];
+                assert!(gap < 0.05 && facing < -0.999, "joint {k}: gap {gap} facing {facing}");
+            }
+        };
+        // On from the end.
+        let mut kept = first.parts.clone();
+        kept.pop();
+        let port = endpoint(&kept, &catalog).unwrap();
+        let more = build_route(&mut w, &db, &req(vec![[port.p[0] as f32, port.p[1] as f32], [700.0, 540.0]], Some(port)), &catalog, &Job::default()).unwrap();
+        assert!(!is_cap(&more.parts[0], &catalog) && is_cap(more.parts.last().unwrap(), &catalog));
+        let chain: Vec<_> = kept.iter().cloned().chain(more.parts.iter().cloned()).collect();
+        joined(&chain);
+        // On from the start.
+        let kept: Vec<_> = chain[1..].to_vec();
+        let port = startpoint(&kept, &catalog).unwrap();
+        let before = build_route(&mut w, &db, &req(vec![[port.p[0] as f32, port.p[1] as f32], [100.0, 460.0]], Some(port)), &catalog, &Job::default()).unwrap();
+        let chain: Vec<_> = flip(&before.parts).into_iter().chain(kept).collect();
+        joined(&chain);
+        assert!(is_cap(&chain[0], &catalog) && is_cap(chain.last().unwrap(), &catalog));
+        assert_eq!(chain.iter().filter(|p| is_cap(p, &catalog)).count(), 2, "end pieces only at the two ends");
+    }
+
     /// A road searched across a real terrain, when P: is mounted.
     #[test]
     fn real_road_is_routed_on_terrain() {
@@ -2583,7 +2681,7 @@ mod tests {
         w.base = g.map;
         w.recompose(None);
         let t0 = std::time::Instant::now();
-        let mut req = RouteRequest { family: "asf2".into(), points: vec![[2200.0, 6500.0], [2500.0, 6300.0]], terrain_route: true, settings: Default::default(), forbidden: vec![], roads: vec![] };
+        let mut req = RouteRequest { family: "asf2".into(), points: vec![[2200.0, 6500.0], [2500.0, 6300.0]], terrain_route: true, settings: Default::default(), forbidden: vec![], roads: vec![], start: None };
         let r = build_route(&mut w, &crate::model_info::ModelDb::new("Z:/none"), &req, &catalog, &Job::default()).unwrap();
         println!("catalog {} parts {} in {:?}, line {}", catalog.len(), r.objects.len(), t0.elapsed(), r.centerline.len());
         assert!(!r.objects.is_empty());

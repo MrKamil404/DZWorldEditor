@@ -197,6 +197,9 @@ fn toolbar(app: &mut App, ctx: &egui::Context) {
                 for (g, icon, action) in [(Gizmo::Move, icons::ARROWS_OUT_CARDINAL, Action::GizmoMove), (Gizmo::Rotate, icons::ARROWS_CLOCKWISE, Action::GizmoRotate), (Gizmo::Scale, icons::ARROWS_OUT, Action::GizmoScale)] {
                     if icon_tool(ui, app.gizmo == g, icon, None, keys.tip(action)).clicked() { app.gizmo = g; }
                 }
+                // World or local axes for moving and turning.
+                let (icon, name) = if app.gizmo_local { (icons::CUBE_FOCUS, t("Local")) } else { (icons::GLOBE_SIMPLE, t("World")) };
+                if icon_tool(ui, app.gizmo_local, icon, Some(&name), format!("{}\n{}", keys.tip(Action::GizmoSpace), t("World: the gizmo follows the axes of the map. Local: those of the selected object."))).clicked() { app.gizmo_local = !app.gizmo_local; }
             });
             ui.separator();
             for (v, icon, name, action) in [(ViewMode::Perspective, icons::CUBE, "3D", Action::View3d), (ViewMode::Top, icons::SQUARE, "2D", Action::View2d), (ViewMode::Split, icons::COLUMNS, "3D | 2D", Action::ViewSplit)] {
@@ -706,6 +709,7 @@ fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSe
     field(ui, t("Earthwork penalty"), &mut r.earth_weight, 0.0..=5.0);
     field(ui, t("Max. bridge height m"), &mut r.bridge_height, 0.0..=60.0);
     field(ui, t("Max. bridge length m"), &mut r.bridge_max, 0.0..=600.0);
+    row(ui, &t("Bridge cost"), |ui| { changed |= ui.add(egui::Slider::new(&mut r.bridge_weight, 0.5..=10.0)).on_hover_text(t("A metre of bridge counts as this many metres of road. Lower it when cheap earthworks lead the road down into valleys instead of over them.")).changed(); });
     changed |= ui.checkbox(&mut r.bridge_over_forbidden, t("Bridges may cross forbidden areas and water")).changed();
     changed
 }
@@ -760,6 +764,7 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         if tool_button(ui, app.line.extend == Some(true), &t("Extend start")).clicked() { app.line.extend = if app.line.extend == Some(true) { None } else { Some(true) }; }
         if tool_button(ui, app.line.extend == Some(false), &t("Extend end")).clicked() { app.line.extend = if app.line.extend == Some(false) { None } else { Some(false) }; }
     });
+    ui.checkbox(&mut app.line.extend_only, t("Fit only the new stretch when extending")).on_hover_text(t("A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route."));
     if ui.button(t("Delete route")).clicked() { action = 4; }
     // Typed values wait for "Fit again"; dragging in the list must not start the viewport drag.
     let typed_before = if app.mode == Mode::Lines && !ui.ctx().input(|i| i.pointer.primary_down()) { app.line.point_drag.take() } else { None };
@@ -770,7 +775,9 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
             app.line.selected_point = None;
             app.refit_route(index, typed_before.unwrap_or(before));
         }
-        4 => app.delete_route(index),
+        4 => {
+            if let Some(id) = app.doc.as_ref().and_then(|d| d.world.routes.get(index)).map(|r| r.id) { crate::deleting::request(app, crate::deleting::Target::Route(id)); }
+        }
         _ if regrade => app.route_grading_changed(index),
         _ => {}
     }
@@ -1030,7 +1037,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
             }
         }
     }
-    if let Some(i) = delete_route { app.delete_route(i); }
+    if let Some(id) = delete_route.and_then(|i| app.doc.as_ref().and_then(|d| d.world.routes.get(i)).map(|r| r.id)) { crate::deleting::request(app, crate::deleting::Target::Route(id)); }
     if select_route.is_some() {
         app.line.selected_route = select_route;
         app.line.selected_point = None;
@@ -1169,8 +1176,7 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
         remove = ui.button(t("Remove modifier")).clicked();
     });
     if remove {
-        app.selected_modifier = None;
-        app.set_modifiers(&t("Remove modifier"), |list| list.retain(|x| x.id != id));
+        crate::deleting::request(app, crate::deleting::Target::Modifier(id));
         return;
     }
     if m != doc.world.modifiers[index] {
@@ -1386,6 +1392,9 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
         }
         Dialog::RoadCatalog => crate::library_ui::road_catalog_window(app, ctx, &mut open),
         Dialog::Settings => settings_window(app, ctx, &mut open),
+        Dialog::Delete(plan) => {
+            if crate::deleting::window(app, ctx, plan, &mut open) { close = true; }
+        }
         Dialog::Shortcuts => {
             let mut keys = app.settings.keys.clone();
             crate::keys::window(ctx, &mut keys, &mut app.key_capture, &mut open);
