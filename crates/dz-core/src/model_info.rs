@@ -205,21 +205,6 @@ fn read_land_contact(file: &[u8], info: &mut ModelInfo) {
     }
 }
 
-/// Height correction of a tilted model with a `placement` property. The game seats such a
-/// model so that the highest of its contact points lies on the terrain, whatever elevation is
-/// stored: a barrier joining a level neighbour meets it there, also when one end is sunk.
-pub fn tilted_lift(o: &crate::objects::Obj, info: &ModelInfo, height: &crate::terrain::Heightmap) -> f32 {
-    if !info.placement.skews() || info.contact_count == 0 || o.flags & crate::objects::FLAG_ABSOLUTE != 0 || (o.pitch.abs() <= 0.01 && o.roll.abs() <= 0.01) {
-        return 0.0;
-    }
-    let m = crate::objects::rotation(o.yaw, o.pitch, o.roll, o.scale);
-    let seated = info.contact[..info.contact_count as usize].iter().map(|c| {
-        let ground = height.sample(o.x + m[0][0] * c[0] + m[2][0] * c[1], o.z + m[0][2] * c[0] + m[2][2] * c[1]);
-        ground - (m[0][1] * c[0] + m[2][1] * c[1])
-    }).fold(f32::MAX, f32::min);
-    seated - (height.sample(o.x, o.z) + o.elevation)
-}
-
 /// How the game shears a model over the terrain.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Skew {
@@ -300,18 +285,16 @@ impl ModelDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A tilt stored on the object stands as it is: Buldozer and the built map show a barrier
+    /// with `placement = slopelandcontact` exactly where Terrain Builder's numbers put it.
     #[test]
-    fn a_tilted_barrier_rests_on_its_highest_contact() {
-        use crate::objects::{rotation, Obj};
+    fn a_tilted_model_is_not_sheared() {
+        use crate::objects::Obj;
         let info = ModelInfo { contact: [[-7.0, 0.0], [0.0, 0.0], [0.0, 0.0]], contact_count: 2, known: true, placement: Placement::SlopeLandContact, ..Default::default() };
         let h = crate::terrain::Heightmap::new(32, 32, 10.0, 10.0);
-        let o = Obj { x: 100.0, z: 100.0, elevation: -1.2, yaw: 30.0, pitch: 2.0, roll: 8.0, scale: 1.2, model: 0, flags: 0 };
-        let m = rotation(o.yaw, o.pitch, o.roll, o.scale);
-        let origin = 10.0 + o.elevation + tilted_lift(&o, &info, &h);
-        let top = info.contact[..2].iter().map(|c| origin + m[0][1] * c[0] + m[2][1] * c[1]).fold(f32::MIN, f32::max);
-        assert!((top - 10.0).abs() < 0.01, "{top}");
-        assert_eq!(tilted_lift(&Obj { pitch: 0.0, roll: 0.0, ..o }, &info, &h), 0.0);
-        assert_eq!(tilted_lift(&o, &ModelInfo { placement: Placement::None, ..info }, &h), 0.0);
+        let o = Obj { x: 100.0, z: 100.0, elevation: -0.367, yaw: 25.0, pitch: 1.4, roll: -12.2, scale: 1.4, model: 0, flags: 0 };
+        assert!(skew(&o, &info, &h).is_none());
+        assert!(skew(&Obj { pitch: 0.0, roll: 0.0, ..o }, &info, &h).is_some());
     }
 
     fn mlod(lods: &[&[[f32; 3]]], property: Option<&str>) -> Vec<u8> {
