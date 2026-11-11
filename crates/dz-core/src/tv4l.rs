@@ -226,6 +226,21 @@ pub fn parse_library(text: &str, out: &mut HashMap<u32, String>) {
     }
 }
 
+/// The model paths of one library, in its order, without repeats.
+pub fn library_models(text: &str) -> Vec<String> {
+    let mut map = HashMap::new();
+    let mut out = Vec::new();
+    for block in text.split("<Template>").skip(1) {
+        let Some(file) = tag(block, "File") else { continue };
+        let path = ObjectStore::normalize_path(file);
+        let path = path.strip_prefix("p:\\").map(str::to_string).unwrap_or(path);
+        if map.insert(path.clone(), ()).is_none() {
+            out.push(path);
+        }
+    }
+    out
+}
+
 pub fn read_libraries(files: &[PathBuf]) -> HashMap<u32, String> {
     let mut out = HashMap::new();
     for f in files {
@@ -234,6 +249,168 @@ pub fn read_libraries(files: &[PathBuf]) -> HashMap<u32, String> {
         }
     }
     out
+}
+
+/// A model to add to a template library, with its box when the model could be read.
+#[derive(Clone, Debug, Default)]
+pub struct NewTemplate {
+    /// Work drive path of the model.
+    pub file: String,
+    /// (min, max, centre) of the model box, measured from its origin.
+    pub bounds: Option<([f32; 3], [f32; 3], [f32; 3])>,
+}
+
+/// The text of an empty template library, as Terrain Builder writes it.
+pub fn new_library(name: &str) -> String {
+    format!("<?xml version=\"1.0\" ?>\r\n<Library name=\"{}\" shape=\"rectangle\" default_fill=\"-8355712\" default_outline=\"-1\" tex=\"0\">\r\n</Library>\r\n", xml_escape(name))
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
+/// The date in the form Terrain Builder writes, such as `Tue Feb  3 18:43:07 2026`, in UTC.
+fn tb_date(unix: u64) -> String {
+    let (days, secs) = ((unix / 86_400) as i64, unix % 86_400);
+    // Civil date from days since 1970-01-01.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
+    const WEEKDAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    format!("{} {} {:>2} {:02}:{:02}:{:02} {}", WEEKDAYS[days.rem_euclid(7) as usize], MONTHS[month as usize - 1], day, secs / 3600, secs / 60 % 60, secs % 60, year)
+}
+
+/// A template id for a name, not yet in `taken`.
+fn template_hash(name: &str, taken: &std::collections::HashSet<u32>) -> u32 {
+    let mut h = name.to_ascii_lowercase().bytes().fold(0x811c_9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193));
+    while h == 0 || taken.contains(&h) {
+        h = h.wrapping_mul(0x0100_0193) ^ 0x5bd1_e995;
+    }
+    h
+}
+
+/// Adds templates for models not yet in the library. `taken` holds the template ids of every
+/// library of the project, which the new ones must not repeat; they are added to it.
+/// Returns the new text and how many templates were added.
+pub fn add_templates(text: &str, models: &[NewTemplate], taken: &mut std::collections::HashSet<u32>, unix_time: u64) -> (String, usize) {
+    let present: std::collections::HashSet<String> = library_models(text).into_iter().collect();
+    let mut names: std::collections::HashSet<String> = text.split("<Template>").skip(1).filter_map(|b| tag(b, "Name")).map(|n| n.to_ascii_lowercase()).collect();
+    let mut added = String::new();
+    let mut count = 0;
+    let mut seen = std::collections::HashSet::new();
+    for m in models {
+        let file = ObjectStore::normalize_path(&m.file);
+        let file = file.strip_prefix("p:\\").map(str::to_string).unwrap_or(file);
+        if present.contains(&file) || !seen.insert(file.clone()) {
+            continue;
+        }
+        let stem = file.rsplit('\\').next().unwrap_or(&file).trim_end_matches(".p3d").to_string();
+        let mut name = stem.clone();
+        let mut k = 2;
+        while names.contains(&name.to_ascii_lowercase()) {
+            name = format!("{stem}_{k}");
+            k += 1;
+        }
+        names.insert(name.to_ascii_lowercase());
+        let hash = template_hash(&name, taken);
+        taken.insert(hash);
+        let (min, max, center, radius, height) = match m.bounds {
+            Some((min, max, center)) => {
+                let d: f32 = (0..3).map(|i| (max[i] - min[i]).powi(2)).sum::<f32>().sqrt();
+                (min, max, center, d * 0.5, max[1] - min[1])
+            }
+            None => ([999.0; 3], [-999.0; 3], [-999.0; 3], -1.0, 0.0),
+        };
+        let v = |p: [f32; 3]| format!("X=\"{:.6}\" Y=\"{:.6}\" Z=\"{:.6}\"", p[0], p[1], p[2]);
+        let lines = [
+            "    <Template>".to_string(),
+            format!("        <Name>{}</Name>", xml_escape(&name)),
+            format!("        <File>{}</File>", xml_escape(&file)),
+            format!("        <Date>{}</Date>", tb_date(unix_time)),
+            "        <Archive></Archive>".into(),
+            "        <Fill>-8355712</Fill>".into(),
+            "        <Outline>-1</Outline>".into(),
+            "        <Scale>1.000000</Scale>".into(),
+            format!("        <Hash>{}</Hash>", hash as i32),
+            "        <ScaleRandMin>0.000000</ScaleRandMin>".into(),
+            "        <ScaleRandMax>0.000000</ScaleRandMax>".into(),
+            "        <YawRandMin>0.000000</YawRandMin>".into(),
+            "        <YawRandMax>0.000000</YawRandMax>".into(),
+            "        <PitchRandMin>0.000000</PitchRandMin>".into(),
+            "        <PitchRandMax>0.000000</PitchRandMax>".into(),
+            "        <RollRandMin>0.000000</RollRandMin>".into(),
+            "        <RollRandMax>0.000000</RollRandMax>".into(),
+            "        <TexLLU>0.000000</TexLLU>".into(),
+            "        <TexLLV>0.000000</TexLLV>".into(),
+            "        <TexURU>1.000000</TexURU>".into(),
+            "        <TexURV>1.000000</TexURV>".into(),
+            format!("        <BBRadius>{radius:.6}</BBRadius>"),
+            "        <BBHScale>1.000000</BBHScale>".into(),
+            "        <AutoCenter>0</AutoCenter>".into(),
+            "        <XShift>0.000000</XShift>".into(),
+            "        <YShift>0.000000</YShift>".into(),
+            "        <ZShift>0.000000</ZShift>".into(),
+            format!("        <Height>{height:.6}</Height>"),
+            format!("        <BoundingMin {} />", v(min)),
+            format!("        <BoundingMax {} />", v(max)),
+            format!("        <BoundingCenter {} />", v(center)),
+            "        <Placement></Placement>".into(),
+            "    </Template>".into(),
+        ];
+        for l in lines {
+            added.push_str(&l);
+            added.push_str("\r\n");
+        }
+        count += 1;
+    }
+    let out = match text.rfind("</Library>") {
+        Some(at) => format!("{}{}{}", &text[..at], added, &text[at..]),
+        None => format!("{text}{added}</Library>\r\n"),
+    };
+    (out, count)
+}
+
+/// Takes the templates of these models out of a library. Returns the new text and how many
+/// went; objects of Terrain Builder layers that use them lose their model there.
+pub fn remove_templates(text: &str, models: &[String]) -> (String, usize) {
+    let gone: std::collections::HashSet<String> = models.iter().map(|m| {
+        let f = ObjectStore::normalize_path(m);
+        f.strip_prefix("p:\\").map(str::to_string).unwrap_or(f)
+    }).collect();
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    let mut count = 0;
+    while let Some(a) = rest.find("<Template>") {
+        let Some(len) = rest[a..].find("</Template>") else { break };
+        let end = a + len + "</Template>".len();
+        let block = &rest[a..end];
+        let file = tag(block, "File").map(|f| {
+            let f = ObjectStore::normalize_path(f);
+            f.strip_prefix("p:\\").map(str::to_string).unwrap_or(f)
+        });
+        if file.is_some_and(|f| gone.contains(&f)) {
+            // The block goes with the indent before it and the line break after it.
+            let start = rest[..a].rfind('\n').map_or(a, |n| n + 1);
+            out.push_str(&rest[..start]);
+            let after = &rest[end..];
+            let skip = after.len() - after.trim_start_matches(['\r', '\n']).len();
+            let skip = skip.min(if after.starts_with("\r\n") { 2 } else if after.starts_with('\n') { 1 } else { 0 });
+            rest = &after[skip..];
+            count += 1;
+        } else {
+            out.push_str(&rest[..end]);
+            rest = &rest[end..];
+        }
+    }
+    out.push_str(rest);
+    (out, count)
 }
 
 /// Every `.tml` below a folder.
@@ -258,6 +435,27 @@ pub fn libraries_in(root: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn new_templates_are_read_back_and_can_be_taken_out() {
+        let mut taken = std::collections::HashSet::new();
+        let lib = new_library("Mine");
+        let models = [NewTemplate { file: r"P:\DZ\Plants\Tree\t_a.p3d".into(), bounds: Some(([-1.0, 0.0, -1.0], [1.0, 8.0, 1.0], [0.0, 4.0, 0.0])) }, NewTemplate { file: r"dz\b.p3d".into(), bounds: None }];
+        let (text, n) = add_templates(&lib, &models, &mut taken, 1_770_140_587);
+        assert_eq!(n, 2);
+        assert!(text.contains("<Date>Tue Feb  3 17:43:07 2026</Date>"), "{text}");
+        assert_eq!(library_models(&text), vec![r"dz\plants\tree\t_a.p3d".to_string(), r"dz\b.p3d".to_string()]);
+        let mut ids = HashMap::new();
+        parse_library(&text, &mut ids);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.keys().all(|k| taken.contains(k)));
+        // The same model is not added twice, and the next one gets a name of its own.
+        let (again, n) = add_templates(&text, &models[..1], &mut taken, 0);
+        assert_eq!((n, again.len()), (0, text.len()));
+        let (text, n) = remove_templates(&text, &[r"dz\b.p3d".to_string()]);
+        assert_eq!(n, 1);
+        assert_eq!(library_models(&text), vec![r"dz\plants\tree\t_a.p3d".to_string()]);
+        assert!(text.ends_with("    </Template>\r\n</Library>\r\n"), "{text:?}");
+    }
 
     fn put_field(b: &mut Vec<u8>, tag: u16, ty: u8, v: &[u8]) {
         b.extend_from_slice(&tag.to_le_bytes());
@@ -335,6 +533,7 @@ mod tests {
     #[test]
     fn library_ids_are_signed_on_disk() {
         let mut m = HashMap::new();
+        assert_eq!(library_models("<Library><Template><Name>A</Name><File>P:\\DZ\\a.p3d</File></Template><Template><File>dz\\a.p3d</File></Template></Library>"), vec!["dz\\a.p3d".to_string()]);
         parse_library("<Library><Template><Name>A</Name><File>P:\\DZ\\a.p3d</File><Hash>-524377248</Hash></Template><Template><Name>B</Name><File>dz\\b.p3d</File><Hash>10024</Hash></Template></Library>", &mut m);
         assert_eq!(m[&(-524377248i32 as u32)], "dz\\a.p3d");
         assert_eq!(m[&10024], "dz\\b.p3d");

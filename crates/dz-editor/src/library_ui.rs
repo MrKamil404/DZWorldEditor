@@ -1,7 +1,7 @@
 //! The generator and object preset libraries, generators in the project and the road catalog.
 use crate::app::*;
 use crate::i18n::{t, tf};
-use crate::theme::{self, row};
+use crate::theme::row;
 use dz_core::edit::Change;
 use dz_core::gen;
 use dz_core::library::*;
@@ -595,25 +595,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
     sample
 }
 
-/// A library entry drawn like a model in the browser.
-fn tile(ui: &mut egui::Ui, side: f32, name: &str, letter: &str, color: Color32, selected: bool, image: Option<egui::TextureId>) -> egui::Response {
-    let cell = vec2(side + 8.0, side + 26.0);
-    let (rect, resp) = ui.allocate_exact_size(cell, egui::Sense::click_and_drag());
-    ui.painter().rect_filled(rect, 3.0, if selected { theme::ACCENT_SOFT } else if resp.hovered() { theme::HOVER } else { Color32::from_rgb(42, 42, 44) });
-    let art = egui::Rect::from_min_size(rect.min + vec2(4.0, 4.0), vec2(side, side));
-    match image {
-        Some(id) => { ui.painter().image(id, art, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE); }
-        None => {
-            ui.painter().rect_filled(art, 2.0, color);
-            ui.painter().text(art.center(), egui::Align2::CENTER_CENTER, letter, egui::FontId::proportional(side * 0.42), Color32::from_white_alpha(210));
-        }
-    }
-    let short: String = if name.chars().count() > 15 { name.chars().take(14).chain(['…']).collect() } else { name.to_string() };
-    ui.painter().text(egui::pos2(rect.center().x, rect.bottom() - 11.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), Color32::from_gray(225));
-    resp.on_hover_text(name)
-}
-
-fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
+pub(crate) fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
     match kind {
         GeneratorKind::Forest(_) => ("F", Color32::from_rgb(44, 96, 56)),
         GeneratorKind::SurfacePaint { .. } => ("S", Color32::from_rgb(120, 92, 48)),
@@ -636,7 +618,7 @@ fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
 
 /// What a library entry shows as its picture.
 #[derive(Clone)]
-enum Preview {
+pub(crate) enum Preview {
     Model(String),
     Picture(String, GeneratorKind),
     Nothing,
@@ -660,7 +642,7 @@ fn preset_model(app: &App, preset: &str, user: &[forest_core::user_presets::User
     app.assets.resolve(&heaviest.0).map(str::to_string)
 }
 
-fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
+pub(crate) fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
     let model = match kind {
         GeneratorKind::Forest(f) => preset_model(app, &f.preset, &f.user_presets).or_else(|| preset_model(app, &f.preset, &app.library.all_forest_presets())),
         GeneratorKind::Scatter(s) => s.preset.and_then(|id| app.library.objects.iter().find(|p| p.id == id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| s.models.first().map(|m| m.0.clone())),
@@ -739,7 +721,7 @@ fn picture_of(app: &App, kind: &GeneratorKind) -> egui::ColorImage {
     egui::ColorImage { size: [N, N], pixels: px }
 }
 
-fn preview_texture(app: &mut App, ctx: &egui::Context, preview: &Preview) -> Option<egui::TextureId> {
+pub(crate) fn preview_texture(app: &mut App, ctx: &egui::Context, preview: &Preview) -> Option<egui::TextureId> {
     match preview {
         Preview::Model(m) => app.thumbs.get(m).map(|t| t.id()),
         Preview::Picture(key, kind) => {
@@ -754,217 +736,12 @@ fn preview_texture(app: &mut App, ctx: &egui::Context, preview: &Preview) -> Opt
     }
 }
 
-/// The folder list beside a library; entries are moved by dropping them on a folder.
-fn folder_list(ui: &mut egui::Ui, current: &mut Option<String>, folders: &[String], new_name: &mut String) -> (Option<(LibDrag, String)>, Option<String>) {
-    let mut moved = None;
-    let mut created = None;
-    ui.separator();
-    ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(new_name).hint_text(t("New folder")).desired_width(110.0));
-        if ui.small_button("+").clicked() && !new_name.trim().is_empty() {
-            created = Some(new_name.trim().to_string());
-            new_name.clear();
-        }
-    });
-    if ui.selectable_label(current.is_none(), t("All")).clicked() { *current = None; }
-    for f in folders {
-        let r = ui.selectable_label(current.as_deref() == Some(f.as_str()), f);
-        if r.clicked() { *current = Some(f.clone()); }
-        if let Some(p) = r.dnd_release_payload::<LibDrag>() { moved = Some(((*p).clone(), f.clone())); }
-    }
-    (moved, created)
-}
-
-fn grid_columns(ui: &egui::Ui, side: f32) -> usize {
-    (ui.available_width() / (side + 12.0)).floor().max(1.0) as usize
-}
-
-pub fn generators_tab(app: &mut App, ui: &mut egui::Ui) {
-    let mut folders = vec![BUILT_IN.to_string()];
-    folders.extend(app.library.generator_folders.iter().cloned());
-    let (mut current, mut new_name) = (app.gen_folder.clone(), std::mem::take(&mut app.new_folder));
-    let mut result = (None, None);
-    egui::SidePanel::left("gen_folders").resizable(true).default_width(180.0).frame(egui::Frame::new()).show_inside(ui, |ui| {
-        ui.menu_button(format!("+ {}", t("New generator")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-            for b in &app.built_in {
-                if ui.button(t(b.kind.type_name())).clicked() {
-                    let folder = current.clone().filter(|f| f != BUILT_IN).unwrap_or_default();
-                    let id = new_id();
-                    app.library.generators.push(GeneratorPreset { id, name: t(b.kind.type_name()), folder, kind: b.kind.clone() });
-                    app.edit_generator = Some(id);
-                    app.selected_generator = None;
-                    app.lib_dirty = true;
-                    ui.close_menu();
-                }
-            }
-        });
-        egui::ScrollArea::vertical().id_salt("gf").auto_shrink([false, false]).show(ui, |ui| {
-            result = folder_list(ui, &mut current, &folders, &mut new_name);
-        });
-    });
-    app.gen_folder = current.clone();
-    app.new_folder = new_name;
-    if let Some((LibDrag::Generator(id), folder)) = result.0 {
-        if folder != BUILT_IN {
-            if let Some(g) = app.library.generators.iter_mut().find(|g| g.id == id) { g.folder = folder; app.lib_dirty = true; }
-        }
-    }
-    if let Some(name) = result.1 {
-        if !app.library.generator_folders.contains(&name) { app.library.generator_folders.push(name); app.lib_dirty = true; }
-    }
-    let shown: Vec<(u64, String, &'static str, Color32, bool, Preview)> = app.built_in.iter().map(|g| (g, true)).chain(app.library.generators.iter().map(|g| (g, false)))
-        .filter(|(g, _)| current.as_deref().is_none_or(|f| f == g.folder))
-        .map(|(g, b)| { let (l, c) = kind_look(&g.kind); (g.id, if b { t(&g.name) } else { g.name.clone() }, l, c, b, preview_of(app, &g.kind)) }).collect();
-    let side = app.settings.library_tile;
-    let columns = grid_columns(ui, side);
-    let mut add = None;
-    let mut delete = None;
-    let mut copy = None;
-    egui::ScrollArea::vertical().id_salt("gens").auto_shrink([false, false]).show(ui, |ui| {
-        for chunk in shown.chunks(columns) {
-            ui.horizontal(|ui| {
-                for (id, name, letter, color, built_in, preview) in chunk {
-                    let image = preview_texture(app, ui.ctx(), preview);
-                    let r = tile(ui, side, name, letter, *color, app.edit_generator == Some(*id), image);
-                    if r.clicked() { app.edit_generator = Some(*id); app.selected_generator = None; app.edit_forest = None; app.edit_object = None; }
-                    if r.double_clicked() { add = Some(*id); }
-                    r.dnd_set_drag_payload(LibDrag::Generator(*id));
-                    r.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-                        if ui.button(t("Add to the project")).clicked() { add = Some(*id); ui.close_menu(); }
-                        if ui.button(t("Duplicate")).clicked() { copy = Some(*id); ui.close_menu(); }
-                        if ui.add_enabled(!*built_in, egui::Button::new(t("Delete"))).clicked() { delete = Some(*id); ui.close_menu(); }
-                    });
-                }
-            });
-        }
-    });
-    if let Some(id) = copy {
-        if let Some(g) = app.built_in.iter().chain(app.library.generators.iter()).find(|g| g.id == id).cloned() {
-            let new = new_id();
-            app.library.generators.push(GeneratorPreset { id: new, name: format!("{} 2", if g.folder == BUILT_IN { t(&g.name) } else { g.name.clone() }), folder: if g.folder == BUILT_IN { String::new() } else { g.folder }, kind: g.kind });
-            app.edit_generator = Some(new);
-            app.lib_dirty = true;
-        }
-    }
-    if let Some(id) = delete {
-        app.library.generators.retain(|g| g.id != id);
-        if app.edit_generator == Some(id) { app.edit_generator = None; }
-        app.lib_dirty = true;
-    }
-    if let Some(id) = add { add_instance(app, id, None); }
-}
-
-pub fn presets_tab(app: &mut App, ui: &mut egui::Ui) {
-    const ROADS: &str = "Roads";
-    let forests_label = t("Forests");
-    let mut folders = vec![t(ROADS), forests_label.clone()];
-    folders.extend(app.library.object_folders.iter().cloned());
-    let roads_label = t(ROADS);
-    let (mut current, mut new_name) = (app.preset_folder.clone(), std::mem::take(&mut app.new_folder));
-    let mut result = (None, None);
-    egui::SidePanel::left("preset_folders").resizable(true).default_width(180.0).frame(egui::Frame::new()).show_inside(ui, |ui| {
-        if ui.button(format!("+ {}", t("New preset"))).clicked() {
-            let id = new_id();
-            let items = app.place.model.iter().map(|m| (m.clone(), 1.0)).collect();
-            let folder = current.clone().filter(|f| *f != roads_label).unwrap_or_default();
-            app.library.objects.push(ObjectPreset { id, name: t("New preset"), folder, items, scale_min: 1.0, scale_max: 1.0, random_yaw: true, align: false });
-            app.edit_object = Some(id);
-            app.lib_dirty = true;
-        }
-        if ui.button(t("Road catalog...")).clicked() { app.dialog = Dialog::RoadCatalog; }
-        egui::ScrollArea::vertical().id_salt("pf").auto_shrink([false, false]).show(ui, |ui| {
-            result = folder_list(ui, &mut current, &folders, &mut new_name);
-        });
-    });
-    app.preset_folder = current.clone();
-    app.new_folder = new_name;
-    if let Some((LibDrag::ObjectPreset(id), folder)) = result.0 {
-        if folder != roads_label && folder != forests_label {
-            if let Some(p) = app.library.objects.iter_mut().find(|p| p.id == id) { p.folder = folder; app.lib_dirty = true; }
-        }
-    }
-    if let Some(name) = result.1 {
-        if name != roads_label && name != forests_label && !app.library.object_folders.contains(&name) { app.library.object_folders.push(name); app.lib_dirty = true; }
-    }
-    let side = app.settings.library_tile;
-    let columns = grid_columns(ui, side);
-    let show_roads = current.as_deref().is_none_or(|f| f == roads_label);
-    let show_forests = current.as_deref().is_none_or(|f| f == forests_label);
-    let forests: Vec<(String, Option<String>)> = if show_forests { let own = app.library.forest_presets.clone(); own.iter().map(|p| p.name.clone()).chain(gen::forest_preset_names()).map(|n| { let m = preset_model(app, &n, &own).map(|m| ObjectStore::normalize_path(&m)); (n, m) }).collect() } else { Vec::new() };
-    let road_model = |app: &App, family: &str| app.road_catalog.iter().filter(|c| c.family == family && c.category == 3).min_by_key(|c| c.path.len()).map(|c| {
+/// The model a road type is shown with.
+pub(crate) fn road_model(app: &App, family: &str) -> Option<String> {
+    app.road_catalog.iter().filter(|c| c.family == family && c.category == 3).min_by_key(|c| c.path.len()).map(|c| {
         let path = ObjectStore::normalize_path(&c.path);
         if path.contains('\\') { path.strip_prefix("p:\\").unwrap_or(&path).to_string() } else { format!("dz\\structures\\roads\\parts\\{path}") }
-    });
-    let families: Vec<String> = if show_roads { app.road_families.clone() } else { Vec::new() };
-    let shown: Vec<(u64, String, Option<String>)> = app.library.objects.iter().filter(|p| current.as_deref().is_none_or(|f| f == p.folder)).map(|p| (p.id, p.name.clone(), p.items.first().map(|i| i.0.clone()))).collect();
-    enum Entry { Road(String, Option<String>), Forest(String, Option<String>), Preset(u64, String, Option<String>) }
-    let entries: Vec<Entry> = families.into_iter().map(|f| { let m = road_model(app, &f); Entry::Road(f, m) }).chain(forests.into_iter().map(|(n, m)| Entry::Forest(n, m))).chain(shown.into_iter().map(|(a, b, c)| Entry::Preset(a, b, c))).collect();
-    let mut add_forest_now = None;
-    let (mut copy_forest, mut delete_forest, mut copy_object) = (None, None, None);
-    let own_forests: Vec<String> = app.library.forest_presets.iter().map(|p| p.name.clone()).collect();
-    let mut delete = None;
-    egui::ScrollArea::vertical().id_salt("presets").auto_shrink([false, false]).show(ui, |ui| {
-        for chunk in entries.chunks(columns) {
-            ui.horizontal(|ui| {
-                for e in chunk {
-                    match e {
-                        Entry::Forest(name, model) => {
-                            let image = model.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
-                            let r = tile(ui, side, name, "F", Color32::from_rgb(44, 96, 56), app.edit_forest.as_ref() == Some(name), image);
-                            if r.clicked() {
-                                app.edit_forest = Some(name.clone());
-                                app.edit_object = None;
-                                app.edit_generator = None;
-                                app.selected_generator = None;
-                            }
-                            if r.double_clicked() { add_forest_now = Some(name.clone()); }
-                            r.dnd_set_drag_payload(LibDrag::ForestPreset(name.clone()));
-                            r.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Add to the project")).clicked() { add_forest_now = Some(name.clone()); ui.close_menu(); } if ui.button(t("Duplicate")).clicked() { copy_forest = Some(name.clone()); ui.close_menu(); } if ui.add_enabled(own_forests.contains(name), egui::Button::new(t("Delete"))).clicked() { delete_forest = Some(name.clone()); ui.close_menu(); } });
-                        }
-                        Entry::Road(family, model) => {
-                            let image = model.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
-                            let r = tile(ui, side, family, "R", Color32::from_rgb(70, 72, 78), app.line.family == *family, image);
-                            if r.clicked() {
-                                app.line.family = family.clone();
-                                app.line.action = LineAction::Road;
-                                app.mode = Mode::Lines;
-                            }
-                            r.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Road catalog...")).clicked() { app.line.family = family.clone(); app.dialog = Dialog::RoadCatalog; ui.close_menu(); } });
-                        }
-                        Entry::Preset(id, name, first) => {
-                            let image = first.as_ref().and_then(|m| app.thumbs.get(m).map(|t| t.id()));
-                            let r = tile(ui, side, name, "O", Color32::from_rgb(64, 78, 92), app.edit_object == Some(*id), image);
-                            if r.clicked() {
-                                app.edit_object = Some(*id);
-                                app.selected_generator = None;
-                                app.edit_generator = None;
-                                app.edit_forest = None;
-                                app.place.preset = Some(*id);
-                                if app.mode == Mode::Select { app.mode = Mode::Place; }
-                            }
-                            if let Some(p) = r.dnd_release_payload::<String>() {
-                                if let Some(preset) = app.library.objects.iter_mut().find(|x| x.id == *id) {
-                                    if !preset.items.iter().any(|i| i.0 == *p) { preset.items.push(((*p).clone(), 1.0)); app.lib_dirty = true; }
-                                }
-                            }
-                            r.dnd_set_drag_payload(LibDrag::ObjectPreset(*id));
-                            r.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Duplicate")).clicked() { copy_object = Some(*id); ui.close_menu(); } if ui.button(t("Delete")).clicked() { delete = Some(*id); ui.close_menu(); } });
-                        }
-                    }
-                }
-            });
-        }
-    });
-    if let Some(name) = add_forest_now { add_forest(app, &name, None); }
-    if let Some(name) = copy_forest { duplicate_forest_preset(app, &name); }
-    if let Some(name) = delete_forest { remove_forest_preset(app, &name); }
-    if let Some(id) = copy_object { duplicate_object_preset(app, id); }
-    if let Some(id) = delete {
-        app.library.objects.retain(|p| p.id != id);
-        if app.edit_object == Some(id) { app.edit_object = None; }
-        if app.place.preset == Some(id) { app.place.preset = None; }
-        app.lib_dirty = true;
-    }
+    })
 }
 
 /// Shows the library entry or project generator being edited. Returns false when there is none.
@@ -1023,7 +800,7 @@ fn unused_name(base: &str, taken: impl Fn(&str) -> bool) -> String {
     (1..).map(|n| if n == 1 { format!("{base} ({copy})") } else { format!("{base} ({copy} {n})") }).find(|n| !taken(n)).unwrap()
 }
 
-fn duplicate_object_preset(app: &mut App, id: u64) {
+pub(crate) fn duplicate_object_preset(app: &mut App, id: u64) {
     let Some(mut p) = app.library.objects.iter().find(|p| p.id == id).cloned() else { return };
     p.id = new_id();
     p.name = unused_name(&p.name, |n| app.library.objects.iter().any(|x| x.name == n));
@@ -1039,7 +816,7 @@ fn forest_preset(app: &App, name: &str) -> Option<forest_core::user_presets::Use
     app.library.forest_presets.iter().find(|p| p.name == name).cloned().or_else(|| forest_core::species::zone_presets().iter().find(|p| p.name == name).map(UserPreset::from_builtin))
 }
 
-fn duplicate_forest_preset(app: &mut App, name: &str) {
+pub(crate) fn duplicate_forest_preset(app: &mut App, name: &str) {
     let Some(mut p) = forest_preset(app, name) else { return };
     p.name = unused_name(&p.name, |n| app.library.forest_presets.iter().any(|x| x.name == n) || gen::forest_preset_names().iter().any(|x| x == n));
     app.edit_forest = Some(p.name.clone());
@@ -1047,7 +824,7 @@ fn duplicate_forest_preset(app: &mut App, name: &str) {
     app.lib_dirty = true;
 }
 
-fn remove_forest_preset(app: &mut App, name: &str) {
+pub(crate) fn remove_forest_preset(app: &mut App, name: &str) {
     app.library.forest_presets.retain(|p| p.name != name);
     if app.edit_forest.as_deref() == Some(name) { app.edit_forest = None; }
     app.lib_dirty = true;

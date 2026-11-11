@@ -3,6 +3,10 @@
   "de": "(keine)",
   "pl": "(brak)"
  },
+ "(several)": {
+  "de": "(mehrere)",
+  "pl": "(różne)"
+ },
  "0 makes the edge an even band.": {
   "de": "0 ergibt einen gleichmäßigen Streifen.",
   "pl": "0 oznacza równy pas."
@@ -19,6 +23,10 @@
   "de": "3. Erstellen und starten",
   "pl": "3. Zbuduj i uruchom"
  },
+ "A Terrain Builder template library (.tml) of the project, with the models selected in the browser.": {
+  "de": "Eine Terrain-Builder-Vorlagenbibliothek (.tml) des Projekts, mit den im Browser ausgewählten Modellen.",
+  "pl": "Biblioteka szablonów Terrain Buildera (.tml) projektu, z modelami zaznaczonymi w przeglądarce."
+ },
  "A backup is only made when the project has changed. Files that did not change are shared between backups, so they take no extra space.": {
   "de": "Eine Sicherung entsteht nur, wenn sich das Projekt geändert hat. Unveränderte Dateien werden zwischen Sicherungen geteilt und belegen keinen zusätzlichen Platz.",
   "pl": "Kopia powstaje tylko wtedy, gdy projekt się zmienił. Niezmienione pliki są współdzielone między kopiami, więc nie zajmują dodatkowego miejsca."
@@ -30,6 +38,18 @@
  "A built-in preset. Duplicate it to make your own version.": {
   "de": "Ein eingebautes Preset. Dupliziere es für eine eigene Version.",
   "pl": "Preset wbudowany. Zduplikuj go, aby zrobić własną wersję."
+ },
+ "A file of that name is already there; choose another name or load it.": {
+  "de": "Eine Datei mit diesem Namen existiert bereits; wähle einen anderen Namen oder lade sie.",
+  "pl": "Plik o tej nazwie już istnieje; wybierz inną nazwę albo go wczytaj."
+ },
+ "A folder of that name is already there": {
+  "de": "Ein Ordner mit diesem Namen existiert bereits",
+  "pl": "Folder o tej nazwie już istnieje"
+ },
+ "A folder of your own; models and presets are put into it without moving their files.": {
+  "de": "Ein eigener Ordner; Modelle und Presets werden hineingelegt, ohne ihre Dateien zu verschieben.",
+  "pl": "Własny folder; modele i presety trafiają do niego bez przenoszenia ich plików."
  },
  "A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched.": {
   "de": "Ein Modifikator ebnet das Gelände unter dem Objekt und folgt ihm. Das modellierte Gelände bleibt unverändert.",
@@ -95,9 +115,21 @@
   "de": "Oberfläche hinzufügen",
   "pl": "Dodaj powierzchnię"
  },
+ "Add terrain modifier": {
+  "de": "Geländemodifikator hinzufügen",
+  "pl": "Dodaj modyfikator terenu"
+ },
  "Add terrain modifiers": {
   "de": "Geländemodifikatoren hinzufügen",
   "pl": "Dodaj modyfikatory terenu"
+ },
+ "Add to folder": {
+  "de": "Zum Ordner hinzufügen",
+  "pl": "Dodaj do folderu"
+ },
+ "Add to template library": {
+  "de": "Zur Vorlagenbibliothek hinzufügen",
+  "pl": "Dodaj do biblioteki szablonów"
  },
  "Add to the project": {
   "de": "Zum Projekt hinzufügen",
@@ -106,6 +138,10 @@
  "Add zone": {
   "de": "Zone hinzufügen",
   "pl": "Dodaj strefę"
+ },
+ "Added {0} to {1}": {
+  "de": "{0} zu {1} hinzugefügt",
+  "pl": "Dodano {0} do {1}"
  },
  "Additional mods": {
   "de": "Zusätzliche Mods",
@@ -118,6 +154,10 @@
  "All": {
   "de": "Alle",
   "pl": "Wszystkie"
+ },
+ "All models": {
+  "de": "Alle Modelle",
+  "pl": "Wszystkie modele"
  },
  "Along the line": {
   "de": "Entlang der Linie",
@@ -206,6 +246,10 @@
  "Autosave every": {
   "de": "Automatisch speichern alle",
   "pl": "Autozapis co"
+ },
+ "Back": {
+  "de": "Zurück",
+  "pl": "Wstecz"
  },
  "Back up every": {
   "de": "Sicherung alle",
@@ -351,6 +395,10 @@
   "de": "Gebäude: im Inhaltsbrowser wählen und Hinzufügen drücken.",
   "pl": "Budynki: wybierz w bibliotece i naciśnij Dodaj."
  },
+ "Built in: it cannot be changed, only duplicated.": {
+  "de": "Eingebaut: kann nicht geändert, nur dupliziert werden.",
+  "pl": "Wbudowane: nie można zmienić, tylko powielić."
+ },
  "Built on the DayZForests and DayZ Road Studio engines.": {
   "de": "Basiert auf den Engines von DayZForests und DayZ Road Studio.",
   "pl": "Oparty na silnikach DayZForests i DayZ Road Studio."
@@ -358,6 +406,10 @@
  "Built world (WRP)": {
   "de": "Erstellte Welt (WRP)",
   "pl": "Zbudowany świat (WRP)"
+ },
+ "Built-in": {
+  "de": "Eingebaut",
+  "pl": "Wbudowane"
  },
  "Bushes": {
   "de": "Büsche",
@@ -459,6 +511,10 @@
   "de": "Projektgebiete löschen",
   "pl": "Wyczyść obszary projektu"
  },
+ "Clear the selection": {
+  "de": "Auswahl aufheben",
+  "pl": "Wyczyść zaznaczenie"
+ },
  "Clearing size m": {
   "de": "Lichtungsgröße m",
   "pl": "Wielkość polan m"
@@ -555,6 +611,10 @@
   "de": "Kopieren aus",
   "pl": "Kopiuj z"
  },
+ "Copy the path": {
+  "de": "Pfad kopieren",
+  "pl": "Kopiuj ścieżkę"
+ },
  "Corner tower": {
   "de": "Eckmast",
   "pl": "Słup narożny"
@@ -591,6 +651,10 @@
   "de": "Nur abtragen",
   "pl": "Tylko obniżaj"
  },
+ "Cut down to the level": {
+  "de": "Bis zur Höhe abtragen",
+  "pl": "Ścięcie do poziomu"
+ },
  "Cutting slope": {
   "de": "Einschnittneigung",
   "pl": "Nachylenie wykopu"
@@ -618,6 +682,10 @@
  "Delete": {
   "de": "Löschen",
   "pl": "Usuń"
+ },
+ "Delete folder": {
+  "de": "Ordner löschen",
+  "pl": "Usuń folder"
  },
  "Delete generator": {
   "de": "Generator löschen",
@@ -719,6 +787,10 @@
   "de": "Grabenbreite",
   "pl": "Szerokość rowu"
  },
+ "Double-click to open": {
+  "de": "Doppelklick zum Öffnen",
+  "pl": "Kliknij dwukrotnie, aby otworzyć"
+ },
  "Download and install ({0} MB)": {
   "de": "Herunterladen und installieren ({0} MB)",
   "pl": "Pobierz i zainstaluj ({0} MB)"
@@ -727,13 +799,33 @@
   "de": "{0} wird heruntergeladen",
   "pl": "Pobieranie {0}"
  },
+ "Drag them onto the map to place them all side by side. In place mode a click places one of the selected models at random.": {
+  "de": "Auf die Karte ziehen, um alle nebeneinander zu platzieren. Im Platzieren-Modus setzt ein Klick zufällig eines der ausgewählten Modelle.",
+  "pl": "Przeciągnij je na mapę, aby postawić wszystkie obok siebie. W trybie stawiania kliknięcie stawia losowo jeden z zaznaczonych modeli."
+ },
+ "Drag to turn the model, double-click to reset the view.": {
+  "de": "Ziehen dreht das Modell, Doppelklick setzt die Ansicht zurück.",
+  "pl": "Przeciągnij, aby obrócić model; dwuklik przywraca widok."
+ },
  "Draw": {
   "de": "Zeichnen",
   "pl": "Rysowanie"
  },
+ "Draw the road": {
+  "de": "Straße zeichnen",
+  "pl": "Rysuj drogę"
+ },
  "Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted.": {
   "de": "Zeichnet die Objekte von oben in das Satellitenbild, als Modifikator, der ausgeblendet oder gelöscht werden kann.",
   "pl": "Rysuje obiekty widziane z góry na satce jako modyfikator, który można ukryć albo usunąć."
+ },
+ "Drop it on the map or on a shape to add it to the project.": {
+  "de": "Auf die Karte oder eine Form ziehen, um ihn dem Projekt hinzuzufügen.",
+  "pl": "Upuść na mapę lub kształt, aby dodać do projektu."
+ },
+ "Drop it on the map to add a terrain modifier there.": {
+  "de": "Auf die Karte ziehen, um dort einen Geländemodifikator hinzuzufügen.",
+  "pl": "Upuść na mapę, aby dodać tam modyfikator terenu."
  },
  "Drop this generator on a line or a road, or select one first": {
   "de": "Lege diesen Generator auf einer Linie oder Straße ab oder wähle zuerst eine aus",
@@ -803,6 +895,10 @@
   "de": "Bearbeiten",
   "pl": "Edycja"
  },
+ "Edit a copy": {
+  "de": "Kopie bearbeiten",
+  "pl": "Edytuj kopię"
+ },
  "Edit all": {
   "de": "Alle bearbeiten",
   "pl": "Edytuj wszystkie"
@@ -846,6 +942,14 @@
  "Embankments and cuttings": {
   "de": "Dämme und Einschnitte",
   "pl": "Nasypy i wykopy"
+ },
+ "Empty. Drag models here to make templates of them.": {
+  "de": "Leer. Modelle hierher ziehen, um Vorlagen daraus zu machen.",
+  "pl": "Pusto. Przeciągnij tu modele, aby zrobić z nich szablony."
+ },
+ "Empty. Drag models or presets here, or add them with the right mouse button.": {
+  "de": "Leer. Modelle oder Presets hierher ziehen oder mit der rechten Maustaste hinzufügen.",
+  "pl": "Pusto. Przeciągnij tu modele lub presety albo dodaj je prawym przyciskiem myszy."
  },
  "Enabled": {
   "de": "Aktiviert",
@@ -955,6 +1059,10 @@
   "de": "Grundriss von Gebäuden füllen",
   "pl": "Wypełnij obrys budynków"
  },
+ "Fill up to the level": {
+  "de": "Bis zur Höhe auffüllen",
+  "pl": "Nasyp do poziomu"
+ },
  "Finds the road through the clicked points within the grade limits, around water and forbidden areas, with bridges. Off: road parts follow the clicked line.": {
   "de": "Sucht die Straße durch die geklickten Punkte innerhalb der Steigung, um Wasser und Sperrgebiete herum, mit Brücken. Aus: Teile folgen der geklickten Linie.",
   "pl": "Szuka drogi przez kliknięte punkty w granicach nachylenia, omijając wodę i obszary zakazane, z mostami. Wyłączone: części drogi idą po klikniętej linii."
@@ -987,6 +1095,14 @@
   "de": "Einebnen",
   "pl": "Wyrównaj"
  },
+ "Flatten (circle)": {
+  "de": "Ebnen (Kreis)",
+  "pl": "Wyrównanie (koło)"
+ },
+ "Flatten (rectangle)": {
+  "de": "Ebnen (Rechteck)",
+  "pl": "Wyrównanie (prostokąt)"
+ },
  "Fog": {
   "de": "Nebel",
   "pl": "Mgła"
@@ -994,6 +1110,10 @@
  "Folder": {
   "de": "Ordner",
   "pl": "Folder"
+ },
+ "Folder with Terrain Builder template libraries": {
+  "de": "Ordner mit Terrain-Builder-Vorlagenbibliotheken",
+  "pl": "Folder z bibliotekami szablonów Terrain Buildera"
  },
  "Follow the slope": {
   "de": "Der Neigung folgen",
@@ -1019,6 +1139,10 @@
   "de": "Waldrand",
   "pl": "Granica lasu"
  },
+ "Forest preset": {
+  "de": "Wald-Preset",
+  "pl": "Preset lasu"
+ },
  "Forests": {
   "de": "Wälder",
   "pl": "Lasy"
@@ -1026,6 +1150,10 @@
  "Forests, surfaces, settlements, fences and power lines are in the Generators tab below.": {
   "de": "Wälder, Oberflächen, Siedlungen, Zäune und Stromleitungen sind unten im Tab Generatoren.",
   "pl": "Lasy, powierzchnie, osady, płoty i linie energetyczne są w zakładce Generatory poniżej."
+ },
+ "Forward": {
+  "de": "Vorwärts",
+  "pl": "Dalej"
  },
  "From the project species": {
   "de": "Aus den Arten des Projekts",
@@ -1263,6 +1391,10 @@
   "de": "Satellitenbild wird importiert",
   "pl": "Import obrazu satelitarnego"
  },
+ "In folders": {
+  "de": "In Ordnern",
+  "pl": "W folderach"
+ },
  "Include in export": {
   "de": "Beim Export einbeziehen",
   "pl": "Uwzględnij w eksporcie"
@@ -1307,6 +1439,10 @@
   "de": "Keypoints",
   "pl": "Keypointy"
  },
+ "Kind": {
+  "de": "Art",
+  "pl": "Rodzaj"
+ },
  "Land grid": {
   "de": "Geländeraster",
   "pl": "Siatka terenu"
@@ -1342,6 +1478,10 @@
  "Level the ground when placing": {
   "de": "Beim Platzieren Gelände einebnen",
   "pl": "Wyrównuj teren przy stawianiu"
+ },
+ "Library": {
+  "de": "Eigene Bibliothek",
+  "pl": "Moja biblioteka"
  },
  "Lighting": {
   "de": "Beleuchtung",
@@ -1387,6 +1527,10 @@
   "de": "Bild laden…",
   "pl": "Wczytaj obraz…"
  },
+ "Load template libraries...": {
+  "de": "Vorlagenbibliotheken laden...",
+  "pl": "Wczytaj biblioteki szablonów..."
+ },
  "Load zone presets...": {
   "de": "Zonen-Presets laden...",
   "pl": "Wczytaj presety stref..."
@@ -1414,6 +1558,10 @@
  "Lower": {
   "de": "Senken",
   "pl": "Obniż"
+ },
+ "Make a preset of them": {
+  "de": "Preset daraus machen",
+  "pl": "Zrób z nich preset"
  },
  "Make backups automatically": {
   "de": "Sicherungen automatisch erstellen",
@@ -1539,6 +1687,10 @@
   "de": "Modelle nicht auf dem Arbeitslaufwerk gefunden ({0}), ohne Höhenkorrektur platziert",
   "pl": "Nie znaleziono modeli na dysku roboczym ({0}), postawiono bez korekty wysokości"
  },
+ "Models with a surface": {
+  "de": "Modelle mit Oberfläche",
+  "pl": "Modele z powierzchnią"
+ },
  "Models with a surface assigned in the asset browser get that one.": {
   "de": "Modelle mit einer im Asset-Browser zugewiesenen Oberfläche erhalten diese.",
   "pl": "Modele z powierzchnią przypisaną w przeglądarce assetów dostają właśnie ją."
@@ -1546,6 +1698,10 @@
  "Models: pick in the Content Browser and press Add.": {
   "de": "Modelle: im Inhaltsbrowser wählen und Hinzufügen drücken.",
   "pl": "Modele: wybierz w bibliotece i naciśnij Dodaj."
+ },
+ "Modifiers": {
+  "de": "Modifikatoren",
+  "pl": "Modyfikatory"
  },
  "Modify the terrain": {
   "de": "Gelände verändern",
@@ -1591,6 +1747,10 @@
   "de": "Bewegungstempo",
   "pl": "Prędkość ruchu"
  },
+ "My folders": {
+  "de": "Meine Ordner",
+  "pl": "Moje foldery"
+ },
  "Name": {
   "de": "Name",
   "pl": "Nazwa"
@@ -1607,6 +1767,10 @@
   "de": "Neuer Ordner",
   "pl": "Nowy folder"
  },
+ "New folder inside": {
+  "de": "Neuer Unterordner",
+  "pl": "Nowy folder wewnątrz"
+ },
  "New generator": {
   "de": "Neuer Generator",
   "pl": "Nowy generator"
@@ -1619,6 +1783,10 @@
   "de": "Neuer Modifikator",
   "pl": "Nowy modyfikator"
  },
+ "New object preset": {
+  "de": "Neues Objekt-Preset",
+  "pl": "Nowy preset obiektów"
+ },
  "New preset": {
   "de": "Neues Preset",
   "pl": "Nowy preset"
@@ -1630,6 +1798,14 @@
  "New project...": {
   "de": "Neues Projekt...",
   "pl": "Nowy projekt..."
+ },
+ "New template library": {
+  "de": "Neue Vorlagenbibliothek",
+  "pl": "Nowa biblioteka szablonów"
+ },
+ "New template library...": {
+  "de": "Neue Vorlagenbibliothek...",
+  "pl": "Nowa biblioteka szablonów..."
  },
  "New version {0}": {
   "de": "Neue Version {0}",
@@ -1667,6 +1843,14 @@
   "de": "Noch kein Quellpunkt",
   "pl": "Nie wybrano punktu źródłowego"
  },
+ "No template libraries (.tml) in that folder": {
+  "de": "In diesem Ordner sind keine Vorlagenbibliotheken (.tml)",
+  "pl": "W tym folderze nie ma bibliotek szablonów (.tml)"
+ },
+ "No template libraries in the project. Load them with + Add, or import Terrain Builder layers.": {
+  "de": "Keine Vorlagenbibliotheken im Projekt. Mit + Hinzufügen laden oder Terrain-Builder-Ebenen importieren.",
+  "pl": "Brak bibliotek szablonów w projekcie. Wczytaj je przez + Dodaj albo zaimportuj warstwy Terrain Buildera."
+ },
  "Noise": {
   "de": "Rauschen",
   "pl": "Szum"
@@ -1683,9 +1867,17 @@
   "de": "Mittag",
   "pl": "Południe"
  },
+ "Nothing here": {
+  "de": "Hier ist nichts",
+  "pl": "Nic tu nie ma"
+ },
  "Nothing selected": {
   "de": "Nichts ausgewählt",
   "pl": "Nic nie zaznaczono"
+ },
+ "Object": {
+  "de": "Objekt",
+  "pl": "Obiekt"
  },
  "Object draw distance": {
   "de": "Objekt-Sichtweite",
@@ -1727,6 +1919,10 @@
   "de": "Objekte pro Gruppe",
   "pl": "Obiektów w skupisku"
  },
+ "Objects of Terrain Builder layers placed with these templates lose their model there.": {
+  "de": "Objekte in Terrain-Builder-Ebenen, die mit diesen Vorlagen gesetzt wurden, verlieren dort ihr Modell.",
+  "pl": "Obiekty w warstwach Terrain Buildera postawione tymi szablonami stracą tam swój model."
+ },
  "Objects of roads and generators stay. Running again or deleting this generator with its objects brings the removed ones back.": {
   "de": "Objekte von Straßen und Generatoren bleiben. Erneutes Ausführen oder Löschen dieses Generators mit seinen Objekten bringt die entfernten zurück.",
   "pl": "Obiekty dróg i generatorów zostają. Ponowne uruchomienie albo usunięcie generatora razem z obiektami przywraca usunięte."
@@ -1738,6 +1934,10 @@
  "Offset": {
   "de": "Versatz",
   "pl": "Przesunięcie"
+ },
+ "One of the {0} models selected in the Content Browser is placed at random.": {
+  "de": "Eines der {0} im Content Browser ausgewählten Modelle wird zufällig platziert.",
+  "pl": "Stawiany jest losowo jeden z {0} modeli zaznaczonych w przeglądarce assetów."
  },
  "Only inside shapes": {
   "de": "Nur innerhalb von Formen",
@@ -1751,6 +1951,10 @@
   "de": "Nur auf Oberflächen",
   "pl": "Tylko na powierzchniach"
  },
+ "Only one": {
+  "de": "Nur eines",
+  "pl": "Tylko jeden"
+ },
  "Only the selected objects ({0})": {
   "de": "Nur die ausgewählten Objekte ({0})",
   "pl": "Tylko zaznaczone obiekty ({0})"
@@ -1762,6 +1966,10 @@
  "Opacity": {
   "de": "Deckkraft",
   "pl": "Krycie"
+ },
+ "Open": {
+  "de": "Öffnen",
+  "pl": "Otwórz"
  },
  "Open a project with surface layers to choose from them.": {
   "de": "Öffne ein Projekt mit Oberflächenebenen, um daraus zu wählen.",
@@ -1794,6 +2002,10 @@
  "Opens the Roads tool with these points.": {
   "de": "Öffnet das Straßenwerkzeug mit diesen Punkten.",
   "pl": "Otwiera narzędzie Drogi z tymi punktami."
+ },
+ "Other models": {
+  "de": "Andere Modelle",
+  "pl": "Inne modele"
  },
  "Other objects": {
   "de": "Andere Objekte",
@@ -1935,6 +2147,10 @@
   "de": "Gewähltes Modell hier platzieren",
   "pl": "Postaw tu wybrany model"
  },
+ "Place {0} objects": {
+  "de": "{0} Objekte platzieren",
+  "pl": "Postaw {0} obiektów"
+ },
  "Placed {0} objects": {
   "de": "{0} Objekte platziert",
   "pl": "Postawiono obiektów: {0}"
@@ -1999,6 +2215,10 @@
   "de": "Projekteinstellungen...",
   "pl": "Ustawienia projektu..."
  },
+ "Project templates": {
+  "de": "Projektvorlagen",
+  "pl": "Szablony projektu"
+ },
  "Properties": {
   "de": "Eigenschaften",
   "pl": "Właściwości"
@@ -2050,6 +2270,14 @@
  "Reload from TV4P": {
   "de": "Aus TV4P neu laden",
   "pl": "Wczytaj ponownie z TV4P"
+ },
+ "Remove from this folder": {
+  "de": "Aus diesem Ordner entfernen",
+  "pl": "Usuń z tego folderu"
+ },
+ "Remove from this template library": {
+  "de": "Aus dieser Vorlagenbibliothek entfernen",
+  "pl": "Usuń z tej biblioteki szablonów"
  },
  "Remove modifier": {
   "de": "Modifikator entfernen",
@@ -2283,6 +2511,10 @@
   "de": "Meereswellen m",
   "pl": "Fale morza m"
  },
+ "Search in {0}...": {
+  "de": "In {0} suchen...",
+  "pl": "Szukaj w {0}..."
+ },
  "Search models...": {
   "de": "Modelle suchen...",
   "pl": "Szukaj modeli..."
@@ -2306,6 +2538,14 @@
  "Select": {
   "de": "Auswählen",
   "pl": "Zaznacz"
+ },
+ "Select all": {
+  "de": "Alles auswählen",
+  "pl": "Zaznacz wszystko"
+ },
+ "Select models or presets to see them here. Ctrl and Shift select several; drag them onto the map to place them all.": {
+  "de": "Modelle oder Presets auswählen, um sie hier zu sehen. Strg und Umschalt wählen mehrere; auf die Karte ziehen platziert alle.",
+  "pl": "Zaznacz modele lub presety, aby je tu zobaczyć. Ctrl i Shift zaznaczają kilka; przeciągnięcie na mapę stawia wszystkie."
  },
  "Select objects": {
   "de": "Objekte auswählen",
@@ -2394,6 +2634,10 @@
  "Show all": {
   "de": "Alle anzeigen",
   "pl": "Pokaż wszystkie"
+ },
+ "Show in its folder": {
+  "de": "Im Ordner zeigen",
+  "pl": "Pokaż w folderze"
  },
  "Show on map": {
   "de": "Auf der Karte anzeigen",
@@ -2527,6 +2771,10 @@
   "de": "Oberfläche unter allen Modellen im Ordner",
   "pl": "Powierzchnia pod wszystkimi modelami w folderze"
  },
+ "Surface under it": {
+  "de": "Oberfläche darunter",
+  "pl": "Powierzchnia pod nim"
+ },
  "Surface under it: {0}": {
   "de": "Oberfläche darunter: {0}",
   "pl": "Powierzchnia pod nim: {0}"
@@ -2542,6 +2790,10 @@
  "Surface under the model": {
   "de": "Oberfläche unter dem Modell",
   "pl": "Powierzchnia pod modelem"
+ },
+ "Surface under the models": {
+  "de": "Oberfläche unter den Modellen",
+  "pl": "Powierzchnia pod modelami"
  },
  "Surface {0} assigned to {1} models": {
   "de": "Oberfläche {0} {1} Modellen zugewiesen",
@@ -2566,6 +2818,10 @@
  "Template libraries": {
   "de": "Vorlagenbibliotheken",
   "pl": "Biblioteki szablonów"
+ },
+ "Template library {0} made": {
+  "de": "Vorlagenbibliothek {0} erstellt",
+  "pl": "Utworzono bibliotekę szablonów {0}"
  },
  "Terraces": {
   "de": "Terrassen",
@@ -2663,6 +2919,10 @@
   "de": "Texturkacheln",
   "pl": "Kafle tekstur"
  },
+ "The Terrain Builder template libraries read into the project.": {
+  "de": "Die in das Projekt geladenen Terrain-Builder-Vorlagenbibliotheken.",
+  "pl": "Biblioteki szablonów Terrain Buildera wczytane do projektu."
+ },
  "The active layer is hidden or locked": {
   "de": "Die aktive Ebene ist ausgeblendet oder gesperrt",
   "pl": "Aktywna warstwa jest ukryta lub zablokowana"
@@ -2694,6 +2954,18 @@
  "The mask colour painted under the model, by trees as their forest ground and by the tool that paints under objects.": {
   "de": "Die Maskenfarbe unter dem Modell: für Bäume als Waldboden und für das Werkzeug, das unter Objekte malt.",
   "pl": "Kolor maski malowany pod modelem: przez drzewa jako podłoże lasu i przez narzędzie malujące pod obiektami."
+ },
+ "The model could not be read": {
+  "de": "Das Modell konnte nicht gelesen werden",
+  "pl": "Nie udało się odczytać modelu"
+ },
+ "The models and presets in it stay where they are.": {
+  "de": "Die Modelle und Presets darin bleiben, wo sie sind.",
+  "pl": "Modele i presety z niego zostają na swoim miejscu."
+ },
+ "The models are already in {0}": {
+  "de": "Die Modelle sind bereits in {0}",
+  "pl": "Te modele już są w {0}"
  },
  "The next click in a view takes the satellite colour there.": {
   "de": "Der nächste Klick in einer Ansicht nimmt die Satellitenfarbe.",
@@ -2779,9 +3051,17 @@
   "de": "Objekte transformieren",
   "pl": "Transformuj obiekty"
  },
+ "Tree or bush": {
+  "de": "Baum oder Busch",
+  "pl": "Drzewo lub krzew"
+ },
  "Trees": {
   "de": "Bäume",
   "pl": "Drzewa"
+ },
+ "Trees and bushes": {
+  "de": "Bäume und Büsche",
+  "pl": "Drzewa i krzewy"
  },
  "Trees and bushes too": {
   "de": "Auch Bäume und Büsche",
@@ -2822,6 +3102,10 @@
  "Undo": {
   "de": "Rückgängig",
   "pl": "Cofnij"
+ },
+ "Up": {
+  "de": "Nach oben",
+  "pl": "W górę"
  },
  "Use as a road or object line": {
   "de": "Als Straßen- oder Objektlinie verwenden",
@@ -2923,6 +3207,10 @@
   "de": "Leitungen",
   "pl": "Przewody"
  },
+ "With the models selected in the browser.": {
+  "de": "Mit den im Browser ausgewählten Modellen.",
+  "pl": "Z modelami zaznaczonymi w przeglądarce."
+ },
  "Without template libraries the layers cannot be matched to models.": {
   "de": "Ohne Vorlagenbibliotheken lassen sich die Ebenen keinen Modellen zuordnen.",
   "pl": "Bez bibliotek szablonów nie da się dopasować warstw do modeli."
@@ -2999,6 +3287,10 @@
   "de": "{0} Dateien",
   "pl": "Pliki: {0}"
  },
+ "{0} items": {
+  "de": "{0} Elemente",
+  "pl": "{0} elementów"
+ },
  "{0} key points read": {
   "de": "{0} Keypoints gelesen",
   "pl": "Wczytano keypointów: {0}"
@@ -3006,6 +3298,10 @@
  "{0} models": {
   "de": "{0} Modelle",
   "pl": "modeli: {0}"
+ },
+ "{0} models, {1} other": {
+  "de": "{0} Modelle, {1} andere",
+  "pl": "{0} modeli, {1} innych"
  },
  "{0} objects": {
   "de": "{0} Objekte",
@@ -3031,6 +3327,10 @@
   "de": "{0} Masttypen, {1} Leitungstypen",
   "pl": "Typy słupów: {0}, typy przewodów: {1}"
  },
+ "{0} selected": {
+  "de": "{0} ausgewählt",
+  "pl": "Zaznaczono: {0}"
+ },
  "{0} shapes selected": {
   "de": "{0} Formen ausgewählt",
   "pl": "Zaznaczone kształty: {0}"
@@ -3042,6 +3342,14 @@
  "{0} species, {1} areas, {2} zones in the project": {
   "de": "Im Projekt: {0} Arten, {1} Gebiete, {2} Zonen",
   "pl": "W projekcie: gatunki {0}, obszary {1}, strefy {2}"
+ },
+ "{0} templates added to {1}": {
+  "de": "{0} Vorlagen zu {1} hinzugefügt",
+  "pl": "Dodano {0} szablonów do {1}"
+ },
+ "{0} templates taken out of {1}": {
+  "de": "{0} Vorlagen aus {1} entfernt",
+  "pl": "Usunięto {0} szablonów z {1}"
  },
  "{0} tiles over the limit, marked in the 2D view": {
   "de": "{0} Kacheln über dem Limit, in der 2D-Ansicht markiert",

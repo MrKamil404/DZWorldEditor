@@ -733,7 +733,7 @@ fn brush_objects(app: &mut App, x: f32, z: f32, erase: bool) {
                 }
                 None => return,
             },
-            None => match app.place.model.clone() {
+            None => match pool_model(app, h) {
                 Some(m) => m,
                 None => {
                     app.warn(t("Choose a model in the Content Browser first"));
@@ -760,7 +760,7 @@ fn finish_place_stroke(app: &mut App) {
 }
 
 /// Adds an object with the placement options in force.
-fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj)> {
+pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj)> {
     let (random, align, smin, smax) = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
     let info = app.db.get(model);
     let doc = app.doc.as_mut()?;
@@ -782,6 +782,16 @@ fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj
     let mut o = Obj { x, z, elevation, yaw, pitch, roll, scale, model: model_id, flags: 0 };
     o.set_layer(layer);
     Some((doc.world.objects.insert(o), o))
+}
+
+/// The model to place: one of the models selected together in the browser, or the chosen one.
+fn pool_model(app: &App, seed: u32) -> Option<String> {
+    let model = app.place.model.clone()?;
+    let pool = &app.place.pool;
+    if pool.len() > 1 && pool.contains(&model) {
+        return Some(pool[(seed >> 8) as usize % pool.len()].clone());
+    }
+    Some(model)
 }
 
 pub fn place_model(app: &mut App, model: &str, x: f32, z: f32) {
@@ -1094,6 +1104,13 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         }
         return;
     }
+    // Several things dragged out of the content browser at once.
+    if let Some(p) = resp.dnd_release_payload::<crate::asset_browser::Dragged>() {
+        if let Some(h) = hit {
+            crate::asset_browser::drop_many(app, &p.0, h[0], h[2]);
+        }
+        return;
+    }
     // Models dropped from the content browser.
     if let Some(p) = resp.dnd_release_payload::<String>() {
         if let Some(h) = hit {
@@ -1182,9 +1199,10 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     crate::library_ui::place_preset(app, id, h[0], h[2]);
                     return;
                 }
-                match (&app.place.model, hit) {
+                app.place_counter = app.place_counter.wrapping_add(1);
+                let pick = pool_model(app, app.place_counter.wrapping_mul(2654435761));
+                match (pick, hit) {
                     (Some(m), Some(h)) => {
-                        let m = m.clone();
                         place_model(app, &m, h[0], h[2]);
                     }
                     (None, _) => app.warn(t("Choose a model in the Content Browser first")),
@@ -2550,7 +2568,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "shadowrange" if nums.len() == 1 => app.settings.lighting.shadow_range = nums[0],
         "lang" => app.sync_language(&arg),
-        "bottom" => app.bottom = if arg == "output" { crate::app::BottomTab::Output } else if arg == "generators" { crate::app::BottomTab::Generators } else if arg == "presets" { crate::app::BottomTab::Presets } else if arg == "build" { crate::app::BottomTab::Build } else { crate::app::BottomTab::Content },
+        "bottom" => app.bottom = if arg == "output" { crate::app::BottomTab::Output } else if arg == "build" { crate::app::BottomTab::Build } else { crate::app::BottomTab::Content },
         "sculpt" if nums.len() >= 2 => {
             let brush = Brush { radius: 200.0, falloff: 0.7, strength: 30.0 };
             let w = &mut app.doc.as_mut().unwrap().world;
@@ -2720,6 +2738,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "save" => app.save(Some(arg.into())),
         "build" => app.build(false),
         "browse" => app.filter = arg,
+        "browser" | "browsersel" | "browseradd" | "browserdrop" | "browsertemplates" | "browsertpladd" => crate::asset_browser::script(app, cmd, &arg),
         "log" => {
             for l in &app.log { eprintln!("LOG {}", l.text); }
         }

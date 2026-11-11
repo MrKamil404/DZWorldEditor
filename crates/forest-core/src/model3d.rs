@@ -710,6 +710,11 @@ pub fn render_impostor(mesh: &ModelMesh, size: u32) -> (Vec<u8>, ViewFit) {
     render_view(mesh, size, 0.0, 0.0)
 }
 
+/// A view of the model from the given angles, in radians, for a turning preview.
+pub fn render_preview(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32) -> Vec<u8> {
+    render_view(mesh, size, yaw, pitch).0
+}
+
 fn render_view(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32) -> (Vec<u8>, ViewFit) {
     let out_size = size as usize;
     let s = out_size * SUPERSAMPLE;

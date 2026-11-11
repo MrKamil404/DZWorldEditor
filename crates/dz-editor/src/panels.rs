@@ -390,6 +390,13 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
                 for (id, name) in &presets { ui.selectable_value(&mut app.place.preset, Some(*id), name); }
             });
         });
+        let pool = app.place.pool.len();
+        if app.place.preset.is_none() && pool > 1 && app.place.model.as_ref().is_some_and(|m| app.place.pool.contains(m)) {
+            ui.horizontal_wrapped(|ui| {
+                ui.weak(tf("One of the {0} models selected in the Content Browser is placed at random.", &[&pool.to_string()]));
+                if ui.small_button(t("Only one")).clicked() { app.place.pool.clear(); }
+            });
+        }
         ui.checkbox(&mut app.place.brush, t("Paint with a brush"));
         if app.place.brush {
             slider(ui, &t("Radius"), &mut app.place.brush_radius, 1.0..=300.0, true);
@@ -1101,18 +1108,16 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
 
 fn bottom_panel(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        for (tab, name) in [(BottomTab::Content, "Content Browser"), (BottomTab::Generators, "Generators"), (BottomTab::Presets, "Presets"), (BottomTab::Output, "Output Log"), (BottomTab::Build, "Build")] {
+        for (tab, name) in [(BottomTab::Content, "Content Browser"), (BottomTab::Output, "Output Log"), (BottomTab::Build, "Build")] {
             if tool_button(ui, app.bottom == tab, &t(name)).clicked() { app.bottom = tab; }
         }
-        if matches!(app.bottom, BottomTab::Content | BottomTab::Generators | BottomTab::Presets) {
+        if app.bottom == BottomTab::Content {
             ui.separator();
             ui.add(egui::Slider::new(&mut app.settings.library_tile, 48.0..=240.0).show_value(false).text(t("Size")));
         }
     });
     match app.bottom {
-        BottomTab::Content => content_browser(app, ui),
-        BottomTab::Generators => crate::library_ui::generators_tab(app, ui),
-        BottomTab::Presets => crate::library_ui::presets_tab(app, ui),
+        BottomTab::Content => crate::asset_browser::ui(app, ui),
         BottomTab::Output => output_log(app, ui),
         BottomTab::Build => build_tab(app, ui),
     }
@@ -1172,142 +1177,6 @@ fn build_tab(app: &mut App, ui: &mut egui::Ui) {
             for l in &app.log[range] { ui.label(RichText::new(&l.text).small().monospace()); }
         });
     });
-}
-
-/// Menu that assigns the surface painted under models, for one model or a whole folder.
-/// Returns the chosen surface: `Some(None)` takes the assignment away.
-fn surface_menu(ui: &mut egui::Ui, layers: &[(String, [u8; 3])], current: Option<&str>) -> Option<Option<String>> {
-    let mut chosen = None;
-    ui.weak(t("The mask colour painted under the model, by trees as their forest ground and by the tool that paints under objects."));
-    if ui.selectable_label(current.is_none(), t("(none)")).clicked() {
-        chosen = Some(None);
-        ui.close_menu();
-    }
-    for (name, c) in layers {
-        ui.horizontal(|ui| {
-            let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), egui::Sense::hover());
-            ui.painter().rect_filled(r, 2.0, Color32::from_rgb(c[0], c[1], c[2]));
-            if ui.selectable_label(current.is_some_and(|x| x.eq_ignore_ascii_case(name)), name).clicked() {
-                chosen = Some(Some(name.clone()));
-                ui.close_menu();
-            }
-        });
-    }
-    if layers.is_empty() {
-        ui.weak(t("Open a project with surface layers to choose from them."));
-    }
-    chosen
-}
-
-fn content_browser(app: &mut App, ui: &mut egui::Ui) {
-    let assets = app.assets.clone();
-    let layers: Vec<(String, [u8; 3])> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| (l.name.clone(), l.color)).collect()).unwrap_or_default();
-    let colour_of = |name: &str| layers.iter().find(|l| l.0.eq_ignore_ascii_case(name)).map_or(Color32::GRAY, |l| Color32::from_rgb(l.1[0], l.1[1], l.1[2]));
-    // (models, surface) assigned from a menu this frame
-    let mut assign: Option<(Vec<String>, Option<String>)> = None;
-    egui::SidePanel::left("folders").resizable(true).default_width(260.0).frame(egui::Frame::new()).show_inside(ui, |ui| {
-        ui.add(egui::TextEdit::singleline(&mut app.filter).hint_text(t("Search models...")).desired_width(f32::INFINITY));
-        ui.horizontal(|ui| {
-            ui.small(tf("{0} models", &[&assets.assets.len().to_string()]));
-            if ui.small_button("↻").on_hover_text(t("Scan the work drive again")).clicked() { app.rescan_assets(); }
-        });
-        let folders: Vec<&String> = assets.by_folder.keys().collect();
-        egui::ScrollArea::vertical().id_salt("f").auto_shrink([false, false]).show_rows(ui, 18.0, folders.len(), |ui, range| {
-            for f in &folders[range] {
-                let n = assets.by_folder[*f].len();
-                let resp = ui.selectable_label(app.browser_folder.as_deref() == Some(f.as_str()), format!("{f}  ({n})"));
-                if resp.clicked() {
-                    app.browser_folder = Some((*f).clone());
-                }
-                resp.context_menu(|ui| {
-                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    ui.menu_button(t("Surface under all models in the folder"), |ui| {
-                        ui.set_max_width(260.0);
-                        if let Some(s) = surface_menu(ui, &layers, None) {
-                            assign = Some((assets.by_folder[*f].iter().map(|&i| assets.assets[i as usize].path.clone()).collect(), s));
-                        }
-                    });
-                });
-            }
-        });
-    });
-    let filter = app.filter.to_ascii_lowercase();
-    let mut items: Vec<u32> = if filter.len() >= 2 {
-        assets.assets.iter().enumerate().filter(|(_, a)| a.path.contains(&filter)).map(|(i, _)| i as u32).take(3000).collect()
-    } else if let Some(f) = &app.browser_folder {
-        assets.by_folder.get(f).cloned().unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    items.truncate(3000);
-    if items.is_empty() {
-        ui.centered_and_justified(|ui| { ui.weak(t("Choose a folder or type at least two letters")); });
-        apply_surfaces(app, assign);
-        return;
-    }
-    let side = app.settings.library_tile;
-    let cell = vec2(side + 8.0, side + 26.0);
-    let columns = (ui.available_width() / (cell.x + 4.0)).floor().max(1.0) as usize;
-    let rows = items.len().div_ceil(columns);
-    egui::ScrollArea::vertical().id_salt("items").auto_shrink([false, false]).show_rows(ui, cell.y + 4.0, rows, |ui, range| {
-        for r in range {
-            ui.horizontal(|ui| {
-                for c in 0..columns {
-                    let Some(&idx) = items.get(r * columns + c) else { continue };
-                    let a = &assets.assets[idx as usize];
-                    let selected = app.place.model.as_deref() == Some(a.path.as_str());
-                    let (rect, resp) = ui.allocate_exact_size(cell, egui::Sense::click_and_drag());
-                    ui.painter().rect_filled(rect, 3.0, if selected { theme::ACCENT_SOFT } else if resp.hovered() { theme::HOVER } else { Color32::from_rgb(42, 42, 42) });
-                    let img = egui::Rect::from_min_size(rect.min + vec2(4.0, 4.0), vec2(side, side));
-                    match app.thumbs.get(&a.path) {
-                        Some(t) => { ui.painter().image(t.id(), img, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE); }
-                        None => { ui.painter().rect_filled(img, 2.0, Color32::from_rgb(52, 52, 52)); }
-                    }
-                    let name: String = if a.name.chars().count() > 15 { a.name.chars().take(14).chain(['…']).collect() } else { a.name.clone() };
-                    ui.painter().text(egui::pos2(rect.center().x, rect.bottom() - 11.0), egui::Align2::CENTER_CENTER, name, egui::FontId::proportional(11.0), theme::TEXT);
-                    let surface = app.library.surface_of(&a.path).map(str::to_string);
-                    if let Some(s) = &surface {
-                        // The mask colour assigned to the model, in the corner of its tile.
-                        let mark = egui::Rect::from_min_size(egui::pos2(img.right() - 14.0, img.top() + 2.0), vec2(12.0, 12.0));
-                        ui.painter().rect_filled(mark, 2.0, colour_of(s));
-                        ui.painter().rect_stroke(mark, 2.0, egui::Stroke::new(1.0f32, Color32::BLACK), egui::StrokeKind::Outside);
-                    }
-                    let resp = resp.on_hover_text(match &surface {
-                        Some(s) => format!("{}
-{}", a.path, tf("Surface under it: {0}", &[s])),
-                        None => a.path.clone(),
-                    });
-                    resp.context_menu(|ui| {
-                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                        ui.menu_button(t("Surface under the model"), |ui| {
-                            ui.set_max_width(260.0);
-                            if let Some(s) = surface_menu(ui, &layers, surface.as_deref()) {
-                                assign = Some((vec![a.path.clone()], s));
-                            }
-                        });
-                    });
-                    if resp.clicked() {
-                        app.place.model = Some(a.path.clone());
-                        if app.mode == Mode::Select { app.mode = Mode::Place; }
-                    }
-                    resp.dnd_set_drag_payload(a.path.clone());
-                }
-            });
-        }
-    });
-    apply_surfaces(app, assign);
-}
-
-fn apply_surfaces(app: &mut App, assign: Option<(Vec<String>, Option<String>)>) {
-    let Some((models, surface)) = assign else { return };
-    for m in &models {
-        app.library.set_surface(m, surface.as_deref());
-    }
-    app.lib_dirty = true;
-    app.status = match surface {
-        Some(s) => tf("Surface {0} assigned to {1} models", &[&s, &models.len().to_string()]),
-        None => tf("Surface taken from {0} models", &[&models.len().to_string()]),
-    };
 }
 
 fn path_choice(ui: &mut egui::Ui, label: &str, value: &mut Option<std::path::PathBuf>, choices: &[std::path::PathBuf], pick: impl FnOnce() -> Option<std::path::PathBuf>) {
