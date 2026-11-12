@@ -973,10 +973,6 @@ fn finish_line(app: &mut App) {
 }
 
 fn selection_pivot(app: &App) -> Option<V3> {
-    // A road or generator is changed through its own settings, not by dragging its parts.
-    if app.whole.is_some() {
-        return None;
-    }
     let doc = app.doc.as_ref()?;
     let (mut s, mut n) = ([0.0f32; 3], 0.0);
     for id in app.selection.iter().take(2000) {
@@ -1023,7 +1019,17 @@ fn gizmo_size(v: &View, p: V3) -> f32 {
     }
 }
 
+/// Whether a handle works on the selection. A whole road or generator only slides over the
+/// map and turns about the vertical, the moves its line and shapes follow.
+fn handle_allowed(app: &App, h: Handle) -> bool {
+    app.whole.is_none() || matches!(h, Handle::Plane | Handle::X | Handle::Z | Handle::RotY | Handle::Spin)
+}
+
 fn gizmo_handle(app: &App, v: &View, p: V3, mouse: Pos2) -> Option<(Handle, egui::Vec2, V3, f32)> {
+    gizmo_handle_any(app, v, p, mouse).filter(|h| handle_allowed(app, h.0))
+}
+
+fn gizmo_handle_any(app: &App, v: &View, p: V3, mouse: Pos2) -> Option<(Handle, egui::Vec2, V3, f32)> {
     let c = v.project(p)?;
     let size = gizmo_size(v, p);
     match app.gizmo {
@@ -1052,7 +1058,7 @@ fn gizmo_handle(app: &App, v: &View, p: V3, mouse: Pos2) -> Option<(Handle, egui
             let g = gizmo_axes(app);
             let mut best: Option<(f32, Handle, V3)> = None;
             for (k, h) in [(0, Handle::RotX), (1, Handle::RotY), (2, Handle::RotZ)] {
-                if v.ortho && !app.gizmo_local && k != 1 {
+                if (v.ortho && !app.gizmo_local && k != 1) || !handle_allowed(app, h) {
                     continue;
                 }
                 let pts: Vec<Pos2> = ring_points(p, &g, k, size * 0.85).into_iter().filter_map(|q| v.project(q)).collect();
@@ -1189,8 +1195,23 @@ fn end_object_drag(app: &mut App) {
         let now = doc.world.objects.get(*id).copied()?;
         (now != *b).then_some((*id, Some(*b), Some(now)))
     }).collect();
-    if !change.is_empty() {
+    if change.is_empty() {
+        return;
+    }
+    // A whole road or generator brings its line, modifier and shape along; a change of size
+    // leaves them as they are.
+    let motion = change.first().and_then(|(_, b, n)| Some((b.as_ref()?, n.as_ref()?))).filter(|(b, n)| (b.scale - n.scale).abs() < 1e-5).map(|(b, n)| dz_core::world::Motion::between(b, n, [drag.pivot[0], drag.pivot[2]]));
+    let extra = match motion.filter(|m| !m.is_still()) {
+        Some(m) if app.whole.is_some() => app.move_whole(&m),
+        _ => Vec::new(),
+    };
+    let Some(doc) = &mut app.doc else { return };
+    if extra.is_empty() {
         doc.history.push(t("Transform objects"), Change::Objects(change));
+    } else {
+        let mut steps = vec![Change::Objects(change)];
+        steps.extend(extra);
+        doc.history.push(t("Transform objects"), Change::Group(steps));
     }
 }
 
@@ -1493,7 +1514,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     }
                 }
                 // Held on a selected object, Shift turns it and Ctrl scales it.
-                if modifiers.shift || modifiers.ctrl {
+                if modifiers.shift || (modifiers.ctrl && handle_allowed(app, Handle::Scale)) {
                     if let (Some(p), Some(id)) = (pivot, pick_object(app, v, mouse).filter(|id| app.selection.contains(id))) {
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
@@ -1627,7 +1648,7 @@ fn draw_gizmo(app: &App, painter: &egui::Painter, v: &View, p: V3, hover: Option
         Gizmo::Move => {
             let g = gizmo_axes(app);
             for (h, a, col) in [(Handle::X, g[0], Color32::from_rgb(230, 60, 60)), (Handle::Y, g[1], Color32::from_rgb(70, 200, 70)), (Handle::Z, g[2], Color32::from_rgb(70, 110, 240))] {
-                if v.project(add(p, mul(a, size))).is_none_or(|e| (e - c).length() < 12.0) {
+                if !handle_allowed(app, h) || v.project(add(p, mul(a, size))).is_none_or(|e| (e - c).length() < 12.0) {
                     continue;
                 }
                 if let Some(e) = v.project(add(p, mul(a, size))) {
@@ -1655,6 +1676,7 @@ fn draw_gizmo(app: &App, painter: &egui::Painter, v: &View, p: V3, hover: Option
                 }
             }
         }
+        Gizmo::Scale if !handle_allowed(app, Handle::Scale) => {}
         Gizmo::Scale => {
             painter.rect_filled(Rect::from_center_size(c, vec2(14.0, 14.0)), 1.0, color(Handle::Scale, Color32::from_rgb(90, 170, 240)));
             painter.circle_stroke(c, 60.0, Stroke::new(1.0_f32, Color32::from_gray(150)));
@@ -3221,6 +3243,62 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "browser" | "browsersel" | "browseradd" | "browserdrop" | "browsertemplates" | "browsertpladd" => crate::asset_browser::script(app, cmd, &arg),
         "log" => {
             for l in &app.log { eprintln!("LOG {}", l.text); }
+        }
+        // The whole of route `n` selected, as a click on one of its parts does with whole selection on.
+        "selroute" => {
+            if let Some(r) = app.doc.as_ref().and_then(|d| d.world.routes.get(nums.first().map(|v| *v as usize).unwrap_or(0))) {
+                app.selection = r.objects.iter().copied().collect();
+                app.whole = Some(SelectedWhole::Route(r.id));
+                app.selection_rev += 1;
+            }
+        }
+        "selgen" => {
+            if let Some(g) = app.doc.as_ref().and_then(|d| d.world.generators.get(nums.first().map(|v| *v as usize).unwrap_or(0))) {
+                app.selection = g.objects.iter().copied().collect();
+                app.whole = Some(SelectedWhole::Generator(g.id));
+                app.selection_rev += 1;
+            }
+        }
+        "geninfo" => {
+            if let Some(d) = &app.doc {
+                for g in &d.world.generators {
+                    eprintln!("GENINFO {} objects={} target={:?} modifier={:?}", g.name, g.objects.len(), g.target, g.modifier);
+                }
+                eprintln!("GENINFO shapes={:?} undo={:?}", d.world.shape_layers.iter().map(|l| l.shapes.len()).collect::<Vec<_>>(), d.history.undo_label());
+            }
+        }
+        "dup" => app.duplicate_selection(),
+        // Moves the selection by (dx, dz) as a drag of the gizmo does.
+        "dragsel" if nums.len() >= 2 => {
+            if let Some(d) = app.doc.as_mut() {
+                let before: Vec<(u32, Obj)> = app.selection.iter().filter_map(|id| Some((*id, *d.world.objects.get(*id)?))).collect();
+                for (id, b) in &before {
+                    let mut o = *b;
+                    o.x += nums[0];
+                    o.z += nums[1];
+                    d.world.objects.update(*id, o);
+                    d.world.sync_attached(*id);
+                }
+                let pivot = before.first().map(|(_, o)| [o.x, 0.0, o.z]).unwrap_or([0.0; 3]);
+                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] });
+                end_object_drag(app);
+            }
+        }
+        "routeinfo" => {
+            if let Some(d) = &app.doc {
+                for r in &d.world.routes {
+                    let m = r.modifier.and_then(|id| d.world.modifiers.iter().find(|m| m.id == id)).map(|m| match &m.shape { dz_core::world::ModShape::Line { points, .. } => points.first().copied().unwrap_or_default(), _ => [m.x, m.z] });
+                    // How far the parts are from the line, which a move must keep together.
+                    let off = r.objects.iter().filter_map(|id| d.world.objects.get(*id)).map(|o| r.centerline.windows(2).map(|w| {
+                        let (a, b) = (w[0], w[1]);
+                        let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+                        let t = (((o.x - a[0]) * dx + (o.z - a[1]) * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
+                        (o.x - a[0] - dx * t).hypot(o.z - a[1] - dz * t)
+                    }).fold(f32::MAX, f32::min)).fold(0.0f32, f32::max);
+                    eprintln!("ROUTEINFO {} objects={} first={:?} modifier_first={:?} parts_off_line={off:.2}", r.name, r.objects.len(), r.centerline.first(), m);
+                }
+                eprintln!("ROUTEINFO modifiers={} objects={} undo={:?}", d.world.modifiers.len(), d.world.objects.len(), d.history.undo_label());
+            }
         }
         "routefamily" => app.line.family = arg,
         "routecenter" => {

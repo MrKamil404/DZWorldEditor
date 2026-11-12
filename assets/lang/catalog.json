@@ -1007,9 +1007,17 @@
   "de": "Duplizieren",
   "pl": "Powiel"
  },
+ "Duplicate generator": {
+  "de": "Generator duplizieren",
+  "pl": "Powiel generator"
+ },
  "Duplicate objects": {
   "de": "Objekte duplizieren",
   "pl": "Powiel obiekty"
+ },
+ "Duplicate road": {
+  "de": "Straße duplizieren",
+  "pl": "Powiel drogę"
  },
  "Each leaves a gap in the fence with its own object, or two leaves of a gate.": {
   "de": "Jede lässt eine Lücke im Zaun mit eigenem Objekt oder zwei Torflügeln.",
