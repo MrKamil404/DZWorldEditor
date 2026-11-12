@@ -404,7 +404,9 @@ void main(){
   vec3 N = G;
   vec3 V = normalize(u_eye - v_world);
   vec4 c = vec4(0.62,0.62,0.6,1.0);
-  float ao = 1.0, shade = 1.0, gloss = 32.0;
+  // From the SMDI map: green the specular strength, blue the smoothness, which sets how sharp
+  // the highlight is (with the material's specular power) and how clearly the surface mirrors.
+  float ao = 1.0, shade = 1.0, gloss = 32.0, smoothness = 0.5;
   vec3 spec = vec3(0.0), kE = vec3(0.0), kA = vec3(1.0), kD = vec3(1.0), kF = vec3(0.0);
   // Faces without a material and foliage are lit from both sides.
   bool lit_sides = u_mode != 0 && u_mode != 4;
@@ -424,6 +426,7 @@ void main(){
     vec4 s = T(u_m5, 5);
     spec = u_mc[4] * s.g;
     gloss = max(u_power * s.b, 1.0);
+    smoothness = s.b;
     N = bump(N, T(u_m1, 1).xyz * 2.0 - 1.0, UV(1));
   } else if (u_mode == 2) {
     vec4 m = T(u_m4, 4);
@@ -449,7 +452,8 @@ void main(){
     c.rgb *= mix(vec3(1.0), mc.rgb * 2.0, mc.a);
     c.a = 1.0;
     spec = u_mc[4] * (d0.g * base + d1.g * m.r + d2.g * m.g + d3.g * m.b);
-    gloss = max(u_power * (d0.b * base + d1.b * m.r + d2.b * m.g + d3.b * m.b), 1.0);
+    smoothness = d0.b * base + d1.b * m.r + d2.b * m.g + d3.b * m.b;
+    gloss = max(u_power * smoothness, 1.0);
     vec4 as = T(u_m6, 6);
     ao = as.g; shade = as.b;
     vec3 n = (T(u_m7, 7).xyz * base + T(u_m8, 8).xyz * m.r + T(u_m9, 9).xyz * m.g + T(u_m10, 10).xyz * m.b) * 2.0 - 1.0;
@@ -481,6 +485,7 @@ void main(){
     c.rgb = lin(c.rgb);
     spec = max(u_mc[4], vec3(0.25));
     gloss = max(u_power, 48.0);
+    smoothness = 1.0;
   } else if (u_textured != 0) {
     c = inv(texture(u_tex, v_uv), 0);
     if (c.a < cut) discard;
@@ -508,16 +513,21 @@ void main(){
   float strength = max(spec.r, max(spec.g, spec.b));
   if (strength > 0.0) {
     vec3 H = normalize(V + u_sun);
-    lit += S * spec * 0.5 * pow(max(dot(N, H), 0.0), gloss) * sh * step(0.0, dot(N, u_sun));
+    // A sharp highlight is small and bright, a blurred one wide and dim: the light it gives
+    // back stays about the same, so matte cloth and wood no longer shine like plastic.
+    float focus = clamp((gloss + 2.0) / 16.0, 0.08, 4.0);
+    lit += S * spec * focus * pow(max(dot(N, H), 0.0), gloss) * sh * step(0.0, dot(N, u_sun));
     float f = u_f0 + (1.0 - u_f0) * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-    vec3 env = lin(environment(reflect(-V, N)));
+    // Rough surfaces mirror the sky blurred and faint, smooth ones clearly.
+    float sm = clamp(smoothness, 0.0, 1.0);
+    vec3 env = lin(environment(normalize(mix(reflect(-V, N), N, (1.0 - sm) * 0.6))));
     if (u_mode == 5) {
       // Glass shows what is behind it head on and the sky at a slant.
       lit = mix(lit, env, f);
       alpha = max(c.a, f);
     } else {
       // Weathered surfaces mirror dimly and take on their own colour.
-      lit += env * mix(vec3(1.0), c.rgb * 2.0, 0.6) * min(f, 0.6) * min(strength, 1.0) * 0.4 * ao;
+      lit += env * mix(vec3(1.0), c.rgb * 2.0, 0.6) * min(f, 0.6) * min(strength, 1.0) * 0.4 * ao * (0.15 + 0.85 * sm * sm);
     }
   }
   if (v_tint.a >= 0.99) lit = mix(lit, lin(v_tint.rgb), 0.55);
