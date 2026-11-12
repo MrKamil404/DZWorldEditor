@@ -177,7 +177,7 @@ impl Action {
             Action::CameraBelow => "Camera below the terrain",
             Action::ToggleGrass => "Show grass",
             Action::ToggleObjects => "Show objects",
-            Action::ToggleShapes => "Show shapes",
+            Action::ToggleShapes => "Show shapes and road lines",
             Action::BrushSmaller => "Smaller brush",
             Action::BrushBigger => "Bigger brush",
             Action::BrushWeaker => "Weaker brush",

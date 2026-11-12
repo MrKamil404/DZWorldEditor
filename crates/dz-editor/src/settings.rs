@@ -76,8 +76,6 @@ pub struct Settings {
     pub fov: f32,
     /// Size of the entries in the libraries, in pixels.
     pub library_tile: f32,
-    /// Width over which surfaces meet, in metres.
-    pub surface_blend: f32,
     /// How far the textures of the surfaces reach, in metres.
     pub surface_range: f32,
     /// Height of the sea swell in metres.
@@ -86,6 +84,8 @@ pub struct Settings {
     pub sea_tide: f32,
     /// The tide rises and falls on its own, to see the whole range.
     pub tide_cycle: bool,
+    /// Objects move over the ground when dragged by their own shape, not only by the gizmo.
+    pub drag_by_body: bool,
     pub lighting: Lighting,
     /// Largest side of object textures, in pixels.
     pub texture_size: u32,
@@ -155,7 +155,7 @@ impl Default for Settings {
         Self {
             language: "pl".into(), ui_scale: 1.0, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
-            check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_blend: 3.0, surface_range: 190.0, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, camera_speed: 60.0, lighting: Lighting::default(),
+            check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, camera_speed: 60.0, lighting: Lighting::default(),
             texture_size: 2048, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6, keys: Default::default(), export: Default::default(),
         }
     }

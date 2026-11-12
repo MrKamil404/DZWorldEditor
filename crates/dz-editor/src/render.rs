@@ -148,7 +148,7 @@ uniform sampler2DShadow u_shadow;
 uniform mat4 u_light;
 uniform int u_has_shadow;
 uniform vec3 u_sun, u_sun_col, u_amb;
-uniform float u_fog, u_exposure, u_bias, u_transition, u_surface_range;
+uniform float u_fog, u_exposure, u_bias, u_surface_range;
 uniform int u_brush_shape;
 uniform float u_time;
 //SEA
@@ -187,14 +187,6 @@ void main(){
   // Surface blending: four nearest mask pixels.
   vec2 mp = uv * u_mask_size - 0.5;
   int span = 1;
-  if (u_mode == 0 && u_transition > 0.0) {
-    // Surfaces meet over a few metres along an uneven edge, as they do in the game.
-    float perM = u_mask_size.x / u_world;
-    vec2 w = v_world.xz;
-    vec2 wob = vec2(sin(w.x*0.63+1.7*sin(w.y*0.37)) + 0.5*sin(w.y*1.91+w.x*0.7), sin(w.y*0.71+1.3*sin(w.x*0.43)) + 0.5*sin(w.x*2.13-w.y*0.6));
-    mp += wob * u_transition * perM * 0.3;
-    span = max(1, int(u_transition * perM + 0.5));
-  }
   ivec2 ip = ivec2(floor(mp / float(span))) * span;
   vec2 f = (mp - vec2(ip)) / float(span);
   uint a = maskAt(ip), b = maskAt(ip + ivec2(span,0)), c = maskAt(ip + ivec2(0,span)), d = maskAt(ip + ivec2(span,span));
@@ -1030,7 +1022,6 @@ pub struct Frame {
     pub height_range: [f32; 2],
     pub objects: ObjectDraw,
     pub show_water: bool,
-    pub surface_blend: f32,
     pub surface_range: f32,
     pub sea_waves: f32,
     /// How far the tide has lifted or lowered the sea, in metres.
@@ -2016,7 +2007,6 @@ impl Renderer {
         gl.use_program(Some(terrain));
         light_uniforms(terrain);
         gl.uniform_matrix_4_f32_slice(u(terrain, "u_vp").as_ref(), false, &f.view.vp);
-        gl.uniform_1_f32(u(terrain, "u_transition").as_ref(), f.surface_blend);
         gl.uniform_1_f32(u(terrain, "u_surface_range").as_ref(), f.surface_range);
         gl.uniform_2_f32(u(terrain, "u_size").as_ref(), self.size[0], self.size[1]);
         gl.uniform_1_f32(u(terrain, "u_cell").as_ref(), self.cell);

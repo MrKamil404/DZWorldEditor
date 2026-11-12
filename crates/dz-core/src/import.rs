@@ -98,11 +98,26 @@ pub fn parse_tb_objects(text: &str, w: &mut World, assets: &AssetIndex, db: &Mod
             flags |= FLAG_UNDERGROUND;
         }
         let (yaw, pitch, roll) = from_terrain_builder(v(3), v(4), v(5));
+        let info = db.get(&path);
+        let (pitch, roll) = level_on_ground(&info, pitch, roll);
         let scale = if v(6) > 0.0 { v(6) } else { 1.0 };
-        let (x, z) = tb_origin(v(1) - shift.0, v(2) - shift.1, yaw, pitch, roll, scale, db.get(&path).center[1]);
+        let (x, z) = tb_origin(v(1) - shift.0, v(2) - shift.1, yaw, pitch, roll, scale, info.center[1]);
         out.push(Obj { x, z, yaw, pitch, roll, scale, elevation: v(7), model, flags });
     }
     (out, missing.into_iter().map(|(k, n)| format!("{k} ({n})")).collect())
+}
+
+/// Models the game fits to the ground (path panels, kerbs) come out of Terrain Builder with
+/// tilts of a few degrees that have nothing to do with the ground under them: on Balticrus
+/// path panels tilted by 1-5 degrees lie on slopes of up to 10. A tilt keeps a model rigid,
+/// so such a model would sink into the slope on one side. They come in level and follow the
+/// ground, as one placed by hand does.
+fn level_on_ground(info: &crate::model_info::ModelInfo, pitch: f32, roll: f32) -> (f32, f32) {
+    if info.placement.skews() {
+        (0.0, 0.0)
+    } else {
+        (pitch, roll)
+    }
 }
 
 fn objects_from_wrp(wrp: &Wrp, height: &Heightmap, sea: f32, db: &ModelDb) -> ObjectStore {
@@ -642,10 +657,13 @@ pub fn add_tb_layers(w: &mut World, files: &[LayerFile], libraries: &[PathBuf], 
                 continue;
             };
             let (yaw, pitch, roll) = from_terrain_builder(o.yaw, o.pitch, o.roll);
+            let info = db.get(&w.objects.models[model as usize].path);
+            let (pitch, roll) = level_on_ground(&info, pitch, roll);
             let scale = if o.scale > 0.0 { o.scale } else { 1.0 };
-            let center_y = if pitch == 0.0 && roll == 0.0 { 0.0 } else { db.get(&w.objects.models[model as usize].path).center[1] };
+            let center_y = if pitch == 0.0 && roll == 0.0 { 0.0 } else { info.center[1] };
             let (x, z) = tb_origin((o.x - ex) as f32, (o.z - ey) as f32, yaw, pitch, roll, scale, center_y);
-            let mut obj = Obj { x, z, elevation: o.elevation, yaw, pitch, roll, scale, model, flags: 0 };
+            let flags = if o.underground { FLAG_UNDERGROUND } else { 0 };
+            let mut obj = Obj { x, z, elevation: o.elevation, yaw, pitch, roll, scale, model, flags };
             obj.set_layer(layer);
             w.objects.insert(obj);
         }
@@ -957,6 +975,22 @@ mod tests {
     }
 
     #[test]
+    fn path_panels_come_in_level() {
+        if !std::path::Path::new("P:/dz/structures/roads/panels/path_panels.p3d").exists() { return; }
+        let mut w = World::new(WorldMeta::new("A", 256, 8.0), 0.0);
+        let a = from_paths(vec![r"dz\structures\roads\panels\path_panels.p3d".into(), r"dz\t_a.p3d".into()]);
+        let text = "\"path_panels\";100;50;92.4;0;0.213062;1;0;0;\n\"path_panels\";110;50;92.4;0;15;1;0;0;\n\"path_panels\";120;50;92.4;358.9;4.06;1;0;0;\n";
+        let (o, _) = parse_tb_objects(text, &mut w, &a, &ModelDb::new("P:/"), false);
+        assert_eq!(o.len(), 3);
+        assert!(o[0].pitch == 0.0 && o[0].roll == 0.0, "{:?}", o[0]);
+        assert!(o.iter().all(|o| o.pitch == 0.0 && o.roll == 0.0), "{o:?}");
+        // Models that do not follow the ground keep their tilt.
+        let a = from_paths(vec![r"dz\t_a.p3d".into()]);
+        let (o, _) = parse_tb_objects("\"t_a\";100;50;92.4;0;5;1;0;0;\n", &mut w, &a, &ModelDb::new("Z:/none"), false);
+        assert!(o[0].pitch.abs() + o[0].roll.abs() > 4.0, "{:?}", o[0]);
+    }
+
+    #[test]
     fn tb_list_with_easting_is_shifted() {
         let mut w = World::new(WorldMeta::new("A", 256, 8.0), 0.0);
         let a = from_paths(vec!["dz\\t_a.p3d".into()]);
@@ -1080,7 +1114,7 @@ mod tests {
     #[test]
     fn frame_offset_prefers_a_matching_frame() {
         let meta = WorldMeta::new("A", 1024, 4.0);
-        let o = |x: f64, z: f64| crate::tv4l::TbObject { template: 0, x, z, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, elevation: 0.0 };
+        let o = |x: f64, z: f64| crate::tv4l::TbObject { template: 0, x, z, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, elevation: 0.0, underground: false };
         assert_eq!(frame_offset(&[o(201000.0, 500.0), o(203000.0, 900.0)], &meta), Some((200_000.0, 0.0)));
         assert_eq!(frame_offset(&[o(1000.0, 500.0)], &meta), Some((0.0, 0.0)));
         assert_eq!(frame_offset(&[o(900000.0, 500.0)], &meta), None);
@@ -1210,3 +1244,4 @@ mod tests {
         assert!(e[e.len() / 2].abs() < 0.5, "median elevation {}", e[e.len() / 2]);
     }
 }
+
