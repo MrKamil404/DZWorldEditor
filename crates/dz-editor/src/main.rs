@@ -4,6 +4,7 @@ mod app;
 mod asset_browser;
 mod camera;
 mod deleting;
+mod exporting;
 mod i18n;
 mod icons;
 mod keys;

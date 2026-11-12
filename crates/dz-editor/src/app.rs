@@ -268,6 +268,7 @@ pub enum Dialog {
     ProjectSettings,
     About,
     Shortcuts,
+    Export(Option<crate::exporting::Part>),
     Delete(crate::deleting::Plan),
     Confirm { text: String, action: fn(&mut App) },
 }

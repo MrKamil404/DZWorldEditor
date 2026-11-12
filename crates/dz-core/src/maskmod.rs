@@ -145,6 +145,19 @@ fn union(a: Option<Rect>, b: Rect) -> Option<Rect> {
 }
 
 impl World {
+    /// The mask as painted, without what the modifiers lay over it.
+    pub fn mask_original(&self) -> crate::terrain::MaskMap {
+        let mut m = self.mask.clone();
+        for (key, base) in &self.mask_mods.base {
+            let Some(r) = tile_rect(*key, m.width, m.height) else { continue };
+            for y in r.y0..=r.y1 {
+                let n = r.x1 - r.x0 + 1;
+                m.data[y * m.width + r.x0..y * m.width + r.x0 + n].copy_from_slice(&base[(y - r.y0) * TILE..(y - r.y0) * TILE + n]);
+            }
+        }
+        m
+    }
+
     /// Keeps the painted mask of a tile before a modifier first writes to it.
     fn mask_keep(&mut self, key: Key) {
         if self.mask_mods.base.contains_key(&key) {
@@ -446,6 +459,10 @@ mod tests {
         assert!(r.x0 <= 130 && r.x1 >= 130);
         assert_eq!(at(&w, 130, 60), 5);
         assert_eq!(at(&w, 130, 70), 1);
+        // The mask as painted, for an export without the modifiers.
+        let painted = w.mask_original();
+        assert_eq!(painted.data[60 * 256 + 130], 1);
+        assert_eq!(painted.data.iter().filter(|v| **v != 1).count(), w.mask.data.iter().filter(|v| **v != 1 && **v != 5).count());
         w.mask_set_enabled(id, false);
         assert_eq!(at(&w, 130, 60), 1);
         w.mask_set_enabled(id, true);

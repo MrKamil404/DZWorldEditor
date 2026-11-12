@@ -67,6 +67,10 @@
   "de": "Ein Tor, wo eine Straße oder ein Gleis den Zaun kreuzt",
   "pl": "Brama tam, gdzie płot przecina droga lub tor"
  },
+ "A list of objects Terrain Builder imports.": {
+  "de": "Eine Objektliste, die Terrain Builder importiert.",
+  "pl": "Lista obiektów do importu w Terrain Builderze."
+ },
  "A metre of bridge counts as this many metres of road. Lower it when cheap earthworks lead the road down into valleys instead of over them.": {
   "de": "Ein Meter Brücke zählt so viele Meter Straße. Senken, wenn billige Erdarbeiten die Straße in Täler statt darüber führen.",
   "pl": "Metr mostu liczy się jak tyle metrów drogi. Zmniejsz, gdy tanie roboty ziemne sprowadzają drogę w doliny zamiast nad nimi."
@@ -179,6 +183,10 @@
   "de": "Alle",
   "pl": "Wszystkie"
  },
+ "All files...": {
+  "de": "Alle Dateien...",
+  "pl": "Wszystkie pliki..."
+ },
  "All models": {
   "de": "Alle Modelle",
   "pl": "Wszystkie modele"
@@ -267,6 +275,10 @@
   "de": "Gebiete aus Formen",
   "pl": "Obszary z kształtów"
  },
+ "As it is": {
+  "de": "Wie es ist",
+  "pl": "Bez zmian"
+ },
  "Assigned in the asset browser, with the right mouse button on a model or a folder. The surface above is for the other models.": {
   "de": "Wird im Asset-Browser mit der rechten Maustaste auf einem Modell oder Ordner zugewiesen. Die Oberfläche oben gilt für die übrigen Modelle.",
   "pl": "Przypisuje się ją w przeglądarce assetów prawym przyciskiem na modelu lub folderze. Powierzchnia powyżej dotyczy pozostałych modeli."
@@ -318,6 +330,10 @@
  "Bake objects": {
   "de": "Objekte einbrennen",
   "pl": "Wypalanie obiektów"
+ },
+ "Baked objects and road parts, clone strokes; without them the image as imported.": {
+  "de": "Eingebrannte Objekte und Straßenteile, Klonstriche; ohne sie das Bild wie importiert.",
+  "pl": "Wypalone obiekty i party dróg, pociągnięcia klonowania; bez nich obraz taki, jak zaimportowany."
  },
  "Baked objects {0}": {
   "de": "Eingebrannte Objekte {0}",
@@ -490,6 +506,10 @@
  "Carve rivers": {
   "de": "Flüsse eingraben",
   "pl": "Wyrzeźb rzeki"
+ },
+ "Cell": {
+  "de": "Zelle",
+  "pl": "Komórka"
  },
  "Chance per node %": {
   "de": "Chance pro Knoten %",
@@ -751,6 +771,10 @@
   "de": "DayZForests-Projekt...",
   "pl": "Projekt DayZForests..."
  },
+ "Decimals": {
+  "de": "Nachkommastellen",
+  "pl": "Miejsca po przecinku"
+ },
  "Default": {
   "de": "Standard",
   "pl": "Domyślnie"
@@ -971,6 +995,14 @@
   "de": "Jedes füllt ebenfalls die ganze Form, z. B. Unterholz unter den Bäumen.",
   "pl": "Każdy z nich też wypełnia cały kształt, np. ściółka pod drzewami."
  },
+ "Each shape layer as a shapefile.": {
+  "de": "Jede Shape-Ebene als Shapefile.",
+  "pl": "Każda warstwa kształtów jako shapefile."
+ },
+ "Each surface in its colour from layers.cfg.": {
+  "de": "Jede Oberfläche in ihrer Farbe aus layers.cfg.",
+  "pl": "Każda nawierzchnia w swoim kolorze z layers.cfg."
+ },
  "Earthwork penalty": {
   "de": "Erdarbeiten-Malus",
   "pl": "Kara za roboty ziemne"
@@ -1095,13 +1127,25 @@
   "de": "Beenden",
   "pl": "Wyjście"
  },
+ "Export": {
+  "de": "Exportieren",
+  "pl": "Eksportuj"
+ },
  "Export and binarise the PBO": {
   "de": "PBO exportieren und binarisieren",
   "pl": "Eksportuj i zbinaryzuj PBO"
  },
+ "Export files": {
+  "de": "Dateien exportieren",
+  "pl": "Eksport plików"
+ },
  "Export files for the PBO": {
   "de": "Dateien für PBO exportieren",
   "pl": "Eksportuj pliki do PBO"
+ },
+ "Export files...": {
+  "de": "Dateien exportieren...",
+  "pl": "Eksport plików..."
  },
  "Export shapes (SHP)...": {
   "de": "Formen exportieren (SHP)...",
@@ -1122,6 +1166,10 @@
  "Exported to {0}: {1} tiles, {2} materials, {3} objects": {
   "de": "Exportiert nach {0}: {1} Kacheln, {2} Materialien, {3} Objekte",
   "pl": "Wyeksportowano do {0}: {1} kafli, {2} materiałów, {3} obiektów"
+ },
+ "Exported {0} files to {1}": {
+  "de": "{0} Dateien nach {1} exportiert",
+  "pl": "Wyeksportowano {0} plików do {1}"
  },
  "Exported {0} shapefiles": {
   "de": "{0} Shapefiles exportiert",
@@ -1311,6 +1359,10 @@
   "de": "Wälder, Oberflächen, Siedlungen, Zäune und Stromleitungen sind unten im Tab Generatoren.",
   "pl": "Lasy, powierzchnie, osady, płoty i linie energetyczne są w zakładce Generatory poniżej."
  },
+ "Format": {
+  "de": "Format",
+  "pl": "Format"
+ },
  "Forward": {
   "de": "Vorwärts",
   "pl": "Dalej"
@@ -1455,9 +1507,17 @@
   "de": "Höhenkarte",
   "pl": "Mapa wysokości"
  },
+ "Heightmap (ASC)": {
+  "de": "Höhenkarte (ASC)",
+  "pl": "Mapa wysokości (ASC)"
+ },
  "Heightmap (ASC)...": {
   "de": "Höhenkarte (ASC)...",
   "pl": "Mapa wysokości (ASC)..."
+ },
+ "Heightmap, satellite, mask, layers.cfg, shapes and objects, each with its options": {
+  "de": "Höhenkarte, Satellit, Maske, layers.cfg, Shapes und Objekte, jeweils mit Optionen",
+  "pl": "Mapa wysokości, satelita, maska, layers.cfg, kształty i obiekty, każde z własnymi opcjami"
  },
  "Heights along this route follow its grade, cut and fill limits. Change them in the route settings and fit again.": {
   "de": "Die Höhen dieser Route folgen den Grenzen für Steigung, Einschnitt und Damm. Ändere sie in den Routeneinstellungen und passe neu an.",
@@ -1683,9 +1743,17 @@
   "de": "Ebene",
   "pl": "Warstwa"
  },
+ "Layers": {
+  "de": "Ebenen",
+  "pl": "Warstwy"
+ },
  "Left leaf": {
   "de": "Linker Flügel",
   "pl": "Lewe skrzydło"
+ },
+ "Legend": {
+  "de": "Legende",
+  "pl": "Legenda"
  },
  "Level the ground under buildings": {
   "de": "Gelände unter Gebäuden einebnen",
@@ -1903,6 +1971,10 @@
   "de": "Modell",
   "pl": "Model"
  },
+ "Model names with their whole path": {
+  "de": "Modellnamen mit vollem Pfad",
+  "pl": "Nazwy modeli z pełną ścieżką"
+ },
  "Models are laid side by side until they cover the whole shape.": {
   "de": "Die Modelle werden nebeneinander gelegt, bis sie die ganze Form bedecken.",
   "pl": "Modele są układane obok siebie, aż pokryją cały kształt."
@@ -2095,6 +2167,10 @@
   "de": "Keines der Objekte konnte gezeichnet werden",
   "pl": "Żadnego z obiektów nie udało się narysować"
  },
+ "None ticked writes the visible ones.": {
+  "de": "Ohne Haken werden die sichtbaren geschrieben.",
+  "pl": "Gdy nic nie zaznaczono, zapisywane są widoczne."
+ },
  "Noon": {
   "de": "Mittag",
   "pl": "Południe"
@@ -2135,6 +2211,10 @@
   "de": "Objekte",
   "pl": "Obiekty"
  },
+ "Objects (Terrain Builder TXT)": {
+  "de": "Objekte (Terrain Builder TXT)",
+  "pl": "Obiekty (Terrain Builder TXT)"
+ },
  "Objects ({0})": {
   "de": "Objekte ({0})",
   "pl": "Obiekty ({0})"
@@ -2167,6 +2247,14 @@
   "de": "Versatz",
   "pl": "Przesunięcie"
  },
+ "One file for each layer": {
+  "de": "Eine Datei pro Ebene",
+  "pl": "Osobny plik dla każdej warstwy"
+ },
+ "One image": {
+  "de": "Ein Bild",
+  "pl": "Jeden obraz"
+ },
  "One of the {0} models selected in the Content Browser is placed at random.": {
   "de": "Eines der {0} im Content Browser ausgewählten Modelle wird zufällig platziert.",
   "pl": "Stawiany jest losowo jeden z {0} modeli zaznaczonych w przeglądarce assetów."
@@ -2174,6 +2262,10 @@
  "Only inside shapes": {
   "de": "Nur innerhalb von Formen",
   "pl": "Tylko wewnątrz kształtów"
+ },
+ "Only layers marked for export": {
+  "de": "Nur zum Export markierte Ebenen",
+  "pl": "Tylko warstwy oznaczone do eksportu"
  },
  "Only on satellite colours": {
   "de": "Nur auf Satellitenfarben",
@@ -2187,13 +2279,25 @@
   "de": "Nur eines",
   "pl": "Tylko jeden"
  },
+ "Only surfaces the mask uses": {
+  "de": "Nur Oberflächen, die die Maske nutzt",
+  "pl": "Tylko nawierzchnie użyte w masce"
+ },
  "Only the selected objects ({0})": {
   "de": "Nur die ausgewählten Objekte ({0})",
   "pl": "Tylko zaznaczone obiekty ({0})"
  },
+ "Only the selection ({0})": {
+  "de": "Nur die Auswahl ({0})",
+  "pl": "Tylko zaznaczenie ({0})"
+ },
  "Only these names": {
   "de": "Nur diese Namen",
   "pl": "Tylko te nazwy"
+ },
+ "Only visible layers": {
+  "de": "Nur sichtbare Ebenen",
+  "pl": "Tylko widoczne warstwy"
  },
  "Opacity": {
   "de": "Deckkraft",
@@ -2495,6 +2599,10 @@
   "de": "Heben",
   "pl": "Podnieś"
  },
+ "Raise by": {
+  "de": "Anheben um",
+  "pl": "Podnieś o"
+ },
  "Raise the bed": {
   "de": "Fahrbahn anheben",
   "pl": "Podniesienie podłoża"
@@ -2667,6 +2775,10 @@
   "de": "Straßen aus TV4P...",
   "pl": "Drogi z TV4P..."
  },
+ "Roads, pads and ponds cut into the terrain; without them the terrain as sculpted.": {
+  "de": "Straßen, Flächen und Teiche im Gelände; ohne sie das Gelände wie modelliert.",
+  "pl": "Drogi, wyrównania i stawy wcięte w teren; bez nich teren taki, jak wyrzeźbiony."
+ },
  "Rocks": {
   "de": "Felsen",
   "pl": "Skały"
@@ -2710,6 +2822,10 @@
  "Satellite": {
   "de": "Satellit",
   "pl": "Satelita"
+ },
+ "Satellite image": {
+  "de": "Satellitenbild",
+  "pl": "Obraz satelitarny"
  },
  "Satellite image...": {
   "de": "Satellitenbild...",
@@ -2762,6 +2878,10 @@
  "Scale": {
   "de": "Skalierung",
   "pl": "Skala"
+ },
+ "Scaled without blending, so it only holds the colours of the surfaces.": {
+  "de": "Ohne Überblendung skaliert, damit nur die Farben der Oberflächen vorkommen.",
+  "pl": "Skalowana bez mieszania, więc zawiera tylko kolory nawierzchni."
  },
  "Scan the work drive again": {
   "de": "Arbeitslaufwerk neu durchsuchen",
@@ -2890,6 +3010,14 @@
  "Shapes": {
   "de": "Formen",
   "pl": "Kształty"
+ },
+ "Shapes (SHP)": {
+  "de": "Shapes (SHP)",
+  "pl": "Kształty (SHP)"
+ },
+ "Shapes (SHP)...": {
+  "de": "Shapes (SHP)...",
+  "pl": "Kształty (SHP)..."
  },
  "Shapes (SHP, TV4S)...": {
   "de": "Formen (SHP, TV4S)...",
@@ -3071,6 +3199,10 @@
   "de": "Oberflächenebenen",
   "pl": "Warstwy powierzchni"
  },
+ "Surface mask": {
+  "de": "Oberflächenmaske",
+  "pl": "Maska nawierzchni"
+ },
  "Surface painting": {
   "de": "Oberflächen malen",
   "pl": "Malowanie powierzchni"
@@ -3127,6 +3259,10 @@
   "de": "Oberflächen pro Kachel",
   "pl": "Powierzchnie na kafel"
  },
+ "Surfaces under objects, roads and forests; without them the mask as painted.": {
+  "de": "Oberflächen unter Objekten, Straßen und Wäldern; ohne sie die Maske wie gemalt.",
+  "pl": "Nawierzchnie pod obiektami, drogami i lasami; bez nich maska taka, jak namalowana."
+ },
  "Take the surface under the cursor": {
   "de": "Oberfläche unter dem Cursor aufnehmen",
   "pl": "Pobierz powierzchnię spod kursora"
@@ -3166,6 +3302,10 @@
  "Terrain Builder layers (TV4L)...": {
   "de": "Terrain-Builder-Ebenen (TV4L)...",
   "pl": "Warstwy Terrain Buildera (TV4L)..."
+ },
+ "Terrain Builder matches objects by file name; the whole path helps other tools.": {
+  "de": "Terrain Builder ordnet Objekte nach Dateinamen zu; der volle Pfad hilft anderen Werkzeugen.",
+  "pl": "Terrain Builder dopasowuje obiekty po nazwie pliku; pełna ścieżka przydaje się innym narzędziom."
  },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
@@ -3259,6 +3399,10 @@
   "de": "Der Pinsel fügt einer Kachel keine Oberfläche hinzu, wenn das Limit des Projekts erreicht ist.",
   "pl": "Pędzel nie doda powierzchni do kafla, który ma już tyle, ile pozwala projekt."
  },
+ "The corner of the grid in map coordinates, as Terrain Builder expects; off places it at 0, 0.": {
+  "de": "Die Ecke des Rasters in Kartenkoordinaten, wie Terrain Builder es erwartet; aus setzt sie auf 0, 0.",
+  "pl": "Narożnik siatki we współrzędnych mapy, jak oczekuje Terrain Builder; wyłączone ustawia go w 0, 0."
+ },
  "The download replaces the current file; the previous one stays as .old until the next start.": {
   "de": "Der Download ersetzt die aktuelle Datei; die vorherige bleibt bis zum nächsten Start als .old erhalten.",
   "pl": "Pobrany program zastąpi obecny plik; poprzedni zostaje jako .old do następnego uruchomienia."
@@ -3335,6 +3479,14 @@
   "de": "Das Projekt hat kein Satellitenbild",
   "pl": "Projekt nie ma satki"
  },
+ "The project has no satellite image.": {
+  "de": "Das Projekt hat kein Satellitenbild.",
+  "pl": "Projekt nie ma obrazu satelitarnego."
+ },
+ "The project has no shapes.": {
+  "de": "Das Projekt hat keine Shapes.",
+  "pl": "Projekt nie ma kształtów."
+ },
  "The project has unsaved changes. Close without saving?": {
   "de": "Das Projekt hat ungespeicherte Änderungen. Ohne Speichern schließen?",
   "pl": "Projekt ma niezapisane zmiany. Zamknąć bez zapisywania?"
@@ -3355,6 +3507,10 @@
   "de": "Für jeden Pinsel gleich: Formen, Malen, Löcher, Platzieren und Klonpinsel.",
   "pl": "Tak samo dla każdego pędzla: rzeźbienia, malowania, dziur, stawiania i klonowania."
  },
+ "The satellite image of the map.": {
+  "de": "Das Satellitenbild der Karte.",
+  "pl": "Obraz satelitarny mapy."
+ },
  "The shape this generator works on no longer exists": {
   "de": "Die Form dieses Generators existiert nicht mehr",
   "pl": "Kształt, na którym działa generator, już nie istnieje"
@@ -3362,6 +3518,14 @@
  "The surface it painted": {
   "de": "Die von ihm gemalte Oberfläche",
   "pl": "Powierzchnię, którą namalował"
+ },
+ "The surfaces with their colours and materials, for Terrain Builder.": {
+  "de": "Die Oberflächen mit Farben und Materialien, für Terrain Builder.",
+  "pl": "Nawierzchnie z kolorami i materiałami, dla Terrain Buildera."
+ },
+ "The terrain as an ESRI ASCII grid, as Terrain Builder and GIS tools read it.": {
+  "de": "Das Gelände als ESRI-ASCII-Raster, wie Terrain Builder und GIS-Werkzeuge es lesen.",
+  "pl": "Teren jako siatka ESRI ASCII, czytana przez Terrain Buildera i narzędzia GIS."
  },
  "The terrain levelled under it": {
   "de": "Das unter ihr geebnete Gelände",
@@ -3390,6 +3554,10 @@
  "Tile size": {
   "de": "Kachelgröße",
   "pl": "Rozmiar kafla"
+ },
+ "Tiles": {
+  "de": "Kacheln",
+  "pl": "Kafle"
  },
  "To restore a backup, open the project.dzwe inside it and use Save as.": {
   "de": "Um eine Sicherung wiederherzustellen, öffne die darin enthaltene project.dzwe und verwende „Speichern unter“.",
@@ -3615,6 +3783,22 @@
   "de": "Leitungen",
   "pl": "Przewody"
  },
+ "With easting and northing": {
+  "de": "Mit Easting und Northing",
+  "pl": "Z przesunięciem easting i northing"
+ },
+ "With mask modifiers": {
+  "de": "Mit Maskenmodifikatoren",
+  "pl": "Z modyfikatorami maski"
+ },
+ "With satellite modifiers": {
+  "de": "Mit Satellitenmodifikatoren",
+  "pl": "Z modyfikatorami satelity"
+ },
+ "With terrain modifiers": {
+  "de": "Mit Geländemodifikatoren",
+  "pl": "Z modyfikatorami terenu"
+ },
  "With the models selected in the browser.": {
   "de": "Mit den im Browser ausgewählten Modellen.",
   "pl": "Z modelami zaznaczonymi w przeglądarce."
@@ -3790,5 +3974,9 @@
  "{0} tiles over the limit, marked in the 2D view": {
   "de": "{0} Kacheln über dem Limit, in der 2D-Ansicht markiert",
   "pl": "Kafle ponad limit: {0}, zaznaczone w widoku 2D"
+ },
+ "{0} × {0} samples": {
+  "de": "{0} × {0} Punkte",
+  "pl": "{0} × {0} próbek"
  }
 }
