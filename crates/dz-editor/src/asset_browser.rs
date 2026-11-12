@@ -284,11 +284,13 @@ pub struct Browser {
     templates: Templates,
     /// What follows the cursor while something is dragged out of the browser.
     ghost: Option<(Vec<egui::TextureId>, String, Color32, &'static str)>,
+    /// A model to scroll the grid to once, after it was shown from the map.
+    scroll_to: Option<String>,
 }
 
 impl Default for Browser {
     fn default() -> Self {
-        Self { source: Source::Drive(String::new()), back: Vec::new(), forward: Vec::new(), selected: Vec::new(), anchor: None, kind: 0, tree: DriveTree::default(), preview: Preview3d::default(), preview_item: None, rename: None, templates: Templates::default(), ghost: None }
+        Self { source: Source::Drive(String::new()), back: Vec::new(), forward: Vec::new(), selected: Vec::new(), anchor: None, kind: 0, tree: DriveTree::default(), preview: Preview3d::default(), preview_item: None, rename: None, templates: Templates::default(), ghost: None, scroll_to: None }
     }
 }
 
@@ -299,6 +301,16 @@ impl Browser {
             self.forward.clear();
         }
     }
+    /// Opens the folder of a model and selects it there.
+    pub fn reveal(&mut self, path: &str) {
+        let p = dz_core::objects::ObjectStore::normalize_path(path);
+        self.go(Source::Drive(p.rsplit_once('\\').map_or("", |x| x.0).to_string()));
+        self.selected = vec![Pick::Model(p.clone())];
+        self.anchor = Some(Pick::Model(p.clone()));
+        self.preview_item = None;
+        self.scroll_to = Some(p);
+    }
+
     pub fn models(&self) -> Vec<String> {
         self.selected.iter().filter_map(|p| if let Pick::Model(m) = p { Some(m.clone()) } else { None }).collect()
     }
@@ -1050,7 +1062,16 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             if let Some(i) = which { take_template_drop(&bg, i, &mut acts); }
             bg.context_menu(|ui| { if ui.button(t("New template library...")).clicked() { acts.push(Act::NewTemplateLibrary(Vec::new())); ui.close_menu(); } });
         }
-        egui::ScrollArea::vertical().id_salt("asset_grid").auto_shrink([false, false]).show_rows(ui, cell.y + 4.0, rows, |ui, range| {
+        // Only the rows on screen are laid out, so a model shown from the map is scrolled to
+        // by its row.
+        let mut grid = egui::ScrollArea::vertical().id_salt("asset_grid").auto_shrink([false, false]);
+        if let Some(want) = app.browser.scroll_to.take() {
+            if let Some(i) = items.iter().position(|it| matches!(it, Item::Asset(Pick::Model(m)) if *m == want)) {
+                let row_h = cell.y + 4.0 + ui.spacing().item_spacing.y;
+                grid = grid.vertical_scroll_offset(((i / columns) as f32 * row_h - area.height() * 0.5 + row_h * 0.5).max(0.0));
+            }
+        }
+        grid.show_rows(ui, cell.y + 4.0, rows, |ui, range| {
             for r in range {
                 ui.horizontal(|ui| {
                     for c in 0..columns {

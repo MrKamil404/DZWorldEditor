@@ -1470,6 +1470,21 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         return;
                     }
                 }
+                // Held by its shape, an object slides over the ground; one not yet selected is
+                // picked first, as a click would.
+                if app.settings.drag_by_body && !modifiers.shift && !modifiers.ctrl {
+                    if let (Some(id), Some(h)) = (pick_object(app, v, mouse), hit) {
+                        if !app.selection.contains(&id) {
+                            finish_selection(app, v, mouse, mouse, false);
+                        }
+                        if let (true, Some(p)) = (app.selection.contains(&id), selection_pivot(app)) {
+                            let doc = app.doc.as_ref().unwrap();
+                            let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
+                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] });
+                            return;
+                        }
+                    }
+                }
                 // Held on a selected object, Shift turns it and Ctrl scales it.
                 if modifiers.shift || modifiers.ctrl {
                     if let (Some(p), Some(id)) = (pivot, pick_object(app, v, mouse).filter(|id| app.selection.contains(id))) {
@@ -1531,7 +1546,8 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
     if !add_mode {
         app.selection.clear();
         app.selected_modifier = None;
-        if let Some(SelectedWhole::Generator(_)) = app.whole { app.selected_generator = None; }
+        // Whatever the outliner had chosen gives way to what is picked here.
+        app.selected_generator = None;
         app.whole = None;
     }
     let r = Rect::from_two_pos(a, b);
@@ -1547,6 +1563,8 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
             app.whole = Some(target);
             app.selected_generator = if let SelectedWhole::Generator(id) = target { Some(id) } else { None };
         } else if let Some(id) = picked {
+            app.selected_generator = None;
+            app.selected_modifier = None;
             if add_mode && app.selection.contains(&id) {
                 app.selection.remove(&id);
             } else {
@@ -2426,7 +2444,6 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         row(ui, t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0);
         row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0);
         row(ui, t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0);
-        row(ui, t("Surface transition m"), &mut app.settings.surface_blend, 0.0..=10.0);
         row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=1.0);
         ui.weak(t("How far the swell runs up the shore and back; the game's MaxWave is 0.25 m."));
         ui.add_enabled(!app.settings.tide_cycle, egui::Slider::new(&mut app.settings.sea_tide, -MAX_TIDE..=MAX_TIDE).text(t("Tide m")));
@@ -2536,7 +2553,6 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         height_range: doc.height_range,
         objects,
         show_water: app.show_water,
-        surface_blend: app.settings.surface_blend,
         surface_range: app.settings.surface_range,
         sea_waves: app.settings.sea_waves,
         tide: tide(app, &ctx),
@@ -2571,9 +2587,30 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         ctx.request_repaint();
     }
     view_header(app, ui, rect, top);
-    resp.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-        let Some(m) = ctx.input(|i| i.pointer.latest_pos()) else { return };
-        let _ = m;
+    if resp.secondary_clicked() {
+        if let Some(m) = ctx.input(|i| i.pointer.interact_pos()) {
+            if let Some(id) = pick_object(app, &v, m) {
+                if !app.selection.contains(&id) {
+                    app.selection.clear();
+                    app.selection.insert(id);
+                    app.selected_generator = None;
+                    app.selected_modifier = None;
+                    app.whole = None;
+                    app.selection_rev += 1;
+                }
+            }
+        }
+    }
+    let shown_model = app.selected_model();
+    let mut reveal = None;
+    resp.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        if let Some(m) = &shown_model {
+            if ui.button(crate::icons::with(crate::icons::FOLDER_OPEN, &t("Show in asset browser"))).on_hover_text(m.as_str()).clicked() {
+                reveal = Some(m.clone());
+                ui.close_menu();
+            }
+            ui.separator();
+        }
         if ui.button(t("Set player start here")).clicked() {
             if let (Some(h), Some(d)) = (hover, app.doc.as_mut()) {
                 d.world.meta.spawn = [h[0], h[2]];
@@ -2595,6 +2632,9 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
             ui.close_menu();
         }
     });
+    if let Some(m) = reveal {
+        app.show_in_browser(&m);
+    }
 }
 
 /// The brush of the current tool, if it has one.
@@ -2692,7 +2732,12 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     if k(Action::CameraBelow) { app.camera_under = !app.camera_under; }
     if k(Action::ToggleGrass) { app.show_grass = !app.show_grass; }
     if k(Action::ToggleObjects) { app.show_objects = !app.show_objects; }
-    if k(Action::ToggleShapes) { app.show_shapes = !app.show_shapes; }
+    if k(Action::ToggleShapes) {
+        // Shapes and road lines go together: hidden while either shows, shown when both are off.
+        let show = !(app.show_shapes || app.show_lines);
+        app.show_shapes = show;
+        app.show_lines = show;
+    }
     if k(Action::Deselect) && app.mode == Mode::Select {
         app.selection.clear();
         app.selection_rev += 1;
@@ -3375,6 +3420,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "about" => app.dialog = crate::app::Dialog::About,
+        "reveal" => app.show_in_browser(&arg),
         "padstat" => {
             if let Some(d) = &app.doc {
                 for id in &app.selection {

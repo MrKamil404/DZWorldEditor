@@ -357,6 +357,8 @@ pub struct App {
     pub selection: BTreeSet<u32>,
     pub selected_modifier: Option<u64>,
     pub selection_rev: u64,
+    /// The selection the outliner last scrolled to.
+    pub outliner_rev: u64,
     pub drag: Option<crate::viewport::ObjectDrag>,
     pub box_select: Option<(egui::Pos2, egui::Pos2, bool)>,
 
@@ -456,7 +458,7 @@ impl App {
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
+            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
@@ -481,6 +483,19 @@ impl App {
         self.status = text.clone();
         self.log.push(LogLine { text, level: 2 });
         self.bottom = BottomTab::Output;
+    }
+
+    /// Opens the asset browser at the model of an object.
+    pub fn show_in_browser(&mut self, path: &str) {
+        self.browser.reveal(path);
+        self.bottom = BottomTab::Content;
+    }
+
+    /// The model of the first selected object.
+    pub fn selected_model(&self) -> Option<String> {
+        let d = self.doc.as_ref()?;
+        let o = self.selection.iter().next().and_then(|id| d.world.objects.get(*id))?;
+        Some(d.world.objects.model_path(o).to_string())
     }
 
     pub fn rescan_assets(&mut self) {
@@ -1425,9 +1440,8 @@ impl App {
         let mut change = Vec::new();
         let mut new = BTreeSet::new();
         for id in &self.selection {
-            let Some(mut o) = doc.world.objects.get(*id).copied() else { continue };
-            o.x += 2.0;
-            o.z += 2.0;
+            // The copy stands where the original does, ready to be moved off it.
+            let Some(o) = doc.world.objects.get(*id).copied() else { continue };
             let n = doc.world.objects.insert(o);
             change.push((n, None, Some(o)));
             new.insert(n);

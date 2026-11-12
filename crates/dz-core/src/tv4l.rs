@@ -20,6 +20,8 @@ pub struct TbObject {
     pub roll: f32,
     pub scale: f32,
     pub elevation: f32,
+    /// Marked "underground"; only layers of version 5 store it.
+    pub underground: bool,
 }
 
 /// What a layer says about itself, readable without its quadtree.
@@ -172,8 +174,11 @@ fn read_leaf(c: &mut Cursor, out: &mut Vec<TbObject>, record: usize) -> Result<(
         for _ in 0..count {
             let (x, z) = (c.f64()?, c.f64()?);
             let (yaw, pitch, roll, scale, elevation) = (c.f32()?, c.f32()?, c.f32()?, c.f32()?, c.f32()?);
-            c.take(record - 36)?; // Object id.
-            out.push(TbObject { template, x, z, yaw, pitch, roll, scale, elevation });
+            // Object id; version 5 follows it with flags, of which 6 marks an underground object.
+            c.take(4)?;
+            let underground = record >= 44 && c.u32()? & 6 != 0;
+            c.take(record.saturating_sub(if record >= 44 { 44 } else { 40 }))?;
+            out.push(TbObject { template, x, z, yaw, pitch, roll, scale, elevation, underground });
         }
     }
     Ok(())
@@ -510,7 +515,7 @@ mod tests {
             assert_eq!(l.info.name, "Rock");
             assert!(!l.info.visible);
             assert_eq!(l.objects.len(), 3);
-            assert_eq!(l.objects[1], TbObject { template: 77, x: 200101.5, z: 50.25, yaw: 10.0, pitch: 1.0, roll: 2.0, scale: 1.5, elevation: 0.75 });
+            assert_eq!(l.objects[1], TbObject { template: 77, x: 200101.5, z: 50.25, yaw: 10.0, pitch: 1.0, roll: 2.0, scale: 1.5, elevation: 0.75, underground: false });
         }
     }
 
@@ -540,6 +545,17 @@ mod tests {
     }
 
     /// Reads every layer of the real projects when P: is mounted.
+    #[test]
+    fn underground_flag_of_a_real_layer() {
+        let p = std::path::Path::new("P:/BalticrusSource/TerrainBuilder/balticrus.Layers/kamil-temp.tv4l");
+        let Ok(l) = load(p) else { return };
+        if l.info.version < 5 || l.objects.len() != 2 { return; }
+        // Saved by Terrain Builder with the first of the two marked underground.
+        let marked: Vec<bool> = l.objects.iter().map(|o| o.underground).collect();
+        assert_eq!(marked.iter().filter(|u| **u).count(), 1, "{:?}", l.objects);
+        assert!(l.objects.iter().find(|o| o.underground).unwrap().x > 202_060.0);
+    }
+
     #[test]
     fn real_layers_parse() {
         if std::env::var("DZ_SLOW_TESTS").is_err() { return; }

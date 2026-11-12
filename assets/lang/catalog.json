@@ -219,6 +219,10 @@
   "de": "Umgebungsverdeckung",
   "pl": "Okluzja otoczenia"
  },
+ "An object held by its shape slides over the ground, as with the dot of the gizmo.": {
+  "de": "Ein an seiner Form gehaltenes Objekt gleitet über den Boden, wie mit dem Punkt des Gizmos.",
+  "pl": "Obiekt złapany za swój kształt przesuwa się po terenie, tak jak kropką gizmo."
+ },
  "Angle": {
   "de": "Winkel",
   "pl": "Kąt"
@@ -2043,6 +2047,10 @@
   "de": "Keypoint verschieben",
   "pl": "Przesunięcie keypointu"
  },
+ "Move objects by dragging them": {
+  "de": "Objekte durch Ziehen verschieben",
+  "pl": "Przesuwaj obiekty, chwytając je"
+ },
  "Move selection here": {
   "de": "Auswahl hierher verschieben",
   "pl": "Przenieś tu zaznaczenie"
@@ -3067,6 +3075,10 @@
   "de": "Gras zeigen",
   "pl": "Pokaż trawę"
  },
+ "Show in asset browser": {
+  "de": "Im Asset-Browser zeigen",
+  "pl": "Pokaż w asset browser"
+ },
  "Show in its folder": {
   "de": "Im Ordner zeigen",
   "pl": "Pokaż w folderze"
@@ -3086,6 +3098,10 @@
  "Show shapes": {
   "de": "Formen zeigen",
   "pl": "Pokaż kształty"
+ },
+ "Show shapes and road lines": {
+  "de": "Formen und Straßenlinien zeigen",
+  "pl": "Pokaż kształty i linie dróg"
  },
  "Size": {
   "de": "Größe",

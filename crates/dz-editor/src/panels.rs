@@ -44,7 +44,7 @@ pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
     ui.add_enabled(app.show_grass, egui::Checkbox::new(&mut app.grass_under_objects, t("Grass under objects")));
     ui.checkbox(&mut app.show_shadows, t("Shadows"));
     ui.checkbox(&mut app.show_water, t("Water"));
-    ui.checkbox(&mut app.show_lines, t("Roads and lines"));
+    ui.checkbox(&mut app.show_lines, t("Roads and lines")).on_hover_text(keys.tip(Action::ToggleShapes));
     ui.checkbox(&mut app.show_shapes, t("Shapes")).on_hover_text(keys.tip(Action::ToggleShapes));
     ui.checkbox(&mut app.show_keypoints, t("Key points"));
     ui.checkbox(&mut app.show_contours, t("Contour lines"));
@@ -320,6 +320,7 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
         ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
         ui.weak(t("Click to select, drag for a box, Shift adds. Shift or Ctrl held while dragging a selected object rotates or scales it."));
         ui.checkbox(&mut app.select_whole, t("Select whole roads and generators"));
+        if ui.checkbox(&mut app.settings.drag_by_body, t("Move objects by dragging them")).on_hover_text(t("An object held by its shape slides over the ground, as with the dot of the gizmo.")).changed() { app.settings.save(); }
         let k = &app.settings.keys;
         key_hints(ui, &[
             (format!("{} / {} / {}", k.text(Action::GizmoMove), k.text(Action::GizmoRotate), k.text(Action::GizmoScale)), t("Move, rotate, scale")),
@@ -903,6 +904,10 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let shape_rows: Vec<(usize, String, bool, usize)> = doc.world.shape_layers.iter().enumerate().map(|(i, l)| (i, l.name.clone(), l.visible, l.shapes.len())).collect();
     let active_shape = doc.world.active_shape_layer;
     let total_objects = doc.world.objects.len();
+    // Models of the selected objects, lit in the list; a new selection scrolls to them.
+    let selected_models: std::collections::HashSet<u32> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| o.model)).collect();
+    let scroll = app.outliner_rev != app.selection_rev;
+    let mut reveal: Option<String> = None;
     let generators: Vec<(u64, String, &'static str, usize)> = doc.world.generators.iter().map(|g| (g.id, g.name.clone(), g.kind.type_name(), g.objects.len())).collect();
     let open_shapes: Vec<(usize, Vec<(usize, dz_core::shapes::ShapeKind, usize)>)> = app.shape_open.iter().filter_map(|l| Some((*l, doc.world.shape_layers.get(*l)?.shapes.iter().enumerate().map(|(i, s)| (i, s.kind, s.points.len())).collect()))).collect();
     let mut shape_pick: Option<(usize, usize, bool)> = None;
@@ -1018,16 +1023,33 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         egui::CollapsingHeader::new(icons::with(icons::CUBE, &tf("Objects ({0})", &[&total_objects.to_string()]))).default_open(true).show(ui, |ui| {
+            let mut scrolled = false;
             for (k, (m, count)) in hist.iter().enumerate() {
                 let name = paths[k].rsplit('\\').next().unwrap_or(&paths[k]);
                 if !filter.is_empty() && !name.contains(&filter) { continue; }
-                if ui.selectable_label(false, format!("{name}  ×{count}")).on_hover_text(&paths[k]).clicked() { select_model = Some(*m); }
+                let lit = selected_models.contains(m);
+                let row = ui.selectable_label(lit, format!("{name}  ×{count}")).on_hover_text(&paths[k]);
+                if lit && scroll && !scrolled {
+                    row.scroll_to_me(Some(egui::Align::Center));
+                    scrolled = true;
+                }
+                if row.clicked() { select_model = Some(*m); }
+                let path = paths[k].clone();
+                row.context_menu(|ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    if ui.button(icons::with(icons::FOLDER_OPEN, &t("Show in asset browser"))).clicked() { reveal = Some(path.clone()); ui.close_menu(); }
+                    if ui.button(t("Select objects")).clicked() { select_model = Some(*m); ui.close_menu(); }
+                });
             }
         });
     });
+    app.outliner_rev = app.selection_rev;
+    if let Some(p) = reveal { app.show_in_browser(&p); }
     if let Some(m) = select_model {
         let shift = ui.input(|i| i.modifiers.shift);
         if !shift { app.selection.clear(); }
+        app.selected_generator = None;
+        app.selected_modifier = None;
         let d = app.doc.as_ref().unwrap();
         app.selection.extend(d.world.objects.iter().filter(|(_, o)| o.model == m && d.world.object_interactive(o)).map(|(id, _)| id));
         app.selection_rev += 1;
