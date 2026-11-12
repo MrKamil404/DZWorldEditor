@@ -881,15 +881,36 @@ fn right_panel(app: &mut App, ui: &mut egui::Ui) {
     egui::CentralPanel::default().frame(egui::Frame::new()).show_inside(ui, |ui| details(app, ui));
 }
 
-fn panel_title(ui: &mut egui::Ui, title: &str) {
+fn panel_title(ui: &mut egui::Ui, title: &str) -> egui::Rect {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), egui::Sense::hover());
     ui.painter().rect_filled(rect, 0.0, theme::PANEL);
     ui.painter().text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, title, egui::FontId::proportional(13.0), Color32::WHITE);
+    rect
+}
+
+/// A section of the outliner; the fold button in its title opens or closes all of them.
+pub(crate) fn outliner_section(fold: Option<bool>, salt: &str, title: String) -> egui::CollapsingHeader {
+    egui::CollapsingHeader::new(title).id_salt(("outliner", salt)).default_open(true).open(fold)
 }
 
 fn outliner(app: &mut App, ui: &mut egui::Ui) {
-    panel_title(ui, &icons::with(icons::TREE_STRUCTURE, &t("Outliner")));
-    ui.add(egui::TextEdit::singleline(&mut app.outliner_filter).hint_text(t("Search...")).desired_width(f32::INFINITY));
+    let label = icons::with(icons::TREE_STRUCTURE, &t("Outliner"));
+    let title = panel_title(ui, &label);
+    let fold = app.outliner_fold.take();
+    // The search sits in the title bar, between the title and the fold button.
+    let label_width = ui.painter().layout_no_wrap(label, egui::FontId::proportional(13.0), Color32::WHITE).size().x;
+    let search = egui::Rect::from_min_max(egui::pos2(title.left() + label_width + 18.0, title.top() + 2.0), egui::pos2(title.right() - 30.0, title.bottom() - 2.0));
+    if search.width() > 40.0 {
+        ui.put(search, egui::TextEdit::singleline(&mut app.outliner_filter).hint_text(t("Search...")).desired_width(search.width()));
+    } else {
+        ui.add(egui::TextEdit::singleline(&mut app.outliner_filter).hint_text(t("Search...")).desired_width(f32::INFINITY));
+    }
+    let (icon, tip) = if app.outliner_unfolded { (icons::ARROWS_IN_LINE_VERTICAL, t("Collapse all")) } else { (icons::ARROWS_OUT_LINE_VERTICAL, t("Expand all")) };
+    let button = egui::Rect::from_min_size(egui::pos2(title.right() - 26.0, title.top() + 2.0), vec2(22.0, 20.0));
+    if ui.put(button, egui::Button::new(RichText::new(icon).size(15.0)).frame(false)).on_hover_text(tip).clicked() {
+        app.outliner_unfolded = !app.outliner_unfolded;
+        app.outliner_fold = Some(app.outliner_unfolded);
+    }
     let Some(doc) = &app.doc else { return };
     let filter = app.outliner_filter.to_ascii_lowercase();
     let revision = doc.world.objects.revision;
@@ -927,24 +948,24 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut start_rename = None;
     let mut select_modifier = None;
     egui::ScrollArea::vertical().id_salt("outl").auto_shrink([false, false]).show(ui, |ui| {
-        egui::CollapsingHeader::new(icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()]))).default_open(true).show(ui, |ui| {
+        outliner_section(fold, "Terrain modifiers", icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()]))).show(ui, |ui| {
             for (id, name) in mods.iter().filter(|(_, n)| n.to_ascii_lowercase().contains(&filter)) {
                 if ui.selectable_label(app.selected_modifier == Some(*id), name).clicked() { select_modifier = Some(*id); }
             }
         });
-        crate::maskmods::outliner(app, ui, &filter);
-        crate::satellite::outliner(app, ui, &filter);
-        egui::CollapsingHeader::new(icons::with(icons::MAGIC_WAND, &tf("Generators ({0})", &[&generators.len().to_string()]))).default_open(true).show(ui, |ui| {
+        crate::maskmods::outliner(app, ui, &filter, fold);
+        crate::satellite::outliner(app, ui, &filter, fold);
+        outliner_section(fold, "Generators", icons::with(icons::MAGIC_WAND, &tf("Generators ({0})", &[&generators.len().to_string()]))).show(ui, |ui| {
             crate::library_ui::outliner_rows(app, ui, &generators, &filter);
         });
-        egui::CollapsingHeader::new(icons::with(icons::ROAD_HORIZON, &tf("Routes ({0})", &[&routes.len().to_string()]))).default_open(true).show(ui, |ui| {
+        outliner_section(fold, "Routes", icons::with(icons::ROAD_HORIZON, &tf("Routes ({0})", &[&routes.len().to_string()]))).show(ui, |ui| {
             for (i, name, family) in routes.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
                 let row = ui.selectable_label(app.line.selected_route == Some(*i), format!("{name}  ({family})"));
                 if row.clicked() { select_route = Some(*i); }
                 row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); } });
             }
         });
-        egui::CollapsingHeader::new(icons::with(icons::POLYGON, &tf("Shape layers ({0})", &[&shape_rows.len().to_string()]))).default_open(true).show(ui, |ui| {
+        outliner_section(fold, "Shape layers", icons::with(icons::POLYGON, &tf("Shape layers ({0})", &[&shape_rows.len().to_string()]))).show(ui, |ui| {
             if ui.small_button(format!("+ {}", t("New layer"))).clicked() { shape_action = Some(ShapeAction::New); }
             for (i, name, visible, count) in shape_rows.iter().filter(|(_, n, _, _)| n.to_ascii_lowercase().contains(&filter)) {
                 ui.horizontal(|ui| {
@@ -984,7 +1005,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         let live = layers.iter().filter(|l| !l.deleted).count();
-        egui::CollapsingHeader::new(icons::with(icons::STACK, &tf("Object layers ({0})", &[&live.to_string()]))).default_open(true).show(ui, |ui| {
+        outliner_section(fold, "Object layers", icons::with(icons::STACK, &tf("Object layers ({0})", &[&live.to_string()]))).show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.small_button(format!("+ {}", t("New layer"))).clicked() { layer_action = Some(LayerAction::New); }
                 if ui.small_button(t("Edit all")).clicked() { layer_action = Some(LayerAction::EditAll); }
@@ -1027,7 +1048,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
         });
-        egui::CollapsingHeader::new(icons::with(icons::CUBE, &tf("Objects ({0})", &[&total_objects.to_string()]))).default_open(true).show(ui, |ui| {
+        outliner_section(fold, "Objects", icons::with(icons::CUBE, &tf("Objects ({0})", &[&total_objects.to_string()]))).show(ui, |ui| {
             let mut scrolled = false;
             for (k, (m, count)) in hist.iter().enumerate() {
                 let name = paths[k].rsplit('\\').next().unwrap_or(&paths[k]);

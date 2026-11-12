@@ -699,6 +699,10 @@
   "de": "Küste",
   "pl": "Wybrzeże"
  },
+ "Collapse all": {
+  "de": "Alle einklappen",
+  "pl": "Zwiń wszystko"
+ },
  "Configuration": {
   "de": "Konfiguration",
   "pl": "Konfiguracja"
@@ -1146,6 +1150,10 @@
  "Exit": {
   "de": "Beenden",
   "pl": "Wyjście"
+ },
+ "Expand all": {
+  "de": "Alle ausklappen",
+  "pl": "Rozwiń wszystko"
  },
  "Export": {
   "de": "Exportieren",
