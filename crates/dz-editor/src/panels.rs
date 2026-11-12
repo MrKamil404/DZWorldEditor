@@ -1590,6 +1590,8 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
             slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
             slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
             slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
+            slider(ui, &t("Surface parallax cm"), &mut app.settings.surface_parallax, 0.0..=15.0, false);
+            slider(ui, &t("Surface blend by relief"), &mut app.settings.surface_blend, 0.0..=1.0, false);
             let choice = |ui: &mut egui::Ui, label: &str, id: &str, value: &mut u32, options: &[(u32, String)]| {
                 row(ui, label, |ui| {
                     let shown = options.iter().find(|o| o.0 == *value).map_or_else(|| value.to_string(), |o| o.1.clone());

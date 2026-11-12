@@ -149,6 +149,10 @@ uniform mat4 u_light;
 uniform int u_has_shadow;
 uniform vec3 u_sun, u_sun_col, u_amb;
 uniform float u_fog, u_exposure, u_bias, u_surface_range;
+// Depth of the relief in the surfaces' alpha, in metres; 0 leaves them flat.
+uniform float u_parallax;
+// How sharply surfaces meet along their relief, 0 soft to 1 hard.
+uniform float u_blend_sharp;
 uniform int u_brush_shape;
 uniform float u_time;
 //SEA
@@ -170,6 +174,54 @@ uint maskAt(ivec2 p){ return texelFetch(u_mask, clamp(p, ivec2(0), ivec2(u_mask_
 vec3 pal(uint i){ return texelFetch(u_palette, ivec2(int(i), 0), 0).rgb; }
 vec3 avg(uint i){ return texelFetch(u_palette, ivec2(int(i), 1), 0).rgb; }
 
+// Weights of four surfaces that meet, from their share of the spot and the height of their
+// relief there: the taller one shows through first, so a border follows the stones and
+// clumps of the textures instead of the grid of the mask.
+vec4 heightBlend(vec4 h, vec4 w){
+  vec4 b = w * 1.6 + h - step(w, vec4(0.0)) * 3.0;
+  float m = max(max(b.x, b.y), max(b.z, b.w)) - mix(0.45, 0.06, u_blend_sharp);
+  vec4 r = max(b - m, vec4(0.0));
+  return r / max(r.x + r.y + r.z + r.w, 1e-4);
+}
+
+float thash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float tnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(thash(i), thash(i + vec2(1,0)), u.x), mix(thash(i + vec2(0,1)), thash(i + vec2(1,1)), u.x), u.y);
+}
+
+// Cubic B-spline weights of the four samples round a point `t` (0..1) past the second.
+vec4 bspline(float t){
+  float s = 1.0 - t;
+  return vec4(s * s * s, 4.0 - 6.0 * t * t + 3.0 * t * t * t, 1.0 + 3.0 * t + 3.0 * t * t - 3.0 * t * t * t, t * t * t) / 6.0;
+}
+
+// The surfaces round a point of the mask and their share of it, smoothed over 4x4 pixels so
+// a border is a band to blend in, not the edge of a pixel. Up to four surfaces are kept.
+void surfacesAt(vec2 mp, out uvec4 ids, out vec4 share){
+  ivec2 base = ivec2(floor(mp)) - 1;
+  vec2 f = mp - floor(mp);
+  vec4 wx = bspline(f.x), wy = bspline(f.y);
+  ids = uvec4(maskAt(base + ivec2(1, 1)));
+  share = vec4(0.0);
+  int n = 1;
+  for (int j = 0; j < 4; j++) {
+    for (int i = 0; i < 4; i++) {
+      uint l = maskAt(base + ivec2(i, j));
+      float w = wx[i] * wy[j];
+      if (l == ids.x) share.x += w;
+      else if (n > 1 && l == ids.y) share.y += w;
+      else if (n > 2 && l == ids.z) share.z += w;
+      else if (n > 3 && l == ids.w) share.w += w;
+      else if (n == 1) { ids.y = l; share.y = w; n = 2; }
+      else if (n == 2) { ids.z = l; share.z = w; n = 3; }
+      else if (n == 3) { ids.w = l; share.w = w; n = 4; }
+    }
+  }
+  share /= max(share.x + share.y + share.z + share.w, 1e-4);
+}
+
 vec3 ramp(float t){
   t = clamp(t, 0.0, 1.0);
   vec3 a = vec3(0.13,0.34,0.20), b = vec3(0.55,0.62,0.30), c = vec3(0.56,0.42,0.28), d = vec3(0.95,0.95,0.97);
@@ -186,11 +238,20 @@ void main(){
   vec3 col;
   // Surface blending: four nearest mask pixels.
   vec2 mp = uv * u_mask_size - 0.5;
-  int span = 1;
-  ivec2 ip = ivec2(floor(mp / float(span))) * span;
-  vec2 f = (mp - vec2(ip)) / float(span);
-  uint a = maskAt(ip), b = maskAt(ip + ivec2(span,0)), c = maskAt(ip + ivec2(0,span)), d = maskAt(ip + ivec2(span,span));
-  float wa = (1.0-f.x)*(1.0-f.y), wb = f.x*(1.0-f.y), wc = (1.0-f.x)*f.y, wd = f.x*f.y;
+  uvec4 ids;
+  vec4 sh;
+  surfacesAt(mp, ids, sh);
+  uint a = ids.x, b = ids.y, c = ids.z, d = ids.w;
+  // Patches of ground of a few metres break the bands up, as wear and drifts do.
+  vec2 gp = v_world.xz;
+  vec4 wobble = vec4(tnoise(gp * 0.21), tnoise(gp * 0.21 + 37.0), tnoise(gp * 0.21 + 71.0), tnoise(gp * 0.21 + 113.0)) * 0.5
+              + vec4(tnoise(gp * 0.9), tnoise(gp * 0.9 + 19.0), tnoise(gp * 0.9 + 53.0), tnoise(gp * 0.9 + 97.0)) * 0.3
+              + vec4(tnoise(gp * 2.6), tnoise(gp * 2.6 + 7.0), tnoise(gp * 2.6 + 29.0), tnoise(gp * 2.6 + 61.0)) * 0.2 - 0.5;
+  // Only where surfaces meet: inside a surface its share stays whole.
+  vec4 edge = clamp(sh * (1.0 - sh) * 4.0, 0.0, 1.0);
+  sh = max(sh + wobble * edge * 1.5 * step(0.0001, sh), vec4(0.0));
+  sh /= max(sh.x + sh.y + sh.z + sh.w, 1e-4);
+  float wa = sh.x, wb = sh.y, wc = sh.z, wd = sh.w;
   vec3 palette = pal(a)*wa + pal(b)*wb + pal(c)*wc + pal(d)*wd;
 
   vec3 sat = palette;
@@ -224,13 +285,39 @@ void main(){
     if (near > 0.002) {
       vec2 t = v_world.xz * u_tile;
       vec2 dx = dFdx(t), dy = dFdy(t);
+      vec4 share = vec4(wa, wb, wc, wd);
+      // Parallax: the relief in the alpha is walked down along the view, so the stones and
+      // ruts of a surface stand out of the ground. Only close up, where it can be seen.
+      float pfade = near * (1.0 - smoothstep(12.0, 40.0, dist)) * (u_ortho != 0 ? 0.0 : 1.0);
+      if (u_parallax > 0.0 && pfade > 0.01) {
+        vec3 V = normalize(u_eye - v_world);
+        float vn = max(dot(V, n), 0.2);
+        vec3 vt = V - n * dot(V, n);
+        vec2 P = -vt.xz / vn * u_parallax * pfade * u_tile;
+        const int STEPS = 12;
+        float stepd = 1.0 / float(STEPS);
+        vec2 tp = t;
+        float depth = 0.0;
+        vec4 hh = vec4(textureGrad(u_layers, vec3(tp, float(a)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(b)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(c)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(d)), dx, dy).a);
+        float surf = 1.0 - dot(heightBlend(hh, share), hh);
+        float before = surf;
+        for (int i = 0; i < STEPS && depth < surf; i++) {
+          before = surf - depth;
+          tp += P * stepd;
+          depth += stepd;
+          hh = vec4(textureGrad(u_layers, vec3(tp, float(a)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(b)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(c)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(d)), dx, dy).a);
+          surf = 1.0 - dot(heightBlend(hh, share), hh);
+        }
+        // Between the last two steps, where the view went under the relief.
+        float after = surf - depth;
+        float k = before / max(before - after, 1e-4);
+        t = tp - P * stepd * (1.0 - clamp(k, 0.0, 1.0));
+      }
       vec4 ra = textureGrad(u_layers, vec3(t, float(a)), dx, dy), rb = textureGrad(u_layers, vec3(t, float(b)), dx, dy);
       vec4 rc = textureGrad(u_layers, vec3(t, float(c)), dx, dy), rd = textureGrad(u_layers, vec3(t, float(d)), dx, dy);
       vec3 ta = ra.rgb, tb = rb.rgb, tc = rc.rgb, td = rd.rgb;
-      // Taller parts of a surface (its alpha) show through first where two meet.
-      vec4 lift = vec4(wa, wb, wc, wd) * (vec4(ra.a, rb.a, rc.a, rd.a) * 0.75 + 0.25);
-      lift = pow(lift, vec4(3.5));
-      lift /= max(lift.x + lift.y + lift.z + lift.w, 1e-4);
+      // Where mask pixels of two surfaces meet, the border follows their relief.
+      vec4 lift = heightBlend(vec4(ra.a, rb.a, rc.a, rd.a), share);
       wa = lift.x; wb = lift.y; wc = lift.z; wd = lift.w;
       vec3 s = ta / max(avg(a), vec3(0.05)) * wa + tb / max(avg(b), vec3(0.05)) * wb + tc / max(avg(c), vec3(0.05)) * wc + td / max(avg(d), vec3(0.05)) * wd;
       vec3 raw = ta * wa + tb * wb + tc * wc + td * wd;
@@ -1023,6 +1110,10 @@ pub struct Frame {
     pub objects: ObjectDraw,
     pub show_water: bool,
     pub surface_range: f32,
+    /// Depth of the surfaces' relief in metres, for parallax; 0 is off.
+    pub parallax: f32,
+    /// How sharply surfaces meet along their relief, 0 to 1.
+    pub blend_sharp: f32,
     pub sea_waves: f32,
     /// How far the tide has lifted or lowered the sea, in metres.
     pub tide: f32,
@@ -2008,6 +2099,8 @@ impl Renderer {
         light_uniforms(terrain);
         gl.uniform_matrix_4_f32_slice(u(terrain, "u_vp").as_ref(), false, &f.view.vp);
         gl.uniform_1_f32(u(terrain, "u_surface_range").as_ref(), f.surface_range);
+        gl.uniform_1_f32(u(terrain, "u_parallax").as_ref(), f.parallax);
+        gl.uniform_1_f32(u(terrain, "u_blend_sharp").as_ref(), f.blend_sharp);
         gl.uniform_2_f32(u(terrain, "u_size").as_ref(), self.size[0], self.size[1]);
         gl.uniform_1_f32(u(terrain, "u_cell").as_ref(), self.cell);
         gl.uniform_1_f32(u(terrain, "u_world").as_ref(), f.world);

@@ -1595,6 +1595,10 @@
   "de": "Taste halten, um Objekte zu malen.",
   "pl": "Przytrzymaj przycisk, aby malować obiekty."
  },
+ "How deep the relief in the alpha channel of the surface textures looks close up; 0 leaves them flat.": {
+  "de": "Wie tief das Relief im Alphakanal der Oberflächentexturen aus der Nähe wirkt; 0 lässt sie flach.",
+  "pl": "Jak głęboki z bliska wydaje się relief z kanału alfa tekstur powierzchni; 0 zostawia je płaskie."
+ },
  "How far beyond a polygon, or to each side of a line.": {
   "de": "Wie weit über ein Polygon hinaus oder zu jeder Seite einer Linie.",
   "pl": "Jak daleko poza wielokątem albo po każdej stronie linii."
@@ -3323,6 +3327,10 @@
   "de": "Oberfläche",
   "pl": "Powierzchnia"
  },
+ "Surface blend by relief": {
+  "de": "Oberflächen nach Relief mischen",
+  "pl": "Mieszanie powierzchni wg reliefu"
+ },
  "Surface layers": {
   "de": "Oberflächenebenen",
   "pl": "Warstwy powierzchni"
@@ -3334,6 +3342,10 @@
  "Surface painting": {
   "de": "Oberflächen malen",
   "pl": "Malowanie powierzchni"
+ },
+ "Surface parallax cm": {
+  "de": "Oberflächen-Parallaxe cm",
+  "pl": "Paralaksa powierzchni cm"
  },
  "Surface taken from {0} models": {
   "de": "Oberfläche von {0} Modellen entfernt",
@@ -3906,6 +3918,10 @@
  "When a tile really uses 6, the whole map is exported like Terrain Builder's 6-material mode (TerrainX), without satellite normal maps.": {
   "de": "Wenn eine Kachel wirklich 6 verwendet, wird die ganze Karte wie im 6-Material-Modus des Terrain Builders (TerrainX) exportiert, ohne Satelliten-Normalenkarten.",
   "pl": "Gdy jakiś kafel naprawdę używa 6, cała mapa jest eksportowana jak w trybie 6 materiałów z Terrain Buildera (TerrainX), bez normalnych z satelity."
+ },
+ "Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper.": {
+  "de": "Wo zwei Oberflächen der Maske aufeinandertreffen, zeigen sich zuerst die höheren Teile ihres Reliefs; höher macht die Grenze schärfer.",
+  "pl": "Tam, gdzie stykają się dwie powierzchnie maski, najpierw przebijają wyższe części ich reliefu; wyżej daje ostrzejszą granicę."
  },
  "Whole map": {
   "de": "Ganze Karte",
