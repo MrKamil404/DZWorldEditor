@@ -450,6 +450,75 @@ pub struct RoadRoute {
     pub fitted: Vec<[f32; 2]>,
 }
 
+/// A move over the map as the gizmo makes it: a turn by `yaw` degrees about `pivot`, the way
+/// objects turn, then a shift.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Motion {
+    pub pivot: [f32; 2],
+    pub yaw: f32,
+    pub shift: [f32; 2],
+}
+
+impl Motion {
+    /// The motion that took an object from `before` to `after` about `pivot`.
+    pub fn between(before: &crate::objects::Obj, after: &crate::objects::Obj, pivot: [f32; 2]) -> Self {
+        let yaw = after.yaw - before.yaw;
+        let m = Motion { pivot, yaw, shift: [0.0, 0.0] };
+        let turned = m.apply([before.x, before.z]);
+        Motion { shift: [after.x - turned[0], after.z - turned[1]], ..m }
+    }
+    pub fn is_still(&self) -> bool {
+        self.yaw.abs() < 1e-4 && self.shift[0].abs() < 1e-4 && self.shift[1].abs() < 1e-4
+    }
+    pub fn apply(&self, p: [f32; 2]) -> [f32; 2] {
+        let (sin, cos) = self.yaw.to_radians().sin_cos();
+        let (rx, rz) = (p[0] - self.pivot[0], p[1] - self.pivot[1]);
+        [self.pivot[0] + rx * cos + rz * sin + self.shift[0], self.pivot[1] - rx * sin + rz * cos + self.shift[1]]
+    }
+    fn apply64(&self, p: [f64; 2]) -> [f64; 2] {
+        let q = self.apply([p[0] as f32, p[1] as f32]);
+        [q[0] as f64, q[1] as f64]
+    }
+}
+
+impl RoadRoute {
+    /// Moves the line of the route with its parts, which are objects moved on their own.
+    pub fn moved(&mut self, m: &Motion) {
+        for p in self.points.iter_mut().chain(self.centerline.iter_mut()).chain(self.fitted.iter_mut()) {
+            *p = m.apply(*p);
+        }
+        for p in &mut self.profile {
+            let q = m.apply([p[0], p[1]]);
+            p[0] = q[0];
+            p[1] = q[1];
+        }
+        for d in &mut self.decks {
+            d.from = m.apply(d.from);
+            d.to = m.apply(d.to);
+        }
+        for part in &mut self.parts {
+            let q = m.apply64([part.position[0], part.position[1]]);
+            part.position[0] = q[0];
+            part.position[1] = q[1];
+            part.rotation += m.yaw as f64;
+        }
+    }
+}
+
+impl TerrainModifier {
+    /// Moves the modifier and the points of its shape.
+    pub fn moved(&mut self, m: &Motion) {
+        let c = m.apply([self.x, self.z]);
+        (self.x, self.z) = (c[0], c[1]);
+        self.yaw += m.yaw;
+        match &mut self.shape {
+            ModShape::Line { points, .. } => points.iter_mut().for_each(|p| *p = m.apply(*p)),
+            ModShape::Pond { areas, .. } => areas.iter_mut().flat_map(|a| a.points.iter_mut()).for_each(|p| *p = m.apply(*p)),
+            ModShape::Circle { .. } | ModShape::Rect { .. } => {}
+        }
+    }
+}
+
 fn default_grade_width() -> f32 {
     9.0
 }

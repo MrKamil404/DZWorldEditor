@@ -1451,23 +1451,171 @@ impl App {
         self.selection_rev += 1;
     }
 
+    /// Copies the selection in place. A whole road or generator is copied as one, with what
+    /// belongs to it; objects take the terrain modifiers attached to them along.
     pub fn duplicate_selection(&mut self) {
+        match self.whole {
+            Some(SelectedWhole::Route(id)) => return self.duplicate_route(id),
+            Some(SelectedWhole::Generator(id)) => return self.duplicate_generator(id),
+            None => {}
+        }
+        let ids: Vec<u32> = self.selection.iter().copied().collect();
         let Some(doc) = &mut self.doc else { return };
-        let mut change = Vec::new();
-        let mut new = BTreeSet::new();
-        for id in &self.selection {
-            // The copy stands where the original does, ready to be moved off it.
-            let Some(o) = doc.world.objects.get(*id).copied() else { continue };
-            let n = doc.world.objects.insert(o);
-            change.push((n, None, Some(o)));
-            new.insert(n);
+        let before_mods = doc.world.modifiers.clone();
+        let (change, map) = copy_objects(&mut doc.world, &ids);
+        if change.is_empty() {
+            return;
         }
-        if !change.is_empty() {
-            doc.history.push(t("Duplicate objects"), Change::Objects(change));
-            doc.dirty.objects = true;
-            self.selection = new;
-            self.selection_rev += 1;
+        let mut steps = vec![Change::Objects(change)];
+        if doc.world.modifiers.len() != before_mods.len() {
+            steps.push(Change::Modifiers(before_mods));
         }
+        doc.history.push(t("Duplicate objects"), Change::Group(steps));
+        doc.dirty.objects = true;
+        self.selection = map.values().copied().collect();
+        self.selection_rev += 1;
+    }
+
+    /// Copies a road with its parts, its line and settings, the terrain levelled under it and
+    /// the generators that follow it.
+    fn duplicate_route(&mut self, id: u64) {
+        let Some(doc) = &mut self.doc else { return };
+        let Some(route) = doc.world.routes.iter().find(|r| r.id == id).cloned() else { return };
+        let (before_routes, before_mods, before_gens) = (doc.world.routes.clone(), doc.world.modifiers.clone(), doc.world.generators.clone());
+        let (mut change, map) = copy_objects(&mut doc.world, &route.objects);
+        let new_id = dz_core::library::new_id();
+        let mut copy = route.clone();
+        copy.id = new_id;
+        copy.name = copy_name(&route.name, |n| doc.world.routes.iter().any(|r| r.name == n));
+        copy.objects = route.objects.iter().filter_map(|o| map.get(o).copied()).collect();
+        copy.modifier = None;
+        doc.world.routes.push(copy);
+        let index = doc.world.routes.len() - 1;
+        // Fences, lamps and the like along the road go with it.
+        let followers: Vec<dz_core::library::GeneratorInstance> = doc.world.generators.iter().filter(|g| g.target == dz_core::library::GenTarget::Route(id)).cloned().collect();
+        for g in followers {
+            let (c, m) = copy_objects(&mut doc.world, &g.objects);
+            change.extend(c);
+            let mut n = g.clone();
+            n.id = dz_core::library::new_id();
+            n.target = dz_core::library::GenTarget::Route(new_id);
+            n.objects = g.objects.iter().filter_map(|o| m.get(o).copied()).collect();
+            n.modifier = None;
+            n.mask_modifier = None;
+            n.removed.clear();
+            doc.world.generators.push(n);
+        }
+        let selection: BTreeSet<u32> = doc.world.routes[index].objects.iter().copied().collect();
+        doc.dirty.objects = true;
+        self.sync_route_modifier(index);
+        let Some(doc) = &mut self.doc else { return };
+        doc.history.push(t("Duplicate road"), Change::Group(vec![Change::Objects(change), Change::Routes(before_routes), Change::Modifiers(before_mods), Change::Generators(before_gens)]));
+        self.selection = selection;
+        self.whole = Some(SelectedWhole::Route(new_id));
+        self.line.selected_route = Some(index);
+        self.selection_rev += 1;
+    }
+
+    /// Copies a generator with its objects, its terrain modifier and the shape it works on.
+    fn duplicate_generator(&mut self, id: u64) {
+        use dz_core::library::GenTarget;
+        let Some(doc) = &mut self.doc else { return };
+        let Some(g) = doc.world.generators.iter().find(|g| g.id == id).cloned() else { return };
+        let (before_gens, before_mods, before_shapes) = (doc.world.generators.clone(), doc.world.modifiers.clone(), doc.world.shape_layers.clone());
+        let (change, map) = copy_objects(&mut doc.world, &g.objects);
+        let mut n = g.clone();
+        n.id = dz_core::library::new_id();
+        n.name = copy_name(&g.name, |x| doc.world.generators.iter().any(|g| g.name == x));
+        n.objects = g.objects.iter().filter_map(|o| map.get(o).copied()).collect();
+        // What it took off the map is gone already, and its painted ground is a picture.
+        n.removed.clear();
+        n.mask_modifier = None;
+        n.modifier = g.modifier.and_then(|m| doc.world.modifiers.iter().find(|x| x.id == m).cloned()).map(|mut m| {
+            m.id = doc.world.new_modifier_id();
+            m.name = copy_name(&m.name, |_| false);
+            let id = m.id;
+            doc.world.modifiers.push(m);
+            id
+        });
+        let mut shapes_changed = false;
+        if let GenTarget::Shape { layer, index } = &g.target {
+            if let Some(l) = doc.world.shape_layers.iter_mut().find(|l| l.name == *layer) {
+                if let Some(s) = l.shapes.get(*index).cloned() {
+                    l.shapes.push(s);
+                    n.target = GenTarget::Shape { layer: layer.clone(), index: l.shapes.len() - 1 };
+                    shapes_changed = true;
+                }
+            }
+        }
+        let new_id = n.id;
+        doc.world.generators.push(n);
+        let mut steps = vec![Change::Objects(change), Change::Generators(before_gens)];
+        if doc.world.modifiers.len() != before_mods.len() {
+            steps.push(Change::Modifiers(before_mods));
+        }
+        if shapes_changed {
+            steps.push(Change::Shapes(before_shapes));
+        }
+        doc.history.push(t("Duplicate generator"), Change::Group(steps));
+        doc.dirty.objects = true;
+        self.selection = map.values().copied().collect();
+        self.whole = Some(SelectedWhole::Generator(new_id));
+        self.selected_generator = Some(new_id);
+        self.selection_rev += 1;
+    }
+
+    /// Makes what belongs to a whole road or generator follow the move of its objects: the
+    /// line and levelled terrain of a road, the modifier and the shape of a generator.
+    /// Returns the states to undo to.
+    pub fn move_whole(&mut self, m: &dz_core::world::Motion) -> Vec<Change> {
+        use dz_core::library::GenTarget;
+        let mut steps = Vec::new();
+        let Some(whole) = self.whole else { return steps };
+        let Some(doc) = &mut self.doc else { return steps };
+        match whole {
+            SelectedWhole::Route(id) => {
+                let Some(i) = doc.world.routes.iter().position(|r| r.id == id) else { return steps };
+                steps.push(Change::Routes(doc.world.routes.clone()));
+                doc.world.routes[i].moved(m);
+                if let Some(before) = self.sync_route_and_crossings(i) {
+                    steps.push(Change::Modifiers(before));
+                }
+            }
+            SelectedWhole::Generator(id) => {
+                let Some(g) = doc.world.generators.iter().find(|g| g.id == id).cloned() else { return steps };
+                if let Some(k) = g.modifier.and_then(|mid| doc.world.modifiers.iter().position(|x| x.id == mid)) {
+                    steps.push(Change::Modifiers(doc.world.modifiers.clone()));
+                    let old = doc.world.modifier_rect(&doc.world.modifiers[k]);
+                    doc.world.modifiers[k].moved(m);
+                    let new = doc.world.modifier_rect(&doc.world.modifiers[k]);
+                    let area = match (old, new) { (Some(a), Some(b)) => Some(a.union(b)), (a, b) => a.or(b) };
+                    if let Some(r) = area {
+                        doc.world.recompose(Some(r));
+                        self.height_changed(r);
+                    }
+                }
+                let Some(doc) = &mut self.doc else { return steps };
+                match &g.target {
+                    GenTarget::Shape { layer, index } => {
+                        if let Some(s) = doc.world.shape_layers.iter().position(|l| l.name == *layer).filter(|l| doc.world.shape_layers[*l].shapes.len() > *index) {
+                            steps.push(Change::Shapes(doc.world.shape_layers.clone()));
+                            for p in &mut doc.world.shape_layers[s].shapes[*index].points {
+                                *p = m.apply(*p);
+                            }
+                        }
+                    }
+                    GenTarget::Point(p) => {
+                        steps.push(Change::Generators(doc.world.generators.clone()));
+                        let moved = m.apply(*p);
+                        if let Some(x) = doc.world.generators.iter_mut().find(|x| x.id == id) {
+                            x.target = GenTarget::Point(moved);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        steps
     }
 
     pub fn set_modifiers(&mut self, label: &str, f: impl FnOnce(&mut Vec<dz_core::world::TerrainModifier>)) {
@@ -2316,4 +2464,30 @@ pub fn on_ground(db: &dz_core::model_info::ModelDb, path: &str, o: dz_core::obje
     let info = db.get(path);
     let elevation = if info.contact_count > 0 { -info.contact_y * o.scale } else { 0.0 };
     dz_core::objects::Obj { elevation, flags: o.flags & !dz_core::objects::FLAG_ABSOLUTE, ..o }
+}
+
+/// "name (copy)", or with a number when that is taken.
+fn copy_name(base: &str, taken: impl Fn(&str) -> bool) -> String {
+    let copy = t("copy");
+    (1..).map(|n| if n == 1 { format!("{base} ({copy})") } else { format!("{base} ({copy} {n})") }).find(|n| !taken(n)).unwrap()
+}
+
+/// Copies objects in place with the terrain modifiers attached to them. Returns the change to
+/// undo and the copy of each object.
+fn copy_objects(w: &mut dz_core::world::World, ids: &[u32]) -> (Vec<(u32, Option<dz_core::objects::Obj>, Option<dz_core::objects::Obj>)>, std::collections::HashMap<u32, u32>) {
+    let mut change = Vec::new();
+    let mut map = std::collections::HashMap::new();
+    for id in ids {
+        let Some(o) = w.objects.get(*id).copied() else { continue };
+        let n = w.objects.insert(o);
+        change.push((n, None, Some(o)));
+        map.insert(*id, n);
+        let attached: Vec<dz_core::world::TerrainModifier> = w.modifiers.iter().filter(|m| m.attached == Some(*id)).cloned().collect();
+        for mut m in attached {
+            m.id = w.new_modifier_id();
+            m.attached = Some(n);
+            w.modifiers.push(m);
+        }
+    }
+    (change, map)
 }
