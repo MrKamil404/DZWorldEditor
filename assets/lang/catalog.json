@@ -403,6 +403,10 @@
   "de": "Fleckengröße m",
   "pl": "Wielkość plam m"
  },
+ "Box": {
+  "de": "Rechteck",
+  "pl": "Prostokąt"
+ },
  "Bridge cost": {
   "de": "Brückenkosten",
   "pl": "Koszt mostu"
@@ -647,6 +651,10 @@
   "de": "Ein Klick auf die Karte fügt einen Keypoint hinzu.",
   "pl": "Kliknięcie na mapie dodaje keypoint."
  },
+ "Click on the map to place it; it can also be dragged onto the map.": {
+  "de": "Klicke auf die Karte, um es zu platzieren; es lässt sich auch auf die Karte ziehen.",
+  "pl": "Kliknij na mapie, aby go postawić; można go też przeciągnąć na mapę."
+ },
  "Click removes this sample": {
   "de": "Klick entfernt die Probe",
   "pl": "Kliknięcie usuwa próbkę"
@@ -742,6 +750,14 @@
  "Create": {
   "de": "Erstellen",
   "pl": "Utwórz"
+ },
+ "Create prefab": {
+  "de": "Prefab erstellen",
+  "pl": "Utwórz prefab"
+ },
+ "Create prefab from the selection": {
+  "de": "Prefab aus der Auswahl erstellen",
+  "pl": "Utwórz prefab z zaznaczenia"
  },
  "Ctrl inverts raise and lower, Shift smooths. [ and ] or Shift+wheel change the size.": {
   "de": "Strg kehrt Heben und Senken um, Shift glättet. [ und ] oder Shift+Rad ändern die Größe.",
@@ -963,6 +979,10 @@
   "de": "{0} wird heruntergeladen",
   "pl": "Pobieranie {0}"
  },
+ "Drag selects": {
+  "de": "Ziehen wählt",
+  "pl": "Przeciąganie zaznacza"
+ },
  "Drag them onto the map to place them all side by side. In place mode a click places one of the selected models at random.": {
   "de": "Auf die Karte ziehen, um alle nebeneinander zu platzieren. Im Platzieren-Modus setzt ein Klick zufällig eines der ausgewählten Modelle.",
   "pl": "Przeciągnij je na mapę, aby postawić wszystkie obok siebie. W trybie stawiania kliknięcie stawia losowo jeden z zaznaczonych modeli."
@@ -974,6 +994,10 @@
  "Draw": {
   "de": "Zeichnen",
   "pl": "Rysowanie"
+ },
+ "Draw an outline round what to select.": {
+  "de": "Zeichne einen Umriss um das, was ausgewählt werden soll.",
+  "pl": "Narysuj obrys wokół tego, co chcesz zaznaczyć."
  },
  "Draw the road": {
   "de": "Straße zeichnen",
@@ -1779,6 +1803,10 @@
   "de": "Sprache",
   "pl": "Język"
  },
+ "Lasso": {
+  "de": "Lasso",
+  "pl": "Lasso"
+ },
  "Last object": {
   "de": "Letztes Objekt",
   "pl": "Obiekt na końcu"
@@ -2162,6 +2190,10 @@
  "New object preset": {
   "de": "Neues Objekt-Preset",
   "pl": "Nowy preset obiektów"
+ },
+ "New prefab from the selection": {
+  "de": "Neues Prefab aus der Auswahl",
+  "pl": "Nowy prefab z zaznaczenia"
  },
  "New preset": {
   "de": "Neues Preset",
@@ -2603,6 +2635,10 @@
   "de": "Gewähltes Modell hier platzieren",
   "pl": "Postaw tu wybrany model"
  },
+ "Place {0}": {
+  "de": "{0} platzieren",
+  "pl": "Postaw {0}"
+ },
  "Place {0} objects": {
   "de": "{0} Objekte platzieren",
   "pl": "Postaw {0} obiektów"
@@ -2650,6 +2686,14 @@
  "Power line": {
   "de": "Stromleitung",
   "pl": "Linia energetyczna"
+ },
+ "Prefab": {
+  "de": "Prefab",
+  "pl": "Prefab"
+ },
+ "Prefabs": {
+  "de": "Prefabs",
+  "pl": "Prefaby"
  },
  "Preset in shapes": {
   "de": "Preset in Formen",
@@ -2778,6 +2822,10 @@
  "Rename": {
   "de": "Umbenennen",
   "pl": "Zmień nazwę"
+ },
+ "Replace with the selection": {
+  "de": "Durch die Auswahl ersetzen",
+  "pl": "Zastąp zaznaczeniem"
  },
  "Replaces the rarest surfaces of a tile with its main surface.": {
   "de": "Ersetzt die seltensten Oberflächen einer Kachel durch ihre Hauptoberfläche.",
@@ -2987,6 +3035,14 @@
   "de": "{0} gespeichert",
   "pl": "Zapisano {0}"
  },
+ "Saves the selected objects as a prefab of the library, to be placed again anywhere as one.": {
+  "de": "Speichert die ausgewählten Objekte als Prefab der Bibliothek, um sie überall als Ganzes wieder zu platzieren.",
+  "pl": "Zapisuje zaznaczone obiekty jako prefab biblioteki, który można postawić w dowolnym miejscu jako całość."
+ },
+ "Saves the selected objects as a prefab, to be placed again anywhere as one.": {
+  "de": "Speichert die ausgewählten Objekte als Prefab, um sie überall als Ganzes wieder zu platzieren.",
+  "pl": "Zapisuje zaznaczone obiekty jako prefab, który można postawić w dowolnym miejscu jako całość."
+ },
  "Scale": {
   "de": "Skalierung",
   "pl": "Skala"
@@ -3070,6 +3126,10 @@
  "Select objects": {
   "de": "Objekte auswählen",
   "pl": "Zaznacz obiekty"
+ },
+ "Select the objects of the prefab first": {
+  "de": "Wähle zuerst die Objekte des Prefabs aus",
+  "pl": "Najpierw zaznacz obiekty prefabu"
  },
  "Select whole roads and generators": {
   "de": "Ganze Straßen und Generatoren auswählen",
@@ -3627,6 +3687,10 @@
   "de": "Der Fleck folgt dann dem Umriss jedes Modells von oben, seine Größe ist der Rand darum.",
   "pl": "Plama idzie wtedy za obrysem każdego modelu widzianym z góry, a jej rozmiar to margines wokół niego."
  },
+ "The prefab takes the selected objects instead of those it had.": {
+  "de": "Das Prefab übernimmt die ausgewählten Objekte statt seiner bisherigen.",
+  "pl": "Prefab przejmuje zaznaczone obiekty w miejsce dotychczasowych."
+ },
  "The project has no satellite image": {
   "de": "Das Projekt hat kein Satellitenbild",
   "pl": "Projekt nie ma satki"
@@ -4078,6 +4142,10 @@
  "{0} key points read": {
   "de": "{0} Keypoints gelesen",
   "pl": "Wczytano keypointów: {0}"
+ },
+ "{0} made of {1} objects": {
+  "de": "{0} aus {1} Objekten erstellt",
+  "pl": "Utworzono {0} z {1} obiektów"
  },
  "{0} models": {
   "de": "{0} Modelle",

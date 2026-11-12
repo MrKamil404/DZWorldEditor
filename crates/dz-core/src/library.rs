@@ -1,4 +1,5 @@
 //! Reusable generators and object presets, and the generators placed in a project.
+use crate::objects::Obj;
 use crate::gen::{ErosionParams, PaintRule, ScatterRule, SettlementRule, TerrainParams};
 use forest_core::preset::{ColorFilter, ForestProject};
 use forest_core::user_presets::UserPreset;
@@ -625,18 +626,88 @@ pub struct Library {
     /// the generators or the presets start with [`GENERATORS_ROOT`] or [`PRESETS_ROOT`]; the
     /// others lie at the top of the library and take both.
     pub library_folders: Vec<String>,
+    /// Sets of objects placed as one, made from a selection.
+    pub prefabs: Vec<Prefab>,
+}
+
+/// One object of a prefab, placed relative to the middle of the set.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PrefabItem {
+    pub model: String,
+    pub x: f32,
+    pub z: f32,
+    /// Over the ground, or for an object at a fixed height over the ground at the middle.
+    pub elevation: f32,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub roll: f32,
+    pub scale: f32,
+    pub flags: u32,
+}
+
+/// A set of objects laid out by hand and saved, to be placed again anywhere as one.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Prefab {
+    pub id: u64,
+    pub name: String,
+    #[serde(default)]
+    pub folder: String,
+    pub items: Vec<PrefabItem>,
+}
+
+impl Prefab {
+    /// The layout of objects round the middle of their footprint on the map.
+    pub fn from_objects(id: u64, name: String, objects: &[(String, Obj)], height: &crate::terrain::Heightmap) -> Self {
+        let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
+        for (_, o) in objects {
+            lo = [lo[0].min(o.x), lo[1].min(o.z)];
+            hi = [hi[0].max(o.x), hi[1].max(o.z)];
+        }
+        let mid = [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5];
+        let ground = height.sample(mid[0], mid[1]);
+        let items = objects.iter().map(|(model, o)| {
+            let fixed = o.flags & crate::objects::FLAG_ABSOLUTE != 0;
+            PrefabItem {
+                model: model.clone(),
+                x: o.x - mid[0],
+                z: o.z - mid[1],
+                elevation: if fixed { o.elevation - ground } else { o.elevation },
+                yaw: o.yaw,
+                pitch: o.pitch,
+                roll: o.roll,
+                scale: o.scale,
+                // Its layer is chosen where it is placed.
+                flags: o.flags & ((1 << crate::objects::LAYER_SHIFT) - 1),
+            }
+        }).collect();
+        Prefab { id, name, folder: String::new(), items }
+    }
+    /// The objects of the prefab with its middle at (x, z), turned by `yaw` degrees.
+    pub fn objects_at(&self, x: f32, z: f32, yaw: f32, height: &crate::terrain::Heightmap) -> Vec<(String, Obj)> {
+        let m = crate::world::Motion { pivot: [0.0, 0.0], yaw, shift: [x, z] };
+        let ground = height.sample(x, z);
+        self.items.iter().map(|i| {
+            let p = m.apply([i.x, i.z]);
+            let fixed = i.flags & crate::objects::FLAG_ABSOLUTE != 0;
+            let o = Obj { x: p[0], z: p[1], elevation: if fixed { i.elevation + ground } else { i.elevation }, yaw: i.yaw + yaw, pitch: i.pitch, roll: i.roll, scale: i.scale, model: 0, flags: i.flags };
+            (i.model.clone(), o)
+        }).collect()
+    }
 }
 
 /// The library's own group of generators, which holds folders but is never renamed or deleted.
 pub const GENERATORS_ROOT: &str = "#generators";
 /// The library's own group of object presets, like [`GENERATORS_ROOT`].
 pub const PRESETS_ROOT: &str = "#presets";
+/// The library's own group of prefabs, like [`GENERATORS_ROOT`].
+pub const PREFABS_ROOT: &str = "#prefabs";
 
 /// What a folder of the library holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LibraryItem {
     Generator,
     Preset,
+    Prefab,
 }
 
 /// A folder of the asset browser made by the user, holding models and object presets that
@@ -666,6 +737,7 @@ pub fn library_folder_takes(folder: &str, kind: LibraryItem) -> bool {
     match folder.split('/').next().unwrap_or("") {
         GENERATORS_ROOT => kind == LibraryItem::Generator,
         PRESETS_ROOT => kind == LibraryItem::Preset,
+        PREFABS_ROOT => kind == LibraryItem::Prefab,
         _ => true,
     }
 }
@@ -763,7 +835,7 @@ impl Library {
     }
     /// True for a folder of the library, its two groups included.
     pub fn library_folder_exists(&self, name: &str) -> bool {
-        name == GENERATORS_ROOT || name == PRESETS_ROOT || self.library_folders.iter().any(|f| f == name)
+        name == GENERATORS_ROOT || name == PRESETS_ROOT || name == PREFABS_ROOT || self.library_folders.iter().any(|f| f == name)
     }
     /// The folder a generator or preset is shown in: its own, or "" (its group) when that
     /// folder is gone or holds the other kind.
@@ -820,6 +892,7 @@ impl Library {
         self.library_folders.iter_mut().for_each(moved);
         self.generators.iter_mut().for_each(|g| moved(&mut g.folder));
         self.objects.iter_mut().for_each(|p| moved(&mut p.folder));
+        self.prefabs.iter_mut().for_each(|p| moved(&mut p.folder));
         self.library_folders.sort_by_key(|f| f.to_lowercase());
         true
     }
@@ -840,10 +913,34 @@ impl Library {
                 p.folder.clear();
             }
         }
+        for p in &mut self.prefabs {
+            if in_folder(&p.folder, name) {
+                p.folder.clear();
+            }
+        }
+    }
+    /// Puts prefabs into a folder of the library that takes them, or back into their group.
+    pub fn move_prefabs_to_library_folder(&mut self, name: &str, prefabs: &[u64]) -> usize {
+        let to = if name == PREFABS_ROOT {
+            String::new()
+        } else if self.library_folders.iter().any(|f| f == name) && library_folder_takes(name, LibraryItem::Prefab) {
+            name.to_string()
+        } else {
+            return 0;
+        };
+        let mut n = 0;
+        for p in self.prefabs.iter_mut().filter(|p| prefabs.contains(&p.id)) {
+            p.folder = to.clone();
+            n += 1;
+        }
+        n
     }
     /// Puts generators and presets into a folder of the library, each kind only where it
     /// belongs; a group of the library takes its own kind back. Returns how many moved.
     pub fn move_to_library_folder(&mut self, name: &str, generators: &[u64], presets: &[u64]) -> usize {
+        if name == PREFABS_ROOT {
+            return 0;
+        }
         let to = |kind| {
             if name == GENERATORS_ROOT || name == PRESETS_ROOT {
                 Some(String::new())
@@ -966,6 +1063,34 @@ pub fn new_id() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_prefab_keeps_its_layout_wherever_it_is_placed() {
+        use crate::objects::{Obj, FLAG_ABSOLUTE};
+        let mut h = crate::terrain::Heightmap::new(64, 64, 4.0, 10.0);
+        for j in 0..64 { for i in 0..64 { h.data[j * 64 + i] = i as f32; } }
+        let o = |x, z, yaw, elevation, flags| Obj { x, z, elevation, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags };
+        // A crate on the ground and a lamp at a fixed height, 4 m over the ground at the middle.
+        let objects = vec![("a.p3d".to_string(), o(100.0, 100.0, 0.0, 0.0, 3 << 16)), ("b.p3d".to_string(), o(110.0, 100.0, 90.0, 26.25 + 4.0, FLAG_ABSOLUTE))];
+        let p = Prefab::from_objects(1, "Set".into(), &objects, &h);
+        assert_eq!((p.items[0].x, p.items[1].x), (-5.0, 5.0));
+        assert_eq!(p.items[0].flags, 0, "no layer");
+        let placed = p.objects_at(200.0, 50.0, 90.0, &h);
+        // Turned a quarter: east becomes south, as objects turn.
+        assert!((placed[0].1.x - 200.0).abs() < 1e-3 && (placed[0].1.z - 55.0).abs() < 1e-3, "{:?}", placed[0].1);
+        assert!((placed[1].1.z - 45.0).abs() < 1e-3);
+        assert_eq!(placed[1].1.yaw, 180.0);
+        assert!((placed[1].1.elevation - (h.sample(200.0, 50.0) + 4.0)).abs() < 0.01, "{}", placed[1].1.elevation);
+        // In its own group of the library, and folders made there.
+        let mut l = Library::default();
+        l.prefabs.push(p);
+        let f = l.new_library_folder(PREFABS_ROOT, "Camps");
+        assert_eq!(l.move_to_library_folder(&f, &[], &[]), 0);
+        assert_eq!(l.move_prefabs_to_library_folder(&f, &[1]), 1);
+        assert_eq!(l.move_prefabs_to_library_folder(GENERATORS_ROOT, &[1]), 0, "not among the generators");
+        l.delete_library_folder(&f);
+        assert_eq!(l.prefabs[0].folder, "");
+    }
+
     #[test]
     fn library_folders_hold_their_kind_and_give_it_back_when_deleted() {
         let mut l = Library::default();

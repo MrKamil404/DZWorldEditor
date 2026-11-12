@@ -319,6 +319,13 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::CURSOR_CLICK, &t("Selection")), true, |ui| {
         ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
         ui.weak(t("Click to select, drag for a box, Shift adds. Shift or Ctrl held while dragging a selected object rotates or scales it."));
+        ui.horizontal(|ui| {
+            ui.label(t("Drag selects"));
+            let mut changed = false;
+            if crate::theme::tool_button(ui, !app.settings.lasso, &icons::with(icons::SELECTION, &t("Box"))).clicked() { app.settings.lasso = false; changed = true; }
+            if crate::theme::tool_button(ui, app.settings.lasso, &icons::with(icons::LASSO, &t("Lasso"))).on_hover_text(t("Draw an outline round what to select.")).clicked() { app.settings.lasso = true; changed = true; }
+            if changed { app.settings.save(); }
+        });
         ui.checkbox(&mut app.select_whole, t("Select whole roads and generators"));
         if ui.checkbox(&mut app.settings.drag_by_body, t("Move objects by dragging them")).on_hover_text(t("An object held by its shape slides over the ground, as with the dot of the gizmo.")).changed() { app.settings.save(); }
         let k = &app.settings.keys;
@@ -333,6 +340,7 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             if ui.button(t("Duplicate")).clicked() { app.duplicate_selection(); }
             if ui.button(t("Delete")).clicked() { app.delete_selection(); }
+            if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(icons::with(icons::PACKAGE, &t("Create prefab")))).on_hover_text(t("Saves the selected objects as a prefab of the library, to be placed again anywhere as one.")).clicked() { app.create_prefab(); }
         });
     });
     section(ui, &icons::with(icons::STACK, &t("Terrain under objects")), true, |ui| {

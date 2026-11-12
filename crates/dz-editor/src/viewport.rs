@@ -1342,6 +1342,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     crate::library_ui::add_forest(app, &name, Some(crate::library_ui::Dropped { shape, route, at: [h[0], h[2]] }));
                 }
                 L::ObjectPreset(id) => crate::library_ui::place_preset(app, id, h[0], h[2]),
+                L::Prefab(id) => { app.place_prefab(id, h[0], h[2]); }
             }
         }
         return;
@@ -1442,6 +1443,10 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         }
         Mode::Place => {
             if resp.clicked() && !modifiers.alt {
+                if let (Some(id), Some(h)) = (app.place.prefab, hit) {
+                    app.place_prefab(id, h[0], h[2]);
+                    return;
+                }
                 if let (Some(id), Some(h)) = (app.place.preset, hit) {
                     crate::library_ui::place_preset(app, id, h[0], h[2]);
                     return;
@@ -1524,6 +1529,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     }
                 }
                 app.box_select = Some((mouse, mouse, modifiers.shift || modifiers.ctrl));
+                app.lasso_points = if app.settings.lasso { vec![mouse] } else { Vec::new() };
             }
             if app.drag.is_some() {
                 if primary_down {
@@ -1537,9 +1543,18 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
             }
             if let Some(sel) = &mut app.box_select {
                 sel.1 = mouse;
+                if app.settings.lasso && app.lasso_points.last().is_none_or(|p| (*p - mouse).length() > 3.0) {
+                    app.lasso_points.push(mouse);
+                }
                 if !primary_down {
                     let (a, b, add_mode) = app.box_select.take().unwrap();
-                    finish_selection(app, v, a, b, add_mode);
+                    let outline = std::mem::take(&mut app.lasso_points);
+                    if outline.len() >= 3 {
+                        let r = outline.iter().fold(Rect::NOTHING, |r, p| r.union(Rect::from_min_max(*p, *p)));
+                        finish_selection_in(app, v, r.min, r.max, add_mode, Some(&outline));
+                    } else {
+                        finish_selection(app, v, a, b, add_mode);
+                    }
                 }
                 ctx.request_repaint();
             }
@@ -1570,7 +1585,26 @@ fn whole_at(app: &App, v: &View, m: Pos2, picked: Option<u32>) -> Option<(Select
     None
 }
 
+/// True when `p` lies inside the closed outline.
+fn inside_outline(outline: &[Pos2], p: Pos2) -> bool {
+    let mut inside = false;
+    let mut j = outline.len() - 1;
+    for i in 0..outline.len() {
+        let (a, b) = (outline[i], outline[j]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
 fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
+    finish_selection_in(app, v, a, b, add_mode, None);
+}
+
+/// Selects what is in the box from `a` to `b`, or within `outline` when one is drawn.
+fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool, outline: Option<&[Pos2]>) {
     if !add_mode {
         app.selection.clear();
         app.selected_modifier = None;
@@ -1630,7 +1664,7 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
                 return;
             }
             if let Some(s) = v.project([o.x, ObjectStore::origin_y(o, &world.height), o.z]) {
-                if r.contains(s) {
+                if r.contains(s) && outline.is_none_or(|l| inside_outline(l, s)) {
                     found.push(id);
                 }
             }
@@ -2319,8 +2353,15 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
         }
     }
     if let Some((a, b, _)) = app.box_select {
-        let r = Rect::from_two_pos(a, b);
-        painter.rect(r, 0.0, Color32::from_rgba_unmultiplied(0, 112, 224, 40), Stroke::new(1.0_f32, theme::ACCENT), egui::StrokeKind::Inside);
+        if app.lasso_points.len() >= 2 {
+            // The outline drawn so far, closed back to where it began.
+            let mut pts = app.lasso_points.clone();
+            pts.push(pts[0]);
+            painter.add(egui::Shape::line(pts, Stroke::new(1.5_f32, theme::ACCENT)));
+        } else if !app.settings.lasso {
+            let r = Rect::from_two_pos(a, b);
+            painter.rect(r, 0.0, Color32::from_rgba_unmultiplied(0, 112, 224, 40), Stroke::new(1.0_f32, theme::ACCENT), egui::StrokeKind::Inside);
+        }
     }
     if app.mode == Mode::Select {
         if let Some(p) = selection_pivot(app) {
@@ -2641,8 +2682,13 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     }
     let shown_model = app.selected_model();
     let mut reveal = None;
+    let mut make_prefab = false;
     resp.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
         if let Some(m) = &shown_model {
+            if ui.button(crate::icons::with(crate::icons::PACKAGE, &t("Create prefab from the selection"))).clicked() {
+                make_prefab = true;
+                ui.close_menu();
+            }
             if ui.button(crate::icons::with(crate::icons::FOLDER_OPEN, &t("Show in asset browser"))).on_hover_text(m.as_str()).clicked() {
                 reveal = Some(m.clone());
                 ui.close_menu();
@@ -2672,6 +2718,9 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     });
     if let Some(m) = reveal {
         app.show_in_browser(&m);
+    }
+    if make_prefab {
+        app.create_prefab();
     }
 }
 
@@ -3045,6 +3094,22 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 d.world.sat_image_replaced();
                 app.renderer.lock().unwrap().set_satellite(d.world.satellite.as_ref());
                 app.detail_center = [f32::MIN, f32::MIN];
+            }
+        }
+        // `prefabmake`: a prefab of the selection; `prefabplace x z`: the last prefab placed there.
+        "prefabmake" => { app.create_prefab(); }
+        "prefabplace" if nums.len() >= 2 => {
+            if let Some(id) = app.library.prefabs.last().map(|p| p.id) {
+                let ids = app.place_prefab(id, nums[0], nums[1]);
+                eprintln!("PREFAB placed {} objects", ids.len());
+            }
+        }
+        "lassomode" => app.settings.lasso = arg == "1",
+        "selcount" => eprintln!("SELCOUNT {}", app.selection.len()),
+        "selall" => {
+            if let Some(d) = &app.doc {
+                app.selection = d.world.objects.iter().map(|(id, _)| id).collect();
+                app.selection_rev += 1;
             }
         }
         "libdemo" => crate::asset_browser::library_demo(app, &arg),
