@@ -63,6 +63,54 @@ impl BrushShape {
     }
 }
 
+/// A brush tip taken from a picture, seen from above with north up: white works fully,
+/// black not at all. It fills the square around the brush.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Stamp {
+    pub width: usize,
+    pub height: usize,
+    /// Row by row from the top, 0..1.
+    pub data: Vec<f32>,
+}
+
+impl Stamp {
+    /// From grey levels and their opacity, both 0..255; transparent counts as black.
+    pub fn from_luma_alpha(width: usize, height: usize, la: &[[u8; 2]]) -> Self {
+        Self { width, height, data: la.iter().map(|p| p[0] as f32 / 255.0 * p[1] as f32 / 255.0).collect() }
+    }
+    /// Value at a point of the brush square, `u` to the east and `v` to the south, -1..1.
+    pub fn sample(&self, u: f32, v: f32) -> f32 {
+        if !(-1.0..=1.0).contains(&u) || !(-1.0..=1.0).contains(&v) || self.width == 0 || self.height == 0 {
+            return 0.0;
+        }
+        let fx = ((u + 1.0) * 0.5 * self.width as f32 - 0.5).clamp(0.0, (self.width - 1) as f32);
+        let fy = ((v + 1.0) * 0.5 * self.height as f32 - 0.5).clamp(0.0, (self.height - 1) as f32);
+        let (x0, y0) = (fx as usize, fy as usize);
+        let (x1, y1) = ((x0 + 1).min(self.width - 1), (y0 + 1).min(self.height - 1));
+        let (tx, ty) = (fx - x0 as f32, fy - y0 as f32);
+        let at = |x: usize, y: usize| self.data[y * self.width + x];
+        let top = at(x0, y0) + (at(x1, y0) - at(x0, y0)) * tx;
+        let bottom = at(x0, y1) + (at(x1, y1) - at(x0, y1)) * tx;
+        top + (bottom - top) * ty
+    }
+}
+
+/// A number 0..1 that changes with the cell and with every dab of a spray.
+#[inline]
+fn speckle(i: usize, j: usize, dab: u32) -> f32 {
+    let mut h = (i as u32).wrapping_mul(73856093) ^ (j as u32).wrapping_mul(19349663) ^ dab.wrapping_mul(83492791);
+    h ^= h >> 13;
+    h = h.wrapping_mul(0x5bd1e995);
+    h ^= h >> 15;
+    (h & 0xffff) as f32 / 65535.0
+}
+
+/// How likely a cell is hit by one frame of a spray of the given density, per second at 30 dabs.
+#[inline]
+fn spray_chance(density: f32, dt: f32) -> f32 {
+    1.0 - (1.0 - density.clamp(0.0, 1.0)).powf((dt * 30.0).clamp(0.05, 3.0))
+}
+
 /// Copy-on-write snapshot of a raster's tiles touched by one stroke.
 #[derive(Default, Clone)]
 pub struct TileSnapshot<T: Copy> {
@@ -340,11 +388,17 @@ pub struct SculptStroke {
     pub shape: BrushShape,
     /// How much the edge of the brush is broken up, 0..1.
     pub edge_noise: f32,
+    /// A picture in place of the shape.
+    pub stamp: Option<std::sync::Arc<Stamp>>,
+    /// Above 0 the brush sprays dots instead of covering its area; their density, 0..1.
+    pub spray: f32,
+    /// Counts the dabs, so every one sprays other dots.
+    pub dab: u32,
 }
 
 impl SculptStroke {
     pub fn begin(tool: SculptTool, brush: Brush, w: &World, x: f32, z: f32) -> Self {
-        Self { tool, brush, snapshot: TileSnapshot::default(), target: w.base.sample(x, z), start: [x, z], noise: Perlin::new(1234), shape: BrushShape::Circle, edge_noise: 0.0 }
+        Self { tool, brush, snapshot: TileSnapshot::default(), target: w.base.sample(x, z), start: [x, z], noise: Perlin::new(1234), shape: BrushShape::Circle, edge_noise: 0.0, stamp: None, spray: 0.0, dab: 0 }
     }
     /// Applies one step of the stroke at a world position; `dt` in seconds.
     pub fn apply(&mut self, w: &mut World, x: f32, z: f32, dt: f32) -> Option<Rect> {
@@ -356,6 +410,8 @@ impl SculptStroke {
         let blend = (rate * 0.12).clamp(0.0, 1.0);
         let source: Vec<f32> = if self.tool == SculptTool::Smooth { copy_rect(&w.base, r) } else { Vec::new() };
         let stride = r.width();
+        self.dab = self.dab.wrapping_add(1);
+        let chance = if self.spray > 0.0 { spray_chance(self.spray, dt) } else { 1.0 };
         for j in r.y0..=r.y1 {
             for i in r.x0..=r.x1 {
                 let (px, pz) = (i as f32 * cell, j as f32 * cell);
@@ -364,8 +420,12 @@ impl SculptStroke {
                     let scale = (self.brush.radius * 0.4).max(1.0);
                     d += self.noise.fbm(px / scale, pz / scale, 3, 0.5, 2.0) * self.edge_noise * self.brush.radius;
                 }
-                let k = self.brush.weight(d);
-                if k <= 0.0 {
+                let k = match &self.stamp {
+                    // The picture is the shape and its own falloff.
+                    Some(s) => s.sample((px - x) / self.brush.radius, (z - pz) / self.brush.radius),
+                    None => self.brush.weight(d),
+                };
+                if k <= 0.0 || (chance < 1.0 && speckle(i, j, self.dab) >= chance) {
                     continue;
                 }
                 let h = w.base.at(i, j);
@@ -421,6 +481,14 @@ pub struct MaskStroke {
     pub only_on: Option<u8>,
     /// Keeps tiles within the project's surface limit.
     pub guard: Option<crate::mask_limit::TileGuard>,
+    /// A picture in place of the shape; it paints where it is lighter than mid grey.
+    pub stamp: Option<std::sync::Arc<Stamp>>,
+    /// Above 0 the brush sprays dots instead of covering its area; their density, 0..1.
+    pub spray: f32,
+    /// Seconds since the last dab, for the spray.
+    pub dt: f32,
+    /// Counts the dabs, so every one sprays other dots.
+    pub dab: u32,
 }
 
 impl MaskStroke {
@@ -436,17 +504,22 @@ impl MaskStroke {
         }
         let r = Rect { x0: x0 as usize, y0: y0 as usize, x1: x1 as usize, y1: y1 as usize };
         self.snapshot.capture(&mask.data, mask.width, mask.height, r);
+        self.dab = self.dab.wrapping_add(1);
+        let chance = if self.spray > 0.0 { spray_chance(self.spray, if self.dt > 0.0 { self.dt } else { 1.0 / 30.0 }) } else { 1.0 };
         for y in r.y0..=r.y1 {
             for xp in r.x0..=r.x1 {
-                let d = self.shape.distance(xp as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
-                let limit = if scatter > 0.0 {
+                let (dx, dy) = (xp as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+                let n = if scatter > 0.0 {
                     let h = (xp as u32).wrapping_mul(73856093) ^ (y as u32).wrapping_mul(19349663);
-                    let n = ((h.wrapping_mul(2654435761) >> 16) & 255) as f32 / 255.0;
-                    rp * (1.0 - scatter * n)
+                    ((h.wrapping_mul(2654435761) >> 16) & 255) as f32 / 255.0
                 } else {
-                    rp
+                    0.0
                 };
-                if d > limit {
+                let inside = match &self.stamp {
+                    Some(s) => s.sample(dx / rp, dy / rp) > 0.5 + (n - 0.5) * scatter,
+                    None => self.shape.distance(dx, dy) <= rp * (1.0 - scatter * n),
+                };
+                if !inside || (chance < 1.0 && speckle(xp, y, self.dab) >= chance) {
                     continue;
                 }
                 let at = y * mask.width + xp;
@@ -532,6 +605,35 @@ mod tests {
         let mut s = SculptStroke::begin(SculptTool::Smooth, brush, &w, 800.0, 800.0);
         s.apply(&mut w, 800.0, 800.0, 0.3);
         assert!(w.base.at(100, 100) < 120.0);
+    }
+    #[test]
+    fn a_picture_brush_paints_its_white_part_only() {
+        let mut w = world();
+        let size = w.meta.size_m();
+        // West half white, east half black.
+        let la: Vec<[u8; 2]> = (0..16).flat_map(|_| (0..16).map(|x| if x < 8 { [255, 255] } else { [0, 255] })).collect();
+        let stamp = std::sync::Arc::new(Stamp::from_luma_alpha(16, 16, &la));
+        let mut m = MaskStroke { stamp: Some(stamp.clone()), ..Default::default() };
+        m.apply(&mut w.mask, size, 1000.0, 1000.0, 40.0, 3, 0.0).unwrap();
+        assert_eq!(w.mask.sample(980.0, 1000.0, size), 3);
+        assert_eq!(w.mask.sample(1020.0, 1000.0, size), 0);
+        let brush = Brush { radius: 100.0, falloff: 0.0, strength: 10.0 };
+        let mut s = SculptStroke::begin(SculptTool::Raise, brush, &w, 1000.0, 1000.0);
+        s.stamp = Some(stamp);
+        s.apply(&mut w, 1000.0, 1000.0, 1.0);
+        assert!(w.base.sample(950.0, 1000.0) > 109.0 && (w.base.sample(1050.0, 1000.0) - 100.0).abs() < 0.01);
+    }
+    #[test]
+    fn a_spray_covers_part_of_its_area_and_fills_up() {
+        let mut w = world();
+        let size = w.meta.size_m();
+        let mut m = MaskStroke { spray: 0.1, dt: 1.0 / 30.0, ..Default::default() };
+        let covered = |w: &World| (0..40).flat_map(|a| (0..40).map(move |b| (a, b))).filter(|(a, b)| w.mask.sample(980.0 + *a as f32, 980.0 + *b as f32, size) == 3).count();
+        m.apply(&mut w.mask, size, 1000.0, 1000.0, 40.0, 3, 0.0).unwrap();
+        let once = covered(&w);
+        assert!(once > 50 && once < 400, "{once}");
+        for _ in 0..40 { m.apply(&mut w.mask, size, 1000.0, 1000.0, 40.0, 3, 0.0); }
+        assert!(covered(&w) > 1400, "{}", covered(&w));
     }
     #[test]
     fn mask_stroke_paints_and_undoes() {

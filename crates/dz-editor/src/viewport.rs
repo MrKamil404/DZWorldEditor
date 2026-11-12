@@ -758,7 +758,9 @@ fn begin_paint_or_sculpt(app: &mut App, p: V3, invert: bool, smooth: bool) {
     match app.mode {
         Mode::Paint => {
             let guard = dz_core::mask_limit::TileGuard::new(&doc.world);
-            app.mask_stroke = Some(MaskStroke { shape: app.paint.shape, only_on: app.paint.only_on.map(|l| l as u8), guard: Some(guard), ..Default::default() });
+            let stamp = crate::brushes::stamp(&app.brushes, &app.paint.picture);
+            let spray = if app.paint.spray { app.paint.spray_density } else { 0.0 };
+            app.mask_stroke = Some(MaskStroke { shape: app.paint.shape, only_on: app.paint.only_on.map(|l| l as u8), guard: Some(guard), stamp, spray, ..Default::default() });
         }
         Mode::Landscape => {
             let brush = Brush { radius: app.sculpt.radius, falloff: app.sculpt.falloff, strength: app.sculpt.strength };
@@ -771,7 +773,10 @@ fn begin_paint_or_sculpt(app: &mut App, p: V3, invert: bool, smooth: bool) {
             } else {
                 app.sculpt.tool
             };
-            let mut stroke = SculptStroke::begin(tool, brush, &doc.world, p[0], p[2]); stroke.shape = app.sculpt.shape; stroke.edge_noise = app.sculpt.noise; app.stroke = Some(stroke);
+            let mut stroke = SculptStroke::begin(tool, brush, &doc.world, p[0], p[2]); stroke.shape = app.sculpt.shape; stroke.edge_noise = app.sculpt.noise;
+            stroke.stamp = crate::brushes::stamp(&app.brushes, &app.sculpt.picture);
+            stroke.spray = if app.sculpt.spray { app.sculpt.spray_density } else { 0.0 };
+            app.stroke = Some(stroke);
         }
         _ => {}
     }
@@ -1192,6 +1197,7 @@ fn end_object_drag(app: &mut App) {
 fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View, top: bool, typing: bool) {
     let dt = ctx.input(|i| i.stable_dt).min(0.1);
     let hover = resp.hovered() || resp.dragged();
+    app.view_hovered |= hover;
     let (scroll, modifiers) = ctx.input(|i| (i.smooth_scroll_delta.y, i.modifiers));
     if top {
         let drag = if resp.dragged_by(PointerButton::Middle) || resp.dragged_by(PointerButton::Secondary) { resp.drag_delta() } else { vec2(0.0, 0.0) };
@@ -1391,6 +1397,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     ctx.request_repaint();
                 }
                 if let Some(mut s) = app.mask_stroke.take() {
+                    s.dt = dt;
                     let d = app.doc.as_mut().unwrap();
                     let size = d.world.meta.size_m();
                     let r = s.apply(&mut d.world.mask, size, h[0], h[2], app.paint.radius, app.paint.layer as u8, app.paint.scatter);
@@ -2342,8 +2349,8 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
     let h = hit?;
     match app.mode {
         Mode::Landscape if app.hole_tool => Some(BrushView { x: h[0], z: h[2], radius: app.hole_radius, falloff: 0.0, color: [1.0, 0.3, 0.3], shape: 1 }),
-        Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: app.sculpt.falloff, color: [0.25, 0.65, 1.0], shape: app.sculpt.shape as i32 }),
-        Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: app.paint.shape as i32 }),
+        Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: if app.sculpt.picture.is_some() { 0.0 } else { app.sculpt.falloff }, color: [0.25, 0.65, 1.0], shape: if app.sculpt.picture.is_some() { 1 } else { app.sculpt.shape as i32 } }),
+        Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: if app.paint.picture.is_some() { 1 } else { app.paint.shape as i32 } }),
         Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: if app.place.brush { app.place.brush_radius } else { 2.0 }, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
         Mode::Satellite => Some(BrushView { x: h[0], z: h[2], radius: app.sat.radius, falloff: 1.0 - app.sat.hardness, color: [1.0, 0.82, 0.24], shape: 0 }),
         _ => None,
@@ -2771,7 +2778,8 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     if active_brush(app).is_some() {
         let (scroll, zoom, mods) = ctx.input(|i| (i.smooth_scroll_delta.x + i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers));
         let delta = if mods.ctrl || mods.command { scroll + (zoom - 1.0) * 400.0 } else { scroll };
-        if delta != 0.0 && ctx.is_pointer_over_area() {
+        // Only over a view: the wheel over a panel scrolls the panel.
+        if delta != 0.0 && app.view_hovered {
             let f = (delta * 0.003).exp();
             let size = if keys.held(Hold::WheelSize, mods) { f } else { 1.0 };
             let strength = if keys.held(Hold::WheelStrength, mods) { f } else { 1.0 };
@@ -2815,6 +2823,8 @@ fn welcome(app: &mut App, ui: &mut egui::Ui) {
 pub fn central(app: &mut App, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     shortcuts(app, &ctx);
+    // The views of this frame say again whether the pointer is over one of them.
+    app.view_hovered = false;
     if app.doc.is_none() {
         welcome(app, ui);
         return;
@@ -3090,13 +3100,35 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.synthetic.push(egui::Event::PointerButton { pos: pos2(nums[0], nums[1]), button, pressed: cmd == "press", modifiers: egui::Modifiers::NONE });
         }
         "key" => {
-            if let Some(key) = Key::from_name(&arg) {
-                app.synthetic.push(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
-                app.synthetic.push(egui::Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::NONE });
+            // `key <logical> [physical]`, with the modifiers set by `mods`.
+            let mut names = arg.split_whitespace();
+            if let Some(key) = names.next().and_then(Key::from_name) {
+                let physical_key = names.next().and_then(Key::from_name);
+                let modifiers = app.synthetic_modifiers;
+                app.synthetic.push(egui::Event::Key { key, physical_key, pressed: true, repeat: false, modifiers });
+                app.synthetic.push(egui::Event::Key { key, physical_key, pressed: false, repeat: false, modifiers });
             }
         }
+        "wheel" if !nums.is_empty() => app.synthetic.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, nums[0]), modifiers: app.synthetic_modifiers }),
+        // `brushpic <file>`: the paint and sculpt brushes use this picture, read where it is.
+        "brushpic" => match crate::brushes::load(std::path::Path::new(&arg)) {
+            Ok(b) => {
+                app.paint.picture = Some(b.name.clone());
+                app.sculpt.picture = Some(b.name.clone());
+                app.brushes.push(b);
+            }
+            Err(e) => eprintln!("BRUSHPIC {e}"),
+        },
+        "spray" => {
+            let d = nums.first().copied().unwrap_or(0.0);
+            app.paint.spray = d > 0.0;
+            app.sculpt.spray = d > 0.0;
+            app.paint.spray_density = d.max(0.01);
+            app.sculpt.spray_density = d.max(0.01);
+        }
+        "brushinfo" => eprintln!("BRUSH sculpt={:.2}/{:.2} paint={:.2} holes={:.2} place={:.2}/{:.2} sat={:.2}/{:.2}", app.sculpt.radius, app.sculpt.strength, app.paint.radius, app.hole_radius, app.place.brush_radius, app.place.brush_spacing, app.sat.radius, app.sat.opacity),
         "mods" => {
-            app.synthetic_modifiers = egui::Modifiers { shift: arg == "shift", ctrl: arg == "ctrl", command: arg == "ctrl", ..Default::default() };
+            app.synthetic_modifiers = egui::Modifiers { shift: arg == "shift", ctrl: arg == "ctrl", command: arg == "ctrl", alt: arg == "alt", ..Default::default() };
         }
         "mmove" if nums.len() >= 2 => app.synthetic.push(egui::Event::PointerMoved(pos2(nums[0], nums[1]))),
         "mbutton" if nums.len() >= 2 => {

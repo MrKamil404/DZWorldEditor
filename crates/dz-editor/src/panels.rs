@@ -359,13 +359,18 @@ fn pad_sliders(app: &mut App, ui: &mut egui::Ui) -> bool {
     before != (app.place.pad_margin, app.place.pad_falloff)
 }
 
-fn brush_shape_row(ui: &mut egui::Ui, shape: &mut dz_core::edit::BrushShape) {
-    use dz_core::edit::BrushShape as B;
-    ui.horizontal(|ui| {
-        for (s, name) in [(B::Circle, "Round"), (B::Square, "Square"), (B::Diamond, "Diamond")] {
-            if tool_button(ui, *shape == s, &t(name)).clicked() { *shape = s; }
-        }
-    });
+/// Built-in outlines, the user's pictures and the spray, for the sculpt or the paint brush.
+fn brush_tip(app: &mut App, ui: &mut egui::Ui, paint: bool) {
+    let (shape, picture, spray, density) = if paint {
+        (&mut app.paint.shape, &mut app.paint.picture, &mut app.paint.spray, &mut app.paint.spray_density)
+    } else {
+        (&mut app.sculpt.shape, &mut app.sculpt.picture, &mut app.sculpt.spray, &mut app.sculpt.spray_density)
+    };
+    let action = crate::brushes::tip_row(ui, &mut app.brushes, shape, picture);
+    crate::brushes::spray_row(ui, spray, density);
+    if let crate::brushes::TipAction::Problems(p) = action {
+        for e in p { app.error(e); }
+    }
 }
 
 /// The sides, level and height profile of the ground under a road.
@@ -410,7 +415,7 @@ fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
     section(ui, &icons::with(icons::PAINT_BRUSH_BROAD, &t("Brush")), true, |ui| {
-        brush_shape_row(ui, &mut app.sculpt.shape);
+        brush_tip(app, ui, false);
         slider(ui, &t("Radius"), &mut app.sculpt.radius, 2.0..=3000.0, true);
         slider(ui, &t("Falloff"), &mut app.sculpt.falloff, 0.0..=1.0, false);
         slider(ui, &t("Strength"), &mut app.sculpt.strength, 0.5..=200.0, true);
@@ -436,7 +441,7 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
 
 fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::PAINT_BRUSH_BROAD, &t("Brush")), true, |ui| {
-        brush_shape_row(ui, &mut app.paint.shape);
+        brush_tip(app, ui, true);
         slider(ui, &t("Radius"), &mut app.paint.radius, 0.5..=2000.0, true);
         slider(ui, &t("Edge noise"), &mut app.paint.scatter, 0.0..=0.8, false);
         if tool_button(ui, app.paint.picking, &t("Eyedropper")).on_hover_text(t("Takes the surface under the cursor.")).clicked() { app.paint.picking = !app.paint.picking; }

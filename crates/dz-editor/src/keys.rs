@@ -372,7 +372,9 @@ impl KeyMap {
     pub fn pressed(&self, ctx: &egui::Context, a: Action) -> bool {
         let Some(s) = self.get(a) else { return false };
         ctx.input_mut(|i| {
-            let at = i.events.iter().position(|e| matches!(e, egui::Event::Key { key, pressed: true, repeat, modifiers, .. } if s.matches(*key, *modifiers) && (!repeat || a.repeats())));
+            // Shift turns some keys into others ("[" into "{"), so the key in its place on the
+            // keyboard counts as well.
+            let at = i.events.iter().position(|e| matches!(e, egui::Event::Key { key, physical_key, pressed: true, repeat, modifiers } if (s.matches(*key, *modifiers) || physical_key.is_some_and(|p| s.matches(p, *modifiers))) && (!repeat || a.repeats())));
             match at {
                 Some(at) => {
                     i.events.remove(at);
