@@ -232,7 +232,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 let own = g.project.species_layers.len();
                 if own > 0 { ui.weak(tf("{0} species have a surface of their own in the forest project and keep it", &[&own.to_string()])); }
                 ui.weak(t("Models with a surface assigned in the asset browser get that one."));
-                crate::maskmods::stamp_ui(ui, &mut g.ground.stamp, "ground_shape");
+                crate::maskmods::stamp_ui(ui, &mut g.ground.stamp, "ground_shape", false);
                 ui.separator();
             }
             let p = &mut g.project;

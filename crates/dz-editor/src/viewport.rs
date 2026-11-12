@@ -3020,6 +3020,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.sat.bake_selection = false;
             app.sat.bake_plants = nums.first().is_some_and(|v| *v > 0.0);
             app.sat.bake_roads = nums.get(1).is_some_and(|v| *v > 0.0);
+            app.sat.bake_water = nums.get(2).is_some_and(|v| *v > 0.0);
+            app.sat.bake_above_ground = nums.get(3).is_none_or(|v| *v > 0.0);
             crate::satellite::bake(app);
         }
         // Source point in metres, then the ends of a stroke in metres.
@@ -3047,6 +3049,10 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.mask_tool.surface = nums.first().map(|v| *v as usize).unwrap_or(0);
             app.mask_tool.selection_only = false;
             app.mask_tool.buildings = true;
+            if nums.get(1).is_some_and(|v| *v > 0.0) {
+                app.mask_tool.stamp.shape = dz_core::maskmod::StampShape::Geometry;
+                app.mask_tool.stamp.size_m = nums.get(2).copied().unwrap_or(1.0);
+            }
             crate::maskmods::stamp_under_objects(app);
             eprintln!("GENSTATS maskmods={}", app.doc.as_ref().map_or(0, |d| d.world.mask_mods.modifiers.len()));
         }
@@ -3224,6 +3230,14 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "placeat" if nums.len() >= 2 => {
             if let Some(m) = app.place.model.clone() { place_model(app, &m, nums[0], nums[1]); }
+            // A third number: the elevation over the ground, to sink or raise it.
+            if let (Some(e), Some(d)) = (nums.get(2), app.doc.as_mut()) {
+                if let Some(id) = d.world.objects.iter().map(|(id, _)| id).max() {
+                    let mut o = *d.world.objects.get(id).unwrap();
+                    o.elevation = *e;
+                    d.world.objects.update(id, o);
+                }
+            }
         }
         "modifiers" => {
             if let Some(d) = &app.doc {

@@ -271,15 +271,18 @@ pub enum StampShape {
     /// A circle with an uneven edge, which reads best under trees.
     #[default]
     Blob,
+    /// The outline of the model seen from above, grown by the patch size.
+    Geometry,
 }
 impl StampShape {
-    pub const ALL: [StampShape; 4] = [StampShape::Blob, StampShape::Circle, StampShape::Square, StampShape::Diamond];
+    pub const ALL: [StampShape; 5] = [StampShape::Blob, StampShape::Circle, StampShape::Square, StampShape::Diamond, StampShape::Geometry];
     pub fn name(self) -> &'static str {
         match self {
             StampShape::Circle => "Circle",
             StampShape::Square => "Square",
             StampShape::Diamond => "Diamond",
             StampShape::Blob => "Blob",
+            StampShape::Geometry => "Object geometry",
         }
     }
 }
@@ -306,7 +309,7 @@ impl Default for StampSettings {
 }
 
 /// One patch to stamp.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Stamp {
     pub x: f32,
     pub z: f32,
@@ -315,6 +318,8 @@ pub struct Stamp {
     pub scale: f32,
     /// Half width, half depth and yaw of the object's footprint, to fill that instead of a patch.
     pub footprint: Option<[f32; 3]>,
+    /// The outline of the model and the object's yaw, to follow its geometry.
+    pub geometry: Option<(Arc<crate::satmod::Silhouette>, f32)>,
 }
 
 fn hash(x: f32, z: f32, seed: u64) -> f32 {
@@ -338,6 +343,23 @@ pub fn stamp_tiles(stamps: &[Stamp], s: &StampSettings, width: usize, height: us
     };
     for o in stamps {
         let (cx, cy) = (o.x * sx, (size - o.z) * sy);
+        if let Some((sil, yaw)) = &o.geometry {
+            // Every pixel within the patch size of the model's outline.
+            let scale = o.scale.max(0.01);
+            let m = crate::objects::rotation(*yaw, 0.0, 0.0, 1.0);
+            let reach = ((sil.reach() * scale + s.size_m) * sx.max(sy)).ceil() as i64 + 1;
+            for dy in -reach..=reach {
+                for dx in -reach..=reach {
+                    let (wx, wz) = ((cx as i64 + dx) as f32 + 0.5, (cy as i64 + dy) as f32 + 0.5);
+                    let (ex, ez) = (wx / sx - o.x, size - wz / sy - o.z);
+                    let (px, pz) = ((m[0][0] * ex + m[0][2] * ez) / scale, (m[2][0] * ex + m[2][2] * ez) / scale);
+                    if sil.distance(px, pz) * scale <= s.size_m {
+                        set(cx as i64 + dx, cy as i64 + dy, o.surface);
+                    }
+                }
+            }
+            continue;
+        }
         if let Some([hx, hz, yaw]) = o.footprint {
             // The footprint of the object, grown by the size setting.
             let (hx, hz) = ((hx + s.size_m) * sx, (hz + s.size_m) * sy);
@@ -370,7 +392,8 @@ pub fn stamp_tiles(stamps: &[Stamp], s: &StampSettings, width: usize, height: us
             for dx in -reach..=reach {
                 let (rx, ry) = (dx as f32 * cos - dy as f32 * sin, dx as f32 * sin + dy as f32 * cos);
                 let inside = match s.shape {
-                    StampShape::Circle => rx * rx + ry * ry <= r * r,
+                    // A model without an outline gets a circle.
+                    StampShape::Circle | StampShape::Geometry => rx * rx + ry * ry <= r * r,
                     StampShape::Square => rx.abs() <= r && ry.abs() <= r,
                     StampShape::Diamond => rx.abs() + ry.abs() <= r,
                     StampShape::Blob => {
@@ -452,7 +475,7 @@ mod tests {
     fn a_stamp_sets_the_surface_and_its_removal_restores_the_mask() {
         let mut w = world();
         // The map is 256 m across, so a metre is a pixel; north is up.
-        let tiles = stamp_tiles(&[Stamp { x: 130.0, z: 196.0, surface: 5, scale: 1.0, footprint: None }], &StampSettings { size_m: 6.0, shape: StampShape::Circle, randomize_size: 0.0, ..Default::default() }, 256, 256, 256.0);
+        let tiles = stamp_tiles(&[Stamp { x: 130.0, z: 196.0, surface: 5, scale: 1.0, footprint: None, geometry: None }], &StampSettings { size_m: 6.0, shape: StampShape::Circle, randomize_size: 0.0, ..Default::default() }, 256, 256, 256.0);
         assert!(tiles.len() >= 2, "the patch spans two tiles");
         let id = w.mask_mods.add(MaskKind::UnderObjects, "m".into());
         let r = w.mask_replace_tiles(id, tiles).unwrap();
@@ -473,7 +496,7 @@ mod tests {
     #[test]
     fn painting_beside_a_modifier_stays_and_the_modifier_keeps_its_place() {
         let mut w = world();
-        let tiles = stamp_tiles(&[Stamp { x: 40.0, z: 216.0, surface: 5, scale: 1.0, footprint: None }], &StampSettings { size_m: 4.0, shape: StampShape::Square, randomize_size: 0.0, ..Default::default() }, 256, 256, 256.0);
+        let tiles = stamp_tiles(&[Stamp { x: 40.0, z: 216.0, surface: 5, scale: 1.0, footprint: None, geometry: None }], &StampSettings { size_m: 4.0, shape: StampShape::Square, randomize_size: 0.0, ..Default::default() }, 256, 256, 256.0);
         let id = w.mask_mods.add(MaskKind::UnderObjects, "m".into());
         w.mask_replace_tiles(id, tiles);
         // A stroke of the paint tool over the patch and beside it.
@@ -492,7 +515,7 @@ mod tests {
     #[test]
     fn a_footprint_is_filled_and_layers_survive_saving() {
         let mut w = world();
-        let tiles = stamp_tiles(&[Stamp { x: 100.0, z: 156.0, surface: 3, scale: 1.0, footprint: Some([10.0, 4.0, 0.0]) }], &StampSettings { size_m: 1.0, ..Default::default() }, 256, 256, 256.0);
+        let tiles = stamp_tiles(&[Stamp { x: 100.0, z: 156.0, surface: 3, scale: 1.0, footprint: Some([10.0, 4.0, 0.0]), geometry: None }], &StampSettings { size_m: 1.0, ..Default::default() }, 256, 256, 256.0);
         let id = w.mask_mods.add(MaskKind::Forest, "f".into());
         w.mask_replace_tiles(id, tiles);
         assert_eq!(at(&w, 109, 100), 3);
@@ -507,7 +530,7 @@ mod tests {
         w.meta.max_tile_surfaces = 2;
         // One surface already lies on the whole mask; a second may come, a third may not.
         w.mask.data.iter_mut().for_each(|v| *v = 0);
-        let stamp = |surface, x: f32| Stamp { x, z: 128.0, surface, scale: 1.0, footprint: None };
+        let stamp = |surface, x: f32| Stamp { x, z: 128.0, surface, scale: 1.0, footprint: None, geometry: None };
         let s = StampSettings { size_m: 3.0, shape: StampShape::Square, randomize_size: 0.0, ..Default::default() };
         let mut tiles = stamp_tiles(&[stamp(1, 40.0), stamp(2, 50.0)], &s, 256, 256, 256.0);
         let dropped = keep_tile_limit(&w, &mut tiles);

@@ -67,3 +67,53 @@ fn a_real_gate_lies_along_its_fence() {
         }
     }
 }
+
+fn baked_px(tiles: &std::collections::HashMap<dz_core::satmod::Key, dz_core::satmod::Tile>) -> usize {
+    tiles.values().map(|t| t.chunks(4).filter(|p| p[3] > 0).count()).sum()
+}
+
+/// A part of the river shows as water only when asked for, when P: is mounted.
+#[test]
+fn water_of_a_river_part_is_baked_on_request() {
+    let model = "dz/water/streams/river_24_12.p3d";
+    if !std::path::Path::new("P:/").join(model).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    let o = dz_core::objects::Obj { x: 128.0, z: 128.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+    let b = || dz_core::satmod::BakeObject { object: o, origin_y: 0.0, model: model.into() };
+    let dry = baked_px(&dz_core::satmod::bake_objects(&[b()], &db, 256, 256, 256.0, |_| false, &dz_core::Job::default()));
+    let opts = dz_core::satmod::BakeOptions { water: true, ..Default::default() };
+    let wet = baked_px(&dz_core::satmod::bake_objects_with(&[b()], &db, 256, 256, 256.0, |_| false, &opts, &dz_core::Job::default()));
+    assert!(wet > dry + 100, "with water {wet} px, without {dry} px");
+}
+
+/// Of an object sunk into the ground only what stands above it is baked, when P: is mounted.
+#[test]
+fn a_sunk_pier_bakes_only_above_the_ground() {
+    let model = "dz/structures/industrial/harbour/pier_concrete1.p3d";
+    if !std::path::Path::new("P:/").join(model).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    let o = dz_core::objects::Obj { x: 128.0, z: 128.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+    let b = || dz_core::satmod::BakeObject { object: o, origin_y: 50.0, model: model.into() };
+    let bake = |ground: Option<f32>| {
+        let opts = dz_core::satmod::BakeOptions { ground: ground.map(|g| std::sync::Arc::new(dz_core::terrain::Heightmap::new(64, 64, 4.0, g))), ..Default::default() };
+        baked_px(&dz_core::satmod::bake_objects_with(&[b()], &db, 256, 256, 256.0, |_| false, &opts, &dz_core::Job::default()))
+    };
+    let all = bake(None);
+    assert!(all > 100, "{all} px");
+    assert_eq!(bake(Some(0.0)), all, "ground under the pier");
+    assert_eq!(bake(Some(200.0)), 0, "ground over the pier");
+}
+
+/// The outline of a building from above covers the building and not much more, when P: is mounted.
+#[test]
+fn the_outline_of_a_pier_follows_its_shape() {
+    let model = "dz/structures/industrial/harbour/pier_concrete1.p3d";
+    if !std::path::Path::new("P:/").join(model).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    let s = dz_core::satmod::silhouette(&db, model, false, 2.0).unwrap();
+    let info = db.get(model);
+    let (cx, cz) = ((info.min[0] + info.max[0]) * 0.5, (info.min[2] + info.max[2]) * 0.5);
+    assert_eq!(s.distance(cx, cz), 0.0);
+    let far = s.distance(info.max[0] + 1.5, cz);
+    assert!(far > 1.0 && far < 2.5, "{far}");
+}

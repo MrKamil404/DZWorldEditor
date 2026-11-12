@@ -365,6 +365,18 @@ pub struct BakeObject {
     pub model: String,
 }
 
+/// Choices for [`bake_objects_with`].
+#[derive(Clone, Default)]
+pub struct BakeOptions {
+    /// Draws the water surfaces of models (rivers, ponds) in the colour of water.
+    pub water: bool,
+    /// Leaves out what lies under this ground, for objects sunk partly into the terrain.
+    pub ground: Option<Arc<crate::terrain::Heightmap>>,
+}
+
+/// Water seen from above, from the colour of the game's river material lifted by the sky.
+const WATER_FROM_ABOVE: [f32; 3] = [0.10, 0.14, 0.15];
+
 /// What a top view needs of a model.
 struct BakeMesh {
     mesh: ModelMesh,
@@ -386,7 +398,7 @@ fn sample(mesh: &ModelMesh, texture: usize, u: f32, v: f32) -> [f32; 4] {
 
 /// Colour of a point of a batch as the material combines its textures, or `None` where the
 /// texture is cut away.
-fn surface_color(mesh: &ModelMesh, batch: &model3d::Batch, uv: [f32; 2], uv2: [f32; 2]) -> Option<[f32; 3]> {
+fn surface_color(mesh: &ModelMesh, batch: &model3d::Batch, uv: [f32; 2], uv2: [f32; 2], water: bool) -> Option<[f32; 3]> {
     let shading = batch.shading.and_then(|i| mesh.shadings.get(i));
     let slot = |s: &model3d::Shading, k: usize| -> Option<[f32; 4]> {
         let b = if s.xo[k][2] % 2.0 > 0.5 { uv2 } else { uv };
@@ -398,7 +410,7 @@ fn surface_color(mesh: &ModelMesh, batch: &model3d::Batch, uv: [f32; 2], uv2: [f
         std::array::from_fn(|k| c[k] * (1.0 + (m[k] * 2.0 - 1.0) * m[3]) * ((s.ambient[k] + s.diffuse[k]) * 0.5).clamp(0.2, 1.6))
     };
     match shading {
-        Some(s) if s.kind == ShadingKind::Water => None,
+        Some(s) if s.kind == ShadingKind::Water => water.then_some(WATER_FROM_ABOVE),
         Some(s) if s.kind == ShadingKind::Multi => {
             let mask = slot(s, 4).unwrap_or([0.0; 4]);
             let weights = [(1.0 - mask[0] - mask[1] - mask[2]).max(0.0), mask[0], mask[1], mask[2]];
@@ -470,9 +482,137 @@ fn load_bake_mesh(db: &ModelDb, model: &str, plant: bool) -> Option<BakeMesh> {
     }
 }
 
+/// A model seen from straight above: for the cells round it, how far the nearest part of the
+/// model is, in the model's own metres. Positions are relative to the object's origin.
+#[derive(Clone, Debug)]
+pub struct Silhouette {
+    pub cell: f32,
+    pub x0: f32,
+    pub z0: f32,
+    pub cols: usize,
+    pub rows: usize,
+    pub dist: Vec<f32>,
+}
+
+impl Silhouette {
+    /// Distance to the model from a point; far away outside the grid.
+    pub fn distance(&self, x: f32, z: f32) -> f32 {
+        let (i, j) = (((x - self.x0) / self.cell).floor(), ((z - self.z0) / self.cell).floor());
+        if i < 0.0 || j < 0.0 || i >= self.cols as f32 || j >= self.rows as f32 {
+            return f32::MAX;
+        }
+        self.dist[j as usize * self.cols + i as usize]
+    }
+    /// Furthest a point of the grid lies from the origin.
+    pub fn reach(&self) -> f32 {
+        let (x1, z1) = (self.x0 + self.cols as f32 * self.cell, self.z0 + self.rows as f32 * self.cell);
+        self.x0.abs().max(x1.abs()).hypot(self.z0.abs().max(z1.abs()))
+    }
+}
+
+/// The outline of a model from above, with room round it for a margin of `margin` metres.
+/// Walls, which are lines from above, count as well as roofs and floors; water does not.
+pub fn silhouette(db: &ModelDb, model: &str, plant: bool, margin: f32) -> Option<Silhouette> {
+    let bm = load_bake_mesh(db, model, plant)?;
+    let points: Vec<[f32; 2]> = bm.mesh.vertices.iter().map(|v| [v.pos[0] + bm.center[0], v.pos[2] + bm.center[2]]).collect();
+    let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
+    for p in &points {
+        for k in 0..2 {
+            lo[k] = lo[k].min(p[k]);
+            hi[k] = hi[k].max(p[k]);
+        }
+    }
+    if lo[0] > hi[0] {
+        return None;
+    }
+    let pad = margin.max(0.0) + 0.5;
+    let extent = (hi[0] - lo[0]).max(hi[1] - lo[1]) + 2.0 * pad;
+    let cell = (extent / 768.0).max(0.2);
+    let (x0, z0) = (lo[0] - pad, lo[1] - pad);
+    let cols = ((hi[0] - lo[0] + 2.0 * pad) / cell).ceil() as usize + 1;
+    let rows = ((hi[1] - lo[1] + 2.0 * pad) / cell).ceil() as usize + 1;
+    let mut inside = vec![false; cols * rows];
+    let to_cell = |p: [f32; 2]| [(p[0] - x0) / cell, (p[1] - z0) / cell];
+    let mark = |x: f32, y: f32, inside: &mut Vec<bool>| {
+        let (i, j) = (x.floor() as i64, y.floor() as i64);
+        if i >= 0 && j >= 0 && (i as usize) < cols && (j as usize) < rows {
+            inside[j as usize * cols + i as usize] = true;
+        }
+    };
+    for batch in &bm.mesh.batches {
+        if batch.shading.and_then(|i| bm.mesh.shadings.get(i)).is_some_and(|s| s.kind == ShadingKind::Water) {
+            continue;
+        }
+        let range = batch.first_index as usize..(batch.first_index + batch.index_count) as usize;
+        let Some(indices) = bm.mesh.indices.get(range) else { continue };
+        for tri in indices.chunks_exact(3) {
+            let c = [to_cell(points[tri[0] as usize]), to_cell(points[tri[1] as usize]), to_cell(points[tri[2] as usize])];
+            // The edges, so a wall seen edge on still leaves its line.
+            for k in 0..3 {
+                let (a, b) = (c[k], c[(k + 1) % 3]);
+                let steps = ((b[0] - a[0]).abs().max((b[1] - a[1]).abs()) * 2.0).ceil().max(1.0) as usize;
+                for s in 0..=steps {
+                    let t = s as f32 / steps as f32;
+                    mark(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, &mut inside);
+                }
+            }
+            let area = (c[1][0] - c[0][0]) * (c[2][1] - c[0][1]) - (c[1][1] - c[0][1]) * (c[2][0] - c[0][0]);
+            if area.abs() < 1e-6 {
+                continue;
+            }
+            let (i0, j0) = (c[0][0].min(c[1][0]).min(c[2][0]).floor().max(0.0) as usize, c[0][1].min(c[1][1]).min(c[2][1]).floor().max(0.0) as usize);
+            let (i1, j1) = ((c[0][0].max(c[1][0]).max(c[2][0]).ceil() as usize).min(cols - 1), (c[0][1].max(c[1][1]).max(c[2][1]).ceil() as usize).min(rows - 1));
+            for j in j0..=j1 {
+                for i in i0..=i1 {
+                    let (px, py) = (i as f32 + 0.5, j as f32 + 0.5);
+                    let b0 = ((c[1][0] - px) * (c[2][1] - py) - (c[1][1] - py) * (c[2][0] - px)) / area;
+                    let b1 = ((c[2][0] - px) * (c[0][1] - py) - (c[2][1] - py) * (c[0][0] - px)) / area;
+                    if b0 >= 0.0 && b1 >= 0.0 && b0 + b1 <= 1.0 {
+                        inside[j * cols + i] = true;
+                    }
+                }
+            }
+        }
+    }
+    // Distance to the nearest covered cell, in two sweeps.
+    let mut dist: Vec<f32> = inside.iter().map(|v| if *v { 0.0 } else { f32::MAX }).collect();
+    let (straight, diagonal) = (cell, cell * std::f32::consts::SQRT_2);
+    for j in 0..rows {
+        for i in 0..cols {
+            let mut d = dist[j * cols + i];
+            if i > 0 { d = d.min(dist[j * cols + i - 1] + straight); }
+            if j > 0 {
+                d = d.min(dist[(j - 1) * cols + i] + straight);
+                if i > 0 { d = d.min(dist[(j - 1) * cols + i - 1] + diagonal); }
+                if i + 1 < cols { d = d.min(dist[(j - 1) * cols + i + 1] + diagonal); }
+            }
+            dist[j * cols + i] = d;
+        }
+    }
+    for j in (0..rows).rev() {
+        for i in (0..cols).rev() {
+            let mut d = dist[j * cols + i];
+            if i + 1 < cols { d = d.min(dist[j * cols + i + 1] + straight); }
+            if j + 1 < rows {
+                d = d.min(dist[(j + 1) * cols + i] + straight);
+                if i + 1 < cols { d = d.min(dist[(j + 1) * cols + i + 1] + diagonal); }
+                if i > 0 { d = d.min(dist[(j + 1) * cols + i - 1] + diagonal); }
+            }
+            dist[j * cols + i] = d;
+        }
+    }
+    inside.iter().any(|v| *v).then_some(Silhouette { cell, x0, z0, cols, rows, dist })
+}
+
 /// Draws the objects as seen from straight above into tiles of a `width` by `height` image
 /// covering a map `size` metres across. Higher surfaces hide lower ones.
 pub fn bake_objects(objects: &[BakeObject], db: &ModelDb, width: usize, height: usize, size: f32, is_plant: impl Fn(&str) -> bool, job: &Job) -> HashMap<Key, Tile> {
+    bake_objects_with(objects, db, width, height, size, is_plant, &BakeOptions::default(), job)
+}
+
+/// [`bake_objects`] with the choices of `opts`.
+#[allow(clippy::too_many_arguments)]
+pub fn bake_objects_with(objects: &[BakeObject], db: &ModelDb, width: usize, height: usize, size: f32, is_plant: impl Fn(&str) -> bool, opts: &BakeOptions, job: &Job) -> HashMap<Key, Tile> {
     let mut tiles: HashMap<Key, Vec<u8>> = HashMap::new();
     let mut depth: HashMap<Key, Vec<f32>> = HashMap::new();
     let mut meshes: HashMap<&str, Option<BakeMesh>> = HashMap::new();
@@ -532,6 +672,10 @@ pub fn bake_objects(objects: &[BakeObject], db: &ModelDb, width: usize, height: 
                             continue;
                         }
                         let top = b0 * w[0][1] + b1 * w[1][1] + b2 * w[2][1];
+                        // A part in the ground cannot be seen from above.
+                        if opts.ground.as_ref().is_some_and(|g| top < g.sample(px / sx, (height as f32 - py) / sy) - 0.05) {
+                            continue;
+                        }
                         let key = ((x / TILE) as u16, (y / TILE) as u16);
                         let at = (y % TILE) * TILE + x % TILE;
                         let z = depth.entry(key).or_insert_with(|| vec![f32::MIN; TILE * TILE]);
@@ -539,7 +683,7 @@ pub fn bake_objects(objects: &[BakeObject], db: &ModelDb, width: usize, height: 
                             continue;
                         }
                         let mix2 = |a: [f32; 2], b: [f32; 2], c: [f32; 2]| [b0 * a[0] + b1 * b[0] + b2 * c[0], b0 * a[1] + b1 * b[1] + b2 * c[1]];
-                        let Some(c) = surface_color(&bm.mesh, batch, mix2(v[0].uv, v[1].uv, v[2].uv), mix2(v[0].uv2, v[1].uv2, v[2].uv2)) else { continue };
+                        let Some(c) = surface_color(&bm.mesh, batch, mix2(v[0].uv, v[1].uv, v[2].uv), mix2(v[0].uv2, v[1].uv2, v[2].uv2), opts.water) else { continue };
                         let n = turned(std::array::from_fn(|k| b0 * v[0].normal[k] + b1 * v[1].normal[k] + b2 * v[2].normal[k]));
                         // Leaves catch the light from both sides.
                         let facing = n[0] * light[0] + n[1] * light[1] + n[2] * light[2];

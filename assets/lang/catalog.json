@@ -1779,6 +1779,10 @@
   "de": "Ebenen",
   "pl": "Warstwy"
  },
+ "Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it.": {
+  "de": "Lässt die im Gelände versunkenen Teile eines Objekts weg, sodass ein halb eingegrabener Pier nur seinen Teil darüber zeigt.",
+  "pl": "Pomija części obiektu zagłębione w terenie, więc molo w połowie w ziemi pokazuje tylko część nad nią."
+ },
  "Left leaf": {
   "de": "Linker Flügel",
   "pl": "Lewe skrzydło"
@@ -2227,6 +2231,10 @@
   "de": "Objekt-Sichtweite",
   "pl": "Zasięg rysowania obiektów"
  },
+ "Object geometry": {
+  "de": "Objektgeometrie",
+  "pl": "Geometria obiektu"
+ },
  "Object layers ({0})": {
   "de": "Objektebenen ({0})",
   "pl": "Warstwy obiektów ({0})"
@@ -2334,6 +2342,10 @@
  "Only visible layers": {
   "de": "Nur sichtbare Ebenen",
   "pl": "Tylko widoczne warstwy"
+ },
+ "Only what is above the ground": {
+  "de": "Nur was über dem Boden ist",
+  "pl": "Tylko to, co nad ziemią"
  },
  "Opacity": {
   "de": "Deckkraft",
@@ -2447,9 +2459,17 @@
   "de": "Oberfläche unter {0} Objekten gemalt",
   "pl": "Pomalowano powierzchnię pod {0} obiektami"
  },
+ "Painting under objects": {
+  "de": "Male unter Objekten",
+  "pl": "Malowanie pod obiektami"
+ },
  "Paints a surface under objects as a mask modifier, which can be hidden or deleted in the outliner.": {
   "de": "Malt eine Oberfläche unter Objekte als Masken-Modifikator, der in der Hierarchie ausgeblendet oder gelöscht werden kann.",
   "pl": "Maluje powierzchnię pod obiektami jako modyfikator maski, który można ukryć albo usunąć w hierarchii."
+ },
+ "Paints river and pond parts into the image, their water in the colour of water.": {
+  "de": "Malt Fluss- und Teichteile ins Bild, ihr Wasser in der Farbe von Wasser.",
+  "pl": "Wypala party rzek i stawów, ich wodę w kolorze wody."
  },
  "Paints the asphalt and verges of the road models into the image, as they look from above.": {
   "de": "Malt Asphalt und Ränder der Straßenmodelle so ins Bild, wie sie von oben aussehen.",
@@ -3543,6 +3563,10 @@
   "de": "Die Fleckgröße ist dann der Rand um den Grundriss.",
   "pl": "Rozmiar plamy jest wtedy marginesem wokół obrysu."
  },
+ "The patch then follows the outline of each model seen from above, and its size is the margin round it.": {
+  "de": "Der Fleck folgt dann dem Umriss jedes Modells von oben, seine Größe ist der Rand darum.",
+  "pl": "Plama idzie wtedy za obrysem każdego modelu widzianym z góry, a jej rozmiar to margines wokół niego."
+ },
  "The project has no satellite image": {
   "de": "Das Projekt hat kein Satellitenbild",
   "pl": "Projekt nie ma satki"
@@ -3802,6 +3826,10 @@
  "Water model": {
   "de": "Wassermodell",
   "pl": "Model wody"
+ },
+ "Water parts too": {
+  "de": "Auch Wasserteile",
+  "pl": "Także party wody"
  },
  "Weaker brush": {
   "de": "Schwächerer Pinsel",
