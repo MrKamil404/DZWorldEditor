@@ -3486,6 +3486,16 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "shapepts" => eprintln!("SHAPEPTS {:?}", app.shape.points),
         "caminfo" => eprintln!("CAMINFO pos={:?} minimap zoom={:.2} center={:?}", app.camera.pos, app.minimap_zoom, app.minimap_center),
+        "cfgscene" => {
+            let (p, f) = (app.camera.pos, app.camera.forward());
+            if let Some(d) = app.doc.as_mut() {
+                let g = d.world.height.sample(p[0], p[2]);
+                let n = d.world.meta.config.scenes.len() + 1;
+                d.world.meta.config.scenes.push(dz_core::world::CharacterScene { name: format!("loc{n}"), position: [p[0], p[2], p[1] - g], target: [p[0] + f[0] * 60.0, p[2] + f[2] * 60.0, p[1] + f[1] * 60.0], fov: 0.6, ..Default::default() });
+                d.world.meta.config.start_time = "6:30".into();
+            }
+        }
+        "mapconfig" => app.dialog = crate::app::Dialog::MapConfig,
         "selcount" => eprintln!("SELCOUNT {}", app.selection.len()),
         "fullscreen" => crate::panels::set_fullscreen(app, ctx, arg == "1"),
         "edge" => { if let Ok(k) = arg.parse::<usize>() { if k < 4 { app.edge_open[k] = true; } } }

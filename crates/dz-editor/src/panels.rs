@@ -219,6 +219,7 @@ fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 });
                 ui.separator();
                 if ui.button(icons::with(icons::SLIDERS_HORIZONTAL, &t("Project settings..."))).clicked() { app.dialog = Dialog::ProjectSettings; ui.close_menu(); }
+                if ui.add_enabled(app.doc.is_some(), egui::Button::new(icons::with(icons::FILE_CODE, &t("Map config...")))).on_hover_text(t("The world config (CfgWorlds) of the map, written to config.cpp on export.")).clicked() { app.dialog = Dialog::MapConfig; ui.close_menu(); }
                 if ui.button(icons::with(icons::SIGN_OUT, &t("Exit"))).clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
             });
             ui.menu_button(t("Edit"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
@@ -1658,6 +1659,7 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
             }
         }
         Dialog::ProjectSettings => project_window(app, ctx, &mut open),
+        Dialog::MapConfig => map_config_window(app, ctx, &mut open),
         Dialog::Export(only) => {
             if crate::exporting::window(app, ctx, *only, &mut open) { close = true; }
         }
@@ -1797,11 +1799,285 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     if !*open { app.settings.save(); }
 }
 
+/// The settings of the world config of the map, beside the config.cpp they make.
+/// What the base world has for a setting the map config can override, shown as a hint.
+fn base_value(base: &dz_core::world::BaseWorld, key: &str) -> &'static str {
+    use dz_core::world::BaseWorld as B;
+    let chernarus = matches!(base, B::ChernarusPlus);
+    match key {
+        "cutscenes" => if chernarus { "ChernarusPlusIntro" } else { "EnochIntro" },
+        "startTime" => "9:00",
+        "startDate" => if chernarus { "5/10/2015" } else { "25/8/2015" },
+        "ceFiles" => if chernarus { r"DZ\worlds\chernarusplus\ce" } else { r"DZ\worlds\enoch\ce" },
+        "mapDisplayNameKey" => "#STR_CfgVehicles_ChernarusMap0",
+        "mapDescriptionKey" => "#STR_CfgVehicles_ChernarusMap1",
+        "mapTextureClosed" => if chernarus { r"dz\gear\navigation\data\map_chernarus_co.paa" } else { r"dz\gear\navigation\data\map_enoch_co.paa" },
+        "mapTextureOpened" => if chernarus { r"dz\structures\signs\tourist\data\karta_co.paa" } else { r"dz\structures_bliss\signs\tourist\data\karta_enoch_co.paa" },
+        "mapTextureLegend" => if chernarus { r"dz\structures\signs\tourist\data\karta_side_co.paa" } else { r"dz\structures_bliss\signs\tourist\data\karta_enoch_side_co.paa" },
+        "userMapPath" => if chernarus { r"dz\gear\navigation\data\usermap" } else { r"dz\worlds\enoch\data\usermap" },
+        "satellite" => if chernarus { r"DZ\worlds\chernarusplus\data\outside_sat_co.paa" } else { r"DZ\worlds\enoch\data\enoch_satout_co.paa" },
+        "texture" => if chernarus { r"DZ\surfaces\data\terrain\cp_grass_ca.paa" } else { r"DZ\surfaces_bliss\data\terrain\en_grass1_ca.paa" },
+        "nopx" => if chernarus { r"DZ\surfaces\data\terrain\cp_grass_nopx.paa" } else { r"DZ\surfaces_bliss\data\terrain\en_grass1_nopx.paa" },
+        "midDetailTexture" => if chernarus { r"DZ\worlds\chernarusplus\data\middle_sat_mco.paa" } else { r"DZ\worlds\enoch\data\enoch_middle_mco.paa" },
+        "terrainNormalTexture" => if chernarus { r"DZ\worlds\chernarusplus\data\global_nohq.paa" } else { r"DZ\worlds\enoch\data\enoch_global_nohq.paa" },
+        "oceanMaterial" => if chernarus { "" } else { r"dz\worlds\enoch\data\enoch_riversea.emat" },
+        "noDetailDist" => if chernarus { "40" } else { "65" },
+        "fullDetailDist" => if chernarus { "15" } else { "10" },
+        "clutterDist" => "125",
+        "clutterGrid" => "1",
+        "minTrees" => "10",
+        "minRocks" => "5",
+        _ => "",
+    }
+}
+
+/// A text setting of the config: empty keeps the value of the base world, shown greyed.
+fn config_text(ui: &mut egui::Ui, label: &str, value: &mut String, inherited: &str) {
+    row(ui, label, |ui| {
+        let hint = if inherited.is_empty() { t("(from the base world)") } else { inherited.to_string() };
+        ui.add(egui::TextEdit::singleline(value).hint_text(hint).desired_width(f32::INFINITY));
+    });
+}
+
+/// A number setting of the config: off keeps the value of the base world.
+fn config_number(ui: &mut egui::Ui, label: &str, value: &mut Option<f32>, inherited: &str, range: std::ops::RangeInclusive<f32>, suffix: &str) {
+    row(ui, label, |ui| {
+        let mut on = value.is_some();
+        if ui.checkbox(&mut on, "").changed() {
+            *value = on.then(|| inherited.parse().unwrap_or(*range.start()));
+        }
+        match value {
+            Some(v) => { ui.add(egui::DragValue::new(v).speed(1.0).range(range).suffix(suffix)); }
+            None => { ui.weak(tf("{0} (base world)", &[inherited])); }
+        }
+    });
+}
+
+fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
+    use dz_core::world::BaseWorld;
+    let camera = [app.camera.pos[0], app.camera.pos[2]];
+    let (cam_pos, cam_fwd, cam_fov) = (app.camera.pos, app.camera.forward(), app.camera.fov);
+    let mut go_to: Option<dz_core::world::CharacterScene> = None;
+    let Some(doc) = &mut app.doc else { *open = false; return };
+    let before = doc.world.meta.clone();
+    let size = doc.world.meta.size_m();
+    let mut copied = false;
+    egui::Window::new(t("Map config")).collapsible(false).resizable(true).default_size([980.0, 620.0]).open(open).show(ctx, |ui| {
+        ui.columns(2, |cols| {
+            let ui = &mut cols[0];
+            egui::ScrollArea::vertical().id_salt("cfg_form").auto_shrink([false, false]).show(ui, |ui| {
+                let height = &doc.world.height;
+                let doc_height = |x: f32, z: f32| height.sample(x, z);
+                let m = &mut doc.world.meta;
+                section(ui, &t("World"), true, |ui| {
+                    row(ui, &t("Description"), |ui| { ui.add(egui::TextEdit::singleline(&mut m.config.description).hint_text(m.name.clone()).desired_width(f32::INFINITY)); });
+                    ui.weak(t("The name the game shows; empty takes the name of the project."));
+                    row(ui, &t("Map ID"), |ui| { ui.text_edit_singleline(&mut m.map_id); });
+                    row(ui, &t("Author"), |ui| { ui.text_edit_singleline(&mut m.author); });
+                    let kind = match &m.config.base { BaseWorld::Enoch => 0, BaseWorld::ChernarusPlus => 1, BaseWorld::Custom { .. } => 2 };
+                    let mut pick = kind;
+                    row(ui, &t("Built on"), |ui| {
+                        egui::ComboBox::from_id_salt("cfg_base").selected_text(match kind { 0 => "Enoch (Livonia)".to_string(), 1 => "ChernarusPlus".to_string(), _ => t("Another world") }).show_ui(ui, |ui| {
+                            ui.selectable_value(&mut pick, 0, "Enoch (Livonia)");
+                            ui.selectable_value(&mut pick, 1, "ChernarusPlus");
+                            ui.selectable_value(&mut pick, 2, t("Another world"));
+                        });
+                    });
+                    if pick != kind {
+                        m.config.base = match pick { 0 => BaseWorld::Enoch, 1 => BaseWorld::ChernarusPlus, _ => BaseWorld::Custom { class: "Enoch".into(), addon: "DZ_Worlds_Enoch".into() } };
+                    }
+                    if let BaseWorld::Custom { class, addon } = &mut m.config.base {
+                        row(ui, &t("World class"), |ui| { ui.text_edit_singleline(class); });
+                        row(ui, &t("Its addon"), |ui| { ui.text_edit_singleline(addon); });
+                    }
+                    ui.weak(t("The map takes over the settings of this world: its weather, light, sounds and the rest the config does not set."));
+                    ui.checkbox(&mut m.config.has_ocean, t("Sea around the map (hasOcean)"));
+                });
+                section(ui, &t("Position"), true, |ui| {
+                    let mut own = m.config.center.is_some();
+                    if ui.checkbox(&mut own, t("Own map centre")).on_hover_text(t("Where the game's map opens; without it the middle of the terrain.")).changed() {
+                        m.config.center = own.then_some([size * 0.5, size * 0.5]);
+                    }
+                    if let Some(c) = &mut m.config.center {
+                        row(ui, "X", |ui| { ui.add(egui::DragValue::new(&mut c[0]).speed(5.0).range(0.0..=size).suffix(" m")); });
+                        row(ui, "Z", |ui| { ui.add(egui::DragValue::new(&mut c[1]).speed(5.0).range(0.0..=size).suffix(" m")); });
+                        if ui.button(t("Where the camera is")).clicked() { *c = [camera[0].clamp(0.0, size), camera[1].clamp(0.0, size)]; }
+                    }
+                    row(ui, &t("Latitude"), |ui| { ui.add(egui::DragValue::new(&mut m.latitude).speed(0.1).range(-90.0..=90.0).suffix("°")); });
+                    row(ui, &t("Longitude"), |ui| { ui.add(egui::DragValue::new(&mut m.longitude).speed(0.1).range(-180.0..=180.0).suffix("°")); });
+                    ui.weak(t("Latitude and longitude set where the sun and the stars stand."));
+                });
+                section(ui, &t("Map grid"), false, |ui| {
+                    for (k, name) in ["Close up", "Middle", "Far out"].iter().enumerate() {
+                        row(ui, &t(name), |ui| { ui.add(egui::DragValue::new(&mut m.config.grid_steps[k]).speed(10.0).range(10..=100000).suffix(" m")); });
+                    }
+                    ui.weak(t("Steps of the grid on the in-game map at its three zoom levels."));
+                });
+                section(ui, &t("Main menu scenes"), false, |ui| {
+                    ui.weak(t("Places the main menu shows behind the character. Set one from where the 3D camera stands and looks; without any the base world's are used."));
+                    let ground = |x: f32, z: f32| doc_height(x, z);
+                    let from_camera = |s: &mut dz_core::world::CharacterScene| {
+                        s.position = [cam_pos[0], cam_pos[2], (cam_pos[1] - ground(cam_pos[0], cam_pos[2])).max(0.2)];
+                        let reach = 60.0;
+                        s.target = [cam_pos[0] + cam_fwd[0] * reach, cam_pos[2] + cam_fwd[2] * reach, cam_pos[1] + cam_fwd[1] * reach];
+                        s.fov = cam_fov.clamp(0.1, 2.5);
+                    };
+                    let mut remove = None;
+                    let count = m.config.scenes.len();
+                    for (k, s) in m.config.scenes.iter_mut().enumerate() {
+                        egui::CollapsingHeader::new(format!("{}  {}", k + 1, s.name)).id_salt(("scene", k)).default_open(k + 1 == count).show(ui, |ui| {
+                            row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut s.name); });
+                            row(ui, &t("Camera"), |ui| {
+                                ui.add(egui::DragValue::new(&mut s.position[0]).speed(1.0).prefix("X "));
+                                ui.add(egui::DragValue::new(&mut s.position[1]).speed(1.0).prefix("Z "));
+                                ui.add(egui::DragValue::new(&mut s.position[2]).speed(0.1).prefix("↑ ").suffix(" m"));
+                            });
+                            row(ui, &t("Looks at"), |ui| {
+                                ui.add(egui::DragValue::new(&mut s.target[0]).speed(1.0).prefix("X "));
+                                ui.add(egui::DragValue::new(&mut s.target[1]).speed(1.0).prefix("Z "));
+                                ui.add(egui::DragValue::new(&mut s.target[2]).speed(0.5).prefix("Y "));
+                            });
+                            let mut deg = s.fov.to_degrees();
+                            row(ui, &t("Field of view"), |ui| { if ui.add(egui::Slider::new(&mut deg, 10.0..=120.0).suffix("°")).changed() { s.fov = deg.to_radians(); } });
+                            row(ui, &t("Date and time"), |ui| {
+                                ui.add(egui::DragValue::new(&mut s.date[2]).range(1..=31).prefix(""));
+                                ui.label(".");
+                                ui.add(egui::DragValue::new(&mut s.date[1]).range(1..=12));
+                                ui.label(".");
+                                ui.add(egui::DragValue::new(&mut s.date[0]).range(1900..=2100));
+                                ui.add(egui::DragValue::new(&mut s.date[3]).range(0..=23));
+                                ui.label(":");
+                                ui.add(egui::DragValue::new(&mut s.date[4]).range(0..=59));
+                            });
+                            row(ui, &t("Overcast"), |ui| { ui.add(egui::Slider::new(&mut s.overcast, 0.0..=1.0)); });
+                            row(ui, &t("Rain"), |ui| { ui.add(egui::Slider::new(&mut s.rain, 0.0..=1.0)); });
+                            row(ui, &t("Fog"), |ui| { ui.add(egui::Slider::new(&mut s.fog, 0.0..=1.0)); });
+                            ui.horizontal(|ui| {
+                                if ui.button(icons::with(icons::CAMERA, &t("From the camera"))).on_hover_text(t("Where the 3D camera stands and what it looks at.")).clicked() { from_camera(s); }
+                                if ui.button(icons::with(icons::EYE, &t("Look from here"))).on_hover_text(t("Takes the 3D camera to this scene.")).clicked() { go_to = Some(s.clone()); }
+                                if ui.button(icons::with(icons::TRASH, &t("Delete"))).clicked() { remove = Some(k); }
+                            });
+                        });
+                    }
+                    if let Some(k) = remove { m.config.scenes.remove(k); }
+                    if ui.button(icons::with(icons::PLUS, &t("Add a scene from the camera"))).clicked() {
+                        let mut s = dz_core::world::CharacterScene { name: format!("loc{}", m.config.scenes.len() + 1), ..Default::default() };
+                        from_camera(&mut s);
+                        m.config.scenes.push(s);
+                    }
+                });
+                section(ui, &t("Start and intro"), false, |ui| {
+                    let base = m.config.base.clone();
+                    let mut list = m.config.cutscenes.join(", ");
+                    row(ui, &t("Intro (cutscenes)"), |ui| {
+                        if ui.add(egui::TextEdit::singleline(&mut list).hint_text(base_value(&base, "cutscenes")).desired_width(f32::INFINITY)).changed() {
+                            m.config.cutscenes = list.split(',').map(|c| c.trim().to_string()).filter(|c| !c.is_empty()).collect();
+                        }
+                    });
+                    ui.weak(t("Names of the intro missions, separated by commas; the base world's intro shows its own map."));
+                    config_text(ui, &t("Start time"), &mut m.config.start_time, base_value(&base, "startTime"));
+                    config_text(ui, &t("Start date"), &mut m.config.start_date, base_value(&base, "startDate"));
+                    config_text(ui, &t("Central Economy folder (ceFiles)"), &mut m.config.ce_files, base_value(&base, "ceFiles"));
+                    if ui.small_button(t("This map's ce folder")).clicked() { m.config.ce_files = format!("{}\\ce", m.map_id); }
+                });
+                section(ui, &t("Map item"), false, |ui| {
+                    let base = m.config.base.clone();
+                    ui.weak(t("The paper map players carry and the tourist boards; empty fields keep those of the base world."));
+                    config_text(ui, &t("Name key"), &mut m.config.map_display_name_key, base_value(&base, "mapDisplayNameKey"));
+                    config_text(ui, &t("Description key"), &mut m.config.map_description_key, base_value(&base, "mapDescriptionKey"));
+                    config_text(ui, &t("Folded map texture"), &mut m.config.map_texture_closed, base_value(&base, "mapTextureClosed"));
+                    config_text(ui, &t("Open map texture"), &mut m.config.map_texture_opened, base_value(&base, "mapTextureOpened"));
+                    config_text(ui, &t("Legend texture"), &mut m.config.map_texture_legend, base_value(&base, "mapTextureLegend"));
+                    config_text(ui, &t("User map folder"), &mut m.config.user_map_path, base_value(&base, "userMapPath"));
+                });
+                section(ui, &t("Terrain look"), false, |ui| {
+                    let base = m.config.base.clone();
+                    ui.label(t("Beyond the edge of the map"));
+                    config_text(ui, &t("Satellite"), &mut m.config.outside_satellite, base_value(&base, "satellite"));
+                    row(ui, &t("Terrain synthesis"), |ui| {
+                        egui::ComboBox::from_id_salt("cfg_synth").selected_text(match m.config.outside_synth { None => t("(from the base world)"), Some(true) => t("On"), Some(false) => t("Off") }).show_ui(ui, |ui| {
+                            ui.selectable_value(&mut m.config.outside_synth, None, t("(from the base world)"));
+                            ui.selectable_value(&mut m.config.outside_synth, Some(true), t("On"));
+                            ui.selectable_value(&mut m.config.outside_synth, Some(false), t("Off"));
+                        });
+                    });
+                    config_text(ui, &t("Surface texture"), &mut m.config.outside_texture, base_value(&base, "texture"));
+                    config_text(ui, &t("Surface relief (nopx)"), &mut m.config.outside_nopx, base_value(&base, "nopx"));
+                    ui.separator();
+                    config_text(ui, &t("Middle distance texture"), &mut m.config.mid_detail_texture, base_value(&base, "midDetailTexture"));
+                    config_text(ui, &t("Terrain normal map"), &mut m.config.terrain_normal_texture, base_value(&base, "terrainNormalTexture"));
+                    config_text(ui, &t("Sea material"), &mut m.config.ocean_material, base_value(&base, "oceanMaterial"));
+                    ui.weak(t("The textures of the base world show its own terrain; a map of its own needs its own."));
+                });
+                section(ui, &t("Detail distances"), false, |ui| {
+                    let base = m.config.base.clone();
+                    config_number(ui, &t("Grass distance"), &mut m.config.clutter_dist, base_value(&base, "clutterDist"), 10.0..=500.0, " m");
+                    config_number(ui, &t("Grass grid"), &mut m.config.clutter_grid, base_value(&base, "clutterGrid"), 0.25..=10.0, " m");
+                    config_number(ui, &t("Surface detail distance"), &mut m.config.no_detail_dist, base_value(&base, "noDetailDist"), 5.0..=500.0, " m");
+                    config_number(ui, &t("Full detail distance"), &mut m.config.full_detail_dist, base_value(&base, "fullDetailDist"), 1.0..=200.0, " m");
+                    let mut trees = m.config.min_trees_in_forest_square.map(|v| v as f32);
+                    config_number(ui, &t("Trees for a forest square"), &mut trees, base_value(&base, "minTrees"), 1.0..=100.0, "");
+                    m.config.min_trees_in_forest_square = trees.map(|v| v.round() as u32);
+                    let mut rocks = m.config.min_rocks_in_rock_square.map(|v| v as f32);
+                    config_number(ui, &t("Rocks for a rock square"), &mut rocks, base_value(&base, "minRocks"), 1.0..=100.0, "");
+                    m.config.min_rocks_in_rock_square = rocks.map(|v| v.round() as u32);
+                });
+                section(ui, &t("Addons and extra lines"), false, |ui| {
+                    ui.label(t("Required addons, one per line"));
+                    let mut text = m.config.required_addons.join("\n");
+                    if ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_rows(3).desired_width(f32::INFINITY).hint_text("MyMod_Data")).changed() {
+                        m.config.required_addons = text.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+                    }
+                    ui.weak(t("DZ_Data and the addon of the base world are always there."));
+                    ui.label(t("Lines in the world class"));
+                    ui.add(egui::TextEdit::multiline(&mut m.config.extra_world).code_editor().desired_rows(5).desired_width(f32::INFINITY).hint_text("minTreesInForestSquare=10;"));
+                    ui.label(t("Lines at the end of the file"));
+                    ui.add(egui::TextEdit::multiline(&mut m.config.extra_file).code_editor().desired_rows(4).desired_width(f32::INFINITY));
+                    ui.weak(t("Written as they are; locations come from the key points."));
+                });
+                if ui.button(t("Back to the defaults")).clicked() { m.config = Default::default(); }
+            });
+            let ui = &mut cols[1];
+            ui.horizontal(|ui| {
+                ui.strong("world\\config.cpp");
+                if ui.button(icons::with(icons::COPY, &t("Copy"))).clicked() { copied = true; }
+            });
+            let mut text = dz_core::export::world_config_text(&doc.world, false);
+            if copied { ui.ctx().copy_text(text.clone()); }
+            let braces = text.matches('{').count() as i64 - text.matches('}').count() as i64;
+            if braces != 0 {
+                ui.colored_label(Color32::from_rgb(235, 110, 90), tf("The braces do not pair up ({0}); check the extra lines.", &[&braces.to_string()]));
+            }
+            egui::ScrollArea::both().id_salt("cfg_preview").auto_shrink([false, false]).show(ui, |ui| {
+                ui.add(egui::TextEdit::multiline(&mut text).code_editor().interactive(false).desired_width(f32::INFINITY));
+            });
+        });
+    });
+    if doc.world.meta != before {
+        doc.history.revision += 1;
+    }
+    if copied {
+        app.status = t("The config is on the clipboard");
+    }
+    if let Some(s) = go_to {
+        let ground = app.doc.as_ref().map_or(0.0, |d| d.world.height.sample(s.position[0], s.position[1]));
+        let pos = [s.position[0], ground + s.position[2], s.position[1]];
+        let d = [s.target[0] - pos[0], s.target[2] - pos[1], s.target[1] - pos[2]];
+        let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-3);
+        app.camera.pos = pos;
+        app.camera.yaw = d[0].atan2(d[2]);
+        app.camera.pitch = (d[1] / len).asin();
+        app.camera.fov = s.fov;
+        app.view_mode = crate::app::ViewMode::Perspective;
+    }
+}
+
 fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     let Some(doc) = &mut app.doc else { *open = false; return };
     let before = doc.world.meta.clone();
     let issues = app.tile_issues.clone();
     let (mut check, mut fix) = (false, false);
+    let mut open_config = false;
     let m = &mut doc.world.meta;
     egui::Window::new(t("Project settings")).collapsible(false).open(open).show(ctx, |ui| {
         row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut m.name); });
@@ -1824,12 +2100,17 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
         });
         if !issues.is_empty() { ui.colored_label(Color32::from_rgb(235, 110, 90), tf("{0} tiles over the limit, marked in the 2D view", &[&issues.len().to_string()])); }
         ui.checkbox(&mut m.write_underground_flag, t("Write the newer WRP format with underground flag"));
+        if ui.button(t("Map config...")).on_hover_text(t("The world config (CfgWorlds) of the map, written to config.cpp on export.")).clicked() { open_config = true; }
         ui.separator();
         ui.label(tf("Terrain {0} × {0}, cell {1} m, map {2} m", &[&m.terrain_size.to_string(), &m.terrain_cell.to_string(), &m.size_m().to_string()]));
         ui.label(tf("Land grid {0}, cell {1} m, {2} tiles per side", &[&m.land_size().to_string(), &m.land_cell().to_string(), &m.tiles().to_string()]));
     });
     if doc.world.meta != before {
         doc.history.revision += 1;
+    }
+    if open_config {
+        app.dialog = Dialog::MapConfig;
+        return;
     }
     if check {
         app.tile_issues = dz_core::mask_limit::scan(&doc.world);

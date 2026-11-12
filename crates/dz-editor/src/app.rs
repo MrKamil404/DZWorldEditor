@@ -276,6 +276,7 @@ pub enum Dialog {
     NewProject(NewProject),
     Settings,
     ProjectSettings,
+    MapConfig,
     About,
     Shortcuts,
     Export(Option<crate::exporting::Part>),
