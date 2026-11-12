@@ -6,7 +6,7 @@ use crate::app::{App, Dialog, LineAction, Mode};
 use crate::i18n::{t, tf};
 use crate::library_ui::LibDrag;
 use crate::theme;
-use dz_core::library::{in_folder, parent_folder, LibraryItem, BUILT_IN, GENERATORS_ROOT, PRESETS_ROOT};
+use dz_core::library::{in_folder, parent_folder, LibraryItem, BUILT_IN, GENERATORS_ROOT, PREFABS_ROOT, PRESETS_ROOT};
 use dz_core::world::{ModMode, ModShape};
 use eframe::egui::{self, pos2, vec2, Color32, Rect, Stroke};
 use std::collections::BTreeMap;
@@ -27,6 +27,8 @@ pub enum Pick {
     Road(String),
     /// One of `MODIFIERS`.
     Modifier(usize),
+    /// A prefab of the library.
+    Prefab(u64),
 }
 
 /// Several things dragged out of the browser at once.
@@ -43,6 +45,7 @@ pub enum Group {
     Library,
     LibraryGenerators,
     LibraryPresets,
+    LibraryPrefabs,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -102,6 +105,7 @@ fn library_source(name: &str) -> Source {
         "" => Source::Group(Group::Library),
         GENERATORS_ROOT => Source::Group(Group::LibraryGenerators),
         PRESETS_ROOT => Source::Group(Group::LibraryPresets),
+        PREFABS_ROOT => Source::Group(Group::LibraryPrefabs),
         n => Source::LibFolder(n.to_string()),
     }
 }
@@ -112,7 +116,7 @@ impl Source {
             Source::Drive(p) if !p.is_empty() => Some(Source::Drive(p.rsplit_once('\\').map_or("", |x| x.0).to_string())),
             Source::Folder(n) if !n.is_empty() => Some(Source::Folder(parent_folder(n).to_string())),
             Source::Group(Group::BuiltInGenerators | Group::BuiltInPresets | Group::BuiltInModifiers) => Some(Source::Group(Group::BuiltIn)),
-            Source::Group(Group::LibraryGenerators | Group::LibraryPresets) | Source::Templates(None) => Some(Source::Group(Group::Library)),
+            Source::Group(Group::LibraryGenerators | Group::LibraryPresets | Group::LibraryPrefabs) | Source::Templates(None) => Some(Source::Group(Group::Library)),
             Source::Templates(Some(_)) => Some(Source::Templates(None)),
             Source::LibFolder(n) => Some(library_source(parent_folder(n))),
             Source::Category(g, _) => Some(Source::Group(*g)),
@@ -141,6 +145,7 @@ impl Source {
                 Group::BuiltInGenerators | Group::LibraryGenerators => "Generators",
                 Group::BuiltInPresets | Group::LibraryPresets => "Presets",
                 Group::BuiltInModifiers => "Modifiers",
+                Group::LibraryPrefabs => "Prefabs",
                 Group::Library => "Library",
             }),
             Source::Surfaced => t("Models with a surface"),
@@ -538,6 +543,10 @@ fn models_of(app: &App, pick: &Pick) -> Vec<String> {
         Pick::Forest(n) => forest_models(app, n),
         Pick::Road(f) => crate::library_ui::road_model(app, f).into_iter().collect(),
         Pick::Generator(_) | Pick::Modifier(_) => Vec::new(),
+        Pick::Prefab(id) => {
+            let mut seen = std::collections::HashSet::new();
+            app.library.prefabs.iter().find(|p| p.id == *id).map(|p| p.items.iter().map(|i| dz_core::objects::ObjectStore::normalize_path(&i.model)).filter(|m| seen.insert(m.clone())).collect()).unwrap_or_default()
+        }
     }
 }
 
@@ -550,7 +559,7 @@ fn is_locked(app: &App, pick: &Pick) -> bool {
         Pick::Generator(id) => app.built_in.iter().any(|g| g.id == *id),
         Pick::Forest(n) => !app.library.forest_presets.iter().any(|p| p.name == *n),
         Pick::Road(_) | Pick::Modifier(_) => true,
-        Pick::Model(_) | Pick::Preset(_) => false,
+        Pick::Model(_) | Pick::Preset(_) | Pick::Prefab(_) => false,
     }
 }
 
@@ -561,6 +570,7 @@ fn name_of(app: &App, pick: &Pick) -> String {
         Pick::Generator(id) => generator(app, *id).map(|g| if g.folder == BUILT_IN { t(&g.name) } else { g.name.clone() }).unwrap_or_default(),
         Pick::Forest(n) | Pick::Road(n) => n.clone(),
         Pick::Modifier(i) => t(MODIFIERS[*i].name),
+        Pick::Prefab(id) => app.library.prefabs.iter().find(|p| p.id == *id).map(|p| p.name.clone()).unwrap_or_default(),
     }
 }
 
@@ -586,6 +596,13 @@ fn look_of(app: &mut App, ctx: &egui::Context, pick: &Pick, layers: &[(String, [
             (letter, color) = ("O", Color32::from_rgb(64, 78, 92));
             count = Some(models.len());
             tooltip = format!("{name}\n{}", tf("{0} models", &[&models.len().to_string()]));
+            STRIPE_PRESET
+        }
+        Pick::Prefab(id) => {
+            (letter, color) = ("P", Color32::from_rgb(86, 70, 100));
+            let n = app.library.prefabs.iter().find(|p| p.id == *id).map_or(0, |p| p.items.len());
+            count = Some(n);
+            tooltip = format!("{name}\n{}", tf("{0} objects", &[&n.to_string()]));
             STRIPE_PRESET
         }
         Pick::Forest(_) => {
@@ -671,7 +688,7 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
             match g {
                 Group::BuiltIn => out.extend(sub(&[Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInModifiers])),
                 Group::Library => {
-                    out.extend(sub(&[Group::LibraryGenerators, Group::LibraryPresets]));
+                    out.extend(sub(&[Group::LibraryGenerators, Group::LibraryPresets, Group::LibraryPrefabs]));
                     out.extend(library_subfolders(app, ""));
                     out.push(Item::Folder(Source::Templates(None)));
                 }
@@ -686,6 +703,10 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
                     let own: Vec<&str> = app.library.forest_presets.iter().map(|p| p.name.as_str()).collect();
                     out.extend(dz_core::gen::forest_preset_names().into_iter().filter(|n| !own.contains(&n.as_str()) && named(n)).map(|n| Item::Asset(Pick::Forest(n))));
                     out.extend(app.road_families.iter().filter(|f| named(f)).map(|f| Item::Asset(Pick::Road(f.clone()))));
+                }
+                Group::LibraryPrefabs => {
+                    if !searching { out.extend(library_subfolders(app, PREFABS_ROOT)); }
+                    out.extend(app.library.prefabs.iter().filter(|p| named(&p.name) && (searching || app.library.library_home(&p.folder, LibraryItem::Prefab).is_empty())).map(|p| Item::Asset(Pick::Prefab(p.id))));
                 }
                 Group::LibraryPresets => {
                     if !searching { out.extend(library_subfolders(app, PRESETS_ROOT)); }
@@ -729,6 +750,7 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
             let here = |home: &str| if searching { in_folder(home, n) } else { home == n };
             out.extend(app.library.generators.iter().filter(|x| named(&x.name) && here(app.library.library_home(&x.folder, LibraryItem::Generator))).map(|x| Item::Asset(Pick::Generator(x.id))));
             out.extend(app.library.objects.iter().filter(|p| named(&p.name) && here(app.library.library_home(&p.folder, LibraryItem::Preset))).map(|p| Item::Asset(Pick::Preset(p.id))));
+            out.extend(app.library.prefabs.iter().filter(|p| named(&p.name) && here(app.library.library_home(&p.folder, LibraryItem::Prefab))).map(|p| Item::Asset(Pick::Prefab(p.id))));
         }
     }
     out
@@ -741,10 +763,14 @@ fn library_subfolders(app: &App, parent: &str) -> Vec<Item> {
 
 /// The folders of the library a generator or a preset can be moved to, as (name, label).
 fn library_targets(app: &App, kind: LibraryItem) -> Vec<(String, String)> {
-    let group = if kind == LibraryItem::Generator { (GENERATORS_ROOT, "Generators") } else { (PRESETS_ROOT, "Presets") };
+    let group = match kind {
+        LibraryItem::Generator => (GENERATORS_ROOT, "Generators"),
+        LibraryItem::Preset => (PRESETS_ROOT, "Presets"),
+        LibraryItem::Prefab => (PREFABS_ROOT, "Prefabs"),
+    };
     let mut out = vec![(group.0.to_string(), t(group.1))];
     for f in app.library.library_folders.iter().filter(|f| dz_core::library::library_folder_takes(f, kind)) {
-        let label = f.split('/').map(|p| if p == GENERATORS_ROOT { t("Generators") } else if p == PRESETS_ROOT { t("Presets") } else { p.to_string() }).collect::<Vec<_>>().join(" › ");
+        let label = f.split('/').map(|p| match p { GENERATORS_ROOT => t("Generators"), PRESETS_ROOT => t("Presets"), PREFABS_ROOT => t("Prefabs"), p => p.to_string() }).collect::<Vec<_>>().join(" › ");
         out.push((f.clone(), label));
     }
     out
@@ -752,13 +778,14 @@ fn library_targets(app: &App, kind: LibraryItem) -> Vec<(String, String)> {
 
 /// Takes generators and presets of the library dropped on one of its folders.
 fn take_library_drop(resp: &egui::Response, folder: &str, acts: &mut Vec<Act>) {
-    let dragging = egui::DragAndDrop::payload::<LibDrag>(&resp.ctx).is_some_and(|d| matches!(*d, LibDrag::ObjectPreset(_) | LibDrag::Generator(_)))
-        || egui::DragAndDrop::payload::<Dragged>(&resp.ctx).is_some_and(|d| d.0.iter().any(|p| matches!(p, Pick::Generator(_) | Pick::Preset(_))));
+    let dragging = egui::DragAndDrop::payload::<LibDrag>(&resp.ctx).is_some_and(|d| matches!(*d, LibDrag::ObjectPreset(_) | LibDrag::Generator(_) | LibDrag::Prefab(_)))
+        || egui::DragAndDrop::payload::<Dragged>(&resp.ctx).is_some_and(|d| d.0.iter().any(|p| matches!(p, Pick::Generator(_) | Pick::Preset(_) | Pick::Prefab(_))));
     theme::drop_zone(resp, dragging);
     if let Some(d) = crate::theme::take::<LibDrag>(resp) {
         match *d {
             LibDrag::Generator(id) => acts.push(Act::LibMove(folder.to_string(), vec![id], Vec::new())),
             LibDrag::ObjectPreset(id) => acts.push(Act::LibMove(folder.to_string(), Vec::new(), vec![id])),
+            LibDrag::Prefab(id) => acts.push(Act::LibMovePrefabs(folder.to_string(), vec![id])),
             LibDrag::ForestPreset(_) => {}
         }
     }
@@ -766,6 +793,8 @@ fn take_library_drop(resp: &egui::Response, folder: &str, acts: &mut Vec<Act>) {
         let gens = d.0.iter().filter_map(|p| if let Pick::Generator(id) = p { Some(*id) } else { None }).collect();
         let presets = d.0.iter().filter_map(|p| if let Pick::Preset(id) = p { Some(*id) } else { None }).collect();
         acts.push(Act::LibMove(folder.to_string(), gens, presets));
+        let prefabs: Vec<u64> = d.0.iter().filter_map(|p| if let Pick::Prefab(id) = p { Some(*id) } else { None }).collect();
+        if !prefabs.is_empty() { acts.push(Act::LibMovePrefabs(folder.to_string(), prefabs)); }
     }
 }
 
@@ -801,6 +830,9 @@ enum Act {
     LibDeleteFolder(String),
     /// Generators and presets into a folder of the library.
     LibMove(String, Vec<u64>, Vec<u64>),
+    LibMovePrefabs(String, Vec<u64>),
+    /// A prefab of the selected objects.
+    NewPrefab,
 }
 
 /// Menu that assigns the surface painted under models.
@@ -907,6 +939,7 @@ fn source_row(ui: &mut egui::Ui, current: &Source, s: Source, text: String, acts
         Source::Group(Group::Library) => Some(crate::icons::BOOKS),
         Source::Group(Group::LibraryGenerators) => Some(crate::icons::MAGIC_WAND),
         Source::Group(Group::LibraryPresets) => Some(crate::icons::SQUARES_FOUR),
+        Source::Group(Group::LibraryPrefabs) => Some(crate::icons::PACKAGE),
         _ => None,
     };
     if let Some(icon) = icon {
@@ -1076,6 +1109,9 @@ fn library_new_menu(ui: &mut egui::Ui, app: &App, place: &str, acts: &mut Vec<Ac
             }
         });
     }
+    if dz_core::library::library_folder_takes(place, LibraryItem::Prefab) {
+        if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("New prefab from the selection"))).on_hover_text(t("Saves the selected objects as a prefab, to be placed again anywhere as one.")).clicked() { acts.push(Act::Go(library_source(place))); acts.push(Act::NewPrefab); ui.close_menu(); }
+    }
     if dz_core::library::library_folder_takes(place, LibraryItem::Preset) {
         if ui.button(t("New object preset")).on_hover_text(t("With the models selected in the browser.")).clicked() { acts.push(Act::Go(library_source(place))); acts.push(Act::NewPreset); ui.close_menu(); }
     }
@@ -1118,7 +1154,7 @@ fn library_section(ui: &mut egui::Ui, app: &App, acts: &mut Vec<Act>, renamed: &
             r.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(String::new())); ui.close_menu(); } });
         })
         .body(|ui| {
-            for (g, root) in [(Group::LibraryGenerators, GENERATORS_ROOT), (Group::LibraryPresets, PRESETS_ROOT)] {
+            for (g, root) in [(Group::LibraryGenerators, GENERATORS_ROOT), (Group::LibraryPresets, PRESETS_ROOT), (Group::LibraryPrefabs, PREFABS_ROOT)] {
                 let row = |ui: &mut egui::Ui, acts: &mut Vec<Act>| {
                     let r = source_row(ui, &app.browser.source, Source::Group(g), Source::Group(g).label(), acts);
                     take_library_drop(&r, root, acts);
@@ -1292,6 +1328,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             Source::Group(Group::Library) => Some(String::new()),
             Source::Group(Group::LibraryGenerators) => Some(GENERATORS_ROOT.to_string()),
             Source::Group(Group::LibraryPresets) => Some(PRESETS_ROOT.to_string()),
+            Source::Group(Group::LibraryPrefabs) => Some(PREFABS_ROOT.to_string()),
             Source::LibFolder(f) => Some(f.clone()),
             _ => None,
         };
@@ -1378,6 +1415,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         Pick::Model(m) => resp.dnd_set_drag_payload(m.clone()),
                                         Pick::Preset(id) => resp.dnd_set_drag_payload(LibDrag::ObjectPreset(*id)),
                                         Pick::Generator(id) => resp.dnd_set_drag_payload(LibDrag::Generator(*id)),
+                                        Pick::Prefab(id) => resp.dnd_set_drag_payload(LibDrag::Prefab(*id)),
                                         Pick::Forest(n) => resp.dnd_set_drag_payload(LibDrag::ForestPreset(n.clone())),
                                         Pick::Road(_) | Pick::Modifier(_) => resp.dnd_set_drag_payload(Dragged(group.clone())),
                                     }
@@ -1432,17 +1470,26 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                             }
                                         });
                                     }
+                                    let lib_prefabs: Vec<u64> = group.iter().filter_map(|p| if let Pick::Prefab(id) = p { Some(*id) } else { None }).collect();
+                                    if !lib_prefabs.is_empty() {
+                                        ui.menu_button(t("Move to library folder"), |ui| {
+                                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                                            for (name, label) in library_targets(app, LibraryItem::Prefab) {
+                                                if ui.button(label).clicked() { acts.push(Act::LibMovePrefabs(name, lib_prefabs.clone())); ui.close_menu(); }
+                                            }
+                                        });
+                                    }
                                     if models.len() > 1 && ui.button(t("Make a preset of them")).clicked() { acts.push(Act::MakePreset(models.clone())); ui.close_menu(); }
                                     if group.len() == 1 {
                                         if let Pick::Model(m) = pick {
                                             if ui.button(t("Show in its folder")).clicked() { acts.push(Act::Go(Source::Drive(m.rsplit_once('\\').map_or("", |x| x.0).to_string()))); ui.close_menu(); }
                                             if ui.button(t("Copy the path")).clicked() { ui.ctx().copy_text(m.clone()); ui.close_menu(); }
                                         }
-                                        if matches!(pick, Pick::Generator(_) | Pick::Forest(_) | Pick::Preset(_)) {
+                                        if matches!(pick, Pick::Generator(_) | Pick::Forest(_) | Pick::Preset(_) | Pick::Prefab(_)) {
                                             if ui.button(if locked { t("Edit a copy") } else { t("Edit") }).clicked() { acts.push(if locked { Act::Duplicate(pick.clone()) } else { Act::Open(pick.clone()) }); ui.close_menu(); }
                                             if ui.button(t("Duplicate")).clicked() { acts.push(Act::Duplicate(pick.clone())); ui.close_menu(); }
                                         }
-                                        if !locked && matches!(pick, Pick::Generator(_) | Pick::Forest(_) | Pick::Preset(_)) && ui.button(t("Delete")).clicked() { acts.push(Act::Delete(pick.clone())); ui.close_menu(); }
+                                        if !locked && matches!(pick, Pick::Generator(_) | Pick::Forest(_) | Pick::Preset(_) | Pick::Prefab(_)) && ui.button(t("Delete")).clicked() { acts.push(Act::Delete(pick.clone())); ui.close_menu(); }
                                         if locked { locked_note(ui); }
                                     }
                                     ui.separator();
@@ -1563,6 +1610,14 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                 }
                 app.lib_dirty = true;
             }
+            Act::NewPrefab => { app.create_prefab(); }
+            Act::LibMovePrefabs(folder, ids) => {
+                let n = app.library.move_prefabs_to_library_folder(&folder, &ids);
+                if n > 0 {
+                    app.lib_dirty = true;
+                    app.status = tf("Moved {0} to {1}", &[&n.to_string(), &library_source(&folder).label()]);
+                }
+            }
             Act::LibMove(folder, gens, presets) => {
                 let n = app.library.move_to_library_folder(&folder, &gens, &presets);
                 if n > 0 {
@@ -1602,6 +1657,11 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                         if app.place.preset == Some(*id) { app.place.preset = None; }
                     }
                     Pick::Forest(n) => crate::library_ui::remove_forest_preset(app, n),
+                    Pick::Prefab(id) => {
+                        app.library.prefabs.retain(|p| p.id != *id);
+                        if app.edit_prefab == Some(*id) { app.edit_prefab = None; }
+                        if app.place.prefab == Some(*id) { app.place.prefab = None; }
+                    }
                     _ => {}
                 }
                 app.browser.selected.retain(|p| *p != pick);
@@ -1753,11 +1813,22 @@ fn activate(app: &mut App, pick: &Pick, single: bool) {
         Pick::Model(m) => {
             app.place.model = Some(m.clone());
             app.place.preset = None;
+            app.place.prefab = None;
             app.place.pool = if models.len() > 1 { models } else { Vec::new() };
             if single && app.mode == Mode::Select { app.mode = Mode::Place; }
         }
         Pick::Preset(id) => {
             app.place.preset = Some(*id);
+            app.place.prefab = None;
+            if single && app.mode == Mode::Select { app.mode = Mode::Place; }
+        }
+        Pick::Prefab(id) => {
+            app.place.prefab = Some(*id);
+            app.place.preset = None;
+            app.edit_object = None;
+            app.edit_generator = None;
+            app.edit_forest = None;
+            app.edit_prefab = Some(*id);
             if single && app.mode == Mode::Select { app.mode = Mode::Place; }
         }
         Pick::Road(f) => {
@@ -1775,6 +1846,7 @@ fn open(app: &mut App, pick: &Pick) {
         app.edit_object = None;
         app.edit_generator = None;
         app.edit_forest = None;
+        app.edit_prefab = None;
         app.selected_generator = None;
     };
     match pick {
@@ -1782,6 +1854,7 @@ fn open(app: &mut App, pick: &Pick) {
         Pick::Generator(id) => { clear(app); app.edit_generator = Some(*id); }
         Pick::Forest(n) => { clear(app); app.edit_forest = Some(n.clone()); }
         Pick::Road(f) => { app.line.family = f.clone(); app.dialog = Dialog::RoadCatalog; }
+        Pick::Prefab(id) => { clear(app); app.edit_prefab = Some(*id); }
         Pick::Model(_) | Pick::Modifier(_) => {}
     }
 }
@@ -1802,6 +1875,17 @@ fn duplicate(app: &mut App, pick: &Pick) {
         }
         Pick::Forest(n) => crate::library_ui::duplicate_forest_preset(app, n),
         Pick::Preset(id) => crate::library_ui::duplicate_object_preset(app, *id),
+        Pick::Prefab(id) => {
+            if let Some(mut p) = app.library.prefabs.iter().find(|p| p.id == *id).cloned() {
+                p.id = dz_core::library::new_id();
+                p.name = format!("{} 2", p.name);
+                let new = p.id;
+                app.library.prefabs.push(p);
+                app.edit_prefab = Some(new);
+                app.browser.selected = vec![Pick::Prefab(new)];
+                app.lib_dirty = true;
+            }
+        }
         _ => {}
     }
 }
@@ -1974,6 +2058,16 @@ fn details(app: &mut App, ui: &mut egui::Ui, layers: &[(String, [u8; 3])], acts:
                     info_rows(ui, &rows);
                     ui.weak(t("Drop it on the map to add a terrain modifier there."));
                 }
+                Pick::Prefab(id) => {
+                    if let Some(p) = app.library.prefabs.iter().find(|p| p.id == *id) {
+                        rows.push((t("Kind"), t("Prefab")));
+                        rows.push((t("Objects"), p.items.len().to_string()));
+                        info_rows(ui, &rows);
+                        let items: Vec<(String, Option<f32>)> = models.iter().map(|m| (m.clone(), None)).collect();
+                        model_strip(app, ui, &items);
+                        ui.weak(t("Click on the map to place it; it can also be dragged onto the map."));
+                    }
+                }
                 Pick::Model(_) => {}
             }
             if locked { locked_note(ui); }
@@ -1990,6 +2084,10 @@ fn details(app: &mut App, ui: &mut egui::Ui, layers: &[(String, [u8; 3])], acts:
                     Pick::Forest(n) => {
                         if ui.button(t("Add to the project")).clicked() { crate::library_ui::add_forest(app, n, None); }
                         if ui.button(if locked { t("Edit a copy") } else { t("Edit") }).clicked() { if locked { duplicate(app, one) } else { open(app, one) } }
+                    }
+                    Pick::Prefab(_) => {
+                        if ui.button(t("Place")).clicked() { activate(app, one, true); app.mode = Mode::Place; }
+                        if ui.button(t("Edit")).clicked() { open(app, one); }
                     }
                     Pick::Road(_) => {
                         if ui.button(t("Draw the road")).clicked() { activate(app, one, true); }
@@ -2071,6 +2169,7 @@ pub fn dragged_picks(ctx: &egui::Context) -> Vec<Pick> {
         Some(LibDrag::ObjectPreset(id)) => vec![Pick::Preset(id)],
         Some(LibDrag::Generator(id)) => vec![Pick::Generator(id)],
         Some(LibDrag::ForestPreset(n)) => vec![Pick::Forest(n)],
+        Some(LibDrag::Prefab(id)) => vec![Pick::Prefab(id)],
         None => Vec::new(),
     }
 }
@@ -2165,6 +2264,7 @@ pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32) {
                 if let Some(x) = crate::library_ui::pick_from_preset(app, *id, (k as u32 + 1).wrapping_mul(2654435761)) { placed.push(x); }
             }
             Pick::Modifier(i) => modifiers.push(*i),
+            Pick::Prefab(id) => { app.place_prefab(*id, x, z); }
             Pick::Generator(id) => crate::library_ui::add_instance(app, *id, Some(crate::library_ui::Dropped { shape: None, route: None, at: [x, z] })),
             Pick::Forest(n) => crate::library_ui::add_forest(app, n, Some(crate::library_ui::Dropped { shape: None, route: None, at: [x, z] })),
             Pick::Road(f) => {
@@ -2285,6 +2385,7 @@ pub fn library_demo(app: &mut App, show: &str) {
         "generators" => Source::Group(Group::LibraryGenerators),
         "builtin" => Source::Group(Group::BuiltInGenerators),
         "lines" => Source::Category(Group::BuiltInGenerators, 3),
+        "prefabs" => Source::Group(Group::LibraryPrefabs),
         _ => Source::Group(Group::Library),
     };
     app.browser.go(to);

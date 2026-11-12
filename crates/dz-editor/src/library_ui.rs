@@ -18,6 +18,7 @@ pub enum LibDrag {
     Generator(u64),
     ObjectPreset(u64),
     ForestPreset(String),
+    Prefab(u64),
 }
 
 /// What was under the cursor when something was dropped on the map.
@@ -851,6 +852,11 @@ pub fn details(app: &mut App, ui: &mut egui::Ui) -> bool {
         instance_details(app, ui, id);
         return true;
     }
+    if let Some(id) = app.edit_prefab {
+        if prefab_details(app, ui, id) {
+            return true;
+        }
+    }
     if let Some(name) = app.edit_forest.clone() {
         forest_preset_details(app, ui, &name);
         return true;
@@ -864,6 +870,55 @@ pub fn details(app: &mut App, ui: &mut egui::Ui) -> bool {
         return true;
     }
     false
+}
+
+/// The name, contents and actions of a prefab of the library. False when it is gone.
+fn prefab_details(app: &mut App, ui: &mut egui::Ui, id: u64) -> bool {
+    let Some(at) = app.library.prefabs.iter().position(|p| p.id == id) else {
+        app.edit_prefab = None;
+        return false;
+    };
+    ui.label(egui::RichText::new(t("Prefab")).strong());
+    let mut name = app.library.prefabs[at].name.clone();
+    if ui.add(egui::TextEdit::singleline(&mut name).desired_width(f32::INFINITY)).changed() && !name.trim().is_empty() {
+        app.library.prefabs[at].name = name;
+        app.lib_dirty = true;
+    }
+    let items = app.library.prefabs[at].items.clone();
+    ui.weak(tf("{0} objects", &[&items.len().to_string()]));
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for i in &items {
+        *counts.entry(i.model.rsplit('\\').next().unwrap_or(&i.model).to_string()).or_default() += 1;
+    }
+    egui::ScrollArea::vertical().id_salt("prefab_models").max_height(160.0).show(ui, |ui| {
+        for (m, n) in &counts {
+            ui.label(format!("{m}  ×{n}"));
+        }
+    });
+    ui.add_space(4.0);
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(t("Place")).on_hover_text(t("Click on the map to place it; it can also be dragged onto the map.")).clicked() {
+            app.place.prefab = Some(id);
+            app.place.preset = None;
+            app.mode = crate::app::Mode::Place;
+        }
+        if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("Replace with the selection"))).on_hover_text(t("The prefab takes the selected objects instead of those it had.")).clicked() {
+            if let Some(doc) = &app.doc {
+                let objects: Vec<(String, dz_core::objects::Obj)> = app.selection.iter().filter_map(|i| doc.world.objects.get(*i)).map(|o| (doc.world.objects.model_path(o).to_string(), *o)).collect();
+                let p = &app.library.prefabs[at];
+                let made = dz_core::library::Prefab::from_objects(p.id, p.name.clone(), &objects, &doc.world.height);
+                app.library.prefabs[at].items = made.items;
+                app.lib_dirty = true;
+            }
+        }
+        if ui.button(t("Delete")).clicked() {
+            app.library.prefabs.remove(at);
+            app.edit_prefab = None;
+            if app.place.prefab == Some(id) { app.place.prefab = None; }
+            app.lib_dirty = true;
+        }
+    });
+    true
 }
 
 fn unused_name(base: &str, taken: impl Fn(&str) -> bool) -> String {

@@ -24,7 +24,7 @@ pub const FLAG_ABSOLUTE: u32 = 2;
 /// Set when a modifier is attached to the object.
 pub const FLAG_LOCKED: u32 = 4;
 /// The object layer is kept in the upper half of `flags`.
-const LAYER_SHIFT: u32 = 16;
+pub const LAYER_SHIFT: u32 = 16;
 
 impl Obj {
     #[inline]

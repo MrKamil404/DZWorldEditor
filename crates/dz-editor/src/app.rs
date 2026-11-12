@@ -158,6 +158,8 @@ pub struct PlaceSettings {
     pub brush_spacing: f32,
     /// Places models of this object preset instead of `model`.
     pub preset: Option<u64>,
+    /// Places this prefab of the library instead of `model`.
+    pub prefab: Option<u64>,
     /// Models selected together in the browser; one of them is placed at random when
     /// `model` is among them.
     pub pool: Vec<String>,
@@ -373,6 +375,8 @@ pub struct App {
     pub outliner_rev: u64,
     pub drag: Option<crate::viewport::ObjectDrag>,
     pub box_select: Option<(egui::Pos2, egui::Pos2, bool)>,
+    /// The outline drawn so far while selecting with the lasso, in screen points.
+    pub lasso_points: Vec<egui::Pos2>,
 
     pub task: Option<Task>,
     pub log: Vec<LogLine>,
@@ -411,6 +415,8 @@ pub struct App {
     /// Library entries being edited.
     pub edit_generator: Option<u64>,
     pub edit_object: Option<u64>,
+    /// The prefab of the library shown in the details.
+    pub edit_prefab: Option<u64>,
     /// Name of the forest preset being looked at.
     pub edit_forest: Option<String>,
     pub preset_folder: Option<String>,
@@ -468,14 +474,14 @@ impl App {
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
-            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
+            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
+            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(),
+            task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
@@ -1449,6 +1455,66 @@ impl App {
             self.height_changed(r);
         }
         self.selection_rev += 1;
+    }
+
+    /// Saves the selected objects as a prefab of the library, to be placed again as one.
+    pub fn create_prefab(&mut self) -> Option<u64> {
+        let doc = self.doc.as_ref()?;
+        let objects: Vec<(String, dz_core::objects::Obj)> = self.selection.iter().filter_map(|id| doc.world.objects.get(*id)).map(|o| (doc.world.objects.model_path(o).to_string(), *o)).collect();
+        if objects.is_empty() {
+            self.warn(t("Select the objects of the prefab first"));
+            return None;
+        }
+        let base = t("Prefab");
+        let name = (1..).map(|n| format!("{base} {n}")).find(|n| !self.library.prefabs.iter().any(|p| p.name == *n)).unwrap();
+        let id = dz_core::library::new_id();
+        let mut prefab = dz_core::library::Prefab::from_objects(id, name.clone(), &objects, &doc.world.height);
+        // Made from a folder of prefabs open in the browser, it goes there.
+        if let crate::asset_browser::Source::LibFolder(f) = &self.browser.source {
+            prefab.folder = self.library.library_home(f, dz_core::library::LibraryItem::Prefab).to_string();
+        }
+        let shown = if prefab.folder.is_empty() { crate::asset_browser::Source::Group(crate::asset_browser::Group::LibraryPrefabs) } else { crate::asset_browser::Source::LibFolder(prefab.folder.clone()) };
+        self.library.prefabs.push(prefab);
+        self.lib_dirty = true;
+        self.browser.go(shown);
+        self.browser.selected = vec![crate::asset_browser::Pick::Prefab(id)];
+        self.bottom = BottomTab::Content;
+        self.edit_object = None;
+        self.edit_generator = None;
+        self.edit_forest = None;
+        self.edit_prefab = Some(id);
+        self.info(tf("{0} made of {1} objects", &[&name, &objects.len().to_string()]));
+        Some(id)
+    }
+
+    /// Places a prefab with its middle at (x, z) and selects what it placed.
+    pub fn place_prefab(&mut self, id: u64, x: f32, z: f32) -> Vec<u32> {
+        let Some(prefab) = self.library.prefabs.iter().find(|p| p.id == id).cloned() else { return Vec::new() };
+        let Some(doc) = self.doc.as_mut() else { return Vec::new() };
+        let layer = doc.world.target_layer();
+        if !doc.world.object_layers[layer as usize].interactive() {
+            self.warn(t("The active layer is hidden or locked"));
+            return Vec::new();
+        }
+        let mut change = Vec::new();
+        let mut ids = Vec::new();
+        for (model, mut o) in prefab.objects_at(x, z, 0.0, &doc.world.height) {
+            o.model = doc.world.objects.intern(&model);
+            o.set_layer(layer);
+            let n = doc.world.objects.insert(o);
+            change.push((n, None, Some(o)));
+            ids.push(n);
+        }
+        if change.is_empty() {
+            return ids;
+        }
+        doc.history.push(tf("Place {0}", &[&prefab.name]), Change::Objects(change));
+        doc.dirty.objects = true;
+        self.whole = None;
+        self.selected_generator = None;
+        self.selection = ids.iter().copied().collect();
+        self.selection_rev += 1;
+        ids
     }
 
     /// Copies the selection in place. A whole road or generator is copied as one, with what
