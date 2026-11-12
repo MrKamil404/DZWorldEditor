@@ -143,11 +143,47 @@ pub struct FenceGen {
     pub flip_end: bool,
     pub seed: u64,
     pub line: LineOptions,
+    /// Wickets and gates set into the fence.
+    #[serde(default)]
+    pub openings: Vec<FenceOpening>,
+    /// An opening put in wherever the fence crosses a road or track.
+    #[serde(default)]
+    pub road_gate: Option<FenceOpening>,
+    /// Centre lines of the roads, filled in when the generator runs.
+    #[serde(skip)]
+    pub roads: Vec<Vec<[f32; 2]>>,
+}
+
+/// A wicket or gate in a fence: a gap with its own object or objects.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct FenceOpening {
+    /// A gate rather than a wicket; only its name in the editor tells them apart.
+    pub gate: bool,
+    /// Metres from the start of the line to the middle of the opening.
+    pub at: f32,
+    /// A gate of two leaves instead of one object.
+    pub two_leaves: bool,
+    /// The wicket or the gate in one object.
+    pub model: String,
+    /// The leaves of a gate in two objects.
+    pub left: String,
+    pub right: String,
+    /// Width of the gap; 0 takes the width of the model or of both leaves.
+    pub width: f32,
+    /// Turns the object or the leaves by 180°, so they open the other way.
+    pub flip: bool,
+}
+
+impl Default for FenceOpening {
+    fn default() -> Self {
+        Self { gate: false, at: 10.0, two_leaves: false, model: String::new(), left: String::new(), right: String::new(), width: 0.0, flip: false }
+    }
 }
 
 impl Default for FenceGen {
     fn default() -> Self {
-        Self { model: r"dz\structures\walls\wall_cnc_5.p3d".into(), preset: None, resolved: Vec::new(), spacing: 0.0, yaw_offset: 0.0, random_rotation: false, follow_slope: true, join_corners: true, start_model: String::new(), end_model: String::new(), flip_start: false, flip_end: false, seed: 1, line: LineOptions::default() }
+        Self { model: r"dz\structures\walls\wall_cnc_5.p3d".into(), preset: None, resolved: Vec::new(), spacing: 0.0, yaw_offset: 0.0, random_rotation: false, follow_slope: true, join_corners: true, start_model: String::new(), end_model: String::new(), flip_start: false, flip_end: false, seed: 1, line: LineOptions::default(), openings: Vec::new(), road_gate: None, roads: Vec::new() }
     }
 }
 

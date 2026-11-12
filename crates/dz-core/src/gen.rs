@@ -1370,6 +1370,60 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
     Ok(RoadResult { objects, centerline: center.iter().map(|p| [p[0] as f32, p[1] as f32]).collect(), decks, profile: bed.or(designed).unwrap_or_default(), parts: route.parts.clone() })
 }
 
+/// The point `t` metres along a polyline, held to its ends.
+pub fn point_along(line: &[[f32; 2]], t: f32) -> [f32; 2] {
+    let mut left = t.max(0.0);
+    for s in line.windows(2) {
+        let len = (s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1]);
+        if left <= len && len > 0.0 {
+            let f = left / len;
+            return [s[0][0] + (s[1][0] - s[0][0]) * f, s[0][1] + (s[1][1] - s[0][1]) * f];
+        }
+        left -= len;
+    }
+    *line.last().unwrap_or(&[0.0, 0.0])
+}
+
+/// The part of a polyline from `a` to `b` metres along it.
+pub fn cut_line(line: &[[f32; 2]], a: f32, b: f32) -> Vec<[f32; 2]> {
+    let mut out = vec![point_along(line, a)];
+    let mut t = 0.0;
+    for s in line.windows(2) {
+        t += (s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1]);
+        if t > a + 1e-3 && t < b - 1e-3 {
+            out.push(s[1]);
+        }
+    }
+    out.push(point_along(line, b));
+    out
+}
+
+/// Where along a polyline, in metres from its start, other lines cross it.
+pub fn line_crossings(line: &[[f32; 2]], others: &[Vec<[f32; 2]>]) -> Vec<f32> {
+    let mut out = Vec::new();
+    let mut t = 0.0;
+    for s in line.windows(2) {
+        let (p, r) = (s[0], [s[1][0] - s[0][0], s[1][1] - s[0][1]]);
+        let len = r[0].hypot(r[1]);
+        for o in others {
+            for q in o.windows(2) {
+                let d = [q[1][0] - q[0][0], q[1][1] - q[0][1]];
+                let den = r[0] * d[1] - r[1] * d[0];
+                if den.abs() < 1e-9 { continue; }
+                let w = [q[0][0] - p[0], q[0][1] - p[1]];
+                let (u, v) = ((w[0] * d[1] - w[1] * d[0]) / den, (w[0] * r[1] - w[1] * r[0]) / den);
+                if (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v) {
+                    out.push(t + u * len);
+                }
+            }
+        }
+        t += len;
+    }
+    out.sort_by(f32::total_cmp);
+    out.dedup_by(|a, b| (*a - *b).abs() < 1.0);
+    out
+}
+
 /// Keeps the points that matter to a line's shape, to `tolerance` metres.
 pub fn simplify_line(points: &[[f32; 2]], tolerance: f32) -> Vec<[f32; 2]> {
     fn mark(p: &[[f32; 2]], a: usize, b: usize, t: f32, keep: &mut [bool]) {
@@ -1467,11 +1521,44 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
     };
     let list: Vec<(String, f32)> = if g.resolved.is_empty() { vec![(g.model.clone(), 1.0)] } else { g.resolved.clone() };
     let pieces: Vec<Piece> = list.iter().filter(|m| !m.0.is_empty() && m.1 > 0.0).map(|(m, k)| piece_of(w, m, *k)).collect();
-    let line = prepare_line(points, &g.line);
+    let full = prepare_line(points, &g.line);
     let mut out = Vec::new();
-    if line.len() < 2 {
+    if full.len() < 2 {
         return out;
     }
+    // Openings: their pieces, and the stretch of line each leaves free.
+    let length: f32 = full.windows(2).map(|s| (s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1])).sum();
+    let mut openings: Vec<(f32, f32, Vec<(Piece, f32)>, bool)> = Vec::new();
+    let mut wanted: Vec<crate::library::FenceOpening> = g.openings.clone();
+    if let Some(gate) = &g.road_gate {
+        wanted.extend(line_crossings(&full, &g.roads).into_iter().map(|at| crate::library::FenceOpening { at, ..gate.clone() }));
+    }
+    for o in &wanted {
+        // Each object with where its middle lies from the middle of the opening.
+        let parts: Vec<(Piece, f32)> = if o.two_leaves {
+            let (l, r) = (o.left.trim(), o.right.trim());
+            if l.is_empty() && r.is_empty() { continue; }
+            let (pl, pr) = (piece_of(w, if l.is_empty() { r } else { l }, 1.0), piece_of(w, if r.is_empty() { l } else { r }, 1.0));
+            // Each leaf fills its half of the gap: from its post to the middle.
+            let width = if o.width > 0.0 { o.width } else { pl.length + pr.length };
+            let split = if o.width > 0.0 { width * 0.5 } else { pl.length };
+            vec![(pl, -width * 0.5 + split * 0.5), (pr, width * 0.5 - (width - split) * 0.5)]
+        } else {
+            if o.model.trim().is_empty() { continue; }
+            vec![(piece_of(w, o.model.trim(), 1.0), 0.0)]
+        };
+        let width = if o.width > 0.0 { o.width } else { parts.iter().map(|p| p.0.length).sum() };
+        let at = o.at.clamp(width * 0.5, (length - width * 0.5).max(width * 0.5));
+        openings.push((at - width * 0.5, at + width * 0.5, parts, o.flip));
+    }
+    openings.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut stretches: Vec<Vec<[f32; 2]>> = Vec::new();
+    let mut from = 0.0f32;
+    for (a, b, _, _) in &openings {
+        if *a > from + 0.05 { stretches.push(cut_line(&full, from, *a)); }
+        from = from.max(*b);
+    }
+    if length > from + 0.05 { stretches.push(cut_line(&full, from, length)); }
     let mut rng = StdRng::seed_from_u64(g.seed);
     let total: f32 = pieces.iter().map(|p| p.weight).sum();
     let choose = |rng: &mut StdRng| -> Option<usize> {
@@ -1505,6 +1592,7 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         let spin = if g.random_rotation { rng.gen_range(0.0..360.0) } else { 0.0 };
         out.push(Obj { x, z, elevation, yaw: yaw + g.yaw_offset + spin, pitch, roll, scale: 1.0, model: p.model, flags: 0 });
     }
+    for line in stretches.iter().filter(|l| l.len() >= 2) {
     if g.join_corners && g.line.mode == LineMode::Polyline {
         // Each stretch is divided so its first and last piece end exactly on the corners.
         for s in line.windows(2) {
@@ -1584,6 +1672,22 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
             }
         }
     }
+    }
+    // The wickets and gates, in line with the fence.
+    for (a, b, parts, flip) in &openings {
+        let middle = (a + b) * 0.5;
+        for (p, offset) in parts {
+            let centre = middle + offset;
+            let half = p.length * 0.5;
+            let (s, e) = (point_along(&full, centre - half), point_along(&full, centre + half));
+            let before = out.len();
+            place(w, g, &mut out, &mut rng, p, s, e);
+            if *flip {
+                if let Some(o) = out.get_mut(before) { o.yaw += 180.0; }
+            }
+        }
+    }
+    let line = full;
     // Objects closing the line, facing along it.
     let ends = [(&g.start_model, line[0], line[1], g.flip_start), (&g.end_model, *line.last().unwrap(), line[line.len() - 2], g.flip_end)];
     for (i, (model, at, next, flip)) in ends.into_iter().enumerate() {
@@ -2560,6 +2664,43 @@ mod tests {
         assert_eq!([first.x, first.z], line[0]);
         assert_eq!([last.x, last.z], line[1]);
         assert!(((last.yaw - first.yaw).rem_euclid(360.0) - 180.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_fence_leaves_room_for_its_wicket_and_gates() {
+        use crate::library::FenceGen;
+        let mut w = World::new(crate::world::WorldMeta::new("F", 64, 4.0), 10.0);
+        let db = crate::model_info::ModelDb::new("Z:/none");
+        // Unknown models are 4 m long.
+        let line = [[0.0, 50.0], [100.0, 50.0]];
+        let plain = fence_objects(&mut w, &db, &line, &FenceGen { model: "wall.p3d".into(), ..Default::default() });
+        let wicket = crate::library::FenceOpening { at: 30.0, model: "wicket.p3d".into(), ..Default::default() };
+        let gate = crate::library::FenceOpening { at: 70.0, two_leaves: true, left: "gate_l.p3d".into(), right: "gate_r.p3d".into(), ..Default::default() };
+        let g = FenceGen { model: "wall.p3d".into(), openings: vec![wicket, gate], ..Default::default() };
+        let objects = fence_objects(&mut w, &db, &line, &g);
+        let named = |o: &Obj| w.objects.models[o.model as usize].path.clone();
+        let (walls, others): (Vec<&Obj>, Vec<&Obj>) = objects.iter().partition(|o| named(o) == "wall.p3d");
+        assert_eq!(others.len(), 3, "a wicket and two leaves");
+        assert!(walls.len() < plain.len());
+        // No wall stands in a gap: the wicket spans 28..32 and the gate 66..74.
+        assert!(walls.iter().all(|o| !(28.5..31.5).contains(&o.x) && !(66.5..73.5).contains(&o.x)), "{:?}", walls.iter().map(|o| o.x).collect::<Vec<_>>());
+        let at = |name: &str| others.iter().find(|o| named(o) == name).unwrap().x;
+        assert!((at("wicket.p3d") - 30.0).abs() < 0.01);
+        assert!((at("gate_l.p3d") - 68.0).abs() < 0.01 && (at("gate_r.p3d") - 72.0).abs() < 0.01);
+        // A gate one object wide where a road crosses.
+        // Leaves as wide as the whole gap still each take their half of it.
+        let g = FenceGen { model: "wall.p3d".into(), openings: vec![crate::library::FenceOpening { at: 50.0, two_leaves: true, left: "l.p3d".into(), right: "r.p3d".into(), width: 10.0, ..Default::default() }], ..Default::default() };
+        let mut w2 = World::new(crate::world::WorldMeta::new("F", 64, 4.0), 10.0);
+        let objects = fence_objects(&mut w2, &db, &line, &g);
+        let leaf = |n: &str| objects.iter().find(|o| w2.objects.models[o.model as usize].path == n).unwrap().x;
+        assert!((leaf("l.p3d") - 47.5).abs() < 0.01 && (leaf("r.p3d") - 52.5).abs() < 0.01, "{} {}", leaf("l.p3d"), leaf("r.p3d"));
+        let g = FenceGen { model: "wall.p3d".into(), road_gate: Some(crate::library::FenceOpening { model: "gate.p3d".into(), width: 8.0, ..Default::default() }), roads: vec![vec![[40.0, 0.0], [40.0, 100.0]]], ..Default::default() };
+        let mut w = World::new(crate::world::WorldMeta::new("F", 64, 4.0), 10.0);
+        let objects = fence_objects(&mut w, &db, &line, &g);
+        let gates: Vec<&Obj> = objects.iter().filter(|o| w.objects.models[o.model as usize].path == "gate.p3d").collect();
+        assert_eq!(gates.len(), 1);
+        assert!((gates[0].x - 40.0).abs() < 0.01);
+        assert_eq!(line_crossings(&line, &[vec![[40.0, 0.0], [40.0, 100.0]], vec![[90.0, 0.0], [90.0, 10.0]]]), vec![40.0]);
     }
 
     #[test]

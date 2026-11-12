@@ -40,6 +40,8 @@ pub struct SatTool {
     revision: u64,
     stroke: Option<Stroke>,
     pub bake_plants: bool,
+    /// Road parts too, which otherwise come from the road tools.
+    pub bake_roads: bool,
     pub bake_selection: bool,
     /// How far baked objects are blended into the image under them, 0 to 1.
     pub bake_blend: f32,
@@ -49,7 +51,7 @@ pub struct SatTool {
 
 impl Default for SatTool {
     fn default() -> Self {
-        Self { radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_selection: true, bake_blend: 0.35, blending: false }
+        Self { radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_blend: 0.35, blending: false }
     }
 }
 
@@ -154,15 +156,21 @@ pub fn bake(app: &mut App) {
     };
     let w = &d.world;
     let selected = app.sat.bake_selection && !app.selection.is_empty();
-    let plants = app.sat.bake_plants;
+    let (plants, roads) = (app.sat.bake_plants, app.sat.bake_roads);
     let wanted = |path: &str| -> bool {
-        // Roads and water are drawn into the image by other means; decals lie flat on it already.
-        !(path.contains("\\roads\\parts\\") || crate::models::is_water_model(path) || crate::models::is_decal_model(path)) && (plants || !crate::viewport::is_plant(path))
+        // Water is drawn into the image by other means and decals lie flat on it already; road
+        // parts only when asked for.
+        if path.contains("\\roads\\parts\\") {
+            return roads;
+        }
+        !(crate::models::is_water_model(path) || crate::models::is_decal_model(path)) && (plants || !crate::viewport::is_plant(path))
     };
     let mut objects = Vec::new();
     let mut add = |o: &dz_core::objects::Obj| {
         let path = w.objects.model_path(o);
-        if w.object_visible(o) && wanted(path) {
+        // Objects under the terrain cannot be seen from above.
+        let underground = o.flags & dz_core::objects::FLAG_UNDERGROUND != 0;
+        if w.object_visible(o) && !underground && wanted(path) {
             objects.push(BakeObject { object: *o, origin_y: dz_core::objects::ObjectStore::origin_y(o, &w.height), model: path.to_string() });
         }
     };
@@ -358,6 +366,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         let selected = app.selection.len();
         ui.checkbox(&mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
         ui.checkbox(&mut app.sat.bake_plants, t("Trees and bushes too"));
+        ui.checkbox(&mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
         // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.
         let chosen = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == SatKind::Bake)).map(|m| (m.id, m.name.clone(), 1.0 - m.opacity as f32 / 255.0)));
         if let Some((_, _, blend)) = &chosen {
