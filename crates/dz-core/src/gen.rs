@@ -1029,8 +1029,7 @@ pub fn pad_modifier(w: &mut World, object: u32, half_x: f32, half_z: f32, margin
     Some(TerrainModifier {
         id, name: format!("Pad: {model}"), enabled: true, x: o.x, z: o.z, yaw: o.yaw,
         shape: ModShape::Rect { half_x: half_x + margin, half_z: half_z + margin },
-        mode: ModMode::Flatten, target: None, amount: 0.0, falloff, attached: Some(object),
-    })
+        mode: ModMode::Flatten, target: None, amount: 0.0, falloff, attached: Some(object), follow: false })
 }
 
 // ---------------------------------------------------------------- roads
@@ -1510,17 +1509,28 @@ pub fn prepare_line(points: &[[f32; 2]], o: &crate::library::LineOptions) -> Vec
 /// Objects at regular steps along a line. Walls and fences have their pieces joined at corners.
 pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[f32; 2]], g: &crate::library::FenceGen) -> Vec<Obj> {
     use crate::library::LineMode;
-    struct Piece { model: u32, length: f32, along_x: bool, shift: f32, weight: f32, skews: bool }
-    let piece_of = |w: &mut World, path: &str, weight: f32| {
+    // `across` moves the model's middle onto the line; fence pieces keep their origin on it.
+    struct Piece { model: u32, length: f32, along_x: bool, shift: f32, across: f32, weight: f32, skews: bool }
+    let piece_along = |w: &mut World, path: &str, weight: f32, axis: Option<bool>| {
         let info = db.get(&crate::objects::ObjectStore::normalize_path(path));
         let (lx, lz) = if info.known { (info.max[0] - info.min[0], info.max[2] - info.min[2]) } else { (0.0, 4.0) };
-        let along_x = lx > lz;
+        let along_x = axis.unwrap_or(lx > lz);
         // Where the model's own middle sits relative to its origin, along its length.
         let (cx, cz) = if info.known { ((info.min[0] + info.max[0]) * 0.5, (info.min[2] + info.max[2]) * 0.5) } else { (0.0, 0.0) };
-        Piece { model: w.objects.intern(path), length: lx.max(lz).max(0.5), along_x, shift: if along_x { -cx } else { cz }, weight, skews: info.placement.skews() }
+        let length = if axis.is_some() { if along_x { lx } else { lz } } else { lx.max(lz) };
+        let across = if axis.is_some() { if along_x { cz } else { cx } } else { 0.0 };
+        Piece { model: w.objects.intern(path), length: length.max(0.5), along_x, shift: if along_x { -cx } else { cz }, across, weight, skews: info.placement.skews() }
     };
+    let piece_of = |w: &mut World, path: &str, weight: f32| piece_along(w, path, weight, None);
     let list: Vec<(String, f32)> = if g.resolved.is_empty() { vec![(g.model.clone(), 1.0)] } else { g.resolved.clone() };
     let pieces: Vec<Piece> = list.iter().filter(|m| !m.0.is_empty() && m.1 > 0.0).map(|(m, k)| piece_of(w, m, *k)).collect();
+    // Wickets and gates come from the same sets as the fence: they lie along its axis, whatever
+    // their own box says (an open gate is deeper than it is wide), and stand centred on the line.
+    let axis = pieces.first().map(|p| p.along_x);
+    let gate_of = |w: &mut World, path: &str| piece_along(w, path, 1.0, Some(axis.unwrap_or_else(|| {
+        let info = db.get(&crate::objects::ObjectStore::normalize_path(path));
+        !info.known || info.max[0] - info.min[0] > info.max[2] - info.min[2]
+    })));
     let full = prepare_line(points, &g.line);
     let mut out = Vec::new();
     if full.len() < 2 {
@@ -1528,7 +1538,7 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
     }
     // Openings: their pieces, and the stretch of line each leaves free.
     let length: f32 = full.windows(2).map(|s| (s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1])).sum();
-    let mut openings: Vec<(f32, f32, Vec<(Piece, f32)>, bool)> = Vec::new();
+    let mut openings: Vec<(f32, f32, Vec<(Piece, f32)>, bool, bool)> = Vec::new();
     let mut wanted: Vec<crate::library::FenceOpening> = g.openings.clone();
     if let Some(gate) = &g.road_gate {
         wanted.extend(line_crossings(&full, &g.roads).into_iter().map(|at| crate::library::FenceOpening { at, ..gate.clone() }));
@@ -1538,23 +1548,23 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         let parts: Vec<(Piece, f32)> = if o.two_leaves {
             let (l, r) = (o.left.trim(), o.right.trim());
             if l.is_empty() && r.is_empty() { continue; }
-            let (pl, pr) = (piece_of(w, if l.is_empty() { r } else { l }, 1.0), piece_of(w, if r.is_empty() { l } else { r }, 1.0));
+            let (pl, pr) = (gate_of(w, if l.is_empty() { r } else { l }), gate_of(w, if r.is_empty() { l } else { r }));
             // Each leaf fills its half of the gap: from its post to the middle.
             let width = if o.width > 0.0 { o.width } else { pl.length + pr.length };
             let split = if o.width > 0.0 { width * 0.5 } else { pl.length };
             vec![(pl, -width * 0.5 + split * 0.5), (pr, width * 0.5 - (width - split) * 0.5)]
         } else {
             if o.model.trim().is_empty() { continue; }
-            vec![(piece_of(w, o.model.trim(), 1.0), 0.0)]
+            vec![(gate_of(w, o.model.trim()), 0.0)]
         };
         let width = if o.width > 0.0 { o.width } else { parts.iter().map(|p| p.0.length).sum() };
         let at = o.at.clamp(width * 0.5, (length - width * 0.5).max(width * 0.5));
-        openings.push((at - width * 0.5, at + width * 0.5, parts, o.flip));
+        openings.push((at - width * 0.5, at + width * 0.5, parts, o.flip, o.upright));
     }
     openings.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut stretches: Vec<Vec<[f32; 2]>> = Vec::new();
     let mut from = 0.0f32;
-    for (a, b, _, _) in &openings {
+    for (a, b, _, _, _) in &openings {
         if *a > from + 0.05 { stretches.push(cut_line(&full, from, *a)); }
         from = from.max(*b);
     }
@@ -1582,7 +1592,7 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         let span = (dx * dx + dz * dz).sqrt().max(0.01);
         let (ux, uz) = (dx / span, dz / span);
         let heading = ux.atan2(uz).to_degrees();
-        let (x, z) = ((a[0] + b[0]) * 0.5 - ux * p.shift, (a[1] + b[1]) * 0.5 - uz * p.shift);
+        let (x, z) = ((a[0] + b[0]) * 0.5 - ux * p.shift - uz * p.across, (a[1] + b[1]) * 0.5 - uz * p.shift + ux * p.across);
         let (ga, gb) = (w.height.sample(a[0], a[1]), w.height.sample(b[0], b[1]));
         // The game fits models with a placement property to the ground by itself.
         let follow = g.follow_slope && !p.skews;
@@ -1674,14 +1684,16 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
     }
     }
     // The wickets and gates, in line with the fence.
-    for (a, b, parts, flip) in &openings {
+    // An upright gate stands level on the ground at its middle, however the fence leans.
+    let level = crate::library::FenceGen { follow_slope: false, ..g.clone() };
+    for (a, b, parts, flip, upright) in &openings {
         let middle = (a + b) * 0.5;
         for (p, offset) in parts {
             let centre = middle + offset;
             let half = p.length * 0.5;
             let (s, e) = (point_along(&full, centre - half), point_along(&full, centre + half));
             let before = out.len();
-            place(w, g, &mut out, &mut rng, p, s, e);
+            place(w, if *upright { &level } else { g }, &mut out, &mut rng, p, s, e);
             if *flip {
                 if let Some(o) = out.get_mut(before) { o.yaw += 180.0; }
             }
@@ -1836,7 +1848,7 @@ pub fn river_modifier(base: &Heightmap, id: u64, name: &str, line: &[[f32; 2]], 
     for p in &points {
         (x0, z0, x1, z1) = (x0.min(p[0]), z0.min(p[1]), x1.max(p[0]), z1.max(p[1]));
     }
-    Some((TerrainModifier { id, name: name.to_string(), enabled: true, x: (x0 + x1) * 0.5, z: (z0 + z1) * 0.5, yaw: 0.0, shape: ModShape::Line { points, heights, half_width: half - blend, gaps: Vec::new(), bank: None }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: blend, attached: None }, surface))
+    Some((TerrainModifier { id, name: name.to_string(), enabled: true, x: (x0 + x1) * 0.5, z: (z0 + z1) * 0.5, yaw: 0.0, shape: ModShape::Line { points, heights, half_width: half - blend, gaps: Vec::new(), bank: None }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: blend, attached: None, follow: false }, surface))
 }
 
 /// Water models along a river bed, at a fixed height so they do not follow the carved ground.
@@ -2142,7 +2154,7 @@ fn pond_level(base: &Heightmap, shape: &crate::shapes::MapShape, g: &crate::libr
 pub fn pond_modifier(base: &Heightmap, id: u64, name: &str, polygons: &[crate::shapes::MapShape], g: &crate::library::PondGen) -> Option<TerrainModifier> {
     let areas: Vec<crate::world::PondArea> = polygons.iter().filter(|s| s.points.len() >= 3).map(|s| crate::world::PondArea { points: s.points.clone(), level: pond_level(base, s, g) }).collect();
     let b = areas.iter().flat_map(|a| &a.points).fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, p| [b[0].min(p[0]), b[1].min(p[1]), b[2].max(p[0]), b[3].max(p[1])]);
-    (!areas.is_empty()).then(|| TerrainModifier { id, name: name.to_string(), enabled: true, x: (b[0] + b[2]) * 0.5, z: (b[1] + b[3]) * 0.5, yaw: 0.0, shape: ModShape::Pond { areas, depth: g.depth, blend: g.blend, bank: g.bank }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: g.blend, attached: None })
+    (!areas.is_empty()).then(|| TerrainModifier { id, name: name.to_string(), enabled: true, x: (b[0] + b[2]) * 0.5, z: (b[1] + b[3]) * 0.5, yaw: 0.0, shape: ModShape::Pond { areas, depth: g.depth, blend: g.blend, bank: g.bank }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: g.blend, attached: None, follow: false })
 }
 
 /// Water models side by side, level, over the whole of each polygon.
@@ -2356,7 +2368,7 @@ pub fn road_modifier(base: &Heightmap, id: u64, name: &str, center: &[[f32; 2]],
     let half_width = width * 0.5 + if grading.embankment { 0.0 } else { grading.shoulder };
     let ditch = if grading.ditch_depth > 0.0 { grading.ditch_width } else { 0.0 };
     let outside = if grading.embankment { grading.shoulder + ditch + grading.max_bank } else { falloff };
-    Some(TerrainModifier { id, name: name.to_string(), enabled: true, x: (x0 + x1) * 0.5, z: (z0 + z1) * 0.5, yaw: 0.0, shape: ModShape::Line { points, heights, half_width, gaps, bank }, mode: ModMode::Flatten, target: None, amount: grading.raise, falloff: outside, attached: None })
+    Some(TerrainModifier { id, name: name.to_string(), enabled: true, x: (x0 + x1) * 0.5, z: (z0 + z1) * 0.5, yaw: 0.0, shape: ModShape::Line { points, heights, half_width, gaps, bank }, mode: ModMode::Flatten, target: None, amount: grading.raise, falloff: outside, attached: None, follow: false })
 }
 
 /// Smooths heights along a line so a road sits on an even bed.
@@ -2701,6 +2713,17 @@ mod tests {
         assert_eq!(gates.len(), 1);
         assert!((gates[0].x - 40.0).abs() < 0.01);
         assert_eq!(line_crossings(&line, &[vec![[40.0, 0.0], [40.0, 100.0]], vec![[90.0, 0.0], [90.0, 10.0]]]), vec![40.0]);
+        // On a slope the fence leans with the ground and an upright gate does not.
+        let mut hill = World::new(crate::world::WorldMeta::new("S", 64, 4.0), 10.0);
+        for (k, v) in hill.base.data.iter_mut().enumerate() { *v = 10.0 + (k % 64) as f32 * 0.8; }
+        hill.recompose(None);
+        let g = FenceGen { model: "wall.p3d".into(), openings: vec![crate::library::FenceOpening { at: 50.0, model: "gate.p3d".into(), ..Default::default() }], ..Default::default() };
+        let objects = fence_objects(&mut hill, &db, &line, &g);
+        let tilt = |n: &str| objects.iter().find(|o| hill.objects.models[o.model as usize].path == n).map(|o| o.pitch.abs() + o.roll.abs()).unwrap();
+        assert!(tilt("wall.p3d") > 1.0 && tilt("gate.p3d") < 1e-3, "{} {}", tilt("wall.p3d"), tilt("gate.p3d"));
+        let g = FenceGen { openings: vec![crate::library::FenceOpening { upright: false, ..g.openings[0].clone() }], ..g };
+        let objects = fence_objects(&mut hill, &db, &line, &g);
+        assert!(objects.iter().filter(|o| hill.objects.models[o.model as usize].path == "gate.p3d").all(|o| o.pitch.abs() + o.roll.abs() > 1.0));
     }
 
     #[test]

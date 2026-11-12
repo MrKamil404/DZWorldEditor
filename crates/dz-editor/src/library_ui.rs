@@ -41,6 +41,10 @@ struct KindContext {
     object_presets: Vec<(u64, String)>,
     /// Presets read from files while drawing, kept for the library.
     loaded: std::cell::RefCell<Vec<forest_core::user_presets::UserPreset>>,
+    /// The generator is on the map, so its wickets and gates can be placed by a click.
+    can_pick: bool,
+    /// The opening a click on the map should place.
+    pick: std::cell::Cell<Option<usize>>,
 }
 
 fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindContext {
@@ -57,6 +61,8 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
         has_satellite: doc.is_some_and(|d| d.world.satellite.is_some()),
         object_presets: app.library.objects.iter().map(|p| (p.id, p.name.clone())).collect(),
         loaded: Default::default(),
+        can_pick: false,
+        pick: Default::default(),
     }
 }
 
@@ -175,6 +181,7 @@ fn opening_ui(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, cx: &Ki
     }
     number(ui, t("Gap width m (0 = of the model)"), &mut o.width, 0.0..=60.0);
     ui.checkbox(&mut o.flip, t("Turn by 180° to open the other way"));
+    ui.checkbox(&mut o.upright, t("Stand upright")).on_hover_text(t("The wicket or gate stays level instead of leaning with the slope like the fence."));
 }
 
 fn preset_combo(ui: &mut egui::Ui, id: impl std::hash::Hash, value: &mut String, presets: &[String]) {
@@ -445,6 +452,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     egui::Frame::group(ui.style()).show(ui, |ui| {
                         ui.horizontal(|ui| {
                             opening_kind(ui, o);
+                            if cx.can_pick && ui.small_button(crate::icons::MAP_PIN).on_hover_text(t("Place it with a click on the fence")).clicked() { cx.pick.set(Some(k)); }
                             if ui.small_button(crate::icons::TRASH).on_hover_text(t("Delete")).clicked() { drop = Some(k); }
                         });
                         number(ui, t("Distance from the start m"), &mut o.at, 0.0..=5000.0);
@@ -455,8 +463,9 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             if let Some(k) = drop { g.openings.remove(k); }
             ui.horizontal(|ui| {
                 let at = g.openings.last().map_or(10.0, |o| o.at + 20.0);
-                if ui.button(format!("+ {}", t("Wicket"))).clicked() { g.openings.push(dz_core::library::FenceOpening { at, ..Default::default() }); }
-                if ui.button(format!("+ {}", t("Gate"))).clicked() { g.openings.push(dz_core::library::FenceOpening { at, gate: true, ..Default::default() }); }
+                // A new one is placed on the fence with the next click, when the fence is on the map.
+                if ui.button(format!("+ {}", t("Wicket"))).clicked() { g.openings.push(dz_core::library::FenceOpening { at, ..Default::default() }); if cx.can_pick { cx.pick.set(Some(g.openings.len() - 1)); } }
+                if ui.button(format!("+ {}", t("Gate"))).clicked() { g.openings.push(dz_core::library::FenceOpening { at, gate: true, ..Default::default() }); if cx.can_pick { cx.pick.set(Some(g.openings.len() - 1)); } }
             });
             let mut road_gate = g.road_gate.is_some();
             if ui.checkbox(&mut road_gate, t("A gate where a road or track crosses the fence")).changed() {
@@ -997,7 +1006,8 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     let Some(doc) = &app.doc else { return };
     let Some(index) = doc.world.generators.iter().position(|g| g.id == id) else { app.selected_generator = None; return };
     let user = if let GeneratorKind::Forest(f) = &doc.world.generators[index].kind { f.user_presets.clone() } else { Vec::new() };
-    let cx = context(app, &user);
+    let mut cx = context(app, &user);
+    cx.can_pick = true;
     let shape_layers: Vec<String> = doc.world.shape_layers.iter().map(|l| l.name.clone()).collect();
     let selected_shape = app.shape.selection.iter().next().copied().and_then(|(l, s)| Some((doc.world.shape_layers.get(l)?.name.clone(), s)));
     let routes: Vec<(u64, String)> = doc.world.routes.iter().map(|r| (r.id, r.name.clone())).collect();
@@ -1043,6 +1053,14 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     }
     ui.separator();
     if kind_ui(ui, &mut g.kind, &cx) { app.sampling = Some(id); }
+    if let Some(k) = cx.pick.take() {
+        app.pick_opening = Some((id, k));
+        app.mode = crate::app::Mode::Select;
+        app.status = t("Click on the fence where the opening goes. Esc cancels.");
+    }
+    if app.pick_opening.is_some_and(|p| p.0 == id) {
+        ui.colored_label(crate::theme::ACCENT, t("Click on the fence where the opening goes. Esc cancels."));
+    }
     keep_forest_presets(&mut app.library, &mut app.lib_dirty, cx.loaded.take());
     if let Some(d) = &mut app.doc { d.history.revision += ui.ctx().input(|i| u64::from(i.pointer.any_released())); }
     ui.separator();
@@ -1173,6 +1191,42 @@ fn add_kind(app: &mut App, kind: GeneratorKind, name: String, drop: Option<Dropp
 }
 
 /// Lines a generator can follow: roads, polylines, and the outlines of polygons.
+/// The lines a fence generator lays its fence along, as it lays it.
+pub(crate) fn fence_lines(w: &World, g: &dz_core::library::GeneratorInstance) -> Vec<Vec<[f32; 2]>> {
+    let GeneratorKind::Fence(f) = &g.kind else { return Vec::new() };
+    target_lines(w, &g.target).iter().map(|l| gen::prepare_line(l, &f.line)).filter(|l| l.len() >= 2).collect()
+}
+
+/// Places the waiting opening where the fence passes nearest to `at`, and lays the fence again.
+pub fn place_opening(app: &mut App, at: [f32; 2]) {
+    let Some((id, k)) = app.pick_opening.take() else { return };
+    let Some(d) = app.doc.as_mut() else { return };
+    let Some(g) = d.world.generators.iter().find(|g| g.id == id).cloned() else { return };
+    let mut best: Option<(f32, f32)> = None;
+    for line in fence_lines(&d.world, &g) {
+        let mut run = 0.0;
+        for s in line.windows(2) {
+            let (ab, ap) = ([s[1][0] - s[0][0], s[1][1] - s[0][1]], [at[0] - s[0][0], at[1] - s[0][1]]);
+            let len = ab[0].hypot(ab[1]);
+            let u = ((ap[0] * ab[0] + ap[1] * ab[1]) / (len * len).max(1e-6)).clamp(0.0, 1.0);
+            let off = (ap[0] - ab[0] * u).hypot(ap[1] - ab[1] * u);
+            if best.is_none_or(|b| off < b.0) { best = Some((off, run + u * len)); }
+            run += len;
+        }
+    }
+    let Some((off, along)) = best else { return };
+    if off > 30.0 {
+        app.warn(t("Click nearer to the fence"));
+        app.pick_opening = Some((id, k));
+        return;
+    }
+    if let Some(GeneratorKind::Fence(f)) = d.world.generators.iter_mut().find(|g| g.id == id).map(|g| &mut g.kind) {
+        if let Some(o) = f.openings.get_mut(k) { o.at = (along * 10.0).round() / 10.0; }
+    }
+    d.history.revision += 1;
+    run_generator(app, id);
+}
+
 fn target_lines(w: &World, target: &GenTarget) -> Vec<Vec<[f32; 2]>> {
     if let GenTarget::Route(id) = target {
         return w.routes.iter().find(|r| r.id == *id).map(|r| vec![r.centerline.clone()]).unwrap_or_default();

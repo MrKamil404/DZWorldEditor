@@ -1171,6 +1171,18 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         }
         return;
     }
+    // A wicket or gate waiting to be placed on its fence.
+    if app.pick_opening.is_some() {
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            app.pick_opening = None;
+            app.status.clear();
+            return;
+        }
+        if pressed {
+            if let Some(h) = hit { crate::library_ui::place_opening(app, [h[0], h[2]]); }
+            return;
+        }
+    }
     // Generators and presets dropped from their libraries.
     if let Some(p) = crate::theme::take::<crate::library_ui::LibDrag>(&resp) {
         if let Some(h) = hit {
@@ -2202,6 +2214,49 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
     }
 }
 
+/// The wickets and gates of the selected fence generator on its line, and while one waits for
+/// a click, where on the fence it would go.
+fn fence_openings(app: &App, painter: &egui::Painter, v: &View, ctx: &egui::Context, resp: &egui::Response) {
+    let Some(d) = &app.doc else { return };
+    let id = app.pick_opening.map(|p| p.0).or(app.selected_generator);
+    let Some(g) = id.and_then(|id| d.world.generators.iter().find(|g| g.id == id)) else { return };
+    let dz_core::library::GeneratorKind::Fence(f) = &g.kind else { return };
+    let lines = crate::library_ui::fence_lines(&d.world, g);
+    let at = |p: [f32; 2]| v.project([p[0], d.world.height.sample(p[0], p[1]) + 0.5, p[1]]);
+    let color = Color32::from_rgb(255, 200, 60);
+    for line in &lines {
+        for (k, o) in f.openings.iter().enumerate() {
+            let Some(c) = at(gen::point_along(line, o.at)) else { continue };
+            let waiting = app.pick_opening == Some((g.id, k));
+            painter.circle_filled(c, if waiting { 9.0 } else { 7.0 }, if waiting { theme::ACCENT } else { color });
+            painter.text(c + vec2(0.0, -12.0), egui::Align2::CENTER_BOTTOM, if o.gate { t("Gate") } else { t("Wicket") }, egui::FontId::proportional(12.0), Color32::WHITE);
+        }
+    }
+    // While picking, the point of the fence nearest the cursor.
+    if app.pick_opening.is_some_and(|p| p.0 == g.id) {
+        let Some(m) = ctx.pointer_latest_pos().filter(|_| resp.contains_pointer()) else { return };
+        let (o, dir) = v.ray(m);
+        let Some(h) = pick_terrain(&d.world.height, o, dir, v.ortho) else { return };
+        let mut best: Option<(f32, [f32; 2])> = None;
+        for line in &lines {
+            for s in line.windows(2) {
+                let (ab, ap) = ([s[1][0] - s[0][0], s[1][1] - s[0][1]], [h[0] - s[0][0], h[2] - s[0][1]]);
+                let u = ((ap[0] * ab[0] + ap[1] * ab[1]) / (ab[0] * ab[0] + ab[1] * ab[1]).max(1e-6)).clamp(0.0, 1.0);
+                let q = [s[0][0] + ab[0] * u, s[0][1] + ab[1] * u];
+                let off = (q[0] - h[0]).hypot(q[1] - h[2]);
+                if best.is_none_or(|b| off < b.0) { best = Some((off, q)); }
+            }
+        }
+        if let Some((off, q)) = best.filter(|b| b.0 < 30.0) {
+            if let Some(c) = at(q) {
+                painter.circle_stroke(c, 10.0, Stroke::new(2.5_f32, theme::ACCENT));
+                painter.text(c + vec2(14.0, 0.0), egui::Align2::LEFT_CENTER, format!("{off:.1} m"), egui::FontId::proportional(11.0), Color32::WHITE);
+            }
+        }
+        ctx.request_repaint();
+    }
+}
+
 fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let area = Rect::from_min_size(rect.min + vec2(6.0, 5.0), vec2(rect.width() - 12.0, 24.0));
     // The backing is sized to the controls once they are laid out, so it always takes all of them.
@@ -2366,6 +2421,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     }
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
     draw_overlays(app, ui, &v, &resp);
+    fence_openings(app, &ui.painter_at(rect), &v, &ctx, &resp);
     if egui::DragAndDrop::has_any_payload(&ctx) {
         let painter = ui.painter_at(rect);
         let over = resp.contains_pointer();
@@ -3145,6 +3201,34 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             if let Some(d) = app.doc.as_mut() {
                 if let Some(n) = nums.first() { d.world.meta.max_tile_surfaces = *n as u8; }
                 eprintln!("GENSTATS tiles_over={} limit={}", dz_core::mask_limit::scan(&d.world).len(), d.world.meta.max_tile_surfaces);
+            }
+        }
+        // "padfollow 1|0" on the selection; "lift d" raises the selection by d metres.
+        "padfollow" => { let ids: Vec<u32> = app.selection.iter().copied().collect(); app.set_pad_follow(&ids, nums.first().is_some_and(|v| *v > 0.0)); }
+        "lift" if !nums.is_empty() => {
+            if let Some(d) = app.doc.as_mut() {
+                let ids: Vec<u32> = app.selection.iter().copied().collect();
+                for id in ids {
+                    if let Some(mut o) = d.world.objects.get(id).copied() { o.elevation += nums[0]; d.world.objects.update(id, o); d.world.sync_attached(id); }
+                }
+            }
+            app.whole_height_changed();
+        }
+        "padstat" => {
+            if let Some(d) = &app.doc {
+                for id in &app.selection {
+                    if let Some(o) = d.world.objects.get(*id) {
+                        let m = d.world.modifiers.iter().find(|m| m.attached == Some(*id));
+                        eprintln!("GENSTATS pad object_y={:.2} ground={:.2} base={:.2} absolute={} follow={:?} target={:?}", dz_core::objects::ObjectStore::origin_y(o, &d.world.height), d.world.height.sample(o.x, o.z), d.world.base.sample(o.x, o.z), o.flags & dz_core::objects::FLAG_ABSOLUTE != 0, m.map(|m| m.follow), m.and_then(|m| m.target));
+                    }
+                }
+            }
+        }
+        // Selects the last generator and waits for a click placing its opening n.
+        "pickopening" => {
+            if let Some(id) = app.doc.as_ref().and_then(|d| d.world.generators.last()).map(|g| g.id) {
+                app.selected_generator = Some(id);
+                app.pick_opening = Some((id, nums.first().map(|v| *v as usize).unwrap_or(0)));
             }
         }
         "fencegap" => {

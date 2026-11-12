@@ -321,6 +321,10 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::STACK, &t("Terrain under objects")), true, |ui| {
         ui.weak(t("A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched."));
         let mut changed = pad_sliders(app, ui);
+        if ui.checkbox(&mut app.place.pad_follow, t("The ground follows the height of the object")).on_hover_text(t("The ground is levelled to the height the object stands at and comes up or down with it. The object keeps a height of its own, so lifting the ground does not lift it again.")).changed() {
+            let (ids, on): (Vec<u32>, bool) = (app.selection.iter().copied().collect(), app.place.pad_follow);
+            app.set_pad_follow(&ids, on);
+        }
         if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("Add modifier to selection"))).clicked() {
             let f = app.place.pad_falloff;
             app.add_pads_for_selection(f);
@@ -1136,6 +1140,7 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     let Some(index) = doc.world.modifiers.iter().position(|m| m.id == id) else { app.selected_modifier = None; return };
     let mut m = doc.world.modifiers[index].clone();
     let mut remove = false;
+    let mut follow: Option<(u32, bool)> = None;
     section(ui, &icons::with(icons::MOUNTAINS, &t("Terrain modifier")), true, |ui| {
         row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut m.name); });
         ui.checkbox(&mut m.enabled, t("Enabled"));
@@ -1166,9 +1171,17 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
         }
         slider(ui, &t("Blend"), &mut m.falloff, 0.0..=120.0, false);
         slider(ui, &t("Height offset"), &mut m.amount, -50.0..=50.0, false);
-        let mut fixed = m.target.is_some();
-        if ui.checkbox(&mut fixed, t("Fixed target height")).changed() { m.target = if fixed { Some(0.0) } else { None }; }
-        if let Some(v) = &mut m.target { row(ui, &t("Height"), |ui| { ui.add(egui::DragValue::new(v).speed(0.1)); }); }
+        if let Some(object) = m.attached {
+            let mut on = m.follow;
+            if ui.checkbox(&mut on, t("The ground follows the height of the object")).changed() { follow = Some((object, on)); }
+        }
+        if m.follow {
+            if let Some(v) = m.target { ui.weak(tf("Levelled to {0} m, the height of the object", &[&format!("{v:.2}")])); }
+        } else {
+            let mut fixed = m.target.is_some();
+            if ui.checkbox(&mut fixed, t("Fixed target height")).changed() { m.target = if fixed { Some(0.0) } else { None }; }
+            if let Some(v) = &mut m.target { row(ui, &t("Height"), |ui| { ui.add(egui::DragValue::new(v).speed(0.1)); }); }
+        }
         if m.attached.is_none() {
             slider(ui, "X", &mut m.x, 0.0..=30000.0, false);
             slider(ui, "Z", &mut m.z, 0.0..=30000.0, false);
@@ -1177,6 +1190,10 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     });
     if remove {
         crate::deleting::request(app, crate::deleting::Target::Modifier(id));
+        return;
+    }
+    if let Some((object, on)) = follow {
+        app.set_pad_follow(&[object], on);
         return;
     }
     if m != doc.world.modifiers[index] {

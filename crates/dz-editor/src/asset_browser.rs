@@ -1867,7 +1867,7 @@ pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32) {
         let tpl = &MODIFIERS[*i];
         let Some(doc) = app.doc.as_mut() else { return };
         let id = doc.world.new_modifier_id();
-        let m = dz_core::world::TerrainModifier { id, name: t(tpl.name), enabled: true, x: x + k as f32 * 35.0, z, yaw: 0.0, shape: (tpl.shape)(), mode: tpl.mode, target: None, amount: tpl.amount, falloff: tpl.falloff, attached: None };
+        let m = dz_core::world::TerrainModifier { id, name: t(tpl.name), enabled: true, x: x + k as f32 * 35.0, z, yaw: 0.0, shape: (tpl.shape)(), mode: tpl.mode, target: None, amount: tpl.amount, falloff: tpl.falloff, attached: None, follow: false };
         app.set_modifiers(&t("Add terrain modifier"), |list| list.push(m));
         app.selected_modifier = Some(id);
     }

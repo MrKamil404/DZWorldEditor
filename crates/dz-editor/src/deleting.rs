@@ -81,19 +81,19 @@ fn plan(app: &App, target: Target) -> Option<Plan> {
         Target::Modifier(id) => {
             let m = w.modifiers.iter().find(|m| m.id == *id)?;
             if let Some(r) = w.routes.iter().find(|r| r.modifier == Some(*id)) {
-                part(Kind::Owner, tf("Also the route {0} it levels the terrain for", &[&r.name]), false);
+                part(Kind::Owner, tf("Delete the route {0} too", &[&r.name]), false);
             } else if let Some(g) = w.generators.iter().find(|g| g.modifier == Some(*id)) {
-                part(Kind::Owner, tf("Also the generator {0} that made it", &[&g.name]), false);
+                part(Kind::Owner, tf("Delete the generator {0} too", &[&g.name]), false);
             } else if let Some(o) = m.attached.and_then(|a| w.objects.get(a)) {
                 let name = w.objects.model_path(o).rsplit('\\').next().unwrap_or("").to_string();
-                part(Kind::Owner, tf("Also the object {0} it levels the ground under", &[&name]), false);
+                part(Kind::Owner, tf("Delete the object {0} too", &[&name]), false);
             }
             tf("Delete terrain modifier {0}", &[&m.name])
         }
         Target::MaskModifier(id) => {
             let at = w.mask_mods.position(*id)?;
             if let Some(g) = w.generators.iter().find(|g| g.mask_modifier == Some(*id)) {
-                part(Kind::Owner, tf("Also the generator {0} that made it", &[&g.name]), false);
+                part(Kind::Owner, tf("Delete the generator {0} too", &[&g.name]), false);
             }
             tf("Delete mask modifier {0}", &[&w.mask_mods.modifiers[at].name])
         }
@@ -204,6 +204,18 @@ pub fn execute(app: &mut App, plan: &Plan) {
         let model = w.objects.intern(&saved.model);
         let o = saved.object(model);
         change.push((w.objects.insert(o), None, Some(o)));
+    }
+    // An object whose ground followed it stood at a height of its own; without that ground
+    // it goes back down onto the terrain.
+    let grounded: Vec<u32> = w.modifiers.iter().filter(|m| m.follow && drop_mods.contains(&m.id)).filter_map(|m| m.attached).collect();
+    for id in grounded {
+        if let Some(o) = w.objects.get(id).copied() {
+            let down = crate::app::on_ground(&app.db, w.objects.model_path(&o), o);
+            if down != o {
+                w.objects.update(id, down);
+                change.push((id, Some(o), Some(down)));
+            }
+        }
     }
     let objects_changed = !change.is_empty();
     // What stays forgets what was deleted, so that running it again starts afresh.
