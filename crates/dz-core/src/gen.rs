@@ -1185,6 +1185,55 @@ fn height_along(line: &[[f32; 3]], p: [f64; 2]) -> f32 {
     best.1
 }
 
+/// The water of rivers and ponds placed as models, each as the rectangle it covers on the
+/// ground: (centre x, centre z, sin, cos, half width, half length).
+pub struct InlandWater {
+    rects: Vec<[f32; 6]>,
+}
+
+impl InlandWater {
+    pub fn of(w: &World, db: &crate::model_info::ModelDb) -> InlandWater {
+        let mut rects = Vec::new();
+        for (_, o) in w.objects.iter() {
+            let path = w.objects.model_path(o);
+            if !crate::objects::is_water_model(path) {
+                continue;
+            }
+            let info = db.get(path);
+            if !info.known {
+                continue;
+            }
+            let (sin, cos) = o.yaw.to_radians().sin_cos();
+            let (cx, cz) = ((info.min[0] + info.max[0]) * 0.5 * o.scale, (info.min[2] + info.max[2]) * 0.5 * o.scale);
+            let (hx, hz) = ((info.max[0] - info.min[0]) * 0.5 * o.scale, (info.max[2] - info.min[2]) * 0.5 * o.scale);
+            rects.push([o.x + cos * cx + sin * cz, o.z - sin * cx + cos * cz, sin, cos, hx, hz]);
+        }
+        InlandWater { rects }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rects.is_empty()
+    }
+
+    /// The rectangles as polygons.
+    pub fn polygons(&self) -> Vec<Vec<[f64; 2]>> {
+        self.rects.iter().map(|r| {
+            [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].iter().map(|(a, b)| {
+                let (lx, lz) = (a * r[4], b * r[5]);
+                [(r[0] + r[3] * lx + r[2] * lz) as f64, (r[1] - r[2] * lx + r[3] * lz) as f64]
+            }).collect()
+        }).collect()
+    }
+
+    /// Whether a point lies on the water of a river or pond.
+    pub fn contains(&self, x: f32, z: f32) -> bool {
+        self.rects.iter().any(|r| {
+            let (dx, dz) = (x - r[0], z - r[1]);
+            (dx * r[3] - dz * r[2]).abs() < r[4] && (dx * r[2] + dz * r[3]).abs() < r[5]
+        })
+    }
+}
+
 /// What to build for a road or track.
 #[derive(Clone)]
 pub struct RouteRequest {
@@ -1239,7 +1288,9 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
             std::fs::write(dir.join("height.f32"), f32s_to_bytes(&flipped))?;
             let terrain = Terrain::open(&dir)?;
             job.stage("Finding the route");
-            let polygons: Vec<Vec<[f64; 2]>> = req.forbidden.iter().map(|r| r.iter().map(|p| [p[0] as f64, p[1] as f64]).collect()).collect();
+            let mut polygons: Vec<Vec<[f64; 2]>> = req.forbidden.iter().map(|r| r.iter().map(|p| [p[0] as f64, p[1] as f64]).collect()).collect();
+            // Rivers and ponds count as water, as the sea does: kept out of, or bridged.
+            polygons.extend(InlandWater::of(w, db).polygons());
             let water = WaterSettings { enabled: true, level: w.meta.sea_level as f64 };
             let obstacles = routing::Obstacles::new(&polygons, &[], &water, Some(&terrain), &cancel)?;
             if let Some(start) = req.start {
@@ -1279,7 +1330,10 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
         let bridge = if rail { BridgeKit::for_track(tracks, &req.family) } else { BridgeKit::for_road(&road_folder, &req.family, catalog) };
         let bridged = bridge.as_ref().filter(|_| req.start.is_none()).and_then(|kit| {
             let (height, sea) = (&w.height, w.meta.sea_level);
-            let (points, spans) = routing::waypoint_spans(&line, |p| height.sample(p[0] as f32, p[1] as f32) as f64, |p| height.sample(p[0] as f32, p[1] as f32) < sea, kit, &req.settings);
+            // Rivers and ponds are water too, though their beds lie above the sea.
+            let inland = InlandWater::of(w, db);
+            let water = |p: [f64; 2]| height.sample(p[0] as f32, p[1] as f32) < sea || inland.contains(p[0] as f32, p[1] as f32);
+            let (points, spans) = routing::waypoint_spans(&line, |p| height.sample(p[0] as f32, p[1] as f32) as f64, water, kit, &req.settings);
             if spans.is_empty() {
                 return None;
             }
@@ -2060,13 +2114,31 @@ pub fn fit_river(line: &[[f32; 2]], g: &crate::library::RiverGen) -> Option<Rive
     (!pieces.is_empty()).then_some(RiverChain { pieces, center, scale })
 }
 
+/// The height of a river's surface line at the point of it nearest to `p`, interpolated
+/// between the samples.
+pub fn river_level(points: &[[f32; 2]], surface: &[f32], p: [f32; 2]) -> f32 {
+    if points.len() < 2 {
+        return surface.first().copied().unwrap_or(0.0);
+    }
+    let mut best = (f32::MAX, surface[0]);
+    for k in 0..points.len() - 1 {
+        let (a, b) = (points[k], points[k + 1]);
+        let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+        let t = (((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
+        let d = (a[0] + dx * t - p[0]).hypot(a[1] + dz * t - p[1]);
+        if d < best.0 {
+            best = (d, surface[k] + (surface[k + 1] - surface[k]) * t);
+        }
+    }
+    best.1
+}
+
 /// The water models of a fitted river, at the level of its bed.
 pub fn river_chain_objects(w: &mut World, modifier: &TerrainModifier, surface: &[f32], g: &crate::library::RiverGen, chain: &RiverChain) -> Vec<Obj> {
     let ModShape::Line { points, .. } = &modifier.shape else { return Vec::new() };
-    let level = |p: [f32; 2]| {
-        let k = (0..points.len()).min_by(|a, b| (points[*a][0] - p[0]).hypot(points[*a][1] - p[1]).total_cmp(&(points[*b][0] - p[0]).hypot(points[*b][1] - p[1]))).unwrap_or(0);
-        surface[k]
-    };
+    // The height of the water where the bed line passes nearest, between its samples, so
+    // that two pieces meeting at a point stand at the same height there.
+    let level = |p: [f32; 2]| river_level(points, surface, p);
     chain.pieces.iter().map(|p| {
         let (a, b) = (level(p.from), level(p.to));
         let (s, c) = p.yaw.to_radians().sin_cos();
@@ -2453,6 +2525,15 @@ mod tests {
     }
 
     #[test]
+    fn the_river_level_runs_smoothly_between_samples() {
+        let points = [[0.0, 0.0], [10.0, 0.0], [20.0, 0.0]];
+        let surface = [10.0, 8.0, 7.0];
+        assert!((river_level(&points, &surface, [5.0, 3.0]) - 9.0).abs() < 1e-4);
+        assert!((river_level(&points, &surface, [15.0, -2.0]) - 7.5).abs() < 1e-4);
+        assert!((river_level(&points, &surface, [9.99, 0.0]) - river_level(&points, &surface, [10.01, 0.0])).abs() < 0.01);
+    }
+
+    #[test]
     fn a_river_follows_a_bend_with_bend_models() {
         use crate::library::RiverGen;
         let line: Vec<[f32; 2]> = (0..=60).map(|k| { let a = k as f32 / 60.0 * 1.57; [300.0 - 150.0 * a.cos(), 300.0 + 150.0 * a.sin()] }).collect();
@@ -2790,6 +2871,40 @@ mod tests {
             let d = r.decks[0];
             assert!(d.from[0] < 482.0 && d.to[0] > 538.0 && d.height > 95.0, "{d:?}");
         }
+    }
+
+    /// A shallow river laid as water models gets a bridge, not an embankment through it,
+    /// when P: is mounted.
+    #[test]
+    fn a_straight_road_bridges_a_river() {
+        let parts = Path::new("P:/dz/structures/roads/parts");
+        if !parts.exists() || !Path::new("P:/dz/water/streams/river_24_24.p3d").exists() { return; }
+        let catalog = road_catalog(parts).unwrap();
+        let Some(family) = dayz_road_tool::rails::BridgeKit::for_road(parts, "asf2", &catalog).map(|_| "asf2".to_string()).or_else(|| road_families(&catalog).into_iter().find(|f| dayz_road_tool::rails::BridgeKit::for_road(parts, f, &catalog).is_some())) else { return };
+        let mut w = World::new(crate::world::WorldMeta::new("R", 128, 8.0), 100.0);
+        // A bed a metre and a half deep and 24 m wide, running north to south at x = 500.
+        for j in 0..w.base.rows {
+            for i in 0..w.base.cols {
+                let x = i as f32 * w.base.cell;
+                if (488.0..512.0).contains(&x) { let c = w.base.cols; w.base.data[j * c + i] = 98.5; }
+            }
+        }
+        w.recompose(None);
+        let db = crate::model_info::ModelDb::new("P:/");
+        let m = w.objects.intern(r"dz\water\streams\river_24_24.p3d");
+        for z in [476.0, 500.0, 524.0] {
+            w.objects.insert(Obj { x: 500.0, z, elevation: 99.4, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: crate::objects::FLAG_ABSOLUTE });
+        }
+        let inland = InlandWater::of(&w, &db);
+        assert!(inland.contains(500.0, 500.0) && !inland.contains(530.0, 500.0));
+        // The polygon is the same rectangle.
+        let poly = &inland.polygons()[1];
+        assert!(poly.iter().all(|p| (p[0] - 500.0).abs() <= 12.01 && (p[1] - 500.0).abs() <= 12.01), "{poly:?}");
+        let req = RouteRequest { family, points: vec![[200.0, 500.0], [800.0, 500.0]], terrain_route: false, settings: Default::default(), forbidden: vec![], roads: vec![], start: None };
+        let r = build_route(&mut w, &db, &req, &catalog, &Job::default()).unwrap();
+        assert!(!r.decks.is_empty(), "no bridge over the river");
+        let d = r.decks[0];
+        assert!(d.from[0] < 489.0 && d.to[0] > 511.0, "{d:?}");
     }
 
     /// A road goes on from either open end: the new pieces join the old ones in one chain,

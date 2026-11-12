@@ -13,6 +13,8 @@ use std::sync::Arc;
 pub const PATCH: usize = 32;
 
 /// Sky reflection and water surface, shared by the sea and by river and pond models.
+/// The numbers follow the game's water materials: the sea's `MatOceanOld` and the
+/// `MatWaterPool` of rivers and ponds.
 const WATER_GLSL: &str = r#"
 uniform float u_time;
 vec3 environment(vec3 d){
@@ -21,31 +23,76 @@ vec3 environment(vec3 d){
   vec3 sky = mix(vec3(0.73,0.79,0.86), vec3(0.38,0.53,0.74), pow(d.y, 0.55));
   return mix(vec3(0.09,0.11,0.2), sky, day);
 }
-vec2 ripple(vec2 p, vec2 dir, float f, float a, float s){
-  return dir * f * a * cos(dot(dir, p) * f + u_time * s);
+float hash12(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash12(i), hash12(i + vec2(1,0)), u.x), mix(hash12(i + vec2(0,1)), hash12(i + vec2(1,1)), u.x), u.y);
 }
-vec4 shadeWater(vec3 wp, float fog, vec2 swell, float foam){
+// Slope of the small waves: six octaves, each finer and lower than the last, as the game's
+// waveOctaves and wavePersistence have it.
+vec2 waveSlope(vec2 p, float strength){
+  vec2 g = vec2(0.0);
+  float a = 0.081, k = 0.55;
+  // Metres a pixel spans here: waves finer than that would only flicker, as a normal map's
+  // smaller mipmaps smooth them away.
+  float px = max(length(fwidth(p)), 1e-4);
+  for (int i = 0; i < 6; i++) {
+    float r = float(i) * 2.399;
+    vec2 d = vec2(cos(r), sin(r));
+    vec2 e = vec2(-d.y, d.x);
+    float ph = dot(d, p) * k + u_time * sqrt(9.81 * k) + 1.7 * sin(dot(e, p) * k * 0.31 + float(i));
+    g += d * cos(ph) * a * k * (1.0 - smoothstep(0.15, 0.6, px * k / 6.2832));
+    a *= 0.745; k *= 1.93;
+  }
+  return g * strength;
+}
+// `depth` is how deep the water is under this point, `clear` the metres light gets through
+// (WaterExtinction), `body` the colour of the water itself.
+vec4 shadeWater(vec3 wp, float fog, float depth, float foam, float clear, vec3 body, float strength, vec2 extra){
   float dist = distance(wp, u_eye);
   vec3 V = normalize(u_eye - wp);
-  vec2 g = ripple(wp.xz, vec2(0.8, 0.6), 0.9, 0.035, 1.3)
-         + ripple(wp.xz, vec2(-0.5, 0.86), 1.7, 0.02, 1.9)
-         + ripple(wp.xz, vec2(0.28, -0.96), 3.6, 0.009, 2.8)
-         + ripple(wp.xz, vec2(-0.93, -0.36), 7.1, 0.004, 4.1);
-  // Ripples blur into a calm surface with distance.
-  g *= 1.0 / (1.0 + dist * 0.012);
-  g += swell;
+  // Close up the ripples are sharp; far off they blur into a calm, mirroring surface.
+  vec2 g = waveSlope(wp.xz, strength) * 0.6 + extra;
   vec3 N = normalize(vec3(-g.x, 1.0, -g.y));
-  float f = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-  vec3 deep = vec3(0.025, 0.11, 0.14) * (u_amb * 1.1 + u_sun_col * max(u_sun.y, 0.0) * 1.2);
+  float nv = max(dot(N, V), 0.0);
+  float f = 0.02 + 0.98 * pow(1.0 - nv, 5.0);
+  vec3 lightc = u_amb + u_sun_col * max(u_sun.y, 0.0);
+  // Light the water itself sends back, and how much of the bed shows through it: the light
+  // goes down to the bed and back up along the view.
+  // The deep colour of the material lightened toward the grey blue the game shows far off
+  // (DeepMapAlphaColor), which is how the sea looks under a bright sky.
+  vec3 scatter = (body * 2.0 + vec3(0.47, 0.53, 0.59) * 0.25) * lightc;
+  float path = max(depth, 0.0) * (1.0 + 1.0 / max(V.y, 0.1));
+  float T = exp(-path * 2.5 / max(clear, 0.1));
   vec3 r = reflect(-V, N);
-  // At grazing angles a wave can reflect below the horizon; the sea still mirrors the sky.
-  vec3 col = mix(deep, environment(vec3(r.x, abs(r.y), r.z)), f);
+  // At grazing angles a wave can reflect below the horizon; the water still mirrors the sky.
+  vec3 refl = environment(vec3(r.x, abs(r.y), r.z)) * vec3(0.9, 0.94, 0.97);
   vec3 H = normalize(V + u_sun);
-  col += u_sun_col * pow(max(dot(N, H), 0.0), 380.0) * 1.8 * step(0.0, u_sun.y);
-  col = mix(col, (u_amb + u_sun_col * max(u_sun.y, 0.0)) * 0.9, foam);
-  col = mix(col, vec3(0.73,0.79,0.86), 1.0 - exp(-dist * fog));
-  return vec4(col * u_exposure, max(mix(0.74, 0.96, f), foam));
+  // Sharp glints of the sun (SunPower 256), which break up into sparkles on the ripples.
+  vec3 spec = u_sun_col * pow(max(dot(N, H), 0.0), 256.0) * 4.0 * step(0.0, u_sun.y);
+  vec3 c = scatter * (1.0 - T) * (1.0 - f) + refl * f + spec;
+  float a = 1.0 - T * (1.0 - f);
+  // Foam (FoamColor) lies on top.
+  vec3 fc = vec3(0.80, 0.80, 0.76) * lightc;
+  c = mix(c, fc, foam);
+  a = mix(a, 1.0, foam);
+  float k = 1.0 - exp(-dist * fog);
+  c = mix(c, vec3(0.73,0.79,0.86) * max(a, 1e-3), k);
+  a = mix(a, 1.0, k);
+  return vec4(c / max(a, 1e-3) * u_exposure, clamp(a, 0.0, 1.0));
 }
+"#;
+
+/// How high the sea stands at a point: the tide, and the swell running up the shore and
+/// back (MaxTide and MaxWave of the game's world config).
+const SEA_GLSL: &str = r#"
+uniform float u_tide, u_waves;
+float surge(vec2 p){
+  float t = u_time;
+  return sin(t * 0.70 - dot(p, vec2(0.0314, 0.0236))) * 0.75 + sin(t * 0.43 + dot(p, vec2(-0.011, 0.017)) + 1.3) * 0.25;
+}
+float seaLevel(vec2 p){ return u_sea + u_tide + u_waves * surge(p); }
 "#;
 
 const TERRAIN_VS: &str = r#"#version 330 core
@@ -94,6 +141,7 @@ uniform vec4 u_brush;
 uniform vec4 u_brush_color;
 uniform vec4 u_grid;
 uniform float u_sea;
+uniform int u_has_sea;
 uniform vec2 u_height_range;
 uniform int u_ortho;
 uniform sampler2DShadow u_shadow;
@@ -102,6 +150,8 @@ uniform int u_has_shadow;
 uniform vec3 u_sun, u_sun_col, u_amb;
 uniform float u_fog, u_exposure, u_bias, u_transition, u_surface_range;
 uniform int u_brush_shape;
+uniform float u_time;
+//SEA
 vec3 tone(vec3 c){
   // Linear up to 0.7, then a soft shoulder so bright surfaces keep their detail.
   vec3 over = max(c - vec3(0.7), vec3(0.0));
@@ -200,6 +250,14 @@ void main(){
                + textureGrad(u_layer_normals, vec3(t, float(c)), dx, dy).xyz * wc + textureGrad(u_layer_normals, vec3(t, float(d)), dx, dy).xyz * wd) * 2.0 - 1.0;
       bn = normalize(n + vec3(tn.x, 0.0, tn.y) * near);
     }
+    // Ground the sea reaches is wet and darker (WetFloor), more so under the water.
+    if (u_has_sea != 0) {
+      float lvl = seaLevel(v_world.xz);
+      float reach = u_sea + u_tide + u_waves + 0.25;
+      float wet = v_world.y < lvl ? 1.0 : 1.0 - smoothstep(lvl, max(reach, lvl + 0.05), v_world.y);
+      wet *= step(lvl - 40.0, v_world.y);
+      alb *= mix(1.0, v_world.y < lvl ? 0.6 : 0.76, wet);
+    }
     // Light adds up in linear space, as it does in the game.
     vec3 sky = u_amb * (0.6 + 0.4*n.y);
     vec3 A = pow(sky, vec3(2.2));
@@ -252,49 +310,40 @@ void main(){
 
 const WATER_VS: &str = r#"#version 330 core
 layout(location=0) in vec2 a_pos;
-uniform mat4 u_vp; uniform vec4 u_area; uniform float u_sea, u_time, u_waves, u_cell;
+uniform mat4 u_vp; uniform vec4 u_area; uniform float u_sea, u_cell;
 uniform vec3 u_eye; uniform vec2 u_size; uniform sampler2D u_height;
-out vec3 v_world; out vec2 v_swell; out float v_depth;
-// (direction, wave length, relative height)
-const vec4 W[5] = vec4[5](vec4(0.83,0.55,92.0,1.0), vec4(0.62,0.78,57.0,0.55), vec4(0.97,0.22,38.0,0.3), vec4(0.34,0.94,23.0,0.16), vec4(0.9,-0.43,14.0,0.08));
+uniform float u_time;
+//SEA
+out vec3 v_world;
 void main(){
   // Grid packed round the camera, thinning out to the horizon.
   vec2 q = a_pos * 2.0 - 1.0;
   vec2 p = u_eye.xz + q * abs(q) * abs(q) * u_area.z;
-  vec2 uv = (p / u_cell + 0.5) / u_size;
-  bool on = uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0;
-  v_depth = on ? u_sea - texture(u_height, uv).r : 100.0;
-  // Swell dies in shallow water and is not worth drawing far away.
-  float shore = clamp(v_depth / 7.0, 0.12, 1.0);
-  float amp = u_waves * shore * (1.0 - smoothstep(900.0, 2600.0, distance(p, u_eye.xz)));
-  float h = 0.0; vec2 slope = vec2(0.0), shift = vec2(0.0);
-  for (int i = 0; i < 5; i++) {
-    float k = 6.28318 / W[i].z;
-    float speed = sqrt(9.81 * k);
-    float phase = k * dot(W[i].xy, p) - speed * u_time;
-    float a = amp * W[i].w * 0.5;
-    h += a * sin(phase);
-    slope += W[i].xy * k * a * cos(phase);
-    shift -= W[i].xy * a * 0.6 * cos(phase);
-  }
-  v_swell = slope;
-  v_world = vec3(p.x + shift.x, u_sea + h, p.y + shift.y);
+  v_world = vec3(p.x, seaLevel(p), p.y);
   gl_Position = u_vp * vec4(v_world, 1.0);
   // Far away the surface and the sea bed under it would fight over the same depth.
   gl_Position.z -= gl_Position.w * 0.0004 * smoothstep(200.0, 2500.0, distance(p, u_eye.xz));
 }"#;
 
 const WATER_FS: &str = r#"#version 330 core
-in vec3 v_world; in vec2 v_swell; in float v_depth; out vec4 o;
-uniform vec3 u_eye, u_sun, u_sun_col, u_amb; uniform float u_fog, u_exposure;
+in vec3 v_world; out vec4 o;
+uniform vec3 u_eye, u_sun, u_sun_col, u_amb; uniform float u_fog, u_exposure, u_sea, u_cell;
+uniform vec2 u_size; uniform sampler2D u_height;
 //WATER
+//SEA
 void main(){
-  if (v_depth < -0.3) discard;
-  // Foam rolls in along the shore.
-  float band = 0.5 + 0.5 * sin(v_depth * 2.6 - u_time * 0.8 + 1.4 * sin(v_world.x * 0.11 + v_world.z * 0.07));
-  float lace = 0.5 + 0.5 * sin(v_world.x * 2.3 + sin(v_world.z * 1.7) * 2.0 + u_time * 0.5) * sin(v_world.z * 2.9 - u_time * 0.3);
-  float foam = (1.0 - smoothstep(0.0, 1.6, v_depth)) * smoothstep(0.35, 0.95, band * 0.7 + lace * 0.45) * 0.85;
-  o = shadeWater(v_world, u_fog, v_swell, foam);
+  vec2 uv = (v_world.xz / u_cell + 0.5) / u_size;
+  bool on = uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0;
+  float depth = on ? v_world.y - texture(u_height, uv).r : 100.0;
+  if (depth < -0.05) discard;
+  // Foam where the water runs out over the shore, thickest where it is rising.
+  vec2 w = v_world.xz;
+  float lace = vnoise(w * 0.9 + vec2(u_time * 0.05, 0.0)) * 0.6 + vnoise(w * 2.7 - vec2(0.0, u_time * 0.08)) * 0.4;
+  float rising = 0.5 + 0.5 * cos(u_time * 0.70 - dot(w, vec2(0.0314, 0.0236)));
+  float edge = 1.0 - smoothstep(0.0, 0.18 + 0.25 * rising, depth);
+  float band = (1.0 - smoothstep(0.1, 0.9, depth)) * smoothstep(0.5, 0.8, lace);
+  float foam = clamp(edge * smoothstep(0.25, 0.6, lace) + band * 0.6, 0.0, 1.0) * 0.64 * step(0.0, u_waves + 0.001);
+  o = shadeWater(v_world, u_fog, depth, foam, 15.0, vec3(0.0235, 0.0588, 0.0745), 1.0, vec2(0.0));
 }"#;
 
 const MESH_VS: &str = r#"#version 330 core
@@ -313,8 +362,18 @@ uniform vec2 u_size;
 uniform float u_cell;
 uniform vec3 u_eye;
 out vec3 v_n; out vec2 v_uv; out vec2 v_uv2; out vec3 v_world; out vec3 v_round; flat out vec4 v_tint;
+flat out vec3 v_flow;
 void main(){
   vec4 p = vec4(a_pos, 1.0);
+  // A river model runs along its length: downstream is the way it tilts down, and where it
+  // lies level, the way the generator lays it, from its start to its end.
+  vec3 len = vec3(i_r0.z, i_r1.z, i_r2.z);
+  float lz = max(length(len), 1e-4);
+  vec3 dir = len / lz;
+  float down = dir.y > 0.002 ? -1.0 : 1.0;
+  vec2 fd = normalize(dir.xz + vec2(1e-5)) * down;
+  // Faster where it falls more.
+  v_flow = vec3(fd, clamp(0.55 + abs(dir.y) * 25.0, 0.55, 2.5));
   v_world = vec3(dot(i_r0, p), dot(i_r1, p), dot(i_r2, p));
   if (u_conform != 0) {
     float ground = texture(u_height, (v_world.xz / u_cell + 0.5) / u_size).r;
@@ -332,6 +391,7 @@ void main(){
 
 const MESH_FS: &str = r#"#version 330 core
 in vec3 v_n; in vec2 v_uv; in vec2 v_uv2; in vec3 v_world; in vec3 v_round; flat in vec4 v_tint;
+flat in vec3 v_flow;
 out vec4 o;
 uniform sampler2D u_tex, u_m1, u_m2, u_m3, u_m4, u_m5, u_m6, u_m7, u_m8, u_m9, u_m10, u_m11, u_m12, u_m13, u_m14;
 uniform vec4 u_xf[15];
@@ -348,6 +408,9 @@ uniform int u_decal;
 uniform sampler2DShadow u_shadow;
 uniform mat4 u_light;
 uniform int u_has_shadow;
+uniform sampler2D u_height;
+uniform vec2 u_size;
+uniform float u_cell;
 
 // Channels a compressed texture stores upside down, per slot.
 uniform vec4 u_inv[15];
@@ -392,10 +455,32 @@ float shadow(vec3 n){
 //WATER
 void main(){
   if (u_mode == 3) {
-    vec4 w = shadeWater(v_world, u_fog, vec2(0.0), 0.0);
-    // Rivers and ponds are shallow: they mirror more of the sky and show their bed.
-    vec3 up = environment(reflect(-normalize(u_eye - v_world), vec3(0.0, 1.0, 0.0)));
-    o = vec4(mix(w.rgb, up * u_exposure, 0.32), min(w.a, 0.84));
+    // Rivers and ponds: how deep the water is over the ground under it.
+    float depth = v_world.y - texture(u_height, (v_world.xz / u_cell + 0.5) / u_size).r;
+    // The current (WaterStreamMap): streaks drawn out along the flow and carried with it.
+    vec2 fd = v_flow.xy, fc = vec2(-fd.y, fd.x);
+    float px = max(length(fwidth(v_world.xz)), 1e-3);
+    float fade = 1.0 - smoothstep(0.08, 0.5, px);
+    vec2 sg = vec2(0.0);
+    float streak = 0.0;
+    if (fade > 0.0) {
+      float speed = v_flow.z;
+      // Two layers moving at different speeds, so the pattern does not just slide as one.
+      for (int i = 0; i < 2; i++) {
+        float sc = i == 0 ? 1.0 : 2.3;
+        float sp = speed * (i == 0 ? 1.0 : 1.35);
+        vec2 q = vec2(dot(v_world.xz, fd) - u_time * sp, dot(v_world.xz, fc)) * vec2(0.45, 1.6) * sc;
+        float e = 0.05;
+        float h0 = vnoise(q), hx = vnoise(q + vec2(e, 0.0)), hy = vnoise(q + vec2(0.0, e));
+        // From the pattern's own coordinates back to the ground.
+        vec2 d = vec2((hx - h0) / e * 0.45 * sc, (hy - h0) / e * 1.6 * sc) * (i == 0 ? 0.09 : 0.045);
+        sg += fd * d.x + fc * d.y;
+        streak += h0 * (i == 0 ? 0.65 : 0.35);
+      }
+      sg *= fade;
+    }
+    float foam = smoothstep(0.72, 0.95, streak) * 0.12 * fade * smoothstep(0.6, 1.5, v_flow.z);
+    o = shadeWater(v_world, u_fog, max(depth, 0.3), foam, 3.0, vec3(0.0392, 0.0549, 0.0667), 0.18, sg);
     return;
   }
   float dist = distance(v_world, u_eye);
@@ -948,6 +1033,8 @@ pub struct Frame {
     pub surface_blend: f32,
     pub surface_range: f32,
     pub sea_waves: f32,
+    /// How far the tide has lifted or lowered the sea, in metres.
+    pub tide: f32,
     pub world: f32,
     pub tile: f32,
     pub lighting: LightGpu,
@@ -1111,7 +1198,7 @@ unsafe fn compile(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Progra
     let mut shaders = Vec::new();
     for (kind, src) in [(glow::VERTEX_SHADER, vs), (glow::FRAGMENT_SHADER, fs)] {
         let s = gl.create_shader(kind)?;
-        gl.shader_source(s, &src.replace("//WATER", WATER_GLSL));
+        gl.shader_source(s, &src.replace("//WATER", WATER_GLSL).replace("//SEA", SEA_GLSL));
         gl.compile_shader(s);
         if !gl.get_shader_compile_status(s) {
             return Err(gl.get_shader_info_log(s));
@@ -1944,6 +2031,10 @@ impl Renderer {
         gl.uniform_2_f32(u(terrain, "u_mask_size").as_ref(), self.mask_size[0], self.mask_size[1]);
         gl.uniform_1_f32(u(terrain, "u_tile").as_ref(), f.tile);
         gl.uniform_1_f32(u(terrain, "u_sea").as_ref(), f.sea);
+        gl.uniform_1_f32(u(terrain, "u_tide").as_ref(), f.tide);
+        gl.uniform_1_f32(u(terrain, "u_waves").as_ref(), f.sea_waves);
+        gl.uniform_1_f32(u(terrain, "u_time").as_ref(), f.time);
+        gl.uniform_1_i32(u(terrain, "u_has_sea").as_ref(), (f.show_water && f.height_range[0] < f.sea + f.tide + f.sea_waves) as i32);
         gl.uniform_2_f32(u(terrain, "u_height_range").as_ref(), f.height_range[0], f.height_range[1]);
         gl.uniform_4_f32(u(terrain, "u_grid").as_ref(), f.grid[0], f.grid[1], f.grid[2], 0.0);
         match f.brush {
@@ -2168,6 +2259,7 @@ impl Renderer {
             gl.uniform_3_f32(u(water, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
             gl.uniform_1_f32(u(water, "u_sea").as_ref(), f.sea);
             gl.uniform_1_f32(u(water, "u_waves").as_ref(), f.sea_waves);
+            gl.uniform_1_f32(u(water, "u_tide").as_ref(), f.tide);
             gl.uniform_1_f32(u(water, "u_cell").as_ref(), self.cell);
             gl.uniform_2_f32(u(water, "u_size").as_ref(), self.size[0], self.size[1]);
             gl.active_texture(glow::TEXTURE0);

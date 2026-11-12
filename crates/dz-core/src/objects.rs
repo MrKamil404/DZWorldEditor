@@ -58,6 +58,12 @@ pub struct ObjectStore {
 }
 
 #[inline]
+/// Rivers, ponds and streams; not the beds under them or buildings named after water.
+pub fn is_water_model(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    (p.contains("\\water\\") || p.contains("\\water_")) && !p.contains("streambed")
+}
+
 pub fn grid_key(x: f32, z: f32) -> (i32, i32) {
     ((x / GRID_CELL).floor() as i32, (z / GRID_CELL).floor() as i32)
 }
