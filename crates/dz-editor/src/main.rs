@@ -2,6 +2,7 @@
 //! DZ World Editor: terrain, objects and roads for DayZ maps.
 mod app;
 mod asset_browser;
+mod brushes;
 mod camera;
 mod deleting;
 mod exporting;

@@ -124,6 +124,10 @@ pub struct SculptSettings {
     pub strength: f32,
     pub shape: dz_core::edit::BrushShape,
     pub noise: f32,
+    /// One of the user's brush pictures in place of the shape.
+    pub picture: Option<String>,
+    pub spray: bool,
+    pub spray_density: f32,
 }
 
 pub struct PaintSettings {
@@ -131,6 +135,10 @@ pub struct PaintSettings {
     pub radius: f32,
     pub scatter: f32,
     pub shape: dz_core::edit::BrushShape,
+    /// One of the user's brush pictures in place of the shape.
+    pub picture: Option<String>,
+    pub spray: bool,
+    pub spray_density: f32,
     /// Paint only over this surface.
     pub only_on: Option<usize>,
     /// The next click takes the surface under the cursor.
@@ -318,6 +326,10 @@ pub struct App {
     pub show_contours: bool,
     /// Keys held down by the test script.
     pub synthetic_modifiers: egui::Modifiers,
+    /// The pointer was over a 3D or top view in the last frame.
+    pub view_hovered: bool,
+    /// The user's own brush pictures.
+    pub brushes: Vec<crate::brushes::CustomBrush>,
     /// Metres of height between two contour lines.
     pub contour_interval: f32,
     /// The camera may go below the terrain.
@@ -449,9 +461,9 @@ impl App {
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
-            show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
-            sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0 },
-            paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), only_on: None, picking: false },
+            show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
+            sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
+            paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
             stroke: None, mask_stroke: None,

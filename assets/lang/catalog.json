@@ -163,6 +163,10 @@
   "de": "Zum Projekt hinzufügen",
   "pl": "Dodaj do projektu"
  },
+ "Add your own brushes: grey pictures, white works fully, black not at all. They are copied to {0}": {
+  "de": "Eigene Pinsel hinzufügen: Graustufenbilder, Weiß wirkt voll, Schwarz gar nicht. Sie werden nach {0} kopiert",
+  "pl": "Dodaj własne pędzle: obrazki w skali szarości, biel działa w pełni, czerń wcale. Są kopiowane do {0}"
+ },
  "Add zone": {
   "de": "Zone hinzufügen",
   "pl": "Dodaj strefę"
@@ -579,6 +583,10 @@
   "de": "Wähle mindestens ein Modell",
   "pl": "Wybierz co najmniej jeden model"
  },
+ "Choose brush pictures": {
+  "de": "Pinselbilder wählen",
+  "pl": "Wybierz obrazki pędzli"
+ },
  "Choose the source point in the preview first": {
   "de": "Zuerst den Quellpunkt in der Vorschau wählen",
   "pl": "Najpierw wybierz punkt źródłowy w podglądzie"
@@ -878,6 +886,10 @@
  "Delete with it:": {
   "de": "Mit löschen:",
   "pl": "Usuń razem z nim:"
+ },
+ "Density": {
+  "de": "Dichte",
+  "pl": "Gęstość"
  },
  "Density per ha (0 = from the preset)": {
   "de": "Dichte pro ha (0 = aus dem Preset)",
@@ -2495,6 +2507,10 @@
   "de": "Bild",
   "pl": "Obraz"
  },
+ "Pictures": {
+  "de": "Bilder",
+  "pl": "Obrazki"
+ },
  "Pitch": {
   "de": "Neigung",
   "pl": "Pochylenie"
@@ -2654,6 +2670,10 @@
  "Reload from TV4P": {
   "de": "Aus TV4P neu laden",
   "pl": "Wczytaj ponownie z TV4P"
+ },
+ "Remove brush": {
+  "de": "Pinsel entfernen",
+  "pl": "Usuń pędzel"
  },
  "Remove from this folder": {
   "de": "Aus diesem Ordner entfernen",
@@ -3158,6 +3178,14 @@
  "Spacing 0 uses the length of the wire model.": {
   "de": "Abstand 0 nimmt die Länge des Leitungsmodells.",
   "pl": "Odstęp 0 bierze długość modelu przewodów."
+ },
+ "Spray": {
+  "de": "Spray",
+  "pl": "Spray"
+ },
+ "Sprays scattered dots that fill in while the button is held, instead of covering the whole brush.": {
+  "de": "Sprüht verstreute Punkte, die sich bei gehaltener Taste füllen, statt den ganzen Pinsel zu decken.",
+  "pl": "Natryskuje rozproszone punkty, które gęstnieją, gdy trzymasz przycisk, zamiast pokrywać cały pędzel."
  },
  "Square": {
   "de": "Quadrat",
