@@ -9,7 +9,7 @@ use crate::viewport;
 use dz_core::edit::SculptTool;
 use dz_core::objects::{FLAG_ABSOLUTE, FLAG_UNDERGROUND};
 use dz_core::world::{ModMode, ModShape, SurfaceLayer};
-use eframe::egui::{self, vec2, Color32, RichText};
+use eframe::egui::{self, pos2, vec2, Color32, Rect, RichText};
 
 pub fn new_project_dialog() -> Dialog {
     Dialog::NewProject(NewProject { name: "NewMap".into(), preset: 4, base: 60.0, folder: String::new() })
@@ -22,18 +22,127 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
         app.lib_dirty = false;
         if let Err(e) = app.library.save(&crate::library_ui::library_path()) { app.error(format!("{e:#}")); }
     }
-    menu_bar(app, ctx);
-    toolbar(app, ctx);
-    status_bar(app, ctx);
-    if app.doc.is_some() {
-        egui::SidePanel::left("modes").default_width(300.0).width_range(240.0..=460.0).show(ctx, |ui| modes_panel(app, ui));
-        egui::SidePanel::right("right").default_width(320.0).width_range(240.0..=520.0).show(ctx, |ui| right_panel(app, ui));
+    if ctx.input(|i| i.key_pressed(egui::Key::F11)) && !ctx.wants_keyboard_input() {
+        set_fullscreen(app, ctx, !app.fullscreen);
     }
-    egui::TopBottomPanel::bottom("bottom").resizable(true).default_height(230.0).height_range(90.0..=600.0).show(ctx, |ui| bottom_panel(app, ui));
-    egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::DARK)).show(ctx, |ui| viewport::central(app, ui));
+    if app.fullscreen && app.doc.is_some() && !app.detached {
+        // The view takes the whole screen; the panels slide in over it at the edges.
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::DARK)).show(ctx, |ui| viewport::central(app, ui));
+        edge_panels(app, ctx);
+    } else {
+        menu_bar(app, ctx);
+        toolbar(app, ctx);
+        status_bar(app, ctx);
+        if app.doc.is_some() {
+            egui::SidePanel::left("modes").default_width(300.0).width_range(240.0..=460.0).show(ctx, |ui| modes_panel(app, ui));
+            egui::SidePanel::right("right").default_width(320.0).width_range(240.0..=520.0).show(ctx, |ui| right_panel(app, ui));
+        }
+        egui::TopBottomPanel::bottom("bottom").resizable(true).default_height(230.0).height_range(90.0..=600.0).show(ctx, |ui| bottom_panel(app, ui));
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::DARK)).show(ctx, |ui| {
+            if app.detached {
+                detached_placeholder(app, ui);
+            } else {
+                viewport::central(app, ui);
+            }
+        });
+    }
+    if app.detached {
+        detached_view(app, ctx);
+    }
     dialogs(app, ctx);
     app.updater.window(ctx);
     crate::asset_browser::drag_ghost(app, ctx);
+}
+
+/// Turns the full screen view on or off, for the window as well.
+pub fn set_fullscreen(app: &mut App, ctx: &egui::Context, on: bool) {
+    app.fullscreen = on;
+    app.edge_open = [false; 4];
+    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(on));
+}
+
+/// The panels of the full screen view, each sliding in over the view while the pointer is at
+/// its edge of the screen or over the panel: top the menu and tools, left the tool settings,
+/// right the outliner, bottom the content browser.
+fn edge_panels(app: &mut App, ctx: &egui::Context) {
+    const EDGE: f32 = 4.0;
+    let screen = ctx.screen_rect();
+    let pointer = ctx.pointer_latest_pos();
+    // A menu, a drag or a typed field keeps its panel open.
+    let busy = ctx.is_using_pointer() || egui::DragAndDrop::has_any_payload(ctx) || ctx.wants_keyboard_input() || ctx.memory(|m| m.any_popup_open());
+    let at_edge = |k: usize| pointer.is_some_and(|p| match k {
+        0 => p.y <= screen.top() + EDGE,
+        1 => p.x <= screen.left() + EDGE,
+        2 => p.x >= screen.right() - EDGE,
+        _ => p.y >= screen.bottom() - EDGE,
+    });
+    let rects = [
+        Rect::from_min_size(screen.min, vec2(screen.width(), 76.0)),
+        Rect::from_min_max(pos2(screen.left(), screen.top() + 40.0), pos2(screen.left() + 320.0, screen.bottom() - 40.0)),
+        Rect::from_min_max(pos2(screen.right() - 340.0, screen.top() + 40.0), pos2(screen.right(), screen.bottom() - 40.0)),
+        Rect::from_min_max(pos2(screen.left() + 40.0, screen.bottom() - 280.0), pos2(screen.right() - 40.0, screen.bottom())),
+    ];
+    for k in 0..4 {
+        let inside = pointer.is_some_and(|p| rects[k].expand(12.0).contains(p));
+        if at_edge(k) {
+            app.edge_open[k] = true;
+        } else if app.edge_open[k] && !inside && !busy {
+            app.edge_open[k] = false;
+        }
+    }
+    let frame = egui::Frame::new().fill(theme::PANEL).stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_gray(60))).inner_margin(egui::Margin::same(6)).corner_radius(4.0);
+    let area = |id: &str, r: Rect| egui::Area::new(egui::Id::new(id)).order(egui::Order::Foreground).fixed_pos(r.min).constrain(false);
+    if app.edge_open[1] {
+        let r = rects[1];
+        area("edge_left", r).show(ctx, |ui| frame.show(ui, |ui| { ui.set_min_size(r.size() - vec2(12.0, 12.0)); ui.set_max_size(r.size() - vec2(12.0, 12.0)); modes_panel(app, ui); }));
+    }
+    if app.edge_open[2] {
+        let r = rects[2];
+        area("edge_right", r).show(ctx, |ui| frame.show(ui, |ui| { ui.set_min_size(r.size() - vec2(12.0, 12.0)); ui.set_max_size(r.size() - vec2(12.0, 12.0)); right_panel(app, ui); }));
+    }
+    if app.edge_open[3] {
+        let r = rects[3];
+        area("edge_bottom", r).show(ctx, |ui| frame.show(ui, |ui| { ui.set_min_size(r.size() - vec2(12.0, 12.0)); ui.set_max_size(r.size() - vec2(12.0, 12.0)); bottom_panel(app, ui); }));
+    }
+    if app.edge_open[0] {
+        let r = rects[0];
+        area("edge_top", r).show(ctx, |ui| frame.show(ui, |ui| {
+            ui.set_min_width(r.width() - 12.0);
+            ui.set_max_width(r.width() - 12.0);
+            menu_contents(app, ui);
+            toolbar_contents(app, ui);
+        }));
+    }
+    // A hint where the panels are, faint until used.
+    if !app.edge_open.iter().any(|o| *o) {
+        let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("edge_hint")));
+        p.text(pos2(screen.center().x, screen.top() + 6.0), egui::Align2::CENTER_TOP, t("Move to an edge for the panels · F11 leaves full screen"), egui::FontId::proportional(11.0), egui::Color32::from_white_alpha(70));
+    }
+}
+
+/// What stands in the main window while the view is in a window of its own.
+fn detached_placeholder(app: &mut App, ui: &mut egui::Ui) {
+    ui.centered_and_justified(|ui| {
+        ui.vertical_centered(|ui| {
+            ui.add_space(ui.available_height() * 0.4);
+            ui.label(t("The view is in a window of its own."));
+            if ui.button(t("Bring it back")).clicked() { app.detached = false; }
+        });
+    });
+}
+
+/// The view in a window of its own, sized and placed at will.
+fn detached_view(app: &mut App, ctx: &egui::Context) {
+    let id = egui::ViewportId::from_hash_of("dzwe_view");
+    let builder = egui::ViewportBuilder::default().with_title(format!("DZ World Editor – {}", t("View"))).with_inner_size([1280.0, 800.0]).with_min_inner_size([320.0, 240.0]);
+    ctx.show_viewport_immediate(id, builder, |ctx, _class| {
+        if ctx.input(|i| i.viewport().close_requested()) {
+            app.detached = false;
+            return;
+        }
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::DARK)).show(ctx, |ui| viewport::central(app, ui));
+        app.handle_screenshots(ctx);
+    });
 }
 
 /// What the viewports draw; shared by the View menu and the viewport toolbar.
@@ -47,6 +156,7 @@ pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
     ui.checkbox(&mut app.show_lines, t("Roads and lines")).on_hover_text(keys.tip(Action::ToggleShapes));
     ui.checkbox(&mut app.show_shapes, t("Shapes")).on_hover_text(keys.tip(Action::ToggleShapes));
     ui.checkbox(&mut app.show_keypoints, t("Key points"));
+    if ui.checkbox(&mut app.settings.minimap, t("Minimap")).changed() { app.settings.save(); }
     ui.checkbox(&mut app.show_contours, t("Contour lines"));
     if app.show_contours {
         row(ui, &t("Interval"), |ui| { ui.add(egui::DragValue::new(&mut app.contour_interval).speed(0.5).range(1.0..=200.0).suffix(" m")); });
@@ -65,7 +175,13 @@ fn guard_close(app: &mut App, ctx: &egui::Context) {
 }
 
 fn menu_bar(app: &mut App, ctx: &egui::Context) {
-    egui::TopBottomPanel::top("menu").show(ctx, |ui| {
+    egui::TopBottomPanel::top("menu").show(ctx, |ui| menu_contents(app, ui));
+}
+
+fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
+    let ctx = ui.ctx().clone();
+    let ctx = &ctx;
+    let _ = ctx;
         egui::menu::bar(ui, |ui| {
             let has = app.doc.is_some();
             let keys = app.settings.keys.clone();
@@ -117,6 +233,16 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                 if ui.add(egui::Button::new(icons::with(icons::KEYBOARD, &t("Keyboard shortcuts..."))).shortcut_text(keys.text(Action::Shortcuts))).clicked() { app.dialog = Dialog::Shortcuts; ui.close_menu(); }
             });
             ui.menu_button(t("View"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
+                if ui.add_enabled(app.doc.is_some(), egui::Button::new(icons::with(icons::CORNERS_OUT, &t("Full screen"))).shortcut_text("F11")).on_hover_text(t("The view takes the whole screen; move the pointer to an edge for the panels.")).clicked() {
+                    let on = !app.fullscreen;
+                    set_fullscreen(app, ctx, on);
+                    ui.close_menu();
+                }
+                if ui.add_enabled(app.doc.is_some(), egui::Button::new(icons::with(icons::ARROW_SQUARE_OUT, &if app.detached { t("Bring the view back") } else { t("View in a separate window") }))).clicked() {
+                    app.detached = !app.detached;
+                    ui.close_menu();
+                }
+                ui.separator();
                 visibility_toggles(app, ui);
                 ui.separator();
                 ui.checkbox(&mut app.show_land_grid, t("Land grid"));
@@ -154,7 +280,6 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                 coffee_button(ui);
             });
         });
-    });
 }
 
 /// Where the project lives, and where it can be supported.
@@ -190,7 +315,13 @@ pub const MODES: [(Mode, &str, &str, Action); 8] = [
 ];
 
 fn toolbar(app: &mut App, ctx: &egui::Context) {
-    egui::TopBottomPanel::top("toolbar").frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 4))).show(ctx, |ui| {
+    egui::TopBottomPanel::top("toolbar").frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 4))).show(ctx, |ui| toolbar_contents(app, ui));
+}
+
+fn toolbar_contents(app: &mut App, ui: &mut egui::Ui) {
+    let ctx = ui.ctx().clone();
+    let ctx = &ctx;
+    let _ = ctx;
         ui.horizontal(|ui| {
             let keys = app.settings.keys.clone();
             let has = app.doc.is_some();
@@ -232,7 +363,6 @@ fn toolbar(app: &mut App, ctx: &egui::Context) {
                 if ui.add(egui::Button::new(icons::KEYBOARD).frame(false)).on_hover_text(keys.tip(Action::Shortcuts)).clicked() { app.dialog = Dialog::Shortcuts; }
             });
         });
-    });
 }
 
 /// Keys shown next to what they do, as small key caps.

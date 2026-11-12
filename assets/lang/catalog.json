@@ -419,6 +419,14 @@
   "de": "Brücken dürfen Sperrgebiete und Wasser queren",
   "pl": "Mosty mogą przechodzić nad obszarami zakazanymi i wodą"
  },
+ "Bring it back": {
+  "de": "Zurückholen",
+  "pl": "Przywróć"
+ },
+ "Bring the view back": {
+  "de": "Ansicht zurückholen",
+  "pl": "Przywróć podgląd"
+ },
  "Brush": {
   "de": "Pinsel",
   "pl": "Pędzel"
@@ -659,6 +667,14 @@
   "de": "Klicke auf die Karte, um es zu platzieren; es lässt sich auch auf die Karte ziehen.",
   "pl": "Kliknij na mapie, aby go postawić; można go też przeciągnąć na mapę."
  },
+ "Click or drag to take the camera there.": {
+  "de": "Klicken oder ziehen, um die Kamera dorthin zu bringen.",
+  "pl": "Kliknij lub przeciągnij, aby przenieść tam kamerę."
+ },
+ "Click or drag to take the camera there; the wheel zooms, the right button moves the map.": {
+  "de": "Klicken oder ziehen bringt die Kamera dorthin; das Mausrad zoomt, die rechte Taste verschiebt die Karte.",
+  "pl": "Kliknij lub przeciągnij, aby przenieść tam kamerę; kółko przybliża, prawy przycisk przesuwa mapę."
+ },
  "Click removes this sample": {
   "de": "Klick entfernt die Probe",
   "pl": "Kliknięcie usuwa próbkę"
@@ -702,6 +718,10 @@
  "Clone brush {0}": {
   "de": "Klonpinsel {0}",
   "pl": "Pędzel klonujący {0}"
+ },
+ "Close up the top view draws the models themselves, as a drone sees them, instead of their outlines.": {
+  "de": "Aus der Nähe zeichnet die Draufsicht die Modelle selbst, wie eine Drohne sie sieht, statt ihrer Umrisse.",
+  "pl": "Z bliska widok z góry rysuje same modele, jak widzi je dron, zamiast ich obrysów."
  },
  "Clusters per hectare": {
   "de": "Gruppen pro Hektar",
@@ -990,6 +1010,10 @@
  "Drag them onto the map to place them all side by side. In place mode a click places one of the selected models at random.": {
   "de": "Auf die Karte ziehen, um alle nebeneinander zu platzieren. Im Platzieren-Modus setzt ein Klick zufällig eines der ausgewählten Modelle.",
   "pl": "Przeciągnij je na mapę, aby postawić wszystkie obok siebie. W trybie stawiania kliknięcie stawia losowo jeden z zaznaczonych modeli."
+ },
+ "Drag to make the minimap bigger or smaller.": {
+  "de": "Ziehen, um die Minikarte zu vergrößern oder zu verkleinern.",
+  "pl": "Przeciągnij, aby powiększyć lub pomniejszyć minimapę."
  },
  "Drag to turn the model, double-click to reset the view.": {
   "de": "Ziehen dreht das Modell, Doppelklick setzt die Ansicht zurück.",
@@ -1391,6 +1415,10 @@
   "de": "Ordner mit Terrain-Builder-Vorlagenbibliotheken",
   "pl": "Folder z bibliotekami szablonów Terrain Buildera"
  },
+ "Follow the 3D camera": {
+  "de": "Der 3D-Kamera folgen",
+  "pl": "Podążaj za kamerą 3D"
+ },
  "Follow the slope": {
   "de": "Der Neigung folgen",
   "pl": "Podążaj za nachyleniem"
@@ -1450,6 +1478,10 @@
  "Full detail distance": {
   "de": "Distanz volle Details",
   "pl": "Odległość pełnych detali"
+ },
+ "Full screen": {
+  "de": "Vollbild",
+  "pl": "Pełny ekran"
  },
  "Further edge presets, with their share": {
   "de": "Weitere Rand-Presets und ihr Anteil",
@@ -1722,6 +1754,10 @@
  "In folders": {
   "de": "In Ordnern",
   "pl": "W folderach"
+ },
+ "In the split view the top view keeps the 3D camera in its middle.": {
+  "de": "In der geteilten Ansicht hält die Draufsicht die 3D-Kamera in der Mitte.",
+  "pl": "W widoku dzielonym widok z góry trzyma kamerę 3D na środku."
  },
  "Include in export": {
   "de": "Beim Export einbeziehen",
@@ -2051,6 +2087,10 @@
   "de": "Min. Neigung",
   "pl": "Min. nachylenie"
  },
+ "Minimap": {
+  "de": "Minikarte",
+  "pl": "Minimapa"
+ },
  "Minimum distance": {
   "de": "Mindestabstand",
   "pl": "Minimalna odległość"
@@ -2074,6 +2114,10 @@
  "Models can also be dropped here.": {
   "de": "Modelle können auch hier abgelegt werden.",
   "pl": "Modele można też tu upuścić."
+ },
+ "Models from above": {
+  "de": "Modelle von oben",
+  "pl": "Modele z góry"
  },
  "Models not found on the work drive ({0}), placed without height correction": {
   "de": "Modelle nicht auf dem Arbeitslaufwerk gefunden ({0}), ohne Höhenkorrektur platziert",
@@ -2138,6 +2182,10 @@
  "Move selection here": {
   "de": "Auswahl hierher verschieben",
   "pl": "Przenieś tu zaznaczenie"
+ },
+ "Move to an edge for the panels · F11 leaves full screen": {
+  "de": "Zum Rand für die Leisten · F11 beendet das Vollbild",
+  "pl": "Najedź na krawędź po panele · F11 wychodzi z pełnego ekranu"
  },
  "Move to layer": {
   "de": "In Ebene verschieben",
@@ -2370,6 +2418,10 @@
  "Offset": {
   "de": "Versatz",
   "pl": "Przesunięcie"
+ },
+ "One above the other": {
+  "de": "Übereinander",
+  "pl": "Jeden nad drugim"
  },
  "One file for each layer": {
   "de": "Eine Datei pro Ebene",
@@ -3203,6 +3255,10 @@
   "de": "Formen (SHP, TV4S)...",
   "pl": "Kształty (SHP, TV4S)..."
  },
+ "Share the room evenly": {
+  "de": "Platz gleich aufteilen",
+  "pl": "Podziel miejsce po równo"
+ },
  "Sharpness": {
   "de": "Schärfe",
   "pl": "Ostrość"
@@ -3263,6 +3319,10 @@
   "de": "Formen und Straßenlinien zeigen",
   "pl": "Pokaż kształty i linie dróg"
  },
+ "Side by side": {
+  "de": "Nebeneinander",
+  "pl": "Obok siebie"
+ },
  "Size": {
   "de": "Größe",
   "pl": "Rozmiar"
@@ -3322,6 +3382,10 @@
  "Spacing 0 uses the length of the wire model.": {
   "de": "Abstand 0 nimmt die Länge des Leitungsmodells.",
   "pl": "Odstęp 0 bierze długość modelu przewodów."
+ },
+ "Split view": {
+  "de": "Geteilte Ansicht",
+  "pl": "Widok dzielony"
  },
  "Spray": {
   "de": "Spray",
@@ -3759,9 +3823,21 @@
   "de": "Das unter ihr geebnete Gelände",
   "pl": "Teren wyrównany pod nią"
  },
+ "The view is in a window of its own.": {
+  "de": "Die Ansicht ist in einem eigenen Fenster.",
+  "pl": "Podgląd jest w osobnym oknie."
+ },
+ "The view takes the whole screen; move the pointer to an edge for the panels.": {
+  "de": "Die Ansicht füllt den ganzen Bildschirm; die Leisten erscheinen am Rand.",
+  "pl": "Podgląd zajmuje cały ekran; panele wysuwają się po najechaniu na krawędź."
+ },
  "The water stands at the lowest ground around the shape.": {
   "de": "Das Wasser steht auf der Höhe des tiefsten Geländes rund um die Form.",
   "pl": "Woda stoi na poziomie najniższego terenu wokół kształtu."
+ },
+ "The whole map": {
+  "de": "Die ganze Karte",
+  "pl": "Cała mapa"
  },
  "The wicket or gate stays level instead of leaning with the slope like the fence.": {
   "de": "Pforte oder Tor bleibt waagerecht, statt sich wie der Zaun mit dem Hang zu neigen.",
@@ -3814,6 +3890,14 @@
  "Top": {
   "de": "Draufsicht",
   "pl": "Z góry"
+ },
+ "Top view": {
+  "de": "Draufsicht",
+  "pl": "Widok z góry"
+ },
+ "Top view first": {
+  "de": "Draufsicht zuerst",
+  "pl": "Widok z góry jako pierwszy"
  },
  "Tower": {
   "de": "Mast",
@@ -3930,6 +4014,10 @@
  "View": {
   "de": "Ansicht",
   "pl": "Widok"
+ },
+ "View in a separate window": {
+  "de": "Ansicht in eigenem Fenster",
+  "pl": "Podgląd w osobnym oknie"
  },
  "Visible": {
   "de": "Sichtbar",
@@ -4102,6 +4190,14 @@
  "Zones from the mask": {
   "de": "Zonen aus der Maske",
   "pl": "Strefy z maski"
+ },
+ "Zoom in": {
+  "de": "Vergrößern",
+  "pl": "Przybliż"
+ },
+ "Zoom out": {
+  "de": "Verkleinern",
+  "pl": "Oddal"
  },
  "backups in the project folder": {
   "de": "backups im Projektordner",

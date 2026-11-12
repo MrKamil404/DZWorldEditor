@@ -363,6 +363,8 @@ pub struct App {
     pub top_mpp: f32,
     pub view3: ViewCache,
     pub view2: ViewCache,
+    /// What the minimap draws of the objects.
+    pub view_mini: ViewCache,
     pub impostor_fits: HashMap<u32, [f32; 3]>,
     /// Texture size and anisotropy the loaded models were made with.
     applied_graphics: (u32, u32),
@@ -379,6 +381,19 @@ pub struct App {
     pub lasso_points: Vec<egui::Pos2>,
     /// The modifier keys held this frame.
     pub modifiers_now: egui::Modifiers,
+    /// How far the minimap is zoomed in (1 shows the whole map) and the middle it shows.
+    pub minimap_zoom: f32,
+    pub minimap_center: [f32; 2],
+    /// The pointer was over the minimap last frame, so the wheel is the minimap's.
+    pub minimap_hover: bool,
+    /// Where the camera was last frame; the zoomed minimap follows it only when it moves.
+    pub minimap_camera: [f32; 3],
+    /// The view takes the whole screen, with the panels sliding in at the edges.
+    pub fullscreen: bool,
+    /// Which edge panels of the full screen view are out: top, left, right, bottom.
+    pub edge_open: [bool; 4],
+    /// The view is in a window of its own.
+    pub detached: bool,
 
     pub task: Option<Task>,
     pub log: Vec<LogLine>,
@@ -480,9 +495,9 @@ impl App {
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
-            top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
+            top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE,
+            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
@@ -2410,6 +2425,10 @@ impl App {
     pub fn pending_shot(&mut self, path: String, ctx: &egui::Context) {
         self.shot_path = Some(path);
         ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+    }
+
+    pub fn shot_path_set(&mut self, path: String) {
+        self.shot_path = Some(path);
     }
 
     pub fn handle_screenshots(&mut self, ctx: &egui::Context) {
