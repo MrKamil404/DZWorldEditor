@@ -305,9 +305,13 @@ pub enum Hold {
     WheelNoise,
     /// Flies faster.
     Fast,
+    /// Lines and turns go by whole steps of the angle set in the settings.
+    AngleSnap,
+    /// Moving, turning and scaling follow the mouse five times slower, for fine work.
+    Precise,
 }
 impl Hold {
-    pub const ALL: [Hold; 7] = [Hold::Invert, Hold::Smooth, Hold::Pick, Hold::WheelSize, Hold::WheelStrength, Hold::WheelNoise, Hold::Fast];
+    pub const ALL: [Hold; 9] = [Hold::Invert, Hold::Smooth, Hold::Pick, Hold::WheelSize, Hold::WheelStrength, Hold::WheelNoise, Hold::Fast, Hold::AngleSnap, Hold::Precise];
     pub fn name(self) -> &'static str {
         match self {
             Hold::Invert => "Invert the brush (lower, erase)",
@@ -317,13 +321,16 @@ impl Hold {
             Hold::WheelStrength => "Wheel: brush strength",
             Hold::WheelNoise => "Wheel: edge noise",
             Hold::Fast => "Fly faster",
+            Hold::AngleSnap => "Snap to angle steps",
+            Hold::Precise => "Move and turn slowly",
         }
     }
     pub fn default_key(self) -> ModKey {
         match self {
             Hold::Invert | Hold::WheelNoise => ModKey::Ctrl,
             Hold::Smooth | Hold::WheelSize | Hold::Fast => ModKey::Shift,
-            Hold::Pick | Hold::WheelStrength => ModKey::Alt,
+            Hold::Pick | Hold::WheelStrength | Hold::Precise => ModKey::Alt,
+            Hold::AngleSnap => ModKey::Ctrl,
         }
     }
 }

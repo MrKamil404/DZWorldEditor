@@ -236,6 +236,16 @@ fn toolbar(app: &mut App, ctx: &egui::Context) {
 }
 
 /// Keys shown next to what they do, as small key caps.
+/// The angle step lines and turns snap to, and the key that does it.
+fn angle_snap_ui(app: &mut App, ui: &mut egui::Ui) {
+    let key = app.settings.keys.hold(Hold::AngleSnap).name().to_string();
+    let before = app.settings.angle_step;
+    row(ui, &tf("Angle step with {0}", &[&key]), |ui| {
+        ui.add(egui::DragValue::new(&mut app.settings.angle_step).range(1.0..=90.0).speed(0.5).suffix("°"));
+    });
+    if app.settings.angle_step != before { app.settings.save(); }
+}
+
 pub fn key_hints(ui: &mut egui::Ui, rows: &[(String, String)]) {
     egui::Grid::new(ui.next_auto_id()).num_columns(2).spacing(vec2(8.0, 3.0)).show(ui, |ui| {
         for (keys, what) in rows {
@@ -328,9 +338,11 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
         });
         ui.checkbox(&mut app.select_whole, t("Select whole roads and generators"));
         if ui.checkbox(&mut app.settings.drag_by_body, t("Move objects by dragging them")).on_hover_text(t("An object held by its shape slides over the ground, as with the dot of the gizmo.")).changed() { app.settings.save(); }
+        angle_snap_ui(app, ui);
         let k = &app.settings.keys;
         key_hints(ui, &[
             (format!("{} / {} / {}", k.text(Action::GizmoMove), k.text(Action::GizmoRotate), k.text(Action::GizmoScale)), t("Move, rotate, scale")),
+            (k.hold(Hold::Precise).name().to_string(), t("Move and turn slowly")),
             (k.text(Action::Focus), t(Action::Focus.name())),
             (k.text(Action::Duplicate), t(Action::Duplicate.name())),
             (k.text(Action::Underground), t(Action::Underground.name())),
@@ -551,6 +563,7 @@ fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
         } else {
             ui.weak(t("Click to add points. Enter or a double click finishes, Backspace removes the last point, Esc cancels."));
             ui.label(tf("{0} points", &[&app.shape.points.len().to_string()]));
+            angle_snap_ui(app, ui);
         }
     });
     section(ui, &icons::with(icons::FOLDER_OPEN, &t("Files")), true, |ui| {
@@ -836,6 +849,7 @@ fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
         } else {
             ui.weak(t("Click to add points. Enter finishes, Backspace removes the last point, Esc cancels."));
             ui.label(tf("{0} points", &[&app.line.points.len().to_string()]));
+            angle_snap_ui(app, ui);
         }
         match app.line.action {
             LineAction::Edit => {}
