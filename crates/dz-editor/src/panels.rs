@@ -1194,8 +1194,29 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
 
 fn bottom_panel(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
+        // What the log took in while it was not open is read once it is.
+        if app.bottom == BottomTab::Output { app.log_seen = app.log.len(); }
+        let unseen = &app.log[app.log_seen.min(app.log.len())..];
+        let (errors, warnings) = (unseen.iter().filter(|l| l.level >= 2).count(), unseen.iter().filter(|l| l.level == 1).count());
+        let latest = unseen.iter().rev().find(|l| l.level >= 1).map(|l| l.text.clone());
         for (tab, icon, name) in [(BottomTab::Content, icons::SQUARES_FOUR, "Content Browser"), (BottomTab::Output, icons::TERMINAL_WINDOW, "Output Log"), (BottomTab::Build, icons::HAMMER, "Build")] {
-            if tool_button(ui, app.bottom == tab, &icons::with(icon, &t(name))).clicked() { app.bottom = tab; }
+            let r = tool_button(ui, app.bottom == tab, &icons::with(icon, &t(name)));
+            if tab == BottomTab::Output && errors + warnings > 0 {
+                // A mark on the button: red for errors, amber for warnings, with how many.
+                let (n, color, glyph) = if errors > 0 { (errors, theme::ERROR, icons::X_CIRCLE) } else { (warnings, theme::WARN, icons::WARNING) };
+                let text = format!("{glyph} {n}");
+                let galley = ui.painter().layout_no_wrap(text, egui::FontId::proportional(11.0), Color32::BLACK);
+                let pill = egui::Rect::from_min_size(egui::pos2(r.rect.right() - galley.size().x * 0.5 - 6.0, r.rect.top() - 7.0), vec2(galley.size().x + 8.0, 15.0));
+                let p = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, ui.id().with("log_badge")));
+                p.rect_filled(pill, 7.5, color);
+                p.galley(pill.center() - galley.size() * 0.5, galley, Color32::BLACK);
+                let mut tip = tf("{0} errors, {1} warnings since the log was last open", &[&errors.to_string(), &warnings.to_string()]);
+                if let Some(l) = &latest { tip = format!("{tip}\n{l}"); }
+                let r = r.on_hover_text(tip);
+                if r.clicked() { app.bottom = tab; }
+            } else if r.clicked() {
+                app.bottom = tab;
+            }
         }
         if app.bottom == BottomTab::Content {
             ui.separator();
