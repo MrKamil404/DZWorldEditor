@@ -1259,6 +1259,10 @@
   "de": "Nur auffüllen",
   "pl": "Tylko podnoś"
  },
+ "Fill and cut": {
+  "de": "Auffüllen und abtragen",
+  "pl": "Nasyp i wykop"
+ },
  "Fill the footprint of buildings": {
   "de": "Grundriss von Gebäuden füllen",
   "pl": "Wypełnij obrys budynków"
@@ -1707,6 +1711,10 @@
   "de": "Seine Geländeänderung",
   "pl": "Jego zmianę terenu"
  },
+ "Its generators and presets go back to their group.": {
+  "de": "Seine Generatoren und Presets kehren in ihre Gruppe zurück.",
+  "pl": "Jego generatory i presety wracają do swojej grupy."
+ },
  "Its models ({0})": {
   "de": "Ihre Modelle ({0})",
   "pl": "Jej modele ({0})"
@@ -1802,6 +1810,10 @@
  "Levelled to {0} m, the height of the object": {
   "de": "Auf {0} m geebnet, die Höhe des Objekts",
   "pl": "Wyrównany do {0} m, wysokości obiektu"
+ },
+ "Levelling": {
+  "de": "Einebnen",
+  "pl": "Wyrównanie"
  },
  "Library": {
   "de": "Eigene Bibliothek",
@@ -2083,9 +2095,17 @@
   "de": "In Ebene verschieben",
   "pl": "Przenieś do warstwy"
  },
+ "Move to library folder": {
+  "de": "In Bibliotheksordner verschieben",
+  "pl": "Przenieś do folderu biblioteki"
+ },
  "Move, rotate, scale": {
   "de": "Verschieben, drehen, skalieren",
   "pl": "Przesuń, obróć, skaluj"
+ },
+ "Moved {0} to {1}": {
+  "de": "{0} nach {1} verschoben",
+  "pl": "Przeniesiono {0} do {1}"
  },
  "Movement speed": {
   "de": "Bewegungstempo",
@@ -2267,6 +2287,10 @@
   "de": "Objekte entlang einer Linie",
   "pl": "Obiekty wzdłuż linii"
  },
+ "Objects along lines": {
+  "de": "Objekte entlang Linien",
+  "pl": "Obiekty wzdłuż linii"
+ },
  "Objects from the WRP": {
   "de": "Objekte aus der WRP",
   "pl": "Obiekty z WRP"
@@ -2274,6 +2298,10 @@
  "Objects in a cluster": {
   "de": "Objekte pro Gruppe",
   "pl": "Obiektów w skupisku"
+ },
+ "Objects in areas": {
+  "de": "Objekte in Flächen",
+  "pl": "Obiekty w obszarach"
  },
  "Objects of Terrain Builder layers placed with these templates lose their model there.": {
   "de": "Objekte in Terrain-Builder-Ebenen, die mit diesen Vorlagen gesetzt wurden, verlieren dort ihr Modell.",
@@ -2658,6 +2686,10 @@
  "Raise": {
   "de": "Heben",
   "pl": "Podnieś"
+ },
+ "Raise and lower": {
+  "de": "Anheben und absenken",
+  "pl": "Podnoszenie i obniżanie"
  },
  "Raise by": {
   "de": "Anheben um",
@@ -3343,6 +3375,10 @@
   "de": "Oberflächen (layers.cfg)",
   "pl": "Powierzchnie (layers.cfg)"
  },
+ "Surfaces and vegetation": {
+  "de": "Oberflächen und Bewuchs",
+  "pl": "Powierzchnie i roślinność"
+ },
  "Surfaces per tile": {
   "de": "Oberflächen pro Kachel",
   "pl": "Powierzchnie na kafel"
@@ -3382,6 +3418,10 @@
  "Terraces and rivers": {
   "de": "Terrassen und Flüsse",
   "pl": "Tarasy i rzeki"
+ },
+ "Terrain": {
+  "de": "Gelände",
+  "pl": "Teren"
  },
  "Terrain Builder layers": {
   "de": "Terrain-Builder-Ebenen",

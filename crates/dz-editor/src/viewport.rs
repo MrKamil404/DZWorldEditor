@@ -3016,6 +3016,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 app.detail_center = [f32::MIN, f32::MIN];
             }
         }
+        "libdemo" => crate::asset_browser::library_demo(app, &arg),
         "satbake" => {
             app.sat.bake_selection = false;
             app.sat.bake_plants = nums.first().is_some_and(|v| *v > 0.0);
