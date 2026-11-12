@@ -422,11 +422,16 @@ const SELECT_TINT: [f32; 4] = [1.0, 0.55, 0.05, 1.0];
 
 /// Rebuilds the object draw list when something visible changed.
 fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
+    prepare_objects_for(app, v, top, top as u8)
+}
+
+/// The objects of view `which`: 0 the 3D view, 1 the top view, 2 the minimap.
+fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectDraw {
     let renderer = app.renderer.clone();
     let renderer = renderer.lock().unwrap();
     let Some(doc) = &app.doc else { return ObjectDraw::default() };
     let world = &doc.world;
-    let cache = if top { &mut app.view2 } else { &mut app.view3 };
+    let cache = match which { 0 => &mut app.view3, 1 => &mut app.view2, _ => &mut app.view_mini };
     if !app.show_objects || (world.objects.is_empty() && app.clutter_models.is_empty()) {
         cache.draw = ObjectDraw::default();
         return ObjectDraw::default();
@@ -474,7 +479,41 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     let mut shadow: HashMap<(u32, u8), Vec<f32>> = HashMap::new();
     // Objects drawn as impostors can still cast shadows, within this many triangles.
     let mut shadow_triangles: i64 = 6_000_000;
-    if v.ortho {
+    if v.ortho && app.settings.top_models && v.mpp < 1.5 {
+        // Close up the top view shows the models themselves from above, as a drone would.
+        let half = (v.rect.width().max(v.rect.height()) * v.mpp * 0.75).max(10.0);
+        let (ex, ez) = (v.eye[0], v.eye[2]);
+        let mut triangles_left: i64 = 8_000_000;
+        world.objects.for_each_in(ex - half, ez - half, ex + half, ez + half, |id, o| {
+            if !world.object_visible(o) {
+                return;
+            }
+            let info = &infos[o.model as usize];
+            let sel = selection.contains(&id);
+            let size = if info.known { (info.max[0] - info.min[0]).max(info.max[2] - info.min[2]) * o.scale } else { 2.0 };
+            // Size on screen in points; what is too small to see stays an outline.
+            let px = size / v.mpp;
+            let y = ObjectStore::origin_y(o, &world.height);
+            if px >= 3.0 {
+                let tint = if sel { SELECT_TINT } else { [1.0, 1.0, 1.0, 0.0] };
+                let (placed_m, y) = placed_matrix(o, info, &world.height, y);
+                let m0 = o.model;
+                let last = renderer.lod_count(m0).map_or(u8::MAX, |c| c.saturating_sub(1));
+                let want = if px > 400.0 { 0 } else { (((400.0 / px).log2().floor() as u8).saturating_add(1)).min(12).min(last) };
+                if let Some((lod, n)) = renderer.best_lod(m0, want).filter(|_| triangles_left > 0) {
+                    triangles_left -= n as i64;
+                    write_instance(instances.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                    if lod != want {
+                        requests.push((m0, want));
+                    }
+                    return;
+                }
+                requests.push((m0, want));
+            }
+            let tint = if sel { SELECT_TINT } else { tints[o.model as usize] };
+            write_box(&mut boxes, o, doc.height_range[1] + 5.0, info, tint, (v.mpp * 2.0).max(0.2));
+        });
+    } else if v.ortho {
         // Top view: footprints, thinned out when zoomed far out.
         let half = (v.rect.width().max(v.rect.height()) * v.mpp * 0.75).max(10.0);
         let (ex, ez) = (v.eye[0], v.eye[2]);
@@ -1278,7 +1317,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         let drag = if resp.dragged_by(PointerButton::Middle) || resp.dragged_by(PointerButton::Secondary) { resp.drag_delta() } else { vec2(0.0, 0.0) };
         app.top_center[0] -= drag.x * app.top_mpp;
         app.top_center[1] += drag.y * app.top_mpp;
-        if hover && scroll != 0.0 && !brush_wheel(app, modifiers) {
+        if hover && scroll != 0.0 && !brush_wheel(app, modifiers) && !app.minimap_hover {
             if let Some(m) = resp.hover_pos() {
                 let (ox, oz) = ((m.x - v.rect.center().x) * app.top_mpp, (v.rect.center().y - m.y) * app.top_mpp);
                 let before = [app.top_center[0] + ox, app.top_center[1] + oz];
@@ -1298,7 +1337,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
             app.camera.speed = (app.camera.speed * (scroll * 0.002).exp()).clamp(1.0, 4000.0);
             app.settings.camera_speed = app.camera.speed;
         }
-    } else if hover && scroll != 0.0 && !brush_wheel(app, modifiers) {
+    } else if hover && scroll != 0.0 && !brush_wheel(app, modifiers) && !app.minimap_hover {
         let f = app.camera.forward();
         let clearance = app.doc.as_ref().map(|d| (app.camera.pos[1] - d.world.height.sample(app.camera.pos[0], app.camera.pos[2])).abs()).unwrap_or(50.0);
         app.camera.pos = add(app.camera.pos, mul(f, scroll * (clearance * 0.0035).max(0.15)));
@@ -2538,6 +2577,9 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         }
     });
     child.label(egui::RichText::new(if top { t("Top") } else { t("Perspective") }).color(Color32::WHITE).background_color(Color32::from_black_alpha(100)));
+    if top {
+        top_view_menu(app, &mut child);
+    }
     if !top {
         child.checkbox(&mut app.wireframe, crate::icons::with(crate::icons::CUBE_TRANSPARENT, &t("Wireframe")));
         let mut speed = app.camera.speed;
@@ -2562,6 +2604,25 @@ fn tide(app: &App, ctx: &egui::Context) -> f32 {
     } else {
         app.settings.sea_tide.clamp(-MAX_TIDE, MAX_TIDE)
     }
+}
+
+/// What the top view shows and how the split view is laid out.
+fn top_view_menu(app: &mut App, ui: &mut egui::Ui) {
+    ui.menu_button(crate::icons::with(crate::icons::MAP_TRIFOLD, &t("Top view")), |ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        let mut changed = ui.checkbox(&mut app.settings.top_models, t("Models from above")).on_hover_text(t("Close up the top view draws the models themselves, as a drone sees them, instead of their outlines.")).changed();
+        changed |= ui.checkbox(&mut app.settings.top_follow, t("Follow the 3D camera")).on_hover_text(t("In the split view the top view keeps the 3D camera in its middle.")).changed();
+        ui.separator();
+        ui.label(t("Split view"));
+        changed |= ui.radio_value(&mut app.settings.split_stacked, false, t("Side by side")).changed();
+        changed |= ui.radio_value(&mut app.settings.split_stacked, true, t("One above the other")).changed();
+        changed |= ui.checkbox(&mut app.settings.split_swapped, t("Top view first")).changed();
+        if ui.button(t("Share the room evenly")).clicked() {
+            app.settings.split_ratio = 0.5;
+            changed = true;
+        }
+        if changed { app.settings.save(); }
+    });
 }
 
 fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
@@ -2729,6 +2790,11 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         ctx.request_repaint();
     }
     view_header(app, ui, rect, top);
+    if top {
+        camera_marker(app, &ui.painter_at(rect), &v);
+    } else if app.settings.minimap {
+        minimap(app, ui, rect);
+    }
     if resp.secondary_clicked() {
         if let Some(m) = ctx.input(|i| i.pointer.interact_pos()) {
             if let Some(id) = pick_object(app, &v, m) {
@@ -2974,19 +3040,258 @@ pub fn central(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
     let rect = ui.available_rect_before_wrap();
+    if app.settings.top_follow && app.view_mode == ViewMode::Split {
+        app.top_center = [app.camera.pos[0], app.camera.pos[2]];
+    }
     match app.view_mode {
         ViewMode::Perspective => draw_view(app, ui, rect, false),
         ViewMode::Top => draw_view(app, ui, rect, true),
         ViewMode::Split => {
-            let mid = rect.center().x;
-            draw_view(app, ui, Rect::from_min_max(rect.min, pos2(mid - 1.0, rect.max.y)), false);
-            draw_view(app, ui, Rect::from_min_max(pos2(mid + 1.0, rect.min.y), rect.max), true);
+            let (first, second) = split_view(app, ui, rect);
+            let (persp, top) = if app.settings.split_swapped { (second, first) } else { (first, second) };
+            draw_view(app, ui, persp, false);
+            draw_view(app, ui, top, true);
         }
     }
     let error = app.renderer.lock().unwrap().error.clone();
     if let Some(e) = error {
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, e, egui::FontId::monospace(11.0), theme::ERROR);
     }
+}
+
+/// Where the 3D camera stands and what it looks at, drawn on the top view.
+fn camera_marker(app: &App, painter: &egui::Painter, v: &View) {
+    let Some(doc) = &app.doc else { return };
+    let p = app.camera.pos;
+    let Some(c) = v.project([p[0], doc.world.height.sample(p[0], p[2]), p[2]]) else { return };
+    let f = app.camera.forward();
+    let heading = f[0].atan2(f[2]);
+    let reach = 70.0;
+    let half = app.camera.fov * 0.5 * (v.rect.width() / v.rect.height().max(1.0)).clamp(1.0, 2.0);
+    let ray = |a: f32| c + vec2(a.sin(), -a.cos()) * reach;
+    let (l, r) = (ray(heading - half), ray(heading + half));
+    let col = Color32::from_rgb(255, 210, 60);
+    painter.add(egui::Shape::convex_polygon(vec![c, l, r], Color32::from_rgba_unmultiplied(255, 210, 60, 30), Stroke::NONE));
+    painter.line_segment([c, l], Stroke::new(1.5_f32, col));
+    painter.line_segment([c, r], Stroke::new(1.5_f32, col));
+    painter.circle(c, 5.0, col, Stroke::new(1.5_f32, Color32::BLACK));
+}
+
+/// A small map of the terrain in the corner of the 3D view, drawn as the top view draws, with
+/// the camera on it. A click or drag takes the camera there; the wheel zooms about the
+/// pointer, the right or middle button drags the map, the buttons zoom or show the whole map,
+/// and the grip in the top right corner makes it bigger or smaller.
+fn minimap(app: &mut App, ui: &mut egui::Ui, view: Rect) {
+    let most = (view.width() - 80.0).min(view.height() - 60.0);
+    if most < 100.0 {
+        app.minimap_hover = false;
+        return;
+    }
+    let side = app.settings.minimap_size.clamp(100.0, most);
+    let rect = Rect::from_min_size(pos2(view.left() + 10.0, view.bottom() - side - 10.0), vec2(side, side));
+    let Some(doc) = &app.doc else { return };
+    let size = doc.world.meta.size_m();
+    let cam = app.camera.pos;
+    let ground_here = doc.world.height.sample(cam[0], cam[2]);
+    let r = ui.interact(rect, ui.id().with("minimap"), Sense::click_and_drag());
+    app.minimap_hover = r.hovered() || r.dragged();
+    // Zoom by the wheel, keeping the point under the pointer where it is.
+    let zoom_at = |app: &mut App, factor: f32, at: Option<Pos2>| {
+        let span = size / app.minimap_zoom;
+        let c = app.minimap_center;
+        let p = at.map(|m| [c[0] - span * 0.5 + (m.x - rect.left()) / rect.width() * span, c[1] + span * 0.5 - (m.y - rect.top()) / rect.height() * span]).unwrap_or(c);
+        let zoom = (app.minimap_zoom * factor).clamp(1.0, 256.0);
+        let k = app.minimap_zoom / zoom;
+        app.minimap_zoom = zoom;
+        app.minimap_center = [p[0] + (c[0] - p[0]) * k, p[1] + (c[1] - p[1]) * k];
+    };
+    if app.minimap_center[0].is_nan() {
+        app.minimap_center = [size * 0.5, size * 0.5];
+    }
+    if r.hovered() {
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y + i.smooth_scroll_delta.x);
+        if scroll != 0.0 {
+            zoom_at(app, (scroll * 0.004).exp(), r.hover_pos());
+        }
+    }
+    let span = size / app.minimap_zoom;
+    if r.dragged_by(egui::PointerButton::Secondary) || r.dragged_by(egui::PointerButton::Middle) {
+        let d = r.drag_delta();
+        app.minimap_center[0] -= d.x / rect.width() * span;
+        app.minimap_center[1] += d.y / rect.height() * span;
+    } else if app.minimap_zoom > 1.01 && !r.dragged() && app.minimap_camera != cam {
+        // Zoomed in, the map follows a moving camera once it would leave the map; one moved
+        // away by hand stays where it was put while the camera stands still.
+        let (dx, dz) = (cam[0] - app.minimap_center[0], cam[2] - app.minimap_center[1]);
+        if dx.abs() > span * 0.45 || dz.abs() > span * 0.45 {
+            app.minimap_center = [cam[0], cam[2]];
+        }
+    }
+    app.minimap_camera = cam;
+    let half = span * 0.5;
+    app.minimap_center = [app.minimap_center[0].clamp(half, size - half), app.minimap_center[1].clamp(half, size - half)];
+    let (x0, z1) = (app.minimap_center[0] - half, app.minimap_center[1] + half);
+
+    // The terrain, its surfaces and the objects, as the top view shows them.
+    let painter = ui.painter_at(view);
+    painter.rect_filled(rect.expand(2.0), 3.0, Color32::from_black_alpha(160));
+    let v = View::top(app.minimap_center, span / side, rect);
+    let objects = prepare_objects_for(app, &v, true, 2);
+    let ctx = ui.ctx().clone();
+    if let Some(doc) = &app.doc {
+        let quality = app.settings.terrain_quality;
+        let meta = &doc.world.meta;
+        let frame = Frame {
+            view: v,
+            viewport_key: 2,
+            patches: Arc::new(doc.lod.select(&v, quality)),
+            ranges: Arc::new(doc.lod.ranges(quality)),
+            shading: app.shading2,
+            wireframe: false,
+            brush: None,
+            grid: [0.0; 3],
+            sea: meta.sea_level,
+            height_range: doc.height_range,
+            objects,
+            show_water: app.show_water,
+            surface_range: app.settings.surface_range,
+            parallax: 0.0,
+            blend_sharp: app.settings.surface_blend.clamp(0.0, 1.0),
+            sea_waves: app.settings.sea_waves,
+            tide: tide(app, &ctx),
+            world: meta.size_m(),
+            tile: 10.0 / meta.land_cell(),
+            lighting: app.settings.lighting.gpu(),
+            time: ctx.input(|i| i.time) as f32,
+            light: None,
+            shadow_bias: shadow_bias(app.settings.lighting.shadow_range),
+            ao: 0,
+            smoothing: app.settings.edge_smoothing,
+        };
+        ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
+    }
+
+    let to_map = |x: f32, z: f32| pos2(rect.left() + (x - x0) / span * rect.width(), rect.top() + (z1 - z) / span * rect.height());
+    let clip = painter.with_clip_rect(rect);
+    let c = to_map(cam[0], cam[2]);
+    let f = app.camera.forward();
+    let heading = f[0].atan2(f[2]);
+    let fov = app.camera.fov * 0.5;
+    let reach = side * 0.18;
+    let ray = |a: f32| c + vec2(a.sin(), -a.cos()) * reach;
+    let col = Color32::from_rgb(255, 210, 60);
+    clip.add(egui::Shape::convex_polygon(vec![c, ray(heading - fov), ray(heading + fov)], Color32::from_rgba_unmultiplied(255, 210, 60, 50), Stroke::new(1.0_f32, col)));
+    clip.circle(c, 3.5, col, Stroke::new(1.0_f32, Color32::BLACK));
+    painter.rect_stroke(rect, 3.0, Stroke::new(1.0_f32, Color32::from_gray(120)), egui::StrokeKind::Outside);
+    if app.minimap_zoom > 1.01 {
+        let text = if span >= 1000.0 { format!("{:.1} km", span / 1000.0) } else { format!("{span:.0} m") };
+        painter.text(rect.left_bottom() + vec2(4.0, -3.0), egui::Align2::LEFT_BOTTOM, text, egui::FontId::proportional(10.0), Color32::WHITE);
+    }
+
+    // The grip in the top right corner: dragged up and right the map grows.
+    let grip = Rect::from_min_size(pos2(rect.right() - 14.0, rect.top()), vec2(14.0, 14.0));
+    let gr = ui.interact(grip, ui.id().with("minimap_grip"), Sense::drag()).on_hover_text(t("Drag to make the minimap bigger or smaller."));
+    if gr.hovered() || gr.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNeSw);
+    }
+    if gr.dragged() {
+        let d = gr.drag_delta();
+        app.settings.minimap_size = (app.settings.minimap_size + (d.x - d.y) * 0.5 * 2.0_f32.sqrt()).clamp(100.0, most);
+    }
+    if gr.drag_stopped() {
+        app.settings.save();
+    }
+    let lit = gr.hovered() || gr.dragged();
+    let gc = if lit { theme::ACCENT } else { Color32::from_gray(200) };
+    for k in 0..3 {
+        let o = 3.0 + k as f32 * 4.0;
+        painter.line_segment([pos2(grip.right() - o, grip.top() + 1.0), pos2(grip.right() - 1.0, grip.top() + o)], Stroke::new(1.2_f32, gc));
+    }
+    app.minimap_hover |= lit;
+
+    // Zoom buttons down the right side, over the map.
+    let mut zoom_by = None;
+    let mut reset = false;
+    for (k, (label, tip)) in [("+", t("Zoom in")), ("\u{2212}", t("Zoom out")), ("\u{27F2}", t("The whole map"))].into_iter().enumerate() {
+        let b = Rect::from_min_size(pos2(rect.right() - 20.0, rect.top() + 18.0 + k as f32 * 20.0), vec2(18.0, 18.0));
+        let br = ui.interact(b, ui.id().with(("minimap_button", k)), Sense::click()).on_hover_text(tip);
+        painter.rect_filled(b, 3.0, if br.hovered() { theme::ACCENT } else { Color32::from_black_alpha(170) });
+        painter.text(b.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(13.0), Color32::WHITE);
+        if br.clicked() {
+            match k {
+                0 => zoom_by = Some(2.0),
+                1 => zoom_by = Some(0.5),
+                _ => reset = true,
+            }
+        }
+        app.minimap_hover |= br.hovered();
+    }
+    if let Some(f) = zoom_by {
+        zoom_at(app, f, None);
+        return;
+    }
+    if reset {
+        app.minimap_zoom = 1.0;
+        app.minimap_center = [size * 0.5, size * 0.5];
+        return;
+    }
+    if gr.dragged() || gr.hovered() {
+        return;
+    }
+    let r = r.on_hover_text(t("Click or drag to take the camera there; the wheel zooms, the right button moves the map."));
+    if (r.clicked() || r.dragged_by(egui::PointerButton::Primary)) && !app.minimap_hover_buttons(rect, r.interact_pointer_pos()) {
+        if let Some(m) = r.interact_pointer_pos() {
+            let x = (x0 + (m.x - rect.left()) / rect.width() * span).clamp(0.0, size);
+            let z = (z1 - (m.y - rect.top()) / rect.height() * span).clamp(0.0, size);
+            // The camera keeps its height over the ground.
+            let over = cam[1] - ground_here;
+            let Some(doc) = &app.doc else { return };
+            let ground = doc.world.height.sample(x, z);
+            app.camera.pos = [x, ground + over.max(2.0), z];
+            app.top_center = [x, z];
+        }
+    }
+}
+
+impl App {
+    /// True when the pointer is on the zoom buttons of the minimap rather than on the map.
+    fn minimap_hover_buttons(&self, rect: Rect, at: Option<Pos2>) -> bool {
+        at.is_some_and(|p| p.x >= rect.right() - 22.0 && p.y <= rect.top() + 80.0)
+    }
+}
+
+/// The two halves of the split view and the bar between them, which is dragged to share
+/// the room out differently and double-clicked to share it evenly.
+fn split_view(app: &mut App, ui: &mut egui::Ui, rect: Rect) -> (Rect, Rect) {
+    const BAR: f32 = 6.0;
+    let stacked = app.settings.split_stacked;
+    let ratio = app.settings.split_ratio.clamp(0.15, 0.85);
+    let (first, bar, second) = if stacked {
+        let at = rect.top() + rect.height() * ratio;
+        (Rect::from_min_max(rect.min, pos2(rect.right(), at - BAR * 0.5)), Rect::from_min_max(pos2(rect.left(), at - BAR * 0.5), pos2(rect.right(), at + BAR * 0.5)), Rect::from_min_max(pos2(rect.left(), at + BAR * 0.5), rect.max))
+    } else {
+        let at = rect.left() + rect.width() * ratio;
+        (Rect::from_min_max(rect.min, pos2(at - BAR * 0.5, rect.bottom())), Rect::from_min_max(pos2(at - BAR * 0.5, rect.top()), pos2(at + BAR * 0.5, rect.bottom())), Rect::from_min_max(pos2(at + BAR * 0.5, rect.top()), rect.max))
+    };
+    let r = ui.interact(bar, ui.id().with("split_bar"), Sense::click_and_drag());
+    if r.hovered() || r.dragged() {
+        ui.ctx().set_cursor_icon(if stacked { egui::CursorIcon::ResizeVertical } else { egui::CursorIcon::ResizeHorizontal });
+    }
+    if r.dragged() {
+        if let Some(p) = r.interact_pointer_pos() {
+            app.settings.split_ratio = if stacked { (p.y - rect.top()) / rect.height().max(1.0) } else { (p.x - rect.left()) / rect.width().max(1.0) }.clamp(0.15, 0.85);
+        }
+    }
+    if r.drag_stopped() {
+        app.settings.save();
+    }
+    if r.double_clicked() {
+        app.settings.split_ratio = 0.5;
+        app.settings.save();
+    }
+    let lit = r.hovered() || r.dragged();
+    ui.painter().rect_filled(bar, 0.0, if lit { theme::ACCENT } else { Color32::from_gray(40) });
+    (first, second)
 }
 
 /// Runs the commands of `DZWE_AUTO`, separated by `;`, used for automated checks.
@@ -3141,6 +3446,11 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "shot" => {
             app.pending_shot(arg, ctx);
         }
+        // The window of its own the view is in.
+        "shotview" => {
+            app.shot_path_set(arg);
+            ctx.send_viewport_cmd_to(egui::ViewportId::from_hash_of("dzwe_view"), egui::ViewportCommand::Screenshot(egui::UserData::default()));
+        }
         // A plain satellite image with a grid, to try the satellite tools on.
         "satnew" => {
             if let Some(d) = app.doc.as_mut() {
@@ -3175,7 +3485,11 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "shapepts" => eprintln!("SHAPEPTS {:?}", app.shape.points),
+        "caminfo" => eprintln!("CAMINFO pos={:?} minimap zoom={:.2} center={:?}", app.camera.pos, app.minimap_zoom, app.minimap_center),
         "selcount" => eprintln!("SELCOUNT {}", app.selection.len()),
+        "fullscreen" => crate::panels::set_fullscreen(app, ctx, arg == "1"),
+        "edge" => { if let Ok(k) = arg.parse::<usize>() { if k < 4 { app.edge_open[k] = true; } } }
+        "detach" => app.detached = arg == "1",
         "selall" => {
             if let Some(d) = &app.doc {
                 app.selection = d.world.objects.iter().map(|(id, _)| id).collect();

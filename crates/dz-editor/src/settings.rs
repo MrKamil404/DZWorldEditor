@@ -94,6 +94,20 @@ pub struct Settings {
     pub lasso: bool,
     /// The step lines and turns snap to while the snap key is held, in degrees.
     pub angle_step: f32,
+    /// Share of the split view the 3D view takes, 0.15 to 0.85.
+    pub split_ratio: f32,
+    /// The split view stacks the views instead of putting them side by side.
+    pub split_stacked: bool,
+    /// The top view comes first in the split view.
+    pub split_swapped: bool,
+    /// The top view keeps the 3D camera in its middle.
+    pub top_follow: bool,
+    /// The top view draws the models from above when close enough, as a drone sees them.
+    pub top_models: bool,
+    /// A small map of the whole terrain in a corner of the 3D view.
+    pub minimap: bool,
+    /// Side of the minimap in points.
+    pub minimap_size: f32,
     pub lighting: Lighting,
     /// Largest side of object textures, in pixels.
     pub texture_size: u32,
@@ -163,7 +177,7 @@ impl Default for Settings {
         Self {
             language: "pl".into(), ui_scale: 1.0, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
-            check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, lasso: false, angle_step: 15.0, camera_speed: 60.0, lighting: Lighting::default(),
+            check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, lasso: false, angle_step: 15.0, split_ratio: 0.5, split_stacked: false, split_swapped: false, top_follow: false, top_models: true, minimap: true, minimap_size: 200.0, camera_speed: 60.0, lighting: Lighting::default(),
             texture_size: 2048, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6, keys: Default::default(), export: Default::default(),
         }
     }
