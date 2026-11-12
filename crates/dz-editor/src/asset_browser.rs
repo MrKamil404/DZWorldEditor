@@ -796,6 +796,8 @@ enum Act {
     RemoveTemplates(usize, Vec<String>),
     /// A folder of the library inside this one ("" for its top, or one of its groups).
     LibNewFolder(String),
+    RoadCatalog,
+    Rescan,
     LibDeleteFolder(String),
     /// Generators and presets into a folder of the library.
     LibMove(String, Vec<u64>, Vec<u64>),
@@ -1006,18 +1008,35 @@ fn built_in_section(ui: &mut egui::Ui, app: &App, acts: &mut Vec<Act>) {
             for g in [Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInModifiers] {
                 let id = ui.make_persistent_id(("builtin", g as u8));
                 egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false)
-                    .show_header(ui, |ui| { locked_row(ui, &app.browser.source, Source::Group(g), Source::Group(g).label(), acts); })
+                    .show_header(ui, |ui| {
+                        let r = locked_row(ui, &app.browser.source, Source::Group(g), Source::Group(g).label(), acts);
+                        if g == Group::BuiltInPresets { road_catalog_menu(&r, acts); }
+                    })
                     .body(|ui| {
                         for i in 0..categories(g).len() {
                             ui.horizontal(|ui| {
                                 ui.add_space(18.0);
                                 let s = Source::Category(g, i);
-                                locked_row(ui, &app.browser.source, s.clone(), s.label(), acts);
+                                let r = locked_row(ui, &app.browser.source, s.clone(), s.label(), acts);
+                                if g == Group::BuiltInPresets && i == 1 { road_catalog_menu(&r, acts); }
                             });
                         }
                     });
             }
         });
+}
+
+/// The road types come from the road catalog, opened from their rows.
+fn road_catalog_menu(r: &egui::Response, acts: &mut Vec<Act>) {
+    r.context_menu(|ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        if ui.button(t("Road catalog...")).clicked() { acts.push(Act::RoadCatalog); ui.close_menu(); }
+    });
+}
+
+/// An icon before a text, for menu entries.
+fn icon_text(icon: &str, text: &str) -> String {
+    format!("{icon} {text}")
 }
 
 /// A row of a folder of the library, or the box its new name is typed in.
@@ -1036,14 +1055,36 @@ fn library_folder_row(ui: &mut egui::Ui, app: &App, name: &str, acts: &mut Vec<A
     let leaf = name.rsplit('/').next().unwrap_or(name);
     let r = source_row(ui, &app.browser.source, Source::LibFolder(name.to_string()), leaf.to_string(), acts);
     take_library_drop(&r, name, acts);
-    r.context_menu(|ui| library_folder_menu(ui, name, acts));
+    r.context_menu(|ui| library_folder_menu(ui, app, name, acts));
     None
 }
 
-/// What can be done to a folder of the library.
-fn library_folder_menu(ui: &mut egui::Ui, name: &str, acts: &mut Vec<Act>) {
+/// What can be made in a place of the library: a folder, and the generators or presets that
+/// place takes.
+fn library_new_menu(ui: &mut egui::Ui, app: &App, place: &str, acts: &mut Vec<Act>) {
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-    if ui.button(t("New folder inside")).clicked() { acts.push(Act::LibNewFolder(name.to_string())); ui.close_menu(); }
+    if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(place.to_string())); ui.close_menu(); }
+    if place.is_empty() {
+        return;
+    }
+    if dz_core::library::library_folder_takes(place, LibraryItem::Generator) {
+        ui.menu_button(t("New generator"), |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            for b in &app.built_in {
+                // Made in the place the menu belongs to.
+                if ui.button(t(b.kind.type_name())).clicked() { acts.push(Act::Go(library_source(place))); acts.push(Act::NewGenerator(b.id)); ui.close_menu(); }
+            }
+        });
+    }
+    if dz_core::library::library_folder_takes(place, LibraryItem::Preset) {
+        if ui.button(t("New object preset")).on_hover_text(t("With the models selected in the browser.")).clicked() { acts.push(Act::Go(library_source(place))); acts.push(Act::NewPreset); ui.close_menu(); }
+    }
+}
+
+/// What can be done to a folder of the library.
+fn library_folder_menu(ui: &mut egui::Ui, app: &App, name: &str, acts: &mut Vec<Act>) {
+    library_new_menu(ui, app, name, acts);
+    ui.separator();
     if ui.button(t("Rename")).clicked() { acts.push(Act::Rename(format!("\0{LIB_RENAME}{name}"))); ui.close_menu(); }
     if ui.button(t("Delete folder")).on_hover_text(t("Its generators and presets go back to their group.")).clicked() { acts.push(Act::LibDeleteFolder(name.to_string())); ui.close_menu(); }
 }
@@ -1081,7 +1122,7 @@ fn library_section(ui: &mut egui::Ui, app: &App, acts: &mut Vec<Act>, renamed: &
                 let row = |ui: &mut egui::Ui, acts: &mut Vec<Act>| {
                     let r = source_row(ui, &app.browser.source, Source::Group(g), Source::Group(g).label(), acts);
                     take_library_drop(&r, root, acts);
-                    r.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(root.to_string())); ui.close_menu(); } });
+                    r.context_menu(|ui| library_new_menu(ui, app, root, acts));
                 };
                 if app.library.library_folders.iter().any(|f| parent_folder(f) == root) {
                     let id = ui.make_persistent_id(("libgroup", root));
@@ -1117,28 +1158,6 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     egui::SidePanel::left("asset_sources").resizable(true).default_width(240.0).width_range(120.0..=600.0).frame(egui::Frame::new()).show_inside(ui, |ui| {
         // Long names are cut to the width of the panel, so that it can always be made narrower.
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-        ui.horizontal(|ui| {
-            ui.menu_button(egui::RichText::new(format!("{} {}", crate::icons::PLUS, t("Add"))).color(Color32::WHITE), |ui| {
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                if ui.button(t("New folder")).on_hover_text(t("A folder of your own; models and presets are put into it without moving their files.")).clicked() {
-                    let parent = if let Source::Folder(n) = &app.browser.source { n.clone() } else { String::new() };
-                    acts.push(Act::NewFolder(parent));
-                    ui.close_menu();
-                }
-                if ui.button(t("New object preset")).on_hover_text(t("With the models selected in the browser.")).clicked() { acts.push(Act::NewPreset); ui.close_menu(); }
-                ui.menu_button(t("New generator"), |ui| {
-                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    for b in &app.built_in {
-                        if ui.button(t(b.kind.type_name())).clicked() { acts.push(Act::NewGenerator(b.id)); ui.close_menu(); }
-                    }
-                });
-                ui.separator();
-                if ui.button(t("Road catalog...")).clicked() { app.dialog = Dialog::RoadCatalog; ui.close_menu(); }
-                if ui.add_enabled(app.doc.is_some(), egui::Button::new(t("New template library..."))).on_hover_text(t("A Terrain Builder template library (.tml) of the project, with the models selected in the browser.")).clicked() { acts.push(Act::NewTemplateLibrary(app.browser.models())); ui.close_menu(); }
-                if ui.add_enabled(app.doc.is_some(), egui::Button::new(t("Load template libraries..."))).clicked() { acts.push(Act::LoadTemplates); ui.close_menu(); }
-            });
-            if ui.button(crate::icons::ARROWS_CLOCKWISE).on_hover_text(t("Scan the work drive again")).clicked() { app.rescan_assets(); }
-        });
         egui::ScrollArea::vertical().id_salt("sources").auto_shrink([false, false]).show(ui, |ui| {
             let id = ui.make_persistent_id("my_folders");
             egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
@@ -1178,7 +1197,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             source_row(ui, &app.browser.source, Source::Surfaced, t("Models with a surface"), &mut acts);
             let id = ui.make_persistent_id("work_drive");
             egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
-                .show_header(ui, |ui| { source_row(ui, &app.browser.source, Source::Drive(String::new()), format!("{}  ({})", t("Work drive"), app.assets.assets.len()), &mut acts); })
+                .show_header(ui, |ui| {
+                    let r = source_row(ui, &app.browser.source, Source::Drive(String::new()), format!("{}  ({})", t("Work drive"), app.assets.assets.len()), &mut acts);
+                    r.context_menu(|ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        if ui.button(icon_text(crate::icons::ARROWS_CLOCKWISE, &t("Scan the work drive again"))).clicked() { acts.push(Act::Rescan); ui.close_menu(); }
+                    });
+                })
                 .body(|ui| drive_node(ui, app, &tree, "", &mut acts));
         });
     });
@@ -1272,7 +1297,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         };
         if let Some(f) = library_here {
             if !f.is_empty() { take_library_drop(&bg, &f, &mut acts); }
-            bg.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(f.clone())); ui.close_menu(); } });
+            bg.context_menu(|ui| library_new_menu(ui, app, &f, &mut acts));
+        }
+        if matches!(source, Source::Group(Group::BuiltInPresets) | Source::Category(Group::BuiltInPresets, 1)) {
+            bg.context_menu(|ui| { if ui.button(t("Road catalog...")).clicked() { acts.push(Act::RoadCatalog); ui.close_menu(); } });
         }
         if let Source::Templates(which) = &source {
             let which = *which;
@@ -1308,7 +1336,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     let f = f.clone();
                                     resp.context_menu(|ui| {
                                         if ui.button(t("Open")).clicked() { acts.push(Act::Go(Source::LibFolder(f.clone()))); ui.close_menu(); }
-                                        library_folder_menu(ui, &f, &mut acts);
+                                        library_folder_menu(ui, app, &f, &mut acts);
                                     });
                                 }
                                 if let Source::Group(g @ (Group::LibraryGenerators | Group::LibraryPresets)) = s {
@@ -1520,6 +1548,8 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                     }
                 }
             }
+            Act::RoadCatalog => app.dialog = Dialog::RoadCatalog,
+            Act::Rescan => app.rescan_assets(),
             Act::LibNewFolder(parent) => {
                 let name = app.library.new_library_folder(&parent, &t("New folder"));
                 let leaf = name.rsplit('/').next().unwrap_or(&name).to_string();
