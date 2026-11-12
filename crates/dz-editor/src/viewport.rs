@@ -29,7 +29,7 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
-    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32)>,
+    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32, usize)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -133,6 +133,99 @@ fn ray_box(o: &V3, d: &V3, ob: &Obj, ground: f32, info: &ModelInfo) -> Option<f3
 pub struct PickMesh {
     positions: Vec<[f32; 3]>,
     triangles: Vec<u32>,
+    /// Where the model stands, for keeping grass out from under it.
+    pub footprint: Footprint,
+}
+
+/// What of a model is over each cell of the ground, seen from above, in the model's own
+/// coordinates: for each cell the lowest height its geometry reaches there.
+pub struct Footprint {
+    x0: f32,
+    z0: f32,
+    cell: f32,
+    w: usize,
+    h: usize,
+    low: Vec<f32>,
+}
+
+impl Footprint {
+    pub fn of(positions: &[[f32; 3]], triangles: &[u32]) -> Footprint {
+        let empty = Footprint { x0: 0.0, z0: 0.0, cell: 1.0, w: 0, h: 0, low: Vec::new() };
+        if triangles.len() < 3 || positions.is_empty() {
+            return empty;
+        }
+        let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
+        for p in positions {
+            lo = [lo[0].min(p[0]), lo[1].min(p[2])];
+            hi = [hi[0].max(p[0]), hi[1].max(p[2])];
+        }
+        // Half a metre, coarser for very large models; a cell of margin all round.
+        let cell = ((hi[0] - lo[0]).max(hi[1] - lo[1]) / 400.0).max(0.5);
+        let (x0, z0) = (lo[0] - cell, lo[1] - cell);
+        let (w, h) = (((hi[0] - x0) / cell) as usize + 2, ((hi[1] - z0) / cell) as usize + 2);
+        let mut low = vec![f32::INFINITY; w * h];
+        let mark = |x: f32, z: f32, y: f32, low: &mut Vec<f32>| {
+            let (i, j) = (((x - x0) / cell) as usize, ((z - z0) / cell) as usize);
+            if i < w && j < h {
+                let v = &mut low[j * w + i];
+                *v = v.min(y);
+            }
+        };
+        for t in triangles.chunks_exact(3) {
+            let [a, b, c] = [positions[t[0] as usize], positions[t[1] as usize], positions[t[2] as usize]];
+            let y = a[1].min(b[1]).min(c[1]);
+            // The edges, so that walls seen edge-on still count.
+            for (p, q) in [(a, b), (b, c), (c, a)] {
+                let n = (((q[0] - p[0]).hypot(q[2] - p[2]) / (cell * 0.5)) as usize).min(4000) + 1;
+                for k in 0..=n {
+                    let f = k as f32 / n as f32;
+                    mark(p[0] + (q[0] - p[0]) * f, p[2] + (q[2] - p[2]) * f, y, &mut low);
+                }
+            }
+            // And the cells whose middle the triangle covers.
+            let area = (b[0] - a[0]) * (c[2] - a[2]) - (c[0] - a[0]) * (b[2] - a[2]);
+            if area.abs() < cell * cell * 0.25 {
+                continue;
+            }
+            let (i0, i1) = (((a[0].min(b[0]).min(c[0]) - x0) / cell) as usize, ((a[0].max(b[0]).max(c[0]) - x0) / cell) as usize);
+            let (j0, j1) = (((a[2].min(b[2]).min(c[2]) - z0) / cell) as usize, ((a[2].max(b[2]).max(c[2]) - z0) / cell) as usize);
+            for j in j0..=j1.min(h - 1) {
+                for i in i0..=i1.min(w - 1) {
+                    let (px, pz) = (x0 + (i as f32 + 0.5) * cell, z0 + (j as f32 + 0.5) * cell);
+                    let side = |p: [f32; 3], q: [f32; 3]| (q[0] - p[0]) * (pz - p[2]) - (px - p[0]) * (q[2] - p[2]);
+                    let (s0, s1, s2) = (side(a, b), side(b, c), side(c, a));
+                    if (s0 >= 0.0 && s1 >= 0.0 && s2 >= 0.0) || (s0 <= 0.0 && s1 <= 0.0 && s2 <= 0.0) {
+                        let v = &mut low[j * w + i];
+                        *v = v.min(y);
+                    }
+                }
+            }
+        }
+        // Grass is placed a metre apart, so it keeps a little away from the edge.
+        let mut grown = low.clone();
+        for j in 0..h {
+            for i in 0..w {
+                let mut m = low[j * w + i];
+                for (dj, di) in [(0, 1), (2, 1), (1, 0), (1, 2)] {
+                    let (jj, ii) = ((j + dj).wrapping_sub(1), (i + di).wrapping_sub(1));
+                    if jj < h && ii < w {
+                        m = m.min(low[jj * w + ii]);
+                    }
+                }
+                grown[j * w + i] = m;
+            }
+        }
+        Footprint { x0, z0, cell, w, h, low: grown }
+    }
+
+    /// The lowest height of the model over a point, or infinity where nothing is.
+    pub fn low_at(&self, x: f32, z: f32) -> f32 {
+        let (fx, fz) = ((x - self.x0) / self.cell, (z - self.z0) / self.cell);
+        if fx < 0.0 || fz < 0.0 || fx as usize >= self.w || fz as usize >= self.h {
+            return f32::INFINITY;
+        }
+        self.low[fz as usize * self.w + fx as usize]
+    }
 }
 
 /// Keeps the finest geometry seen of each model.
@@ -140,8 +233,9 @@ pub fn remember_pick_mesh(meshes: &mut HashMap<u32, std::sync::Arc<PickMesh>>, m
     if m.key.0 >= CLUTTER_BASE || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
         return;
     }
-    let positions = m.vertices.chunks_exact(10).map(|v| [v[0], v[1], v[2]]).collect();
-    meshes.insert(m.key.0, std::sync::Arc::new(PickMesh { positions, triangles: m.indices.clone() }));
+    let positions: Vec<[f32; 3]> = m.vertices.chunks_exact(10).map(|v| [v[0], v[1], v[2]]).collect();
+    let footprint = Footprint::of(&positions, &m.indices);
+    meshes.insert(m.key.0, std::sync::Arc::new(PickMesh { positions, triangles: m.indices.clone(), footprint }));
 }
 
 /// Ray parameter of the nearest triangle hit, in the units of `d`.
@@ -337,7 +431,7 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     // The top view lists more than is on screen, so panning needs no rebuild until it nears the edge.
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
     let shadow_range = app.settings.lighting.shadow_range;
-    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32);
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32, app.pick_meshes.len());
     let toggled = cache.toggles != Some(toggles);
     let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
@@ -518,14 +612,20 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
             let mut blocked = vec![false; side * side];
             let reach = RANGE as f32 + 40.0;
             let under_objects = app.grass_under_objects;
+            let meshes = &app.pick_meshes;
             world.objects.for_each_in(v.eye[0] - reach, v.eye[2] - reach, v.eye[0] + reach, v.eye[2] + reach, |_, o| {
                 if !world.object_visible(o) {
                     return;
                 }
                 let path = world.objects.model_path(o);
                 let road = path.contains(r"\roads\parts\");
+                if !road && (under_objects || is_plant(path) || crate::models::is_water_model(path)) {
+                    return;
+                }
+                // The shape of the model where it meets the ground, once its geometry is in.
+                let footprint = if road { None } else { meshes.get(&o.model).map(|m| &m.footprint).filter(|f| f.w > 0) };
                 // A wall's bounding box can span a whole yard, while the wall itself covers next to nothing.
-                if !road && (under_objects || is_plant(path) || path.contains(r"\walls\") || path.contains("fence") || crate::models::is_water_model(path)) {
+                if footprint.is_none() && !road && (path.contains(r"\walls\") || path.contains("fence")) {
                     return;
                 }
                 let info = &infos[o.model as usize];
@@ -541,6 +641,24 @@ fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
                 let span = |lo: f32, hi: f32, origin: i32| ((lo.floor() as i32 - origin).max(0), (hi.ceil() as i32 - origin).min(side as i32 - 1));
                 let (x0, x1) = span(bx - r, bx + r, ox);
                 let (z0, z1) = span(bz - r, bz + r, oz);
+                if let Some(f) = footprint {
+                    // Grass goes where the model has nothing within a metre and a half of the
+                    // ground: under eaves and canopies it stays, under walls and floors it does not.
+                    let m = rotation(o.yaw, o.pitch, o.roll, o.scale.max(0.01));
+                    let s2 = o.scale.max(0.01).powi(2);
+                    let origin = ObjectStore::origin_y(o, &world.height);
+                    for gz in z0..=z1 {
+                        for gx in x0..=x1 {
+                            let (wx, wz) = ((ox + gx) as f32 + 0.5, (oz + gz) as f32 + 0.5);
+                            let rel = [wx - o.x, world.height.sample(wx, wz) - origin, wz - o.z];
+                            let p = [dot(rel, m[0]) / s2, dot(rel, m[1]) / s2, dot(rel, m[2]) / s2];
+                            if f.low_at(p[0], p[2]) < p[1] + 1.5 / o.scale.max(0.01) {
+                                blocked[gz as usize * side + gx as usize] = true;
+                            }
+                        }
+                    }
+                    return;
+                }
                 for gz in z0..=z1 {
                     for gx in x0..=x1 {
                         let (dx, dz) = ((ox + gx) as f32 + 0.5 - bx, (oz + gz) as f32 + 0.5 - bz);
@@ -3404,6 +3522,25 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
 #[cfg(test)]
 mod picking_tests {
     use super::*;
+
+    #[test]
+    fn grass_footprint_follows_the_geometry_not_the_box() {
+        // An L of thin walls 10 m long and 3 m high, and a roof 4 m up over a corner.
+        let mut pos = Vec::new();
+        let mut tri = Vec::new();
+        let mut quad = |a: [f32; 3], b: [f32; 3], c: [f32; 3], d: [f32; 3]| {
+            let n = pos.len() as u32;
+            pos.extend([a, b, c, d]);
+            tri.extend([n, n + 1, n + 2, n, n + 2, n + 3]);
+        };
+        quad([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 3.0, 0.0], [0.0, 3.0, 0.0]);
+        quad([0.0, 0.0, 0.0], [0.0, 0.0, 10.0], [0.0, 3.0, 10.0], [0.0, 3.0, 0.0]);
+        quad([6.0, 4.0, 6.0], [10.0, 4.0, 6.0], [10.0, 4.0, 10.0], [6.0, 4.0, 10.0]);
+        let f = Footprint::of(&pos, &tri);
+        assert!(f.low_at(5.0, 0.1) <= 0.0 && f.low_at(0.1, 5.0) <= 0.0, "under the walls");
+        assert!(f.low_at(5.0, 5.0).is_infinite(), "inside the L, where the box would have been");
+        assert_eq!(f.low_at(8.0, 8.0), 4.0, "under the roof it is high above the ground");
+    }
 
     #[test]
     fn terrain_is_only_found_from_above() {
