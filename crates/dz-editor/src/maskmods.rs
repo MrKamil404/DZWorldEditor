@@ -1,6 +1,6 @@
 //! Mask modifiers in the editor: the surface stamped under objects, the ground of forests and
 //! the result of surface painting, each a layer that can be hidden or deleted.
-use crate::app::App;
+use crate::app::{App, Finish};
 use crate::i18n::{t, tf};
 use crate::theme::{row, section};
 use dz_core::edit::Change;
@@ -104,7 +104,9 @@ pub fn stamp_under_objects(app: &mut App) {
     let library = &app.library;
     let index = |name: &str| w.layers.iter().position(|l| l.name.eq_ignore_ascii_case(name)).map(|i| i as u8);
     let selected = tool.selection_only && !app.selection.is_empty();
-    let mut stamps = Vec::new();
+    let geometry = tool.stamp.shape == StampShape::Geometry;
+    // The stamps, with the model, whether it is a plant and the yaw of each.
+    let mut stamps: Vec<(Stamp, String, bool, f32)> = Vec::new();
     let mut add = |o: &dz_core::objects::Obj| {
         let path = w.objects.model_path(o);
         if !w.object_visible(o) || path.contains("\\roads\\parts\\") || crate::models::is_water_model(path) || crate::models::is_decal_model(path) {
@@ -116,11 +118,11 @@ pub fn stamp_under_objects(app: &mut App) {
         }
         let own = if tool.own_surfaces { library.surface_of(path).and_then(index) } else { None };
         let Some(surface) = own.or(fallback) else { return };
-        let footprint = (!plant && tool.footprint).then(|| app.db.get(path)).filter(|i| i.known).map(|i| {
+        let footprint = (!plant && tool.footprint && !geometry).then(|| app.db.get(path)).filter(|i| i.known).map(|i| {
             let (hx, hz) = i.footprint();
             [hx * o.scale, hz * o.scale, o.yaw]
         });
-        stamps.push(Stamp { x: o.x, z: o.z, surface, scale: o.scale, footprint });
+        stamps.push((Stamp { x: o.x, z: o.z, surface, scale: o.scale, footprint, geometry: None }, path.to_string(), plant, o.yaw));
     };
     if selected {
         for id in &app.selection {
@@ -137,12 +139,48 @@ pub fn stamp_under_objects(app: &mut App) {
         app.warn(t("No objects to paint under"));
         return;
     }
-    let tiles = dz_core::maskmod::stamp_tiles(&stamps, &tool.stamp, w.mask.width, w.mask.height, w.meta.size_m());
+    let (settings, width, height, size) = (tool.stamp, w.mask.width, w.mask.height, w.meta.size_m());
     let n = w.mask_mods.modifiers.iter().filter(|m| m.kind == MaskKind::UnderObjects).count() + 1;
+    let name = tf("Surface under objects {0}", &[&n.to_string()]);
     let count = stamps.len();
-    if store(app, None, MaskKind::UnderObjects, tf("Surface under objects {0}", &[&n.to_string()]), tiles).is_some() {
-        app.info(tf("Painted the surface under {0} objects", &[&count.to_string()]));
+    let finish = move |app: &mut App, tiles| {
+        if store(app, None, MaskKind::UnderObjects, name, tiles).is_some() {
+            app.info(tf("Painted the surface under {0} objects", &[&count.to_string()]));
+        }
+    };
+    if !geometry {
+        let list: Vec<Stamp> = stamps.into_iter().map(|s| s.0).collect();
+        let tiles = dz_core::maskmod::stamp_tiles(&list, &settings, width, height, size);
+        finish(app, tiles);
+        return;
     }
+    // The outlines need the models, so they are read in the background.
+    let db = app.db.clone();
+    app.spawn(t("Painting under objects"), move |job| {
+        job.stage("Reading the outlines of the models");
+        // Room round an outline for the margin of the smallest object of the model.
+        let mut margin: HashMap<String, f32> = HashMap::new();
+        for (s, path, _, _) in &stamps {
+            let m = margin.entry(path.clone()).or_insert(0.0);
+            *m = m.max(settings.size_m / s.scale.max(0.05));
+        }
+        let mut outlines: HashMap<String, Option<std::sync::Arc<dz_core::satmod::Silhouette>>> = HashMap::new();
+        let total = stamps.len().max(1);
+        let mut list = Vec::with_capacity(stamps.len());
+        for (i, (mut s, path, plant, yaw)) in stamps.into_iter().enumerate() {
+            if i % 64 == 0 {
+                if job.cancelled() {
+                    anyhow::bail!("Cancelled");
+                }
+                job.set_progress(i as f32 / total as f32);
+            }
+            let outline = outlines.entry(path.clone()).or_insert_with(|| dz_core::satmod::silhouette(&db, &path, plant, margin[&path]).map(std::sync::Arc::new));
+            s.geometry = outline.clone().map(|o| (o, yaw));
+            list.push(s);
+        }
+        let tiles = dz_core::maskmod::stamp_tiles(&list, &settings, width, height, size);
+        Ok(Box::new(move |app: &mut App| finish(app, tiles)) as Finish)
+    });
 }
 
 /// Stamps for the trees a forest generator placed. A species with a layer of its own in the
@@ -155,18 +193,25 @@ pub fn forest_stamps(world: &dz_core::world::World, library: &dz_core::library::
         let stem = path.rsplit(['\\', '/']).next().unwrap_or(path).trim_end_matches(".p3d");
         species_layers.get(&forest_core::preset::ForestProject::layer_key(stem)).and_then(|l| index(l)).or_else(|| library.surface_of(path).and_then(index)).or(fallback)
     }).collect();
-    objects.iter().filter_map(|o| Some(Stamp { x: o.x, z: o.z, surface: per_model.get(o.model as usize).copied().flatten()?, scale: o.scale, footprint: None })).collect()
+    objects.iter().filter_map(|o| Some(Stamp { x: o.x, z: o.z, surface: per_model.get(o.model as usize).copied().flatten()?, scale: o.scale, footprint: None, geometry: None })).collect()
 }
 
 /// The controls of the stamp settings, shared by the tool and the forest generator.
-pub fn stamp_ui(ui: &mut egui::Ui, s: &mut StampSettings, salt: &str) {
+/// `geometry` offers the outline of the model as a shape.
+pub fn stamp_ui(ui: &mut egui::Ui, s: &mut StampSettings, salt: &str, geometry: bool) {
+    if !geometry && s.shape == StampShape::Geometry {
+        s.shape = StampShape::Blob;
+    }
     row(ui, &t("Patch shape"), |ui| {
         egui::ComboBox::from_id_salt(salt).selected_text(t(s.shape.name())).show_ui(ui, |ui| {
-            for k in StampShape::ALL {
+            for k in StampShape::ALL.into_iter().filter(|k| geometry || *k != StampShape::Geometry) {
                 ui.selectable_value(&mut s.shape, k, t(k.name()));
             }
         });
     });
+    if s.shape == StampShape::Geometry {
+        ui.weak(t("The patch then follows the outline of each model seen from above, and its size is the margin round it."));
+    }
     row(ui, &t("Patch size"), |ui| {
         ui.add(egui::Slider::new(&mut s.size_m, 0.5..=30.0).logarithmic(true).suffix(" m"));
     });
@@ -197,10 +242,10 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         ui.checkbox(&mut app.mask_tool.own_surfaces, t("Use the surface assigned to each model")).on_hover_text(t("Assigned in the asset browser, with the right mouse button on a model or a folder. The surface above is for the other models."));
         ui.checkbox(&mut app.mask_tool.plants, t("Under trees and bushes"));
         ui.checkbox(&mut app.mask_tool.buildings, t("Under buildings and other objects"));
-        ui.add_enabled_ui(app.mask_tool.buildings, |ui| {
+        ui.add_enabled_ui(app.mask_tool.buildings && app.mask_tool.stamp.shape != StampShape::Geometry, |ui| {
             ui.checkbox(&mut app.mask_tool.footprint, t("Fill the footprint of buildings")).on_hover_text(t("The patch size is then the margin round the footprint."));
         });
-        stamp_ui(ui, &mut app.mask_tool.stamp, "under_shape");
+        stamp_ui(ui, &mut app.mask_tool.stamp, "under_shape", true);
         if ui.button(t("Paint under objects")).clicked() {
             stamp_under_objects(app);
         }

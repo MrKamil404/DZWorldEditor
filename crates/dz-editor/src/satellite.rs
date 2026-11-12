@@ -43,6 +43,10 @@ pub struct SatTool {
     /// Road parts too, which otherwise come from the road tools.
     pub bake_roads: bool,
     pub bake_selection: bool,
+    /// River and pond parts too, their water in the colour of water.
+    pub bake_water: bool,
+    /// Leaves out what of an object lies in the ground.
+    pub bake_above_ground: bool,
     /// How far baked objects are blended into the image under them, 0 to 1.
     pub bake_blend: f32,
     /// The blending slider is being dragged.
@@ -51,7 +55,7 @@ pub struct SatTool {
 
 impl Default for SatTool {
     fn default() -> Self {
-        Self { radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_blend: 0.35, blending: false }
+        Self { radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_above_ground: true, bake_blend: 0.35, blending: false }
     }
 }
 
@@ -156,14 +160,16 @@ pub fn bake(app: &mut App) {
     };
     let w = &d.world;
     let selected = app.sat.bake_selection && !app.selection.is_empty();
-    let (plants, roads) = (app.sat.bake_plants, app.sat.bake_roads);
+    let (plants, roads, water) = (app.sat.bake_plants, app.sat.bake_roads, app.sat.bake_water);
     let wanted = |path: &str| -> bool {
-        // Water is drawn into the image by other means and decals lie flat on it already; road
-        // parts only when asked for.
+        // Decals lie flat on the image already; road and water parts only when asked for.
         if path.contains("\\roads\\parts\\") {
             return roads;
         }
-        !(crate::models::is_water_model(path) || crate::models::is_decal_model(path)) && (plants || !crate::viewport::is_plant(path))
+        if crate::models::is_water_model(path) {
+            return water;
+        }
+        !crate::models::is_decal_model(path) && (plants || !crate::viewport::is_plant(path))
     };
     let mut objects = Vec::new();
     let mut add = |o: &dz_core::objects::Obj| {
@@ -191,9 +197,10 @@ pub fn bake(app: &mut App) {
     }
     let (db, size, count) = (app.db.clone(), w.meta.size_m(), objects.len());
     let opacity = ((1.0 - app.sat.bake_blend.clamp(0.0, 1.0)) * 255.0).round() as u8;
+    let opts = dz_core::satmod::BakeOptions { water, ground: app.sat.bake_above_ground.then(|| Arc::new(w.height.clone())) };
     app.spawn(t("Baking objects into the satellite"), move |job| {
         job.stage("Baking objects into the satellite");
-        let tiles = dz_core::satmod::bake_objects(&objects, &db, width, height, size, crate::viewport::is_plant, job);
+        let tiles = dz_core::satmod::bake_objects_with(&objects, &db, width, height, size, crate::viewport::is_plant, &opts, job);
         Ok(Box::new(move |app: &mut App| {
             let Some(d) = app.doc.as_mut() else { return };
             if tiles.is_empty() {
@@ -367,6 +374,8 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         ui.checkbox(&mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
         ui.checkbox(&mut app.sat.bake_plants, t("Trees and bushes too"));
         ui.checkbox(&mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
+        ui.checkbox(&mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
+        ui.checkbox(&mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
         // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.
         let chosen = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == SatKind::Bake)).map(|m| (m.id, m.name.clone(), 1.0 - m.opacity as f32 / 255.0)));
         if let Some((_, _, blend)) = &chosen {
