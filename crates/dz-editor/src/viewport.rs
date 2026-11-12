@@ -2473,6 +2473,7 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         row(ui, t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0);
         row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0);
         row(ui, t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0);
+        surface_relief_ui(ui, &mut app.settings);
         row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=1.0);
         ui.weak(t("How far the swell runs up the shore and back; the game's MaxWave is 0.25 m."));
         ui.add_enabled(!app.settings.tide_cycle, egui::Slider::new(&mut app.settings.sea_tide, -MAX_TIDE..=MAX_TIDE).text(t("Tide m")));
@@ -2510,6 +2511,12 @@ fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
             app.settings.lighting = Lighting::default();
         }
     });
+}
+
+/// The parallax and blending of the surfaces, from the relief in their alpha channel.
+pub fn surface_relief_ui(ui: &mut egui::Ui, s: &mut crate::settings::Settings) {
+    ui.add(egui::Slider::new(&mut s.surface_parallax, 0.0..=15.0).text(t("Surface parallax cm"))).on_hover_text(t("How deep the relief in the alpha channel of the surface textures looks close up; 0 leaves them flat."));
+    ui.add(egui::Slider::new(&mut s.surface_blend, 0.0..=1.0).text(t("Surface blend by relief"))).on_hover_text(t("Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper."));
 }
 
 fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
@@ -2583,6 +2590,8 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         objects,
         show_water: app.show_water,
         surface_range: app.settings.surface_range,
+        parallax: app.settings.surface_parallax.max(0.0) / 100.0,
+        blend_sharp: app.settings.surface_blend.clamp(0.0, 1.0),
         sea_waves: app.settings.sea_waves,
         tide: tide(app, &ctx),
         world: meta.size_m(),
@@ -3158,6 +3167,10 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "fold" => {
             app.outliner_unfolded = arg != "0";
             app.outliner_fold = Some(app.outliner_unfolded);
+        }
+        "relief" if nums.len() >= 2 => {
+            app.settings.surface_parallax = nums[0];
+            app.settings.surface_blend = nums[1];
         }
         "brushinfo" => eprintln!("BRUSH sculpt={:.2}/{:.2} paint={:.2} holes={:.2} place={:.2}/{:.2} sat={:.2}/{:.2}", app.sculpt.radius, app.sculpt.strength, app.paint.radius, app.hole_radius, app.place.brush_radius, app.place.brush_spacing, app.sat.radius, app.sat.opacity),
         "mods" => {
