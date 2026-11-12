@@ -152,6 +152,31 @@ fn line_ui(ui: &mut egui::Ui, o: &mut LineOptions) {
     number(ui, t("Distance from the line"), &mut o.offset, -60.0..=60.0);
 }
 
+/// Wicket, gate in one object or gate of two leaves.
+fn opening_kind(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening) {
+    let current = match (o.gate, o.two_leaves) { (false, _) => 0, (true, false) => 1, (true, true) => 2 };
+    let names = [t("Wicket"), t("Gate in one object"), t("Gate of two leaves")];
+    let mut chosen = current;
+    egui::ComboBox::from_id_salt("opening_kind").width(170.0).selected_text(names[current].clone()).show_ui(ui, |ui| {
+        for (k, n) in names.iter().enumerate() { ui.selectable_value(&mut chosen, k, n); }
+    });
+    if chosen != current {
+        (o.gate, o.two_leaves) = match chosen { 0 => (false, false), 1 => (true, false), _ => (true, true) };
+    }
+}
+
+/// The models, width and side of a wicket or gate.
+fn opening_ui(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, cx: &KindContext) {
+    if o.two_leaves {
+        model_field(ui, t("Left leaf"), &mut o.left, &cx.model);
+        model_field(ui, t("Right leaf"), &mut o.right, &cx.model);
+    } else {
+        model_field(ui, if o.gate { t("Gate") } else { t("Wicket") }, &mut o.model, &cx.model);
+    }
+    number(ui, t("Gap width m (0 = of the model)"), &mut o.width, 0.0..=60.0);
+    ui.checkbox(&mut o.flip, t("Turn by 180° to open the other way"));
+}
+
 fn preset_combo(ui: &mut egui::Ui, id: impl std::hash::Hash, value: &mut String, presets: &[String]) {
     egui::ComboBox::from_id_salt(id).width(170.0).selected_text(value.clone()).show_ui(ui, |ui| {
         for p in presets { ui.selectable_value(value, p.clone(), p); }
@@ -411,6 +436,40 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             if !g.start_model.is_empty() { ui.checkbox(&mut g.flip_start, t("Rotate the first object by 180°")); }
             model_field(ui, t("Last object"), &mut g.end_model, &cx.model);
             if !g.end_model.is_empty() { ui.checkbox(&mut g.flip_end, t("Rotate the last object by 180°")); }
+            ui.separator();
+            ui.strong(t("Wickets and gates"));
+            ui.weak(t("Each leaves a gap in the fence with its own object, or two leaves of a gate."));
+            let mut drop = None;
+            for (k, o) in g.openings.iter_mut().enumerate() {
+                ui.push_id(("opening", k), |ui| {
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            opening_kind(ui, o);
+                            if ui.small_button(crate::icons::TRASH).on_hover_text(t("Delete")).clicked() { drop = Some(k); }
+                        });
+                        number(ui, t("Distance from the start m"), &mut o.at, 0.0..=5000.0);
+                        opening_ui(ui, o, cx);
+                    });
+                });
+            }
+            if let Some(k) = drop { g.openings.remove(k); }
+            ui.horizontal(|ui| {
+                let at = g.openings.last().map_or(10.0, |o| o.at + 20.0);
+                if ui.button(format!("+ {}", t("Wicket"))).clicked() { g.openings.push(dz_core::library::FenceOpening { at, ..Default::default() }); }
+                if ui.button(format!("+ {}", t("Gate"))).clicked() { g.openings.push(dz_core::library::FenceOpening { at, gate: true, ..Default::default() }); }
+            });
+            let mut road_gate = g.road_gate.is_some();
+            if ui.checkbox(&mut road_gate, t("A gate where a road or track crosses the fence")).changed() {
+                g.road_gate = road_gate.then(|| dz_core::library::FenceOpening { gate: true, width: 8.0, ..Default::default() });
+            }
+            if let Some(o) = &mut g.road_gate {
+                ui.push_id("road_gate", |ui| {
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        opening_kind(ui, o);
+                        opening_ui(ui, o, cx);
+                    });
+                });
+            }
             line_ui(ui, &mut g.line);
         }
         GeneratorKind::Area(g) => {
@@ -1194,8 +1253,10 @@ pub fn run_generator(app: &mut App, id: u64) {
                     match stamps {
                         Some(stamps) if !stamps.is_empty() => {
                             let tiles = a.doc.as_ref().map(|d| dz_core::maskmod::stamp_tiles(&stamps, &ground.stamp, d.world.mask.width, d.world.mask.height, d.world.meta.size_m())).unwrap_or_default();
-                            crate::maskmods::store(a, Some(id), dz_core::maskmod::MaskKind::Forest, name.clone(), tiles);
-                            if let Some(d) = a.doc.as_mut() { d.history.group_last(2, name); }
+                            // The trees and their ground are one step to undo, when the ground got any pixels.
+                            if crate::maskmods::store(a, Some(id), dz_core::maskmod::MaskKind::Forest, name.clone(), tiles).is_some() {
+                                if let Some(d) = a.doc.as_mut() { d.history.group_last(2, name); }
+                            }
                         }
                         Some(_) => a.warn(t("The forest has no surface to paint under its trees: choose one in the generator")),
                         None => {
@@ -1244,6 +1305,9 @@ pub fn run_generator(app: &mut App, id: u64) {
         }
         GeneratorKind::Fence(mut f) => {
             f.resolved = f.preset.and_then(|id| presets.iter().find(|p| p.id == id)).map(|p| p.items.clone()).unwrap_or_default();
+            if f.road_gate.is_some() {
+                f.roads = app.doc.as_ref().map(|d| d.world.routes.iter().map(|r| r.centerline.clone()).collect()).unwrap_or_default();
+            }
             if f.resolved.is_empty() && f.model.is_empty() {
                 app.warn(t("Choose at least one model"));
                 return;

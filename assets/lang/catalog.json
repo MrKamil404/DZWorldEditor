@@ -63,6 +63,10 @@
   "de": "Ein eigener Ordner; Modelle und Presets werden hineingelegt, ohne ihre Dateien zu verschieben.",
   "pl": "Własny folder; modele i presety trafiają do niego bez przenoszenia ich plików."
  },
+ "A gate where a road or track crosses the fence": {
+  "de": "Ein Tor, wo eine Straße oder ein Gleis den Zaun kreuzt",
+  "pl": "Brama tam, gdzie płot przecina droga lub tor"
+ },
  "A metre of bridge counts as this many metres of road. Lower it when cheap earthworks lead the road down into valleys instead of over them.": {
   "de": "Ein Meter Brücke zählt so viele Meter Straße. Senken, wenn billige Erdarbeiten die Straße in Täler statt darüber führen.",
   "pl": "Metr mostu liczy się jak tyle metrów drogi. Zmniejsz, gdy tanie roboty ziemne sprowadzają drogę w doliny zamiast nad nimi."
@@ -867,6 +871,10 @@
   "de": "Abstand zur Linie",
   "pl": "Odległość od linii"
  },
+ "Distance from the start m": {
+  "de": "Abstand vom Anfang m",
+  "pl": "Odległość od początku m"
+ },
  "Ditch depth": {
   "de": "Grabentiefe",
   "pl": "Głębokość rowu"
@@ -934,6 +942,10 @@
  "Duplicate objects": {
   "de": "Objekte duplizieren",
   "pl": "Powiel obiekty"
+ },
+ "Each leaves a gap in the fence with its own object, or two leaves of a gate.": {
+  "de": "Jede lässt eine Lücke im Zaun mit eigenem Objekt oder zwei Torflügeln.",
+  "pl": "Każda zostawia w płocie przerwę z własnym obiektem albo dwoma skrzydłami bramy."
  },
  "Each one fills the whole shape as well, for example undergrowth under the trees.": {
   "de": "Jedes füllt ebenfalls die ganze Form, z. B. Unterholz unter den Bäumen.",
@@ -1311,6 +1323,22 @@
   "de": "Abstand zwischen den Teilen. 0 lässt sie aneinanderstoßen, negative Werte überlappen sie.",
   "pl": "Odstęp między elementami. 0 oznacza styk, wartości ujemne nakładają je na siebie."
  },
+ "Gap width m (0 = of the model)": {
+  "de": "Breite der Lücke m (0 = des Modells)",
+  "pl": "Szerokość przerwy m (0 = jak model)"
+ },
+ "Gate": {
+  "de": "Tor",
+  "pl": "Brama"
+ },
+ "Gate in one object": {
+  "de": "Tor aus einem Objekt",
+  "pl": "Brama z jednego obiektu"
+ },
+ "Gate of two leaves": {
+  "de": "Tor aus zwei Flügeln",
+  "pl": "Brama z dwóch skrzydeł"
+ },
  "General": {
   "de": "Allgemein",
   "pl": "Ogólne"
@@ -1630,6 +1658,10 @@
  "Layer": {
   "de": "Ebene",
   "pl": "Warstwa"
+ },
+ "Left leaf": {
+  "de": "Linker Flügel",
+  "pl": "Lewe skrzydło"
  },
  "Level the ground under buildings": {
   "de": "Gelände unter Gebäuden einebnen",
@@ -2251,6 +2283,10 @@
   "de": "Malt eine Oberfläche unter Objekte als Masken-Modifikator, der in der Hierarchie ausgeblendet oder gelöscht werden kann.",
   "pl": "Maluje powierzchnię pod obiektami jako modyfikator maski, który można ukryć albo usunąć w hierarchii."
  },
+ "Paints the asphalt and verges of the road models into the image, as they look from above.": {
+  "de": "Malt Asphalt und Ränder der Straßenmodelle so ins Bild, wie sie von oben aussehen.",
+  "pl": "Wypala w obrazie asfalt i pobocza modeli dróg tak, jak wyglądają z góry."
+ },
  "Part removed": {
   "de": "Entfernter Anteil",
   "pl": "Usuwana część"
@@ -2523,6 +2559,10 @@
   "de": "Umkehren",
   "pl": "Odwróć"
  },
+ "Right leaf": {
+  "de": "Rechter Flügel",
+  "pl": "Prawe skrzydło"
+ },
  "River": {
   "de": "Fluss",
   "pl": "Rzeka"
@@ -2558,6 +2598,10 @@
  "Road or line": {
   "de": "Straße oder Linie",
   "pl": "Droga lub linia"
+ },
+ "Road parts too": {
+  "de": "Auch Straßenteile",
+  "pl": "Także party dróg"
  },
  "Road type": {
   "de": "Straßentyp",
@@ -3351,6 +3395,10 @@
   "de": "Drehung",
   "pl": "Obrót"
  },
+ "Turn by 180° to open the other way": {
+  "de": "Um 180° drehen, um zur anderen Seite zu öffnen",
+  "pl": "Obróć o 180°, aby otwierała się w drugą stronę"
+ },
  "Type": {
   "de": "Typ",
   "pl": "Typ"
@@ -3499,6 +3547,14 @@
   "de": "Ganzes Bild",
   "pl": "Cały obraz"
  },
+ "Wicket": {
+  "de": "Pforte",
+  "pl": "Furtka"
+ },
+ "Wickets and gates": {
+  "de": "Pforten und Tore",
+  "pl": "Furtki i bramy"
+ },
  "Width": {
   "de": "Breite",
   "pl": "Szerokość"
@@ -3642,6 +3698,10 @@
  "{0} objects will be imported": {
   "de": "{0} Objekte werden importiert",
   "pl": "Obiekty do wczytania: {0}"
+ },
+ "{0} pixels were left as they were, as their texture tiles already hold {1} surfaces": {
+  "de": "{0} Pixel blieben unverändert, weil ihre Texturkacheln bereits {1} Oberflächen haben",
+  "pl": "{0} pikseli zostało bez zmian, bo ich kafle tekstur mają już {1} powierzchni"
  },
  "{0} points": {
   "de": "{0} Punkte",

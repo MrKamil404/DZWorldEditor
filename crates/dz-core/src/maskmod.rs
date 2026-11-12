@@ -375,6 +375,38 @@ pub fn stamp_tiles(stamps: &[Stamp], s: &StampSettings, width: usize, height: us
     tiles.into_iter().map(|(k, t)| (k, Arc::new(t))).collect()
 }
 
+/// Leaves out the pixels of a modifier that would bring a texture tile of the terrain over
+/// the number of surfaces the project allows, as the paint brush does: there the mask keeps
+/// what it has. The tiles are checked against the mask as it is now, other modifiers
+/// included, in the order of the pixels. Returns how many pixels were left out.
+pub fn keep_tile_limit(w: &World, tiles: &mut HashMap<Key, Tile>) -> usize {
+    let mut guard = crate::mask_limit::TileGuard::new(w);
+    let (width, height) = (w.mask.width, w.mask.height);
+    let mut keys: Vec<Key> = tiles.keys().copied().collect();
+    keys.sort_by_key(|k| (k.1, k.0));
+    let mut dropped = 0;
+    for key in keys {
+        let Some(tile) = tiles.get_mut(&key) else { continue };
+        let t = Arc::make_mut(tile);
+        for (i, v) in t.iter_mut().enumerate() {
+            if *v == NONE {
+                continue;
+            }
+            let (x, y) = (key.0 as usize * TILE + i % TILE, key.1 as usize * TILE + i / TILE);
+            if x >= width || y >= height {
+                continue;
+            }
+            // A pixel that keeps the surface already there changes nothing on its tile.
+            if w.mask.data[y * width + x] != *v && !guard.allow(&w.mask, x, y, *v) {
+                *v = NONE;
+                dropped += 1;
+            }
+        }
+    }
+    tiles.retain(|_, t| t.iter().any(|v| *v != NONE));
+    dropped
+}
+
 /// The pixels where `after` differs from `before`, or that `keep` names, as tiles of a modifier.
 pub fn diff_tiles(before: &[u8], after: &[u8], width: usize, height: usize, keep: impl Fn(usize, usize) -> bool) -> HashMap<Key, Tile> {
     let mut tiles: HashMap<Key, Vec<u8>> = HashMap::new();
@@ -450,6 +482,24 @@ mod tests {
         assert_eq!(at(&w, 100, 106), 1, "beyond the short side");
         let back = MaskLayers::from_bytes(&w.mask_mods.to_bytes()).unwrap();
         assert_eq!((back.modifiers[0].kind, back.modifiers[0].name.as_str(), back.modifiers[0].tiles.len()), (MaskKind::Forest, "f", w.mask_mods.modifiers[0].tiles.len()));
+    }
+
+    #[test]
+    fn a_stamp_keeps_the_surfaces_a_texture_tile_may_hold() {
+        let mut w = world();
+        w.meta.max_tile_surfaces = 2;
+        // One surface already lies on the whole mask; a second may come, a third may not.
+        w.mask.data.iter_mut().for_each(|v| *v = 0);
+        let stamp = |surface, x: f32| Stamp { x, z: 128.0, surface, scale: 1.0, footprint: None };
+        let s = StampSettings { size_m: 3.0, shape: StampShape::Square, randomize_size: 0.0, ..Default::default() };
+        let mut tiles = stamp_tiles(&[stamp(1, 40.0), stamp(2, 50.0)], &s, 256, 256, 256.0);
+        let dropped = keep_tile_limit(&w, &mut tiles);
+        assert!(dropped > 0);
+        let id = w.mask_mods.add(MaskKind::UnderObjects, "m".into());
+        w.mask_replace_tiles(id, tiles);
+        assert_eq!(at(&w, 40, 128), 1, "the second surface is let in");
+        assert_eq!(at(&w, 50, 128), 0, "the third keeps what was there");
+        assert!(crate::mask_limit::scan(&w).is_empty());
     }
 
     #[test]

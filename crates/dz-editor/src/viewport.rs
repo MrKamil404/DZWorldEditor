@@ -2774,6 +2774,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "satbake" => {
             app.sat.bake_selection = false;
             app.sat.bake_plants = nums.first().is_some_and(|v| *v > 0.0);
+            app.sat.bake_roads = nums.get(1).is_some_and(|v| *v > 0.0);
             crate::satellite::bake(app);
         }
         // Source point in metres, then the ends of a stroke in metres.
@@ -2908,6 +2909,25 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "save" => app.save(Some(arg.into())),
         "build" => app.build(false),
         "browse" => app.filter = arg,
+        // Satellite colours across a line of the map, "satpx x z0 z1".
+        "satpx" if nums.len() >= 3 => {
+            if let Some(d) = &app.doc {
+                if let Some(img) = &d.world.satellite {
+                    let size = d.world.meta.size_m();
+                    let mut z = nums[1];
+                    while z <= nums[2] {
+                        let (px, py) = ((nums[0] / size * img.width as f32) as usize, ((size - z) / size * img.height as f32) as usize);
+                        let o = (py.min(img.height - 1) * img.width + px.min(img.width - 1)) * 3;
+                        eprintln!("SATPX z={z:.1} rgb={:?}", &img.data[o..o + 3]);
+                        z += 1.0;
+                    }
+                }
+                if let Some(r) = d.world.routes.first() {
+                    let near = r.centerline.iter().min_by(|a, b| (a[0] - nums[0]).abs().total_cmp(&(b[0] - nums[0]).abs()));
+                    eprintln!("SATPX centre {near:?}");
+                }
+            }
+        }
         // Asks to delete the first terrain modifier, mask modifier, generator or route.
         "askdelete" => {
             use crate::deleting::Target;
@@ -3103,6 +3123,28 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     K::Scatter(x) => x.models = models,
                     _ => {}
                 }
+            }
+        }
+        // A wicket of model `arg` at nums[0] metres, and gates where roads cross, on the last fence.
+        "fencegate" => {
+            if let Some(dz_core::library::GeneratorKind::Fence(x)) = app.doc.as_mut().and_then(|d| d.world.generators.last_mut()).map(|g| &mut g.kind) {
+                let model = arg.split_whitespace().nth(1).unwrap_or("").to_string();
+                x.openings.push(dz_core::library::FenceOpening { at: nums.first().copied().unwrap_or(10.0), model: model.clone(), ..Default::default() });
+                x.road_gate = Some(dz_core::library::FenceOpening { gate: true, two_leaves: true, left: model.clone(), right: model, width: 8.0, ..Default::default() });
+            }
+        }
+        "genobjs" => {
+            if let Some(d) = &app.doc {
+                if let Some(g) = d.world.generators.last() {
+                    for id in &g.objects { if let Some(o) = d.world.objects.get(*id) { eprintln!("GOBJ {:.2} {:.2} {:.1} {}", o.x, o.z, o.yaw, d.world.objects.model_path(o)); } }
+                }
+            }
+        }
+        // Sets the surfaces a texture tile may hold and tells how many tiles hold more.
+        "tilelimit" => {
+            if let Some(d) = app.doc.as_mut() {
+                if let Some(n) = nums.first() { d.world.meta.max_tile_surfaces = *n as u8; }
+                eprintln!("GENSTATS tiles_over={} limit={}", dz_core::mask_limit::scan(&d.world).len(), d.world.meta.max_tile_surfaces);
             }
         }
         "fencegap" => {

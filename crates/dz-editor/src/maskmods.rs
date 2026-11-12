@@ -38,7 +38,7 @@ impl App {
 }
 
 /// Gives a generator's mask modifier, or a new one, these tiles. One undo step.
-pub fn store(app: &mut App, generator: Option<u64>, kind: MaskKind, name: String, tiles: HashMap<dz_core::maskmod::Key, Tile>) -> Option<u32> {
+pub fn store(app: &mut App, generator: Option<u64>, kind: MaskKind, name: String, mut tiles: HashMap<dz_core::maskmod::Key, Tile>) -> Option<u32> {
     let d = app.doc.as_mut()?;
     let before = d.world.mask_mods.modifiers.clone();
     let known = generator.and_then(|g| d.world.generators.iter().find(|x| x.id == g)).and_then(|g| g.mask_modifier).filter(|m| d.world.mask_mods.position(*m).is_some());
@@ -46,13 +46,33 @@ pub fn store(app: &mut App, generator: Option<u64>, kind: MaskKind, name: String
     if let Some(at) = d.world.mask_mods.position(id) {
         d.world.mask_mods.modifiers[at].name = name.clone();
     }
+    // The texture tiles keep the number of surfaces the project allows, counted without what
+    // this modifier held before.
+    let cleared = d.world.mask_replace_tiles(id, HashMap::new());
+    let dropped = dz_core::maskmod::keep_tile_limit(&d.world, &mut tiles);
+    let limit = d.world.meta.max_tile_surfaces;
+    if tiles.is_empty() && known.is_none() {
+        // Nothing of a new modifier is left, so there is none.
+        d.world.mask_mods.modifiers.retain(|m| m.id != id);
+        if dropped > 0 {
+            app.warn(tf("{0} pixels were left as they were, as their texture tiles already hold {1} surfaces", &[&dropped.to_string(), &limit.to_string()]));
+        }
+        return None;
+    }
     let touched = d.world.mask_replace_tiles(id, tiles);
+    let touched = match (cleared, touched) {
+        (Some(a), Some(b)) => Some(a.union(b)),
+        (a, b) => a.or(b),
+    };
     if let Some(g) = generator.and_then(|g| d.world.generators.iter_mut().find(|x| x.id == g)) {
         g.mask_modifier = Some(id);
     }
     d.history.push(name, Change::MaskMods(before));
     if let Some(r) = touched {
         app.mask_recomposed(r);
+    }
+    if dropped > 0 {
+        app.warn(tf("{0} pixels were left as they were, as their texture tiles already hold {1} surfaces", &[&dropped.to_string(), &limit.to_string()]));
     }
     Some(id)
 }
@@ -120,8 +140,9 @@ pub fn stamp_under_objects(app: &mut App) {
     let tiles = dz_core::maskmod::stamp_tiles(&stamps, &tool.stamp, w.mask.width, w.mask.height, w.meta.size_m());
     let n = w.mask_mods.modifiers.iter().filter(|m| m.kind == MaskKind::UnderObjects).count() + 1;
     let count = stamps.len();
-    store(app, None, MaskKind::UnderObjects, tf("Surface under objects {0}", &[&n.to_string()]), tiles);
-    app.info(tf("Painted the surface under {0} objects", &[&count.to_string()]));
+    if store(app, None, MaskKind::UnderObjects, tf("Surface under objects {0}", &[&n.to_string()]), tiles).is_some() {
+        app.info(tf("Painted the surface under {0} objects", &[&count.to_string()]));
+    }
 }
 
 /// Stamps for the trees a forest generator placed. A species with a layer of its own in the
