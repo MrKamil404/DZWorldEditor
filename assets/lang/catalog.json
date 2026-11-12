@@ -3663,6 +3663,10 @@
   "de": "{0} Zellen",
   "pl": "Komórki: {0}"
  },
+ "{0} errors, {1} warnings since the log was last open": {
+  "de": "{0} Fehler, {1} Warnungen seit dem letzten Öffnen des Protokolls",
+  "pl": "Błędy: {0}, ostrzeżenia: {1} od ostatniego otwarcia dziennika"
+ },
  "{0} files": {
   "de": "{0} Dateien",
   "pl": "Pliki: {0}"
