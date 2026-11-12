@@ -621,6 +621,22 @@ pub struct Library {
     pub model_surfaces: std::collections::BTreeMap<String, String>,
     /// Folders of the asset browser made by the user.
     pub asset_folders: Vec<AssetFolder>,
+    /// Folders of the library's generators and presets, named as paths with `/`. Those inside
+    /// the generators or the presets start with [`GENERATORS_ROOT`] or [`PRESETS_ROOT`]; the
+    /// others lie at the top of the library and take both.
+    pub library_folders: Vec<String>,
+}
+
+/// The library's own group of generators, which holds folders but is never renamed or deleted.
+pub const GENERATORS_ROOT: &str = "#generators";
+/// The library's own group of object presets, like [`GENERATORS_ROOT`].
+pub const PRESETS_ROOT: &str = "#presets";
+
+/// What a folder of the library holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LibraryItem {
+    Generator,
+    Preset,
 }
 
 /// A folder of the asset browser made by the user, holding models and object presets that
@@ -642,6 +658,16 @@ pub fn parent_folder(name: &str) -> &str {
 /// True when `name` is `folder` or lies inside it.
 pub fn in_folder(name: &str, folder: &str) -> bool {
     name == folder || name.strip_prefix(folder).is_some_and(|r| r.starts_with('/'))
+}
+
+/// True when a folder of the library may hold things of `kind`: those in the generators hold
+/// generators, those in the presets presets, and those at the top both.
+pub fn library_folder_takes(folder: &str, kind: LibraryItem) -> bool {
+    match folder.split('/').next().unwrap_or("") {
+        GENERATORS_ROOT => kind == LibraryItem::Generator,
+        PRESETS_ROOT => kind == LibraryItem::Preset,
+        _ => true,
+    }
 }
 
 /// The form of a model path the library keys models by.
@@ -734,6 +760,113 @@ impl Library {
         let keys: Vec<String> = models.iter().map(|m| model_key(m)).collect();
         f.models.retain(|m| !keys.contains(m));
         f.presets.retain(|p| !presets.contains(p));
+    }
+    /// True for a folder of the library, its two groups included.
+    pub fn library_folder_exists(&self, name: &str) -> bool {
+        name == GENERATORS_ROOT || name == PRESETS_ROOT || self.library_folders.iter().any(|f| f == name)
+    }
+    /// The folder a generator or preset is shown in: its own, or "" (its group) when that
+    /// folder is gone or holds the other kind.
+    pub fn library_home<'a>(&self, folder: &'a str, kind: LibraryItem) -> &'a str {
+        if self.library_folders.iter().any(|f| f == folder) && library_folder_takes(folder, kind) {
+            folder
+        } else {
+            ""
+        }
+    }
+    /// Makes a folder inside `parent` of the library: "" for its top, one of its groups or
+    /// another folder. Returns its name.
+    pub fn new_library_folder(&mut self, parent: &str, base: &str) -> String {
+        let base = base.trim().replace('/', "-");
+        let base = base.trim_start_matches('#');
+        let base = if base.is_empty() { "Folder" } else { base };
+        let at = |n: &str| if parent.is_empty() { n.to_string() } else { format!("{parent}/{n}") };
+        let mut name = at(base);
+        let mut k = 2;
+        while self.library_folder_exists(&name) {
+            name = at(&format!("{base} {k}"));
+            k += 1;
+        }
+        let mut up = parent_folder(&name).to_string();
+        while !up.is_empty() && !self.library_folder_exists(&up) {
+            self.library_folders.push(up.clone());
+            up = parent_folder(&up).to_string();
+        }
+        self.library_folders.push(name.clone());
+        self.library_folders.sort_by_key(|f| f.to_lowercase());
+        name
+    }
+    /// Renames a folder of the library with what lies in it. False when the name is taken or
+    /// empty, or for the library's own groups.
+    pub fn rename_library_folder(&mut self, old: &str, new_leaf: &str) -> bool {
+        if !self.library_folders.iter().any(|f| f == old) {
+            return false;
+        }
+        let leaf = new_leaf.trim().replace('/', "-");
+        let leaf = leaf.trim_start_matches('#');
+        let parent = parent_folder(old);
+        let new = if parent.is_empty() { leaf.to_string() } else { format!("{parent}/{leaf}") };
+        if new == old {
+            return true;
+        }
+        if leaf.is_empty() || self.library_folder_exists(&new) {
+            return false;
+        }
+        let moved = |name: &mut String| {
+            if in_folder(name, old) {
+                *name = format!("{new}{}", &name[old.len()..]);
+            }
+        };
+        self.library_folders.iter_mut().for_each(moved);
+        self.generators.iter_mut().for_each(|g| moved(&mut g.folder));
+        self.objects.iter_mut().for_each(|p| moved(&mut p.folder));
+        self.library_folders.sort_by_key(|f| f.to_lowercase());
+        true
+    }
+    /// Deletes a folder of the library and the folders in it; their generators and presets go
+    /// back to their groups. The groups themselves stay.
+    pub fn delete_library_folder(&mut self, name: &str) {
+        if !self.library_folders.iter().any(|f| f == name) {
+            return;
+        }
+        self.library_folders.retain(|f| !in_folder(f, name));
+        for g in &mut self.generators {
+            if in_folder(&g.folder, name) {
+                g.folder.clear();
+            }
+        }
+        for p in &mut self.objects {
+            if in_folder(&p.folder, name) {
+                p.folder.clear();
+            }
+        }
+    }
+    /// Puts generators and presets into a folder of the library, each kind only where it
+    /// belongs; a group of the library takes its own kind back. Returns how many moved.
+    pub fn move_to_library_folder(&mut self, name: &str, generators: &[u64], presets: &[u64]) -> usize {
+        let to = |kind| {
+            if name == GENERATORS_ROOT || name == PRESETS_ROOT {
+                Some(String::new())
+            } else {
+                (self.library_folders.iter().any(|f| f == name) && library_folder_takes(name, kind)).then(|| name.to_string())
+            }
+        };
+        let gen_to = if name == PRESETS_ROOT { None } else { to(LibraryItem::Generator) };
+        let preset_to = if name == GENERATORS_ROOT { None } else { to(LibraryItem::Preset) };
+        let mut n = 0;
+        if let Some(f) = gen_to {
+            for g in self.generators.iter_mut().filter(|g| generators.contains(&g.id)) {
+                g.folder = f.clone();
+                n += 1;
+            }
+        }
+        if let Some(f) = preset_to {
+            for p in self.objects.iter_mut().filter(|p| presets.contains(&p.id)) {
+                p.folder = f.clone();
+                n += 1;
+            }
+        }
+        n
     }
     /// The surface layer assigned to a model, if any.
     pub fn surface_of(&self, model: &str) -> Option<&str> {
@@ -833,6 +966,39 @@ pub fn new_id() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn library_folders_hold_their_kind_and_give_it_back_when_deleted() {
+        let mut l = Library::default();
+        l.generators.push(GeneratorPreset { id: 1, name: "Road".into(), folder: String::new(), kind: built_in_generators()[0].kind.clone() });
+        l.objects.push(ObjectPreset { id: 2, name: "Rocks".into(), folder: String::new(), items: Vec::new(), scale_min: 1.0, scale_max: 1.0, random_yaw: true, align: false });
+        let roads = l.new_library_folder(GENERATORS_ROOT, "Roads");
+        assert_eq!(roads, "#generators/Roads");
+        let mine = l.new_library_folder("", "#Mine");
+        assert_eq!(mine, "Mine", "no name of a group");
+        // A preset does not go among the generators; the top takes both.
+        assert_eq!(l.move_to_library_folder(&roads, &[1], &[2]), 1);
+        assert_eq!(l.generators[0].folder, "#generators/Roads");
+        assert_eq!(l.objects[0].folder, "");
+        assert_eq!(l.move_to_library_folder(&mine, &[], &[2]), 1);
+        assert_eq!(l.library_home(&l.objects[0].folder.clone(), LibraryItem::Preset), "Mine");
+        // The groups are fixed.
+        assert!(!l.rename_library_folder(GENERATORS_ROOT, "Gens"));
+        l.delete_library_folder(PRESETS_ROOT);
+        assert!(l.library_folder_exists(PRESETS_ROOT));
+        assert!(l.rename_library_folder(&roads, "Streets"));
+        assert_eq!(l.generators[0].folder, "#generators/Streets");
+        let inner = l.new_library_folder("Mine", "Inner");
+        l.move_to_library_folder(&inner, &[], &[2]);
+        l.delete_library_folder("Mine");
+        assert!(!l.library_folder_exists(&inner));
+        assert_eq!(l.objects[0].folder, "", "back in its group");
+        // Into the group again.
+        l.move_to_library_folder(GENERATORS_ROOT, &[1], &[]);
+        assert_eq!(l.generators[0].folder, "");
+        // A folder that is gone shows its things in the group.
+        assert_eq!(l.library_home("Gone", LibraryItem::Generator), "");
+    }
+
     #[test]
     fn folders_nest_rename_with_what_lies_in_them_and_delete_alone() {
         let mut l = super::Library::default();

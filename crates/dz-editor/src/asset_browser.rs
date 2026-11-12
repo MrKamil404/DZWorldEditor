@@ -6,7 +6,7 @@ use crate::app::{App, Dialog, LineAction, Mode};
 use crate::i18n::{t, tf};
 use crate::library_ui::LibDrag;
 use crate::theme;
-use dz_core::library::{in_folder, parent_folder, BUILT_IN};
+use dz_core::library::{in_folder, parent_folder, LibraryItem, BUILT_IN, GENERATORS_ROOT, PRESETS_ROOT};
 use dz_core::world::{ModMode, ModShape};
 use eframe::egui::{self, pos2, vec2, Color32, Rect, Stroke};
 use std::collections::BTreeMap;
@@ -56,6 +56,54 @@ pub enum Source {
     Surfaced,
     /// The Terrain Builder template libraries of the project, or the models of one of them.
     Templates(Option<usize>),
+    /// A folder of the library's generators and presets, by its name in the library.
+    LibFolder(String),
+    /// A category of a built-in group, by its place in [`categories`].
+    Category(Group, usize),
+}
+
+/// The folders a built-in group is sorted into.
+fn categories(g: Group) -> &'static [&'static str] {
+    match g {
+        Group::BuiltInGenerators => &["Terrain", "Surfaces and vegetation", "Objects in areas", "Objects along lines", "Water"],
+        Group::BuiltInPresets => &["Forests", "Roads"],
+        Group::BuiltInModifiers => &["Levelling", "Raise and lower", "Fill and cut"],
+        _ => &[],
+    }
+}
+
+/// The category of a built-in generator.
+fn generator_category(kind: &dz_core::library::GeneratorKind) -> usize {
+    use dz_core::library::GeneratorKind as K;
+    match kind {
+        K::Terrain(_) | K::Erosion(_) | K::ThermalErosion { .. } | K::Terraces { .. } | K::LineTerrain(_) => 0,
+        K::Forest(_) | K::SurfacePaint { .. } => 1,
+        K::Settlement(_) | K::Scatter(_) | K::Area(_) | K::Remove(_) => 2,
+        K::Fence(_) | K::PowerLine(_) | K::Line(_) => 3,
+        K::River(_) | K::Pond(_) => 4,
+    }
+}
+
+/// The category of a built-in modifier of `MODIFIERS`.
+fn modifier_category(i: usize) -> usize {
+    match MODIFIERS[i].mode {
+        ModMode::Flatten => 0,
+        ModMode::Offset => 1,
+        _ => 2,
+    }
+}
+
+/// What marks a library folder being renamed, so it is not taken for a folder of the user.
+const LIB_RENAME: char = '\u{1}';
+
+/// The source showing a folder of the library: one of its groups or a folder of its own.
+fn library_source(name: &str) -> Source {
+    match name {
+        "" => Source::Group(Group::Library),
+        GENERATORS_ROOT => Source::Group(Group::LibraryGenerators),
+        PRESETS_ROOT => Source::Group(Group::LibraryPresets),
+        n => Source::LibFolder(n.to_string()),
+    }
 }
 
 impl Source {
@@ -66,6 +114,8 @@ impl Source {
             Source::Group(Group::BuiltInGenerators | Group::BuiltInPresets | Group::BuiltInModifiers) => Some(Source::Group(Group::BuiltIn)),
             Source::Group(Group::LibraryGenerators | Group::LibraryPresets) | Source::Templates(None) => Some(Source::Group(Group::Library)),
             Source::Templates(Some(_)) => Some(Source::Templates(None)),
+            Source::LibFolder(n) => Some(library_source(parent_folder(n))),
+            Source::Category(g, _) => Some(Source::Group(*g)),
             _ => None,
         }
     }
@@ -96,10 +146,12 @@ impl Source {
             Source::Surfaced => t("Models with a surface"),
             Source::Templates(None) => t("Project templates"),
             Source::Templates(Some(i)) => TEMPLATE_NAMES.with(|n| n.borrow().get(*i).cloned()).unwrap_or_default(),
+            Source::LibFolder(n) => n.rsplit('/').next().unwrap_or(n).to_string(),
+            Source::Category(g, i) => t(categories(*g).get(*i).copied().unwrap_or("")),
         }
     }
     fn locked(&self) -> bool {
-        matches!(self, Source::Group(Group::BuiltIn | Group::BuiltInGenerators | Group::BuiltInPresets | Group::BuiltInModifiers))
+        matches!(self, Source::Group(Group::BuiltIn | Group::BuiltInGenerators | Group::BuiltInPresets | Group::BuiltInModifiers) | Source::Category(..))
     }
 }
 
@@ -620,19 +672,27 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
                 Group::BuiltIn => out.extend(sub(&[Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInModifiers])),
                 Group::Library => {
                     out.extend(sub(&[Group::LibraryGenerators, Group::LibraryPresets]));
+                    out.extend(library_subfolders(app, ""));
                     out.push(Item::Folder(Source::Templates(None)));
                 }
+                Group::BuiltInGenerators if !searching => out.extend((0..categories(*g).len()).map(|i| Item::Folder(Source::Category(*g, i)))),
                 Group::BuiltInGenerators => out.extend(app.built_in.iter().filter(|x| named(&t(&x.name))).map(|x| Item::Asset(Pick::Generator(x.id)))),
-                Group::LibraryGenerators => out.extend(app.library.generators.iter().filter(|x| named(&x.name)).map(|x| Item::Asset(Pick::Generator(x.id)))),
+                Group::LibraryGenerators => {
+                    if !searching { out.extend(library_subfolders(app, GENERATORS_ROOT)); }
+                    out.extend(app.library.generators.iter().filter(|x| named(&x.name) && (searching || app.library.library_home(&x.folder, LibraryItem::Generator).is_empty())).map(|x| Item::Asset(Pick::Generator(x.id))));
+                }
+                Group::BuiltInPresets if !searching => out.extend((0..categories(*g).len()).map(|i| Item::Folder(Source::Category(*g, i)))),
                 Group::BuiltInPresets => {
                     let own: Vec<&str> = app.library.forest_presets.iter().map(|p| p.name.as_str()).collect();
                     out.extend(dz_core::gen::forest_preset_names().into_iter().filter(|n| !own.contains(&n.as_str()) && named(n)).map(|n| Item::Asset(Pick::Forest(n))));
                     out.extend(app.road_families.iter().filter(|f| named(f)).map(|f| Item::Asset(Pick::Road(f.clone()))));
                 }
                 Group::LibraryPresets => {
-                    out.extend(app.library.objects.iter().filter(|p| named(&p.name)).map(|p| Item::Asset(Pick::Preset(p.id))));
+                    if !searching { out.extend(library_subfolders(app, PRESETS_ROOT)); }
+                    out.extend(app.library.objects.iter().filter(|p| named(&p.name) && (searching || app.library.library_home(&p.folder, LibraryItem::Preset).is_empty())).map(|p| Item::Asset(Pick::Preset(p.id))));
                     out.extend(app.library.forest_presets.iter().filter(|p| named(&p.name)).map(|p| Item::Asset(Pick::Forest(p.name.clone()))));
                 }
+                Group::BuiltInModifiers if !searching => out.extend((0..categories(*g).len()).map(|i| Item::Folder(Source::Category(*g, i)))),
                 Group::BuiltInModifiers => out.extend((0..MODIFIERS.len()).filter(|i| named(&t(MODIFIERS[*i].name))).map(|i| Item::Asset(Pick::Modifier(i)))),
             }
         }
@@ -654,8 +714,59 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
             }
         }
         Source::Surfaced => out.extend(app.library.model_surfaces.keys().filter(|m| model_ok(m) && named(m)).map(|m| Item::Asset(Pick::Model(m.clone())))),
+        Source::Category(g, c) => match g {
+            Group::BuiltInGenerators => out.extend(app.built_in.iter().filter(|x| generator_category(&x.kind) == *c && named(&t(&x.name))).map(|x| Item::Asset(Pick::Generator(x.id)))),
+            Group::BuiltInPresets if *c == 0 => {
+                let own: Vec<&str> = app.library.forest_presets.iter().map(|p| p.name.as_str()).collect();
+                out.extend(dz_core::gen::forest_preset_names().into_iter().filter(|n| !own.contains(&n.as_str()) && named(n)).map(|n| Item::Asset(Pick::Forest(n))));
+            }
+            Group::BuiltInPresets => out.extend(app.road_families.iter().filter(|f| named(f)).map(|f| Item::Asset(Pick::Road(f.clone())))),
+            Group::BuiltInModifiers => out.extend((0..MODIFIERS.len()).filter(|i| modifier_category(*i) == *c && named(&t(MODIFIERS[*i].name))).map(|i| Item::Asset(Pick::Modifier(i)))),
+            _ => {}
+        },
+        Source::LibFolder(n) => {
+            if !searching { out.extend(library_subfolders(app, n)); }
+            let here = |home: &str| if searching { in_folder(home, n) } else { home == n };
+            out.extend(app.library.generators.iter().filter(|x| named(&x.name) && here(app.library.library_home(&x.folder, LibraryItem::Generator))).map(|x| Item::Asset(Pick::Generator(x.id))));
+            out.extend(app.library.objects.iter().filter(|p| named(&p.name) && here(app.library.library_home(&p.folder, LibraryItem::Preset))).map(|p| Item::Asset(Pick::Preset(p.id))));
+        }
     }
     out
+}
+
+/// The folders of the library right inside `parent`.
+fn library_subfolders(app: &App, parent: &str) -> Vec<Item> {
+    app.library.library_folders.iter().filter(|f| parent_folder(f) == parent).map(|f| Item::Folder(Source::LibFolder(f.clone()))).collect()
+}
+
+/// The folders of the library a generator or a preset can be moved to, as (name, label).
+fn library_targets(app: &App, kind: LibraryItem) -> Vec<(String, String)> {
+    let group = if kind == LibraryItem::Generator { (GENERATORS_ROOT, "Generators") } else { (PRESETS_ROOT, "Presets") };
+    let mut out = vec![(group.0.to_string(), t(group.1))];
+    for f in app.library.library_folders.iter().filter(|f| dz_core::library::library_folder_takes(f, kind)) {
+        let label = f.split('/').map(|p| if p == GENERATORS_ROOT { t("Generators") } else if p == PRESETS_ROOT { t("Presets") } else { p.to_string() }).collect::<Vec<_>>().join(" › ");
+        out.push((f.clone(), label));
+    }
+    out
+}
+
+/// Takes generators and presets of the library dropped on one of its folders.
+fn take_library_drop(resp: &egui::Response, folder: &str, acts: &mut Vec<Act>) {
+    let dragging = egui::DragAndDrop::payload::<LibDrag>(&resp.ctx).is_some_and(|d| matches!(*d, LibDrag::ObjectPreset(_) | LibDrag::Generator(_)))
+        || egui::DragAndDrop::payload::<Dragged>(&resp.ctx).is_some_and(|d| d.0.iter().any(|p| matches!(p, Pick::Generator(_) | Pick::Preset(_))));
+    theme::drop_zone(resp, dragging);
+    if let Some(d) = crate::theme::take::<LibDrag>(resp) {
+        match *d {
+            LibDrag::Generator(id) => acts.push(Act::LibMove(folder.to_string(), vec![id], Vec::new())),
+            LibDrag::ObjectPreset(id) => acts.push(Act::LibMove(folder.to_string(), Vec::new(), vec![id])),
+            LibDrag::ForestPreset(_) => {}
+        }
+    }
+    if let Some(d) = crate::theme::take::<Dragged>(resp) {
+        let gens = d.0.iter().filter_map(|p| if let Pick::Generator(id) = p { Some(*id) } else { None }).collect();
+        let presets = d.0.iter().filter_map(|p| if let Pick::Preset(id) = p { Some(*id) } else { None }).collect();
+        acts.push(Act::LibMove(folder.to_string(), gens, presets));
+    }
 }
 
 /// What the user did this frame, done after drawing.
@@ -683,6 +794,11 @@ enum Act {
     NewTemplateLibrary(Vec<String>),
     AddTemplates(usize, Vec<String>),
     RemoveTemplates(usize, Vec<String>),
+    /// A folder of the library inside this one ("" for its top, or one of its groups).
+    LibNewFolder(String),
+    LibDeleteFolder(String),
+    /// Generators and presets into a folder of the library.
+    LibMove(String, Vec<u64>, Vec<u64>),
 }
 
 /// Menu that assigns the surface painted under models.
@@ -785,7 +901,7 @@ fn source_row(ui: &mut egui::Ui, current: &Source, s: Source, text: String, acts
         Source::Templates(Some(_)) => Some(crate::icons::BOOK_OPEN),
         Source::Drive(p) if p.is_empty() => Some(crate::icons::HARD_DRIVES),
         Source::Surfaced => Some(crate::icons::PALETTE),
-        Source::Drive(_) | Source::Folder(_) => Some(if *current == s { crate::icons::FOLDER_OPEN } else { crate::icons::FOLDER }),
+        Source::Drive(_) | Source::Folder(_) | Source::LibFolder(_) | Source::Category(..) => Some(if *current == s { crate::icons::FOLDER_OPEN } else { crate::icons::FOLDER }),
         Source::Group(Group::Library) => Some(crate::icons::BOOKS),
         Source::Group(Group::LibraryGenerators) => Some(crate::icons::MAGIC_WAND),
         Source::Group(Group::LibraryPresets) => Some(crate::icons::SQUARES_FOUR),
@@ -880,19 +996,103 @@ fn user_folders(ui: &mut egui::Ui, app: &App, parent: &str, acts: &mut Vec<Act>,
     }
 }
 
-fn group_section(ui: &mut egui::Ui, app: &App, root: Group, children: &[Group], acts: &mut Vec<Act>, extra: impl FnOnce(&mut egui::Ui, &mut Vec<Act>)) {
-    let id = ui.make_persistent_id(("group", root as u8));
+/// The built-in generators, presets and modifiers, each sorted into its categories. All of it
+/// is locked.
+fn built_in_section(ui: &mut egui::Ui, app: &App, acts: &mut Vec<Act>) {
+    let id = ui.make_persistent_id(("group", Group::BuiltIn as u8));
+    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
+        .show_header(ui, |ui| { locked_row(ui, &app.browser.source, Source::Group(Group::BuiltIn), Source::Group(Group::BuiltIn).label(), acts); })
+        .body(|ui| {
+            for g in [Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInModifiers] {
+                let id = ui.make_persistent_id(("builtin", g as u8));
+                egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false)
+                    .show_header(ui, |ui| { locked_row(ui, &app.browser.source, Source::Group(g), Source::Group(g).label(), acts); })
+                    .body(|ui| {
+                        for i in 0..categories(g).len() {
+                            ui.horizontal(|ui| {
+                                ui.add_space(18.0);
+                                let s = Source::Category(g, i);
+                                locked_row(ui, &app.browser.source, s.clone(), s.label(), acts);
+                            });
+                        }
+                    });
+            }
+        });
+}
+
+/// A row of a folder of the library, or the box its new name is typed in.
+fn library_folder_row(ui: &mut egui::Ui, app: &App, name: &str, acts: &mut Vec<Act>) -> Option<String> {
+    if let Some((old, text)) = &app.browser.rename {
+        if old.strip_prefix(LIB_RENAME) == Some(name) {
+            let mut text = text.clone();
+            let r = ui.add(egui::TextEdit::singleline(&mut text).desired_width(140.0));
+            r.request_focus();
+            if r.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                acts.push(Act::Rename(text.clone()));
+            }
+            return Some(text);
+        }
+    }
+    let leaf = name.rsplit('/').next().unwrap_or(name);
+    let r = source_row(ui, &app.browser.source, Source::LibFolder(name.to_string()), leaf.to_string(), acts);
+    take_library_drop(&r, name, acts);
+    r.context_menu(|ui| library_folder_menu(ui, name, acts));
+    None
+}
+
+/// What can be done to a folder of the library.
+fn library_folder_menu(ui: &mut egui::Ui, name: &str, acts: &mut Vec<Act>) {
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    if ui.button(t("New folder inside")).clicked() { acts.push(Act::LibNewFolder(name.to_string())); ui.close_menu(); }
+    if ui.button(t("Rename")).clicked() { acts.push(Act::Rename(format!("\0{LIB_RENAME}{name}"))); ui.close_menu(); }
+    if ui.button(t("Delete folder")).on_hover_text(t("Its generators and presets go back to their group.")).clicked() { acts.push(Act::LibDeleteFolder(name.to_string())); ui.close_menu(); }
+}
+
+/// The folders of the library inside `parent`, nested.
+fn library_folders(ui: &mut egui::Ui, app: &App, parent: &str, acts: &mut Vec<Act>, renamed: &mut Option<String>) {
+    let names: Vec<String> = app.library.library_folders.iter().filter(|f| parent_folder(f) == parent).cloned().collect();
+    for name in names {
+        if app.library.library_folders.iter().any(|f| parent_folder(f) == name) {
+            let id = ui.make_persistent_id(("libfolder", &name));
+            egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
+                .show_header(ui, |ui| { if let Some(r) = library_folder_row(ui, app, &name, acts) { *renamed = Some(r); } })
+                .body(|ui| library_folders(ui, app, &name, acts, renamed));
+        } else {
+            ui.horizontal(|ui| {
+                ui.add_space(18.0);
+                if let Some(r) = library_folder_row(ui, app, &name, acts) { *renamed = Some(r); }
+            });
+        }
+    }
+}
+
+/// The library: its generators and presets with the folders made in them, the folders at its
+/// top and the template libraries of the project. The two groups take folders but stay as
+/// they are.
+fn library_section(ui: &mut egui::Ui, app: &App, acts: &mut Vec<Act>, renamed: &mut Option<String>, extra: impl FnOnce(&mut egui::Ui, &mut Vec<Act>)) {
+    let id = ui.make_persistent_id(("group", Group::Library as u8));
     egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
         .show_header(ui, |ui| {
-            locked_row(ui, &app.browser.source, Source::Group(root), Source::Group(root).label(), acts);
+            let r = source_row(ui, &app.browser.source, Source::Group(Group::Library), Source::Group(Group::Library).label(), acts);
+            r.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(String::new())); ui.close_menu(); } });
         })
         .body(|ui| {
-            for g in children {
-                ui.horizontal(|ui| {
-                    ui.add_space(18.0);
-                    locked_row(ui, &app.browser.source, Source::Group(*g), Source::Group(*g).label(), acts);
-                });
+            for (g, root) in [(Group::LibraryGenerators, GENERATORS_ROOT), (Group::LibraryPresets, PRESETS_ROOT)] {
+                let row = |ui: &mut egui::Ui, acts: &mut Vec<Act>| {
+                    let r = source_row(ui, &app.browser.source, Source::Group(g), Source::Group(g).label(), acts);
+                    take_library_drop(&r, root, acts);
+                    r.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(root.to_string())); ui.close_menu(); } });
+                };
+                if app.library.library_folders.iter().any(|f| parent_folder(f) == root) {
+                    let id = ui.make_persistent_id(("libgroup", root));
+                    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
+                        .show_header(ui, |ui| row(ui, acts))
+                        .body(|ui| library_folders(ui, app, root, acts, renamed));
+                } else {
+                    ui.horizontal(|ui| { ui.add_space(18.0); row(ui, acts); });
+                }
             }
+            library_folders(ui, app, "", acts, renamed);
             extra(ui, acts);
         });
 }
@@ -947,8 +1147,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     r.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::NewFolder(String::new())); ui.close_menu(); } });
                 })
                 .body(|ui| user_folders(ui, app, "", &mut acts, &mut renamed));
-            group_section(ui, app, Group::BuiltIn, &[Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInModifiers], &mut acts, |_, _| {});
-            group_section(ui, app, Group::Library, &[Group::LibraryGenerators, Group::LibraryPresets], &mut acts, |ui, acts| {
+            built_in_section(ui, app, &mut acts);
+            library_section(ui, app, &mut acts, &mut renamed, |ui, acts| {
                 let libs: Vec<(String, usize)> = app.browser.templates.libraries.iter().map(|l| (l.0.clone(), l.1.len())).collect();
                 let id = ui.make_persistent_id("templates");
                 let header = |ui: &mut egui::Ui, acts: &mut Vec<Act>| {
@@ -1048,6 +1248,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         let r = ui.centered_and_justified(|ui| ui.weak(msg)).inner;
         if let Source::Folder(f) = &source { if !f.is_empty() { take_drop(&r, f, &mut acts); } }
         if let Source::Templates(Some(i)) = &source { take_template_drop(&r, *i, &mut acts); }
+        if let Source::LibFolder(f) = &source {
+            take_library_drop(&r, f, &mut acts);
+            let f = f.clone();
+            r.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(f.clone())); ui.close_menu(); } });
+        }
     } else {
         // A click on empty space clears the selection; the menu there makes folders. It is
         // made before the tiles so that they lie over it and get their clicks.
@@ -1056,6 +1261,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         if let Source::Folder(f) = &source {
             let f = f.clone();
             bg.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::NewFolder(f.clone())); ui.close_menu(); } });
+        }
+        // In the library a folder is made where one is: at its top, in a group or a folder.
+        let library_here = match &source {
+            Source::Group(Group::Library) => Some(String::new()),
+            Source::Group(Group::LibraryGenerators) => Some(GENERATORS_ROOT.to_string()),
+            Source::Group(Group::LibraryPresets) => Some(PRESETS_ROOT.to_string()),
+            Source::LibFolder(f) => Some(f.clone()),
+            _ => None,
+        };
+        if let Some(f) = library_here {
+            if !f.is_empty() { take_library_drop(&bg, &f, &mut acts); }
+            bg.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(f.clone())); ui.close_menu(); } });
         }
         if let Source::Templates(which) = &source {
             let which = *which;
@@ -1085,6 +1302,17 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 if resp.double_clicked() { acts.push(Act::Go(s.clone())); }
                                 if let Source::Templates(Some(i)) = s {
                                     take_template_drop(&resp, *i, &mut acts);
+                                }
+                                if let Source::LibFolder(f) = s {
+                                    take_library_drop(&resp, f, &mut acts);
+                                    let f = f.clone();
+                                    resp.context_menu(|ui| {
+                                        if ui.button(t("Open")).clicked() { acts.push(Act::Go(Source::LibFolder(f.clone()))); ui.close_menu(); }
+                                        library_folder_menu(ui, &f, &mut acts);
+                                    });
+                                }
+                                if let Source::Group(g @ (Group::LibraryGenerators | Group::LibraryPresets)) = s {
+                                    take_library_drop(&resp, if *g == Group::LibraryGenerators { GENERATORS_ROOT } else { PRESETS_ROOT }, &mut acts);
                                 }
                                 if let Source::Folder(f) = s {
                                     take_drop(&resp, f, &mut acts);
@@ -1158,6 +1386,23 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         if let Source::Templates(Some(i)) = &source {
                                             if ui.button(t("Remove from this template library")).on_hover_text(t("Objects of Terrain Builder layers placed with these templates lose their model there.")).clicked() { acts.push(Act::RemoveTemplates(*i, models.clone())); ui.close_menu(); }
                                         }
+                                    }
+                                    // Generators and presets of the library go into its folders.
+                                    let lib_gens: Vec<u64> = group.iter().filter_map(|p| if let Pick::Generator(id) = p { app.library.generators.iter().any(|g| g.id == *id).then_some(*id) } else { None }).collect();
+                                    let lib_presets: Vec<u64> = presets.clone();
+                                    if !lib_gens.is_empty() || !lib_presets.is_empty() {
+                                        let kind = if lib_presets.is_empty() { Some(LibraryItem::Generator) } else if lib_gens.is_empty() { Some(LibraryItem::Preset) } else { None };
+                                        ui.menu_button(t("Move to library folder"), |ui| {
+                                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                                            // A mix of both goes only to the folders at the top, which take both.
+                                            let targets: Vec<(String, String)> = match kind {
+                                                Some(k) => library_targets(app, k),
+                                                None => app.library.library_folders.iter().filter(|f| dz_core::library::library_folder_takes(f, LibraryItem::Generator) && dz_core::library::library_folder_takes(f, LibraryItem::Preset)).map(|f| (f.clone(), f.replace('/', " › "))).collect(),
+                                            };
+                                            for (name, label) in targets {
+                                                if ui.button(label).clicked() { acts.push(Act::LibMove(name, lib_gens.clone(), lib_presets.clone())); ui.close_menu(); }
+                                            }
+                                        });
                                     }
                                     if models.len() > 1 && ui.button(t("Make a preset of them")).clicked() { acts.push(Act::MakePreset(models.clone())); ui.close_menu(); }
                                     if group.len() == 1 {
@@ -1246,8 +1491,22 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
             }
             Act::Rename(text) => {
                 if let Some(old) = text.strip_prefix('\0') {
-                    let leaf = old.rsplit('/').next().unwrap_or(old).to_string();
+                    let leaf = old.trim_start_matches(LIB_RENAME).rsplit('/').next().unwrap_or(old).to_string();
                     app.browser.rename = Some((old.to_string(), leaf));
+                } else if let Some((old, _)) = app.browser.rename.take_if(|(o, _)| o.starts_with(LIB_RENAME)) {
+                    let old = &old[LIB_RENAME.len_utf8()..];
+                    if app.library.rename_library_folder(old, &text) {
+                        let parent = parent_folder(old);
+                        let leaf = text.trim().replace('/', "-");
+                        let leaf = leaf.trim_start_matches('#');
+                        let new = if parent.is_empty() { leaf.to_string() } else { format!("{parent}/{leaf}") };
+                        if let Source::LibFolder(f) = &app.browser.source {
+                            if in_folder(f, old) { app.browser.source = Source::LibFolder(format!("{new}{}", &f[old.len()..])); }
+                        }
+                        app.lib_dirty = true;
+                    } else {
+                        app.warn(t("A folder of that name is already there"));
+                    }
                 } else if let Some((old, _)) = app.browser.rename.take() {
                     if app.library.rename_folder(&old, &text) {
                         let parent = parent_folder(&old);
@@ -1259,6 +1518,26 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                     } else {
                         app.warn(t("A folder of that name is already there"));
                     }
+                }
+            }
+            Act::LibNewFolder(parent) => {
+                let name = app.library.new_library_folder(&parent, &t("New folder"));
+                let leaf = name.rsplit('/').next().unwrap_or(&name).to_string();
+                app.browser.rename = Some((format!("{LIB_RENAME}{name}"), leaf));
+                app.lib_dirty = true;
+            }
+            Act::LibDeleteFolder(name) => {
+                app.library.delete_library_folder(&name);
+                if let Source::LibFolder(f) = &app.browser.source {
+                    if in_folder(f, &name) { app.browser.source = library_source(parent_folder(&name)); }
+                }
+                app.lib_dirty = true;
+            }
+            Act::LibMove(folder, gens, presets) => {
+                let n = app.library.move_to_library_folder(&folder, &gens, &presets);
+                if n > 0 {
+                    app.lib_dirty = true;
+                    app.status = tf("Moved {0} to {1}", &[&n.to_string(), &library_source(&folder).label()]);
                 }
             }
             Act::DeleteFolder(name) => {
@@ -1309,12 +1588,15 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
             Act::NewGenerator(from) => {
                 if let Some(b) = app.built_in.iter().find(|g| g.id == from).cloned() {
                     let id = dz_core::library::new_id();
-                    app.library.generators.push(dz_core::library::GeneratorPreset { id, name: t(b.kind.type_name()), folder: String::new(), kind: b.kind });
+                    let folder = if let Source::LibFolder(f) = &app.browser.source { f.clone() } else { String::new() };
+                    let folder = app.library.library_home(&folder, LibraryItem::Generator).to_string();
+                    let shown = library_source(if folder.is_empty() { GENERATORS_ROOT } else { &folder });
+                    app.library.generators.push(dz_core::library::GeneratorPreset { id, name: t(b.kind.type_name()), folder, kind: b.kind });
                     app.edit_generator = Some(id);
                     app.edit_object = None;
                     app.edit_forest = None;
                     app.selected_generator = None;
-                    app.browser.go(Source::Group(Group::LibraryGenerators));
+                    app.browser.go(shown);
                     app.browser.selected = vec![Pick::Generator(id)];
                     app.lib_dirty = true;
                 }
@@ -1324,7 +1606,8 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                 let items = app.browser.models().into_iter().chain(app.place.model.clone()).take(64).map(|m| (m, 1.0)).collect::<Vec<_>>();
                 let mut seen = std::collections::HashSet::new();
                 let items = items.into_iter().filter(|i| seen.insert(i.0.clone())).collect();
-                app.library.objects.push(dz_core::library::ObjectPreset { id, name: t("New preset"), folder: String::new(), items, scale_min: 1.0, scale_max: 1.0, random_yaw: true, align: false });
+                let folder = if let Source::LibFolder(f) = &app.browser.source { app.library.library_home(f, LibraryItem::Preset).to_string() } else { String::new() };
+                app.library.objects.push(dz_core::library::ObjectPreset { id, name: t("New preset"), folder, items, scale_min: 1.0, scale_max: 1.0, random_yaw: true, align: false });
                 if let Source::Folder(f) = &app.browser.source {
                     if !f.is_empty() { let f = f.clone(); app.library.add_to_folder(&f, &[], &[id]); }
                 }
@@ -1950,4 +2233,29 @@ fn locked_note(ui: &mut egui::Ui) {
         lock_icon(ui.painter(), r.min + vec2(0.0, 1.0), 11.0);
         ui.weak(t("Built in: it cannot be changed, only duplicated."));
     });
+}
+
+/// For automated checks (`libdemo [folder]`): folders of the library with a generator and a
+/// preset in them, and the browser showing `folder` of the library ("" for its top).
+pub fn library_demo(app: &mut App, show: &str) {
+    let gens = app.library.new_library_folder(GENERATORS_ROOT, "Roads");
+    let mine = app.library.new_library_folder("", "Mine");
+    app.library.new_library_folder(&mine, "Inner");
+    if let Some(b) = app.built_in.first().cloned() {
+        let id = dz_core::library::new_id();
+        app.library.generators.push(dz_core::library::GeneratorPreset { id, name: "Demo road".into(), folder: String::new(), kind: b.kind });
+        app.library.move_to_library_folder(&gens, &[id], &[]);
+    }
+    let id = dz_core::library::new_id();
+    app.library.objects.push(dz_core::library::ObjectPreset { id, name: "Demo preset".into(), folder: String::new(), items: Vec::new(), scale_min: 1.0, scale_max: 1.0, random_yaw: true, align: false });
+    app.library.move_to_library_folder(&mine, &[], &[id]);
+    let to = match show {
+        "gens" => Source::LibFolder(gens),
+        "mine" => Source::LibFolder(mine),
+        "generators" => Source::Group(Group::LibraryGenerators),
+        "builtin" => Source::Group(Group::BuiltInGenerators),
+        "lines" => Source::Category(Group::BuiltInGenerators, 3),
+        _ => Source::Group(Group::Library),
+    };
+    app.browser.go(to);
 }
