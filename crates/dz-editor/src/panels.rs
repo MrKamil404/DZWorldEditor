@@ -151,9 +151,23 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 app.updater.bar(ui);
+                coffee_button(ui);
             });
         });
     });
+}
+
+/// Where the project lives, and where it can be supported.
+pub const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+pub const BUY_ME_A_COFFEE: &str = "https://buymeacoffee.com/mrkamil404";
+
+/// A small button that opens the Buy Me a Coffee page.
+fn coffee_button(ui: &mut egui::Ui) {
+    let text = egui::RichText::new(icons::with(icons::COFFEE, &t("Buy me a coffee"))).color(egui::Color32::from_rgb(40, 30, 10));
+    let b = egui::Button::new(text).fill(egui::Color32::from_rgb(255, 221, 0)).small();
+    if ui.add(b).on_hover_text(BUY_ME_A_COFFEE).clicked() {
+        ui.ctx().open_url(egui::OpenUrl::new_tab(BUY_ME_A_COFFEE));
+    }
 }
 
 /// An icon button of the toolbar, lit when `active`, with the action's name and key as tip.
@@ -1452,6 +1466,15 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
                 ui.heading("DZ World Editor");
                 ui.label(format!("{} {}", t("Version"), crate::updater::version()));
                 ui.label(t("Built on the DayZForests and DayZ Road Studio engines."));
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.label(icons::GITHUB_LOGO);
+                    ui.hyperlink_to(t("Source code on GitHub"), REPOSITORY).on_hover_text(REPOSITORY);
+                });
+                ui.horizontal(|ui| {
+                    ui.label(icons::COFFEE);
+                    ui.hyperlink_to(t("Buy me a coffee"), BUY_ME_A_COFFEE).on_hover_text(BUY_ME_A_COFFEE);
+                });
             });
         }
         Dialog::Confirm { text, action } => {

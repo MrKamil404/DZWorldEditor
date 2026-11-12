@@ -2401,6 +2401,18 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     ui.painter().set(backing, egui::Shape::rect_filled(back, 3.0, Color32::from_black_alpha(150)));
 }
 
+/// The game's MaxTide: how far the tide moves the sea, in metres.
+const MAX_TIDE: f32 = 1.5;
+
+/// The tide now: the one chosen, or the cycle running through all of it.
+fn tide(app: &App, ctx: &egui::Context) -> f32 {
+    if app.settings.tide_cycle {
+        MAX_TIDE * (ctx.input(|i| i.time) as f32 * std::f32::consts::TAU / 120.0).sin()
+    } else {
+        app.settings.sea_tide.clamp(-MAX_TIDE, MAX_TIDE)
+    }
+}
+
 fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
     ui.menu_button(crate::icons::with(crate::icons::CAMERA, &t("Camera")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
         ui.set_min_width(280.0);
@@ -2415,7 +2427,10 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0);
         row(ui, t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0);
         row(ui, t("Surface transition m"), &mut app.settings.surface_blend, 0.0..=10.0);
-        row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=3.0);
+        row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=1.0);
+        ui.weak(t("How far the swell runs up the shore and back; the game's MaxWave is 0.25 m."));
+        ui.add_enabled(!app.settings.tide_cycle, egui::Slider::new(&mut app.settings.sea_tide, -MAX_TIDE..=MAX_TIDE).text(t("Tide m")));
+        ui.checkbox(&mut app.settings.tide_cycle, t("Tide rises and falls")).on_hover_text(t("Runs through the whole tide of the game, up to MaxTide 1.5 m, in two minutes."));
     });
 }
 
@@ -2524,6 +2539,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         surface_blend: app.settings.surface_blend,
         surface_range: app.settings.surface_range,
         sea_waves: app.settings.sea_waves,
+        tide: tide(app, &ctx),
         world: meta.size_m(),
         tile: 10.0 / meta.land_cell(),
         lighting: app.settings.lighting.gpu(),
@@ -2534,7 +2550,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         smoothing: app.settings.edge_smoothing,
     };
     // The sea moves on its own, also when nothing else makes the window redraw.
-    if !top && app.show_water && app.settings.sea_waves > 0.0 && doc.height_range[0] < meta.sea_level {
+    if !top && app.show_water && (app.settings.sea_waves > 0.0 || app.settings.tide_cycle) && doc.height_range[0] < meta.sea_level + MAX_TIDE + app.settings.sea_waves {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
     }
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
@@ -3350,6 +3366,15 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 crate::exporting::run(app, None);
             }
         }
+        // Where a line from (x0, z) eastward first comes up out of the sea.
+        "coast" if nums.len() >= 2 => {
+            if let Some(d) = &app.doc {
+                let w = &d.world;
+                let x = (0..20000).map(|k| nums[0] + k as f32).find(|x| w.height.sample(*x, nums[1]) > w.meta.sea_level);
+                eprintln!("COAST z={} x={:?} sea={}", nums[1], x, w.meta.sea_level);
+            }
+        }
+        "about" => app.dialog = crate::app::Dialog::About,
         "padstat" => {
             if let Some(d) = &app.doc {
                 for id in &app.selection {

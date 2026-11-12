@@ -230,7 +230,7 @@ pub fn is_decal_model(path: &str) -> bool {
 }
 
 pub fn is_water_model(path: &str) -> bool {
-    (path.contains("\\water\\") || path.contains("\\water_")) && !path.contains("streambed")
+    dz_core::objects::is_water_model(path)
 }
 
 fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d::Cache, texture_limit: u32) -> Option<MeshData> {

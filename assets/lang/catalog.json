@@ -483,6 +483,10 @@
   "de": "Büsche",
   "pl": "Krzewy"
  },
+ "Buy me a coffee": {
+  "de": "Spendier mir einen Kaffee",
+  "pl": "Postaw mi kawę"
+ },
  "Camera": {
   "de": "Kamera",
   "pl": "Kamera"
@@ -1562,6 +1566,10 @@
  "How far the baked objects fade into the satellite image under them.": {
   "de": "Wie stark die eingebrannten Objekte in das Satellitenbild darunter übergehen.",
   "pl": "Jak mocno wypalone obiekty wtapiają się w satkę pod nimi."
+ },
+ "How far the swell runs up the shore and back; the game's MaxWave is 0.25 m.": {
+  "de": "Wie weit die Dünung den Strand hinauf- und zurückläuft; MaxWave des Spiels ist 0,25 m.",
+  "pl": "Jak daleko fala wbiega na brzeg i się cofa; MaxWave w grze to 0,25 m."
  },
  "Hydraulic erosion": {
   "de": "Wassererosion",
@@ -2819,6 +2827,10 @@
   "de": "Routen ({0})",
   "pl": "Trasy ({0})"
  },
+ "Runs through the whole tide of the game, up to MaxTide 1.5 m, in two minutes.": {
+  "de": "Durchläuft die ganzen Gezeiten des Spiels, bis MaxTide 1,5 m, in zwei Minuten.",
+  "pl": "Przechodzi przez cały pływ z gry, do MaxTide 1,5 m, w dwie minuty."
+ },
  "Satellite": {
   "de": "Satellit",
   "pl": "Satelita"
@@ -3110,6 +3122,10 @@
  "Some actions share a key; only the first of them will work.": {
   "de": "Einige Aktionen teilen eine Taste; nur die erste davon wirkt.",
   "pl": "Niektóre akcje mają ten sam klawisz; zadziała tylko pierwsza z nich."
+ },
+ "Source code on GitHub": {
+  "de": "Quellcode auf GitHub",
+  "pl": "Kod źródłowy na GitHubie"
  },
  "Source: {0}, {1}": {
   "de": "Quelle: {0}, {1}",
@@ -3550,6 +3566,14 @@
  "This preset has no models yet": {
   "de": "Dieses Preset hat noch keine Modelle",
   "pl": "Ten preset nie ma jeszcze modeli"
+ },
+ "Tide m": {
+  "de": "Gezeiten m",
+  "pl": "Pływ m"
+ },
+ "Tide rises and falls": {
+  "de": "Gezeiten steigen und fallen",
+  "pl": "Pływ podnosi się i opada"
  },
  "Tile size": {
   "de": "Kachelgröße",
