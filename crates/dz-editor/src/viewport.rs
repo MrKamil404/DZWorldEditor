@@ -3126,6 +3126,10 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.paint.spray_density = d.max(0.01);
             app.sculpt.spray_density = d.max(0.01);
         }
+        "fold" => {
+            app.outliner_unfolded = arg != "0";
+            app.outliner_fold = Some(app.outliner_unfolded);
+        }
         "brushinfo" => eprintln!("BRUSH sculpt={:.2}/{:.2} paint={:.2} holes={:.2} place={:.2}/{:.2} sat={:.2}/{:.2}", app.sculpt.radius, app.sculpt.strength, app.paint.radius, app.hole_radius, app.place.brush_radius, app.place.brush_spacing, app.sat.radius, app.sat.opacity),
         "mods" => {
             app.synthetic_modifiers = egui::Modifiers { shift: arg == "shift", ctrl: arg == "ctrl", command: arg == "ctrl", alt: arg == "alt", ..Default::default() };
