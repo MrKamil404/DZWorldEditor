@@ -595,6 +595,14 @@
   "de": "In die Vorschau klicken, um die Quelle zu wählen, dann auf der Karte malen. Das Mausrad zoomt die Vorschau, Ziehen verschiebt sie.",
   "pl": "Kliknij w podglądzie, żeby wybrać miejsce źródłowe, potem maluj na mapie. Kółko przybliża podgląd, przeciąganie go przesuwa."
  },
+ "Click nearer to the fence": {
+  "de": "Näher am Zaun klicken",
+  "pl": "Kliknij bliżej płotu"
+ },
+ "Click on the fence where the opening goes. Esc cancels.": {
+  "de": "Auf den Zaun klicken, wo die Öffnung hin soll. Esc bricht ab.",
+  "pl": "Kliknij na płocie, gdzie ma być otwór. Esc anuluje."
+ },
  "Click on the map": {
   "de": "Auf die Karte klicken",
   "pl": "Kliknij na mapie"
@@ -819,9 +827,21 @@
   "de": "Geländemodifikator {0} löschen",
   "pl": "Usuń modyfikator terenu {0}"
  },
+ "Delete the generator {0} too": {
+  "de": "Auch den Generator {0} löschen",
+  "pl": "Usuń także generator {0}"
+ },
  "Delete the modifier; what it covered comes back": {
   "de": "Modifikator löschen; das Überdeckte kehrt zurück",
   "pl": "Usuń modyfikator; to, co zakrywał, wróci"
+ },
+ "Delete the object {0} too": {
+  "de": "Auch das Objekt {0} löschen",
+  "pl": "Usuń także obiekt {0}"
+ },
+ "Delete the route {0} too": {
+  "de": "Auch die Route {0} löschen",
+  "pl": "Usuń także trasę {0}"
  },
  "Delete with it:": {
   "de": "Mit löschen:",
@@ -1407,6 +1427,10 @@
   "de": "Bodenfarbe auf Gras",
   "pl": "Wpływ koloru satki na trawę"
  },
+ "Ground follows the object": {
+  "de": "Boden folgt dem Objekt",
+  "pl": "Teren podąża za obiektem"
+ },
  "Hardness": {
   "de": "Härte",
   "pl": "Twardość"
@@ -1670,6 +1694,10 @@
  "Level the ground when placing": {
   "de": "Beim Platzieren Gelände einebnen",
   "pl": "Wyrównuj teren przy stawianiu"
+ },
+ "Levelled to {0} m, the height of the object": {
+  "de": "Auf {0} m geebnet, die Höhe des Objekts",
+  "pl": "Wyrównany do {0} m, wysokości obiektu"
  },
  "Library": {
   "de": "Eigene Bibliothek",
@@ -2355,6 +2383,10 @@
   "de": "Platzieren",
   "pl": "Stawianie"
  },
+ "Place it with a click on the fence": {
+  "de": "Mit einem Klick auf den Zaun setzen",
+  "pl": "Ustaw kliknięciem na płocie"
+ },
  "Place object": {
   "de": "Objekt platzieren",
   "pl": "Postaw obiekt"
@@ -2971,6 +3003,10 @@
   "de": "Quadrat",
   "pl": "Kwadrat"
  },
+ "Stand upright": {
+  "de": "Aufrecht stehen",
+  "pl": "Stoi prosto"
+ },
  "Start the game client too": {
   "de": "Auch den Spielclient starten",
   "pl": "Uruchom także klienta gry"
@@ -3243,6 +3279,14 @@
   "de": "Die Generatoren entlang der Route und was sie erzeugt haben ({0})",
   "pl": "Generatory wzdłuż niej i to, co utworzyły ({0})"
  },
+ "The ground follows the height of the object": {
+  "de": "Der Boden folgt der Höhe des Objekts",
+  "pl": "Teren podąża za wysokością obiektu"
+ },
+ "The ground is levelled to the height the object stands at and comes up or down with it. The object keeps a height of its own, so lifting the ground does not lift it again.": {
+  "de": "Der Boden wird auf die Höhe des Objekts geebnet und hebt und senkt sich mit ihm. Das Objekt behält eine eigene Höhe, damit der angehobene Boden es nicht noch einmal anhebt.",
+  "pl": "Teren jest wyrównywany do wysokości, na której stoi obiekt, i podnosi się lub obniża razem z nim. Obiekt zachowuje własną wysokość, więc podniesiony teren nie podnosi go drugi raz."
+ },
  "The heightmap has {0} columns, the project {1}": {
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
   "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
@@ -3326,6 +3370,10 @@
  "The water stands at the lowest ground around the shape.": {
   "de": "Das Wasser steht auf der Höhe des tiefsten Geländes rund um die Form.",
   "pl": "Woda stoi na poziomie najniższego terenu wokół kształtu."
+ },
+ "The wicket or gate stays level instead of leaning with the slope like the fence.": {
+  "de": "Pforte oder Tor bleibt waagerecht, statt sich wie der Zaun mit dem Hang zu neigen.",
+  "pl": "Furtka lub brama stoi prosto zamiast pochylać się ze zboczem jak płot."
  },
  "Thermal erosion": {
   "de": "Thermische Erosion",

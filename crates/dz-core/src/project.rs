@@ -315,7 +315,7 @@ mod tests {
         w.satellite = Some(RgbImage::new(16, 16, [1, 2, 3]));
         let m = w.objects.intern("dz\\x.p3d");
         w.objects.insert(Obj { x: 1.0, z: 2.0, elevation: 0.5, yaw: 3.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 });
-        w.modifiers.push(TerrainModifier { id: 9, name: "pad".into(), enabled: true, x: 400.0, z: 400.0, yaw: 0.0, shape: ModShape::Circle { radius: 16.0 }, mode: ModMode::Offset, target: None, amount: 3.0, falloff: 8.0, attached: None });
+        w.modifiers.push(TerrainModifier { id: 9, name: "pad".into(), enabled: true, x: 400.0, z: 400.0, yaw: 0.0, shape: ModShape::Circle { radius: 16.0 }, mode: ModMode::Offset, target: None, amount: 3.0, falloff: 8.0, attached: None, follow: false });
         save(&w, d.path(), SaveParts::ALL).unwrap();
         let mut r = load(d.path()).unwrap();
         assert_eq!(r.meta.map_id, "MyMap");

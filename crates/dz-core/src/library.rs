@@ -173,11 +173,13 @@ pub struct FenceOpening {
     pub width: f32,
     /// Turns the object or the leaves by 180°, so they open the other way.
     pub flip: bool,
+    /// Stands upright instead of tilting with the slope as the fence pieces do.
+    pub upright: bool,
 }
 
 impl Default for FenceOpening {
     fn default() -> Self {
-        Self { gate: false, at: 10.0, two_leaves: false, model: String::new(), left: String::new(), right: String::new(), width: 0.0, flip: false }
+        Self { gate: false, at: 10.0, two_leaves: false, model: String::new(), left: String::new(), right: String::new(), width: 0.0, flip: false, upright: true }
     }
 }
 

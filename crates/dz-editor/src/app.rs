@@ -157,6 +157,8 @@ pub struct PlaceSettings {
     pub pad_falloff: f32,
     /// Extra ground levelled around an object, in metres.
     pub pad_margin: f32,
+    /// New pads level the ground to the height of their object and follow it up and down.
+    pub pad_follow: bool,
 }
 
 pub struct LineSettings {
@@ -369,6 +371,8 @@ pub struct App {
     pub key_capture: Option<crate::keys::Action>,
     /// Puts the keyboard into the search of the Content Browser on the next frame.
     pub focus_search: bool,
+    /// A wicket or gate of a fence generator waiting for a click on its fence: (generator, opening).
+    pub pick_opening: Option<(u64, usize)>,
     pub outliner_filter: String,
     pub outliner_cache: Option<OutlinerCache>,
     pub layer_rename: Option<(u16, String)>,
@@ -445,14 +449,14 @@ impl App {
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), only_on: None, picking: false },
-            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0 },
+            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, drag: None, box_select: None,
-            task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
+            task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
             settings,
         };
@@ -1485,7 +1489,8 @@ impl App {
             let Some(o) = doc.world.objects.get(*id).copied() else { continue };
             let info = self.db.get(doc.world.objects.model_path(&o));
             let (hx, hz) = if info.known { info.footprint() } else { (4.0, 4.0) };
-            if let Some(m) = gen::pad_modifier(&mut doc.world, *id, hx * o.scale, hz * o.scale, self.place.pad_margin, falloff) {
+            if let Some(mut m) = gen::pad_modifier(&mut doc.world, *id, hx * o.scale, hz * o.scale, self.place.pad_margin, falloff) {
+                m.follow = self.place.pad_follow;
                 doc.world.modifiers.push(m);
                 added += 1;
             }
@@ -1494,7 +1499,60 @@ impl App {
             doc.world.recompose(None);
             doc.history.push(t("Add terrain modifiers"), Change::Modifiers(before));
             self.whole_height_changed();
+            if self.place.pad_follow {
+                self.set_pad_follow(ids, true);
+            }
         }
+    }
+
+    /// Makes the pads under these objects level the ground to the height the object stands
+    /// at, or to the ground at its middle again. An object followed this way gets a height of
+    /// its own, where it stands now, so that the ground it raises does not lift it as well.
+    pub fn set_pad_follow(&mut self, ids: &[u32], on: bool) {
+        let Some(doc) = &mut self.doc else { return };
+        let (mods_before, mut objects) = (doc.world.modifiers.clone(), Vec::new());
+        let mut changed = false;
+        for id in ids {
+            let has = doc.world.modifiers.iter().any(|m| m.attached == Some(*id));
+            // Only an object its ground followed goes back down when that ends.
+            let was = doc.world.modifiers.iter().any(|m| m.attached == Some(*id) && m.follow);
+            if !has || (!on && !was) { continue; }
+            for m in doc.world.modifiers.iter_mut().filter(|m| m.attached == Some(*id)) {
+                if m.follow != on {
+                    m.follow = on;
+                    if !on { m.target = None; }
+                    changed = true;
+                }
+            }
+            if let Some(o) = doc.world.objects.get(*id).copied() {
+                // Followed, the object keeps the height it stands at; no longer followed, it goes
+                // back down onto the terrain, which no longer comes up to it.
+                let now = if on {
+                    if o.flags & dz_core::objects::FLAG_ABSOLUTE != 0 { o } else {
+                        dz_core::objects::Obj { elevation: dz_core::objects::ObjectStore::origin_y(&o, &doc.world.height), flags: o.flags | dz_core::objects::FLAG_ABSOLUTE, ..o }
+                    }
+                } else {
+                    on_ground(&self.db, doc.world.objects.model_path(&o), o)
+                };
+                if now != o {
+                    doc.world.objects.update(*id, now);
+                    objects.push((*id, Some(o), Some(now)));
+                }
+            }
+        }
+        if !changed && objects.is_empty() { return; }
+        let label = t("Ground follows the object");
+        let mut steps = 1;
+        if !objects.is_empty() {
+            doc.history.push(label.clone(), Change::Objects(objects));
+            doc.dirty.objects = true;
+            steps += 1;
+        }
+        doc.history.push(label.clone(), Change::Modifiers(mods_before));
+        doc.history.group_last(steps, label);
+        for id in ids { doc.world.sync_attached(*id); }
+        doc.world.recompose(None);
+        self.whole_height_changed();
     }
 
     pub fn import_into_project(&mut self, label: String, f: impl FnOnce(&mut World, &AssetIndex, &Job) -> anyhow::Result<Vec<String>> + Send + 'static) {
@@ -2219,4 +2277,12 @@ mod extension_tests {
         r.points = vec![[-30.0, 0.0], [0.0, 0.0], [10.0, 0.0]];
         assert_eq!(super::extension(&r), Some((false, vec![[-30.0, 0.0]])));
     }
+}
+
+/// An object standing on the terrain: its height counted from the ground again, with the
+/// model resting on its land contact points.
+pub fn on_ground(db: &dz_core::model_info::ModelDb, path: &str, o: dz_core::objects::Obj) -> dz_core::objects::Obj {
+    let info = db.get(path);
+    let elevation = if info.contact_count > 0 { -info.contact_y * o.scale } else { 0.0 };
+    dz_core::objects::Obj { elevation, flags: o.flags & !dz_core::objects::FLAG_ABSOLUTE, ..o }
 }

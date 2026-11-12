@@ -182,6 +182,9 @@ pub struct TerrainModifier {
     pub falloff: f32,
     /// Id of the object the modifier follows.
     pub attached: Option<u32>,
+    /// Levels the ground to the height the object stands at, which moves with it.
+    #[serde(default)]
+    pub follow: bool,
 }
 
 impl TerrainModifier {
@@ -703,6 +706,10 @@ impl World {
                 m.x = o.x;
                 m.z = o.z;
                 m.yaw = o.yaw;
+                // The object stands at a height of its own, so the ground comes up or down to it.
+                if m.follow {
+                    m.target = Some(crate::objects::ObjectStore::origin_y(&o, &self.base));
+                }
             }
             let after = self.base.rect_around(o.x, o.z, self.modifiers[k].reach());
             for r in [before, after].into_iter().flatten() {
@@ -736,8 +743,28 @@ mod tests {
         w.recompose(None);
         w
     }
+    #[test]
+    fn a_pad_that_follows_its_object_levels_the_ground_to_the_object() {
+        let mut w = World::new(WorldMeta::new("t", 128, 8.0), 10.0);
+        let o = crate::objects::Obj { x: 500.0, z: 500.0, elevation: 14.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: crate::objects::FLAG_ABSOLUTE };
+        let id = w.objects.insert(o);
+        let mut m = crate::gen::pad_modifier(&mut w, id, 5.0, 5.0, 1.0, 8.0).unwrap();
+        m.follow = true;
+        w.modifiers.push(m);
+        w.sync_attached(id);
+        assert!((w.height.sample(500.0, 500.0) - 14.0).abs() < 0.01, "{}", w.height.sample(500.0, 500.0));
+        // Lifting the object lifts the ground under it.
+        let mut up = o;
+        up.elevation = 18.0;
+        w.objects.update(id, up);
+        w.sync_attached(id);
+        assert!((w.height.sample(500.0, 500.0) - 18.0).abs() < 0.01);
+        // Far away the terrain is as it was.
+        assert!((w.height.sample(100.0, 100.0) - 10.0).abs() < 0.01);
+    }
+
     fn modifier(mode: ModMode, target: Option<f32>, amount: f32) -> TerrainModifier {
-        TerrainModifier { id: 1, name: "m".into(), enabled: true, x: 400.0, z: 400.0, yaw: 0.0, shape: ModShape::Circle { radius: 40.0 }, mode, target, amount, falloff: 40.0, attached: None }
+        TerrainModifier { id: 1, name: "m".into(), enabled: true, x: 400.0, z: 400.0, yaw: 0.0, shape: ModShape::Circle { radius: 40.0 }, mode, target, amount, falloff: 40.0, attached: None, follow: false }
     }
     #[test]
     fn a_pond_is_dug_within_its_shape_and_holds_its_water() {
@@ -745,7 +772,7 @@ mod tests {
         // Ground falling away to the east, past the shore.
         for j in 0..64 { for i in 0..64 { w.base.set(i, j, 20.0 - i as f32 * 0.2); } }
         let area = PondArea { points: vec![[100.0, 100.0], [300.0, 100.0], [300.0, 300.0], [100.0, 300.0]], level: 10.0 };
-        w.modifiers.push(TerrainModifier { id: 1, name: "p".into(), enabled: true, x: 200.0, z: 200.0, yaw: 0.0, shape: ModShape::Pond { areas: vec![area], depth: 3.0, blend: 16.0, bank: 24.0 }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: 16.0, attached: None });
+        w.modifiers.push(TerrainModifier { id: 1, name: "p".into(), enabled: true, x: 200.0, z: 200.0, yaw: 0.0, shape: ModShape::Pond { areas: vec![area], depth: 3.0, blend: 16.0, bank: 24.0 }, mode: ModMode::Flatten, target: None, amount: 0.0, falloff: 16.0, attached: None, follow: false });
         w.recompose(None);
         // The middle is the floor; the low side just outside is raised over the water.
         assert!((w.height.sample(200.0, 200.0) - 7.0).abs() < 0.01, "{}", w.height.sample(200.0, 200.0));

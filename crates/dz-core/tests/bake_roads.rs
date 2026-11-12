@@ -34,3 +34,36 @@ fn a_baked_tree_shows_from_above() {
     let n: usize = tiles.values().map(|t| t.chunks(4).filter(|p| p[3] > 0).count()).sum();
     assert!(n > 20, "{n} px");
 }
+
+/// A gate of the same set as its fence lies along the fence, centred on its line, when P: is mounted.
+#[test]
+fn a_real_gate_lies_along_its_fence() {
+    use dz_core::library::{FenceGen, FenceOpening};
+    if !std::path::Path::new("P:/dz/structures/walls/Wall_Fen2_6.p3d").exists() { return; }
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    for (wall, gate, two) in [("dz/structures/walls/wall_fen2_6.p3d", "dz/structures/walls/wall_gate_fen2_l.p3d", true), ("dz/structures/walls/wall_feng_3.p3d", "dz/structures/walls/wall_gate_feng.p3d", false), ("dz/structures/walls/wall_feng_3.p3d", "dz/structures/walls/wall_gate_feng_open.p3d", false)] {
+        let mut w = dz_core::world::World::new(dz_core::world::WorldMeta::new("g", 64, 4.0), 10.0);
+        let opening = if two {
+            FenceOpening { at: 50.0, gate: true, two_leaves: true, left: gate.into(), right: gate.replace("_l.", "_r."), ..Default::default() }
+        } else {
+            FenceOpening { at: 50.0, gate: true, model: gate.into(), ..Default::default() }
+        };
+        let g = FenceGen { model: wall.into(), openings: vec![opening], ..Default::default() };
+        let objects = dz_core::gen::fence_objects(&mut w, &db, &[[0.0, 100.0], [100.0, 100.0]], &g);
+        let wall_path = dz_core::objects::ObjectStore::normalize_path(wall);
+        let named = |o: &&dz_core::objects::Obj| dz_core::objects::ObjectStore::normalize_path(&w.objects.models[o.model as usize].path) == wall_path;
+        let walls: Vec<_> = objects.iter().filter(|o| named(o)).collect();
+        let gates: Vec<_> = objects.iter().filter(|o| !named(o)).collect();
+        assert!(!walls.is_empty(), "{wall}");
+        assert!(!gates.is_empty(), "{gate}");
+        for o in &gates {
+            // Turned as the fence pieces are, and with the model's middle on the line.
+            assert!(((o.yaw - walls[0].yaw).rem_euclid(180.0)).min(180.0 - (o.yaw - walls[0].yaw).rem_euclid(180.0)) < 0.5, "{gate}: yaw {} vs {}", o.yaw, walls[0].yaw);
+            let i = db.get(&w.objects.models[o.model as usize].path);
+            let m = dz_core::objects::rotation(o.yaw, o.pitch, o.roll, 1.0);
+            let c = [(i.min[0] + i.max[0]) * 0.5, (i.min[2] + i.max[2]) * 0.5];
+            let mid_z = o.z + m[0][2] * c[0] + m[2][2] * c[1];
+            assert!((mid_z - 100.0).abs() < 0.3, "{gate}: middle {mid_z}");
+        }
+    }
+}

@@ -188,6 +188,17 @@ impl Change {
                     }
                     std::mem::swap(before, after);
                 }
+                // Modifiers that follow these objects move back with them, so the ground under
+                // an object is where it was as soon as the object is.
+                let mut area: Option<Rect> = None;
+                for (id, _, _) in list.iter() {
+                    if let Some(r) = w.sync_attached(*id) {
+                        area = Some(area.map_or(r, |a| a.union(r)));
+                    }
+                }
+                if let Some(r) = area {
+                    t.height = Some(t.height.map_or(r, |a| a.union(r)));
+                }
                 t.objects = true;
             }
             Change::Modifiers(prev) => {
@@ -463,6 +474,27 @@ mod tests {
     fn world() -> World {
         World::new(WorldMeta::new("T", 256, 8.0), 100.0)
     }
+    #[test]
+    fn undoing_a_move_brings_the_ground_under_the_object_back() {
+        let mut w = World::new(crate::world::WorldMeta::new("u", 128, 8.0), 10.0);
+        let o = crate::objects::Obj { x: 500.0, z: 500.0, elevation: 14.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: crate::objects::FLAG_ABSOLUTE };
+        let id = w.objects.insert(o);
+        let mut m = crate::gen::pad_modifier(&mut w, id, 5.0, 5.0, 1.0, 8.0).unwrap();
+        m.follow = true;
+        w.modifiers.push(m);
+        w.sync_attached(id);
+        let mut h = History::default();
+        let up = crate::objects::Obj { elevation: 20.0, ..o };
+        w.objects.update(id, up);
+        w.sync_attached(id);
+        h.push("move", Change::Objects(vec![(id, Some(o), Some(up))]));
+        assert!((w.height.sample(500.0, 500.0) - 20.0).abs() < 0.01);
+        h.undo(&mut w);
+        assert!((w.height.sample(500.0, 500.0) - 14.0).abs() < 0.01, "{}", w.height.sample(500.0, 500.0));
+        h.redo(&mut w);
+        assert!((w.height.sample(500.0, 500.0) - 20.0).abs() < 0.01);
+    }
+
     #[test]
     fn raise_undo_redo_restores_exact_heights() {
         let mut w = world();
