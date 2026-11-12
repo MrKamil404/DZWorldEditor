@@ -3214,6 +3214,24 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
             app.whole_height_changed();
         }
+        // Opens the export window, or with a folder writes every part into it.
+        "exportfiles" => {
+            if let Some(part) = arg.strip_prefix("only:") {
+                use crate::exporting::Part;
+                let p = match part { "asc" => Part::Heightmap, "sat" => Part::Satellite, "mask" => Part::Mask, "cfg" => Part::Layers, "shp" => Part::Shapes, _ => Part::Objects };
+                crate::exporting::open(app, Some(p));
+            } else if arg.is_empty() {
+                crate::exporting::open(app, None);
+            } else {
+                let mut s = crate::exporting::ExportSettings { folder: arg.to_string(), shapes_on: true, ..Default::default() };
+                s.heightmap.cell = 16.0;
+                s.mask.image.size = 1024;
+                s.satellite.image.tiles = 2;
+                s.objects.split_by_layer = true;
+                app.settings.export = s;
+                crate::exporting::run(app, None);
+            }
+        }
         "padstat" => {
             if let Some(d) = &app.doc {
                 for id in &app.selection {

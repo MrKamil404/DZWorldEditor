@@ -98,7 +98,9 @@ fn menu_bar(app: &mut App, ctx: &egui::Context) {
                         if ui.button(t("Shapes (SHP, TV4S)...")).clicked() { ui.close_menu(); app.import_shapes(); }
                     });
                 });
-                if ui.add_enabled(has, egui::Button::new(icons::with(icons::EXPORT, &t("Export shapes (SHP)...")))).clicked() { ui.close_menu(); app.export_shapes(); }
+                ui.add_enabled_ui(has, |ui| {
+                    ui.menu_button(icons::with(icons::EXPORT, &t("Export")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); crate::exporting::menu(app, ui); });
+                });
                 ui.separator();
                 if ui.button(icons::with(icons::SLIDERS_HORIZONTAL, &t("Project settings..."))).clicked() { app.dialog = Dialog::ProjectSettings; ui.close_menu(); }
                 if ui.button(icons::with(icons::SIGN_OUT, &t("Exit"))).clicked() { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
@@ -1442,6 +1444,9 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
             }
         }
         Dialog::ProjectSettings => project_window(app, ctx, &mut open),
+        Dialog::Export(only) => {
+            if crate::exporting::window(app, ctx, *only, &mut open) { close = true; }
+        }
         Dialog::About => {
             egui::Window::new(t("About")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
                 ui.heading("DZ World Editor");

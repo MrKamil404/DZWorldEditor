@@ -4,6 +4,7 @@ pub mod build;
 pub mod clutter;
 pub mod edit;
 pub mod export;
+pub mod export_files;
 pub mod fsutil;
 pub mod gen;
 pub mod import;

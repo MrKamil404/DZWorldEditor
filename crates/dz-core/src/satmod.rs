@@ -170,6 +170,22 @@ impl<'a> Bytes<'a> {
 }
 
 impl World {
+    /// The satellite image without what the modifiers lay over it.
+    pub fn sat_original(&self) -> RgbImage {
+        let Some(img) = &self.satellite else { return RgbImage::default() };
+        let mut out = img.clone();
+        for (key, base) in &self.sat.base {
+            let Some(r) = tile_rect(*key, &out) else { continue };
+            for y in r.y0..=r.y1 {
+                let w = (r.x1 - r.x0 + 1) * 3;
+                let to = (y * out.width + r.x0) * 3;
+                let from = (y - r.y0) * TILE * 3;
+                out.data[to..to + w].copy_from_slice(&base[from..from + w]);
+            }
+        }
+        out
+    }
+
     /// Keeps the original pixels of a tile before a modifier first writes to it.
     fn sat_keep(&mut self, key: Key) {
         if self.sat.base.contains_key(&key) {
@@ -573,6 +589,9 @@ mod tests {
         let id = w.sat.add(SatKind::Clone, "clone".into());
         let brush = CloneBrush { radius: 6.0, hardness: 1.0, opacity: 1.0 };
         let r = w.sat_clone_dab(id, [130.5, 60.5], &brush, None, [60, 130]).unwrap();
+        // The image as imported, for an export without the modifiers.
+        let original = w.sat_original();
+        assert_ne!(&original.data[(60 * 256 + 130) * 3..(60 * 256 + 130) * 3 + 3], &w.satellite.as_ref().unwrap().data[(60 * 256 + 130) * 3..(60 * 256 + 130) * 3 + 3]);
         assert!(r.x0 <= 130 && r.x1 >= 130);
         assert_eq!(pixel(&w, 130, 60), [200, 0, 0]);
         assert_eq!(pixel(&w, 100, 60), [10, 20, 30]);
