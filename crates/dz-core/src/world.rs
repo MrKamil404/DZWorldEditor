@@ -46,6 +46,124 @@ pub struct WorldMeta {
     /// Most surfaces one texture tile may use.
     #[serde(default = "default_tile_surfaces")]
     pub max_tile_surfaces: u8,
+    /// What the world config (CfgWorlds) of the map says beyond what the project gives it.
+    #[serde(default)]
+    pub config: MapConfig,
+}
+
+/// The world class of the game a map builds on: its class, and the addon that brings it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum BaseWorld {
+    Enoch,
+    ChernarusPlus,
+    /// Another world class, from the given addon.
+    Custom { class: String, addon: String },
+}
+
+impl BaseWorld {
+    pub fn class(&self) -> &str {
+        match self {
+            BaseWorld::Enoch => "Enoch",
+            BaseWorld::ChernarusPlus => "ChernarusPlus",
+            BaseWorld::Custom { class, .. } => class,
+        }
+    }
+    pub fn addon(&self) -> &str {
+        match self {
+            BaseWorld::Enoch => "DZ_Worlds_Enoch",
+            BaseWorld::ChernarusPlus => "DZ_Worlds_Chernarusplus",
+            BaseWorld::Custom { addon, .. } => addon,
+        }
+    }
+}
+
+/// Settings of the world config (CfgWorlds) of the map.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct MapConfig {
+    /// Shown in the game; empty takes the name of the project.
+    pub description: String,
+    pub base: BaseWorld,
+    pub has_ocean: bool,
+    /// The middle of the map for the game (x, z); `None` takes the middle of the terrain.
+    pub center: Option<[f32; 2]>,
+    /// Grid of the in-game map: steps of its three zoom levels in metres.
+    pub grid_steps: [u32; 3],
+    /// Addons loaded before the map, besides DZ_Data and the base world.
+    pub required_addons: Vec<String>,
+    /// Lines written into the world class as they are.
+    pub extra_world: String,
+    /// Lines written at the end of the file as they are.
+    pub extra_file: String,
+    /// Places the main menu shows behind the character (cfgCharacterScenes).
+    pub scenes: Vec<CharacterScene>,
+    /// Intro missions (`cutscenes[]`); empty keeps those of the base world.
+    pub cutscenes: Vec<String>,
+    /// `startTime`, as "9:00"; empty keeps the base world's.
+    pub start_time: String,
+    /// `startDate`, as "25/8/2015"; empty keeps the base world's.
+    pub start_date: String,
+    /// Folder of the Central Economy files (`ceFiles`).
+    pub ce_files: String,
+    /// The map item: keys of its name and description, its textures and the user map.
+    pub map_display_name_key: String,
+    pub map_description_key: String,
+    pub map_texture_closed: String,
+    pub map_texture_opened: String,
+    pub map_texture_legend: String,
+    pub user_map_path: String,
+    /// The terrain drawn beyond the edge of the map.
+    pub outside_satellite: String,
+    pub outside_synth: Option<bool>,
+    pub outside_texture: String,
+    pub outside_nopx: String,
+    pub mid_detail_texture: String,
+    pub terrain_normal_texture: String,
+    /// The material of the sea, for calm, nice and stormy weather alike.
+    pub ocean_material: String,
+    /// Grass and detail distances; `None` keeps the base world's.
+    pub clutter_grid: Option<f32>,
+    pub clutter_dist: Option<f32>,
+    pub no_detail_dist: Option<f32>,
+    pub full_detail_dist: Option<f32>,
+    pub min_trees_in_forest_square: Option<u32>,
+    pub min_rocks_in_rock_square: Option<u32>,
+}
+
+/// A place of the main menu: the camera stands at `position` (x, z, height over the ground)
+/// and looks at `target` (x, z, height above the sea), at the time and weather given.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct CharacterScene {
+    pub name: String,
+    pub position: [f32; 3],
+    pub target: [f32; 3],
+    /// Field of view in radians.
+    pub fov: f32,
+    /// Year, month, day, hour, minute.
+    pub date: [i32; 5],
+    pub overcast: f32,
+    pub rain: f32,
+    pub fog: f32,
+}
+
+impl Default for CharacterScene {
+    fn default() -> Self {
+        Self { name: "loc1".into(), position: [0.0, 0.0, 1.0], target: [0.0, 0.0, 0.0], fov: 0.5236, date: [1984, 10, 28, 9, 0], overcast: 0.2, rain: 0.0, fog: 0.0 }
+    }
+}
+
+impl Default for MapConfig {
+    fn default() -> Self {
+        Self {
+            description: String::new(), base: BaseWorld::Enoch, has_ocean: true, center: None, grid_steps: [100, 1000, 10000], required_addons: Vec::new(), extra_world: String::new(), extra_file: String::new(),
+            scenes: Vec::new(), cutscenes: Vec::new(), start_time: String::new(), start_date: String::new(), ce_files: String::new(),
+            map_display_name_key: String::new(), map_description_key: String::new(), map_texture_closed: String::new(), map_texture_opened: String::new(), map_texture_legend: String::new(), user_map_path: String::new(),
+            outside_satellite: String::new(), outside_synth: None, outside_texture: String::new(), outside_nopx: String::new(),
+            mid_detail_texture: String::new(), terrain_normal_texture: String::new(), ocean_material: String::new(),
+            clutter_grid: None, clutter_dist: None, no_detail_dist: None, full_detail_dist: None, min_trees_in_forest_square: None, min_rocks_in_rock_square: None,
+        }
+    }
 }
 
 impl WorldMeta {
@@ -56,7 +174,7 @@ impl WorldMeta {
         Self {
             max_tile_surfaces: 6, name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
             sea_level: 0.0, easting: 200000.0, northing: 0.0, tile_px: 512, cells_per_tile: 8,
-            spawn: [side / 2.0, side / 2.0], latitude: 54.0, longitude: 23.0, write_underground_flag: true,
+            spawn: [side / 2.0, side / 2.0], latitude: 54.0, longitude: 23.0, write_underground_flag: true, config: MapConfig::default(),
         }
     }
     pub fn size_m(&self) -> f32 {

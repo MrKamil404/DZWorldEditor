@@ -1,4 +1,8 @@
 {
+ "(from the base world)": {
+  "de": "(aus der Basiswelt)",
+  "pl": "(ze świata bazowego)"
+ },
  "(none)": {
   "de": "(keine)",
   "pl": "(brak)"
@@ -91,6 +95,10 @@
   "de": "Hinzufügen",
   "pl": "Dodaj"
  },
+ "Add a scene from the camera": {
+  "de": "Szene von der Kamera hinzufügen",
+  "pl": "Dodaj scenę z kamery"
+ },
  "Add area": {
   "de": "Gebiet hinzufügen",
   "pl": "Dodaj obszar"
@@ -179,6 +187,10 @@
   "de": "Zusätzliche Mods",
   "pl": "Dodatkowe mody"
  },
+ "Addons and extra lines": {
+  "de": "Addons und zusätzliche Zeilen",
+  "pl": "Addony i dodatkowe linie"
+ },
  "Align to slope": {
   "de": "An Hang ausrichten",
   "pl": "Dopasuj do spadku"
@@ -238,6 +250,10 @@
  "Another task is still running": {
   "de": "Eine andere Aufgabe läuft noch",
   "pl": "Inne zadanie nadal trwa"
+ },
+ "Another world": {
+  "de": "Eine andere Welt",
+  "pl": "Inny świat"
  },
  "Antialiasing": {
   "de": "Kantenglättung",
@@ -311,6 +327,10 @@
   "de": "Zurück",
   "pl": "Wstecz"
  },
+ "Back to the defaults": {
+  "de": "Auf Standard zurücksetzen",
+  "pl": "Przywróć domyślne"
+ },
  "Back up every": {
   "de": "Sicherung alle",
   "pl": "Kopia co"
@@ -374,6 +394,10 @@
  "Bends of the same family are used where the line turns. The bed and its blend stay within the width of the water.": {
   "de": "Wo die Linie abbiegt, werden Kurven derselben Familie verwendet. Das Bett samt Übergang bleibt innerhalb der Wasserbreite.",
   "pl": "Tam, gdzie linia skręca, używane są zakręty z tej samej rodziny. Koryto razem z przejściem mieści się w szerokości wody."
+ },
+ "Beyond the edge of the map": {
+  "de": "Jenseits des Kartenrands",
+  "pl": "Poza krawędzią mapy"
  },
  "Beyond the outline m": {
   "de": "Über den Umriss hinaus m",
@@ -491,6 +515,10 @@
   "de": "Eingebaut: kann nicht geändert, nur dupliziert werden.",
   "pl": "Wbudowane: nie można zmienić, tylko powielić."
  },
+ "Built on": {
+  "de": "Aufgebaut auf",
+  "pl": "Oparta na"
+ },
  "Built on the DayZForests and DayZ Road Studio engines.": {
   "de": "Basiert auf den Engines von DayZForests und DayZ Road Studio.",
   "pl": "Oparty na silnikach DayZForests i DayZ Road Studio."
@@ -538,6 +566,10 @@
  "Cell": {
   "de": "Zelle",
   "pl": "Komórka"
+ },
+ "Central Economy folder (ceFiles)": {
+  "de": "Central-Economy-Ordner (ceFiles)",
+  "pl": "Folder Central Economy (ceFiles)"
  },
  "Chance per node %": {
   "de": "Chance pro Knoten %",
@@ -719,6 +751,10 @@
   "de": "Klonpinsel {0}",
   "pl": "Pędzel klonujący {0}"
  },
+ "Close up": {
+  "de": "Nah",
+  "pl": "Z bliska"
+ },
  "Close up the top view draws the models themselves, as a drone sees them, instead of their outlines.": {
   "de": "Aus der Nähe zeichnet die Draufsicht die Modelle selbst, wie eine Drohne sie sieht, statt ihrer Umrisse.",
   "pl": "Z bliska widok z góry rysuje same modele, jak widzi je dron, zamiast ich obrysów."
@@ -750,6 +786,10 @@
  "Contour lines": {
   "de": "Höhenlinien",
   "pl": "Warstwice"
+ },
+ "Copy": {
+  "de": "Kopieren",
+  "pl": "Kopiuj"
  },
  "Copy from": {
   "de": "Kopieren aus",
@@ -810,6 +850,14 @@
  "Cutting slope": {
   "de": "Einschnittneigung",
   "pl": "Nachylenie wykopu"
+ },
+ "DZ_Data and the addon of the base world are always there.": {
+  "de": "DZ_Data und das Addon der Basiswelt sind immer dabei.",
+  "pl": "DZ_Data i addon świata bazowego są zawsze dodane."
+ },
+ "Date and time": {
+  "de": "Datum und Uhrzeit",
+  "pl": "Data i godzina"
  },
  "DayZ": {
   "de": "DayZ",
@@ -947,9 +995,21 @@
   "de": "Tiefe",
   "pl": "Głębokość"
  },
+ "Description": {
+  "de": "Beschreibung",
+  "pl": "Opis"
+ },
+ "Description key": {
+  "de": "Beschreibungsschlüssel",
+  "pl": "Klucz opisu"
+ },
  "Detail": {
   "de": "Detail",
   "pl": "Szczegółowość"
+ },
+ "Detail distances": {
+  "de": "Detailentfernungen",
+  "pl": "Odległości detali"
  },
  "Details": {
   "de": "Details",
@@ -1295,6 +1355,10 @@
   "de": "Abfall",
   "pl": "Zanik"
  },
+ "Far out": {
+  "de": "Weit",
+  "pl": "Z daleka"
+ },
  "Feature size": {
   "de": "Formgröße",
   "pl": "Rozmiar form"
@@ -1407,6 +1471,10 @@
   "de": "Nebel",
   "pl": "Mgła"
  },
+ "Folded map texture": {
+  "de": "Textur der gefalteten Karte",
+  "pl": "Tekstura złożonej mapy"
+ },
  "Folder": {
   "de": "Ordner",
   "pl": "Folder"
@@ -1466,6 +1534,10 @@
  "Frame the selection": {
   "de": "Auswahl einpassen",
   "pl": "Pokaż zaznaczenie"
+ },
+ "From the camera": {
+  "de": "Von der Kamera",
+  "pl": "Z kamery"
  },
  "From the project species": {
   "de": "Aus den Arten des Projekts",
@@ -1570,6 +1642,14 @@
  "Grass": {
   "de": "Gras",
   "pl": "Trawa"
+ },
+ "Grass distance": {
+  "de": "Grasentfernung",
+  "pl": "Zasięg trawy"
+ },
+ "Grass grid": {
+  "de": "Grasraster",
+  "pl": "Siatka trawy"
  },
  "Grass under objects": {
   "de": "Gras unter Objekten",
@@ -1775,6 +1855,10 @@
   "de": "Abstand",
   "pl": "Odstęp"
  },
+ "Intro (cutscenes)": {
+  "de": "Intro (cutscenes)",
+  "pl": "Intro (cutscenes)"
+ },
  "Invert the brush (lower, erase)": {
   "de": "Pinsel umkehren (absenken, löschen)",
   "pl": "Odwróć pędzel (obniżaj, usuwaj)"
@@ -1782,6 +1866,10 @@
  "Island": {
   "de": "Insel",
   "pl": "Wyspa"
+ },
+ "Its addon": {
+  "de": "Sein Addon",
+  "pl": "Jego addon"
  },
  "Its change of the terrain": {
   "de": "Seine Geländeänderung",
@@ -1859,6 +1947,10 @@
   "de": "Breitengrad",
   "pl": "Szerokość geogr."
  },
+ "Latitude and longitude set where the sun and the stars stand.": {
+  "de": "Breite und Länge bestimmen den Stand von Sonne und Sternen.",
+  "pl": "Szerokość i długość geograficzna ustalają położenie słońca i gwiazd."
+ },
  "Layer": {
   "de": "Ebene",
   "pl": "Warstwa"
@@ -1878,6 +1970,10 @@
  "Legend": {
   "de": "Legende",
   "pl": "Legenda"
+ },
+ "Legend texture": {
+  "de": "Legendentextur",
+  "pl": "Tekstura legendy"
  },
  "Level the ground under buildings": {
   "de": "Gelände unter Gebäuden einebnen",
@@ -1923,6 +2019,14 @@
   "de": "Linie: Lockere Gruppen",
   "pl": "Linia: Rzadkie skupiska"
  },
+ "Lines at the end of the file": {
+  "de": "Zeilen am Ende der Datei",
+  "pl": "Linie na końcu pliku"
+ },
+ "Lines in the world class": {
+  "de": "Zeilen in der Weltklasse",
+  "pl": "Linie w klasie świata"
+ },
  "Links the road parts on this line to waypoints you can edit.": {
   "de": "Verknüpft die Straßenteile dieser Linie mit bearbeitbaren Punkten.",
   "pl": "Łączy części drogi na tej linii z punktami, które można edytować."
@@ -1967,9 +2071,17 @@
   "de": "Längengrad",
   "pl": "Długość geogr."
  },
+ "Look from here": {
+  "de": "Von hier sehen",
+  "pl": "Zobacz stąd"
+ },
  "Looking through the folder": {
   "de": "Ordner wird durchsucht",
   "pl": "Przeszukiwanie folderu"
+ },
+ "Looks at": {
+  "de": "Blickt auf",
+  "pl": "Patrzy na"
  },
  "Low": {
   "de": "Niedrig",
@@ -1982,6 +2094,10 @@
  "Lower instead of raise": {
   "de": "Absenken statt anheben",
   "pl": "Obniżaj zamiast podnosić"
+ },
+ "Main menu scenes": {
+  "de": "Hauptmenü-Szenen",
+  "pl": "Sceny menu głównego"
  },
  "Make a preset of them": {
   "de": "Preset daraus machen",
@@ -2002,6 +2118,22 @@
  "Map ID": {
   "de": "Karten-ID",
   "pl": "ID mapy"
+ },
+ "Map config": {
+  "de": "Karten-Config",
+  "pl": "Config mapy"
+ },
+ "Map config...": {
+  "de": "Karten-Config...",
+  "pl": "Config mapy..."
+ },
+ "Map grid": {
+  "de": "Kartenraster",
+  "pl": "Siatka mapy"
+ },
+ "Map item": {
+  "de": "Kartengegenstand",
+  "pl": "Mapa-przedmiot"
  },
  "Margin": {
   "de": "Rand",
@@ -2070,6 +2202,14 @@
  "Medium": {
   "de": "Mittel",
   "pl": "Średnie"
+ },
+ "Middle": {
+  "de": "Mittel",
+  "pl": "Średnio"
+ },
+ "Middle distance texture": {
+  "de": "Textur mittlerer Entfernung",
+  "pl": "Tekstura średniej odległości"
  },
  "Min height": {
   "de": "Min. Höhe",
@@ -2214,6 +2354,14 @@
  "Name": {
   "de": "Name",
   "pl": "Nazwa"
+ },
+ "Name key": {
+  "de": "Namensschlüssel",
+  "pl": "Klucz nazwy"
+ },
+ "Names of the intro missions, separated by commas; the base world's intro shows its own map.": {
+  "de": "Namen der Intro-Missionen, durch Kommas getrennt; das Intro der Basiswelt zeigt deren Karte.",
+  "pl": "Nazwy misji intro rozdzielone przecinkami; intro świata bazowego pokazuje jego mapę."
  },
  "Navmesh server started. Generate the mesh in NavMeshGenerator, save it as navmesh.nm in the map's navmesh folder, then build again.": {
   "de": "Navmesh-Server gestartet. Netz im NavMeshGenerator erzeugen, als navmesh.nm im navmesh-Ordner der Karte speichern und neu erstellen.",
@@ -2419,6 +2567,10 @@
   "de": "Versatz",
   "pl": "Przesunięcie"
  },
+ "On": {
+  "de": "An",
+  "pl": "Włączone"
+ },
  "One above the other": {
   "de": "Übereinander",
   "pl": "Jeden nad drugim"
@@ -2503,6 +2655,10 @@
   "de": "Kartenordner öffnen",
   "pl": "Otwórz folder mapy"
  },
+ "Open map texture": {
+  "de": "Textur der offenen Karte",
+  "pl": "Tekstura otwartej mapy"
+ },
  "Open project": {
   "de": "Projekt öffnen",
   "pl": "Otwórz projekt"
@@ -2546,6 +2702,10 @@
  "Overlap of the water models m": {
   "de": "Überlappung der Wassermodelle m",
   "pl": "Zakładka modeli wody m"
+ },
+ "Own map centre": {
+  "de": "Eigene Kartenmitte",
+  "pl": "Własny środek mapy"
  },
  "Package the map": {
   "de": "Karte packen",
@@ -2707,6 +2867,10 @@
   "de": "{0} Objekte platziert",
   "pl": "Postawiono obiektów: {0}"
  },
+ "Places the main menu shows behind the character. Set one from where the 3D camera stands and looks; without any the base world's are used.": {
+  "de": "Orte, die das Hauptmenü hinter der Figur zeigt. Setze einen von dort, wo die 3D-Kamera steht und hinsieht; ohne werden die der Basiswelt genutzt.",
+  "pl": "Miejsca, które menu główne pokazuje za postacią. Ustaw je z miejsca, gdzie stoi i patrzy kamera 3D; bez nich używane są sceny świata bazowego."
+ },
  "Placing objects along the line": {
   "de": "Objekte werden entlang der Linie platziert",
   "pl": "Stawianie obiektów wzdłuż linii"
@@ -2742,6 +2906,10 @@
  "Ponds and lakes": {
   "de": "Teiche und Seen",
   "pl": "Stawy i jeziora"
+ },
+ "Position": {
+  "de": "Position",
+  "pl": "Położenie"
  },
  "Power line": {
   "de": "Stromleitung",
@@ -2798,6 +2966,10 @@
  "Radius": {
   "de": "Radius",
   "pl": "Promień"
+ },
+ "Rain": {
+  "de": "Regen",
+  "pl": "Deszcz"
  },
  "Raise": {
   "de": "Heben",
@@ -2894,6 +3066,10 @@
  "Replaces what this generator made before.": {
   "de": "Ersetzt, was dieser Generator zuvor erzeugt hat.",
   "pl": "Zastępuje to, co ten generator stworzył wcześniej."
+ },
+ "Required addons, one per line": {
+  "de": "Benötigte Addons, eines pro Zeile",
+  "pl": "Wymagane addony, po jednym w linii"
  },
  "Reset": {
   "de": "Zurücksetzen",
@@ -2998,6 +3174,10 @@
  "Rocks": {
   "de": "Felsen",
   "pl": "Skały"
+ },
+ "Rocks for a rock square": {
+  "de": "Felsen für ein Felsfeld",
+  "pl": "Skał na pole skalne"
  },
  "Roll": {
   "de": "Rollen",
@@ -3135,9 +3315,17 @@
   "de": "Modellierwerkzeug",
   "pl": "Narzędzie rzeźbienia"
  },
+ "Sea around the map (hasOcean)": {
+  "de": "Meer um die Karte (hasOcean)",
+  "pl": "Morze wokół mapy (hasOcean)"
+ },
  "Sea level": {
   "de": "Meeresspiegel",
   "pl": "Poziom morza"
+ },
+ "Sea material": {
+  "de": "Meeresmaterial",
+  "pl": "Materiał morza"
  },
  "Sea waves m": {
   "de": "Meereswellen m",
@@ -3403,9 +3591,21 @@
   "de": "Aufrecht stehen",
   "pl": "Stoi prosto"
  },
+ "Start and intro": {
+  "de": "Start und Intro",
+  "pl": "Start i intro"
+ },
+ "Start date": {
+  "de": "Startdatum",
+  "pl": "Data startu"
+ },
  "Start the game client too": {
   "de": "Auch den Spielclient starten",
   "pl": "Uruchom także klienta gry"
+ },
+ "Start time": {
+  "de": "Startzeit",
+  "pl": "Godzina startu"
  },
  "Starting navmesh tools": {
   "de": "Navmesh-Werkzeuge werden gestartet",
@@ -3414,6 +3614,10 @@
  "Step height": {
   "de": "Stufenhöhe",
   "pl": "Wysokość stopnia"
+ },
+ "Steps of the grid on the in-game map at its three zoom levels.": {
+  "de": "Rasterschritte auf der Spielkarte in ihren drei Zoomstufen.",
+  "pl": "Skoki siatki na mapie w grze dla trzech poziomów przybliżenia."
  },
  "Stop": {
   "de": "Stoppen",
@@ -3467,6 +3671,10 @@
   "de": "Oberflächen nach Relief mischen",
   "pl": "Mieszanie powierzchni wg reliefu"
  },
+ "Surface detail distance": {
+  "de": "Oberflächen-Detailentfernung",
+  "pl": "Zasięg detali powierzchni"
+ },
  "Surface layers": {
   "de": "Oberflächenebenen",
   "pl": "Warstwy powierzchni"
@@ -3483,9 +3691,17 @@
   "de": "Oberflächen-Parallaxe cm",
   "pl": "Paralaksa powierzchni cm"
  },
+ "Surface relief (nopx)": {
+  "de": "Oberflächenrelief (nopx)",
+  "pl": "Relief powierzchni (nopx)"
+ },
  "Surface taken from {0} models": {
   "de": "Oberfläche von {0} Modellen entfernt",
   "pl": "Usunięto powierzchnię z {0} modeli"
+ },
+ "Surface texture": {
+  "de": "Oberflächentextur",
+  "pl": "Tekstura powierzchni"
  },
  "Surface texture range m": {
   "de": "Reichweite der Oberflächentexturen m",
@@ -3550,6 +3766,10 @@
  "Take the width from the road model": {
   "de": "Breite vom Straßenmodell übernehmen",
   "pl": "Weź szerokość z modelu drogi"
+ },
+ "Takes the 3D camera to this scene.": {
+  "de": "Bringt die 3D-Kamera zu dieser Szene.",
+  "pl": "Przenosi kamerę 3D do tej sceny."
  },
  "Takes the surface under the cursor.": {
   "de": "Nimmt die Oberfläche unter dem Cursor auf.",
@@ -3627,6 +3847,10 @@
   "de": "Geländelöcher (holes.cfg)",
   "pl": "Dziury w terenie (holes.cfg)"
  },
+ "Terrain look": {
+  "de": "Geländeaussehen",
+  "pl": "Wygląd terenu"
+ },
  "Terrain modifier": {
   "de": "Geländemodifikator",
   "pl": "Modyfikator terenu"
@@ -3635,9 +3859,17 @@
   "de": "Geländemodifikatoren ({0})",
   "pl": "Modyfikatory terenu ({0})"
  },
+ "Terrain normal map": {
+  "de": "Gelände-Normalmap",
+  "pl": "Normal mapa terenu"
+ },
  "Terrain shape": {
   "de": "Geländeform",
   "pl": "Kształt terenu"
+ },
+ "Terrain synthesis": {
+  "de": "Geländesynthese",
+  "pl": "Synteza terenu"
  },
  "Terrain under objects": {
   "de": "Gelände unter Objekten",
@@ -3679,9 +3911,17 @@
   "de": "Die aktive Ebene ist ausgeblendet oder gesperrt",
   "pl": "Aktywna warstwa jest ukryta lub zablokowana"
  },
+ "The braces do not pair up ({0}); check the extra lines.": {
+  "de": "Die Klammern passen nicht zusammen ({0}); prüfe die zusätzlichen Zeilen.",
+  "pl": "Nawiasy się nie domykają ({0}); sprawdź dodatkowe linie."
+ },
  "The brush will not add a surface to a tile that already has as many as the project allows.": {
   "de": "Der Pinsel fügt einer Kachel keine Oberfläche hinzu, wenn das Limit des Projekts erreicht ist.",
   "pl": "Pędzel nie doda powierzchni do kafla, który ma już tyle, ile pozwala projekt."
+ },
+ "The config is on the clipboard": {
+  "de": "Die Config ist in der Zwischenablage",
+  "pl": "Config jest w schowku"
  },
  "The corner of the grid in map coordinates, as Terrain Builder expects; off places it at 0, 0.": {
   "de": "Die Ecke des Rasters in Kartenkoordinaten, wie Terrain Builder es erwartet; aus setzt sie auf 0, 0.",
@@ -3719,6 +3959,10 @@
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
   "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
  },
+ "The map takes over the settings of this world: its weather, light, sounds and the rest the config does not set.": {
+  "de": "Die Karte übernimmt die Einstellungen dieser Welt: Wetter, Licht, Klänge und alles, was die Config nicht setzt.",
+  "pl": "Mapa przejmuje ustawienia tego świata: pogodę, światło, dźwięki i wszystko, czego config nie ustawia."
+ },
  "The mask colour painted under the model, by trees as their forest ground and by the tool that paints under objects.": {
   "de": "Die Maskenfarbe unter dem Modell: für Bäume als Waldboden und für das Werkzeug, das unter Objekte malt.",
   "pl": "Kolor maski malowany pod modelem: przez drzewa jako podłoże lasu i przez narzędzie malujące pod obiektami."
@@ -3734,6 +3978,10 @@
  "The models are already in {0}": {
   "de": "Die Modelle sind bereits in {0}",
   "pl": "Te modele już są w {0}"
+ },
+ "The name the game shows; empty takes the name of the project.": {
+  "de": "Der Name im Spiel; leer nimmt den Projektnamen.",
+  "pl": "Nazwa pokazywana w grze; puste bierze nazwę projektu."
  },
  "The new stretch could not be fitted; Fit again with the option off fits the whole route": {
   "de": "Das neue Stück ließ sich nicht einpassen; Neu einpassen ohne die Option passt die ganze Route ein",
@@ -3754,6 +4002,10 @@
  "The open end of the route was not found among its models, so the whole route is fitted again": {
   "de": "Das offene Ende der Route wurde unter ihren Modellen nicht gefunden, daher wird die ganze Route neu eingepasst",
   "pl": "Nie znaleziono otwartego końca trasy wśród jej modeli, więc dopasowywana jest cała trasa"
+ },
+ "The paper map players carry and the tourist boards; empty fields keep those of the base world.": {
+  "de": "Die Papierkarte der Spieler und die Touristentafeln; leere Felder behalten die der Basiswelt.",
+  "pl": "Papierowa mapa graczy i tablice turystyczne; puste pola zostawiają te ze świata bazowego."
  },
  "The patch size is then the margin round the footprint.": {
   "de": "Die Fleckgröße ist dann der Rand um den Grundriss.",
@@ -3823,6 +4075,10 @@
   "de": "Das unter ihr geebnete Gelände",
   "pl": "Teren wyrównany pod nią"
  },
+ "The textures of the base world show its own terrain; a map of its own needs its own.": {
+  "de": "Die Texturen der Basiswelt zeigen deren Gelände; eine eigene Karte braucht eigene.",
+  "pl": "Tekstury świata bazowego pokazują jego teren; własna mapa potrzebuje własnych."
+ },
  "The view is in a window of its own.": {
   "de": "Die Ansicht ist in einem eigenen Fenster.",
   "pl": "Podgląd jest w osobnym oknie."
@@ -3843,6 +4099,10 @@
   "de": "Pforte oder Tor bleibt waagerecht, statt sich wie der Zaun mit dem Hang zu neigen.",
   "pl": "Furtka lub brama stoi prosto zamiast pochylać się ze zboczem jak płot."
  },
+ "The world config (CfgWorlds) of the map, written to config.cpp on export.": {
+  "de": "Die Weltconfig (CfgWorlds) der Karte, beim Export in config.cpp geschrieben.",
+  "pl": "Config świata (CfgWorlds) mapy, zapisywany do config.cpp przy eksporcie."
+ },
  "Thermal erosion": {
   "de": "Thermische Erosion",
   "pl": "Erozja termiczna"
@@ -3850,6 +4110,10 @@
  "This generator needs a polygon": {
   "de": "Dieser Generator braucht ein Polygon",
   "pl": "Ten generator wymaga wielokąta"
+ },
+ "This map's ce folder": {
+  "de": "ce-Ordner dieser Karte",
+  "pl": "Folder ce tej mapy"
  },
  "This preset has no models yet": {
   "de": "Dieses Preset hat noch keine Modelle",
@@ -3927,6 +4191,10 @@
   "de": "Auch Bäume und Büsche",
   "pl": "Także drzewa i krzewy"
  },
+ "Trees for a forest square": {
+  "de": "Bäume für ein Waldfeld",
+  "pl": "Drzew na pole lasu"
+ },
  "Turn": {
   "de": "Drehung",
   "pl": "Obrót"
@@ -3998,6 +4266,10 @@
  "Use the surface assigned to each model": {
   "de": "Jedem Modell zugewiesene Oberfläche verwenden",
   "pl": "Użyj powierzchni przypisanej do modelu"
+ },
+ "User map folder": {
+  "de": "Ordner der Benutzerkarte",
+  "pl": "Folder mapy użytkownika"
  },
  "Version": {
   "de": "Version",
@@ -4083,6 +4355,18 @@
   "de": "Wenn eine Kachel wirklich 6 verwendet, wird die ganze Karte wie im 6-Material-Modus des Terrain Builders (TerrainX) exportiert, ohne Satelliten-Normalenkarten.",
   "pl": "Gdy jakiś kafel naprawdę używa 6, cała mapa jest eksportowana jak w trybie 6 materiałów z Terrain Buildera (TerrainX), bez normalnych z satelity."
  },
+ "Where the 3D camera stands and what it looks at.": {
+  "de": "Wo die 3D-Kamera steht und wohin sie blickt.",
+  "pl": "Gdzie stoi kamera 3D i na co patrzy."
+ },
+ "Where the camera is": {
+  "de": "Wo die Kamera ist",
+  "pl": "Tam, gdzie kamera"
+ },
+ "Where the game's map opens; without it the middle of the terrain.": {
+  "de": "Wo sich die Spielkarte öffnet; ohne dies die Mitte des Geländes.",
+  "pl": "Gdzie otwiera się mapa w grze; bez tego środek terenu."
+ },
  "Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper.": {
   "de": "Wo zwei Oberflächen der Maske aufeinandertreffen, zeigen sich zuerst die höheren Teile ihres Reliefs; höher macht die Grenze schärfer.",
   "pl": "Tam, gdzie stykają się dwie powierzchnie maski, najpierw przebijają wyższe części ich reliefu; wyżej daje ostrzejszą granicę."
@@ -4151,6 +4435,10 @@
   "de": "Welt",
   "pl": "Świat"
  },
+ "World class": {
+  "de": "Weltklasse",
+  "pl": "Klasa świata"
+ },
  "World or local axes": {
   "de": "Welt- oder lokale Achsen",
   "pl": "Osie świata lub lokalne"
@@ -4166,6 +4454,10 @@
  "Write the newer WRP format with underground flag": {
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",
   "pl": "Zapisuj nowszy format WRP z flagą podziemia"
+ },
+ "Written as they are; locations come from the key points.": {
+  "de": "So geschrieben, wie sie sind; Orte kommen aus den Keypoints.",
+  "pl": "Zapisywane tak, jak są; lokacje biorą się z keypointów."
  },
  "X {0}  Z {1}  height {2} m  slope {3}°  surface {4}": {
   "de": "X {0}  Z {1}  Höhe {2} m  Neigung {3}°  Oberfläche {4}",
@@ -4230,6 +4522,10 @@
  "wheel": {
   "de": "Rad",
   "pl": "kółko"
+ },
+ "{0} (base world)": {
+  "de": "{0} (Basiswelt)",
+  "pl": "{0} (świat bazowy)"
  },
  "{0} cells": {
   "de": "{0} Zellen",

@@ -333,11 +333,108 @@ pub fn wrp_objects(w: &World, db: &ModelDb) -> (Vec<WrpObject>, Vec<String>) {
     (out, missing.into_iter().collect())
 }
 
-pub fn write_configs(w: &World, target: &Path, has_navmesh: bool) -> Result<()> {
+/// A text value for a config, with its quotes doubled as the config format wants.
+fn quoted(s: &str) -> String {
+    format!("\"{}\"", s.trim().replace('"', "\"\""))
+}
+
+/// The settings of the world class the config sets itself, beyond those it always writes.
+fn world_overrides(cfg: &crate::world::MapConfig) -> String {
+    let mut out = String::new();
+    let mut text = |key: &str, v: &str| {
+        if !v.trim().is_empty() {
+            out += &format!("\t\t{key}={};\n", quoted(v));
+        }
+    };
+    text("ceFiles", &cfg.ce_files);
+    text("startTime", &cfg.start_time);
+    text("startDate", &cfg.start_date);
+    text("mapDisplayNameKey", &cfg.map_display_name_key);
+    text("mapDescriptionKey", &cfg.map_description_key);
+    text("mapTextureClosed", &cfg.map_texture_closed);
+    text("mapTextureOpened", &cfg.map_texture_opened);
+    text("mapTextureLegend", &cfg.map_texture_legend);
+    text("userMapPath", &cfg.user_map_path);
+    text("midDetailTexture", &cfg.mid_detail_texture);
+    text("terrainNormalTexture", &cfg.terrain_normal_texture);
+    for key in ["oceanMaterial", "oceanNiceMaterial", "oceanStormMaterial"] {
+        text(key, &cfg.ocean_material);
+    }
+    let mut number = |key: &str, v: Option<f32>| {
+        if let Some(v) = v {
+            out += &format!("\t\t{key}={v};\n");
+        }
+    };
+    number("clutterGrid", cfg.clutter_grid);
+    number("clutterDist", cfg.clutter_dist);
+    number("noDetailDist", cfg.no_detail_dist);
+    number("fullDetailDist", cfg.full_detail_dist);
+    number("minTreesInForestSquare", cfg.min_trees_in_forest_square.map(|v| v as f32));
+    number("minRocksInRockSquare", cfg.min_rocks_in_rock_square.map(|v| v as f32));
+    if !cfg.cutscenes.is_empty() {
+        let list = cfg.cutscenes.iter().filter(|c| !c.trim().is_empty()).map(|c| quoted(c)).collect::<Vec<_>>().join(",");
+        out += &format!("\t\tcutscenes[]={{{list}}};\n");
+    }
+    let outside = !cfg.outside_satellite.trim().is_empty() || cfg.outside_synth.is_some() || !cfg.outside_texture.trim().is_empty() || !cfg.outside_nopx.trim().is_empty();
+    if outside {
+        out += "\t\tclass OutsideTerrain: OutsideTerrain\n\t\t{\n";
+        if !cfg.outside_satellite.trim().is_empty() {
+            out += &format!("\t\t\tsatellite={};\n", quoted(&cfg.outside_satellite));
+        }
+        if let Some(on) = cfg.outside_synth {
+            out += &format!("\t\t\tenableTerrainSynth={};\n", on as u8);
+        }
+        if !cfg.outside_texture.trim().is_empty() || !cfg.outside_nopx.trim().is_empty() {
+            out += "\t\t\tclass Layers: Layers\n\t\t\t{\n\t\t\t\tclass Layer0: Layer0\n\t\t\t\t{\n";
+            if !cfg.outside_nopx.trim().is_empty() {
+                out += &format!("\t\t\t\t\tnopx={};\n", quoted(&cfg.outside_nopx));
+            }
+            if !cfg.outside_texture.trim().is_empty() {
+                out += &format!("\t\t\t\t\ttexture={};\n", quoted(&cfg.outside_texture));
+            }
+            out += "\t\t\t\t};\n\t\t\t};\n";
+        }
+        out += "\t\t};\n";
+    }
+    out
+}
+
+/// `cfgCharacterScenes` of the map: the places its main menu shows.
+fn character_scenes(id: &str, scenes: &[crate::world::CharacterScene]) -> String {
+    if scenes.is_empty() {
+        return String::new();
+    }
+    let mut out = format!("class cfgCharacterScenes\n{{\n\tclass {id}\n\t{{\n");
+    for (k, s) in scenes.iter().enumerate() {
+        let name: String = s.name.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        let name = if name.is_empty() { format!("loc{}", k + 1) } else { name };
+        let [px, pz, py] = s.position;
+        let [tx, tz, ty] = s.target;
+        let d = s.date;
+        out += &format!(
+            "\t\tclass {name}\n\t\t{{\n\t\t\ttarget[]={{{tx:.1},{tz:.1},{ty:.1}}};\n\t\t\tposition[]={{{px:.1},{pz:.1},{py:.1}}};\n\t\t\tfov={:.4};\n\t\t\tdate[]={{{},{},{},{},{}}};\n\t\t\tovercast={:.2};\n\t\t\train={:.2};\n\t\t\tfog={:.2};\n\t\t}};\n",
+            s.fov, d[0], d[1], d[2], d[3], d[4], s.overcast, s.rain, s.fog
+        );
+    }
+    out += "\t};\n};\n";
+    out
+}
+
+/// Lines of free text indented into a class, each by `indent`.
+fn indented(text: &str, indent: &str) -> String {
+    text.lines().filter(|l| !l.trim().is_empty()).map(|l| format!("{indent}{}\n", l.trim_end())).collect()
+}
+
+/// The world config (config.cpp of the world folder) of a map, from the project and the
+/// settings of its config.
+pub fn world_config_text(w: &World, has_navmesh: bool) -> String {
     let id = &w.meta.map_id;
+    let cfg = &w.meta.config;
     let size = w.meta.size_m();
     let (sx, sz) = (w.meta.spawn[0], w.meta.spawn[1]);
     let sy = w.height.sample(sx, sz) - w.meta.sea_level;
+    let center = cfg.center.unwrap_or([size * 0.5, size * 0.5]);
+    let cy = w.height.sample(center[0], center[1]) - w.meta.sea_level;
     let mut materials = String::new();
     for (i, l) in w.layers.iter().enumerate() {
         materials += &format!("\t\t\tmaterial{i}=\"{}\";\n", l.material);
@@ -349,6 +446,25 @@ pub fn write_configs(w: &World, target: &Path, has_navmesh: bool) -> Result<()> 
     };
     let holes = if w.holes.is_empty() { String::new() } else { crate::holes::class_text(&w.holes, "\t\t") };
     let names = crate::keypoints::names_text(&w.keypoints, "\t\t\t");
+    let base = cfg.base.class();
+    let mut addons = vec!["DZ_Data".to_string(), cfg.base.addon().to_string()];
+    for a in &cfg.required_addons {
+        let a = a.trim().trim_matches('"');
+        if !a.is_empty() && !addons.iter().any(|x| x.eq_ignore_ascii_case(a)) {
+            addons.push(a.to_string());
+        }
+    }
+    let addons = addons.iter().filter(|a| !a.is_empty()).map(|a| format!("\"{a}\"")).collect::<Vec<_>>().join(",");
+    let description = if cfg.description.trim().is_empty() { w.meta.name.clone() } else { cfg.description.clone() };
+    let zoom = |k: usize, max: &str, digits: &str| {
+        let step = cfg.grid_steps[k].max(1);
+        format!("\t\t\tclass Zoom{}\n\t\t\t{{\n\t\t\t\tzoomMax={max};\n\t\t\t\tformat=\"XY\";\n\t\t\t\tformatX=\"{digits}\";\n\t\t\t\tformatY=\"{digits}\";\n\t\t\t\tstepX={step};\n\t\t\t\tstepY=-{step};\n\t\t\t}};\n", k + 1)
+    };
+    let grid = format!("{}{}{}", zoom(0, "0.15000001", "000"), zoom(1, "0.85000002", "00"), zoom(2, "1e+30", "0"));
+    let extra_world = indented(&cfg.extra_world, "\t\t");
+    let extra_file = indented(&cfg.extra_file, "");
+    let overrides = world_overrides(cfg);
+    let scenes = character_scenes(id, &cfg.scenes);
     let world = format!(
 "class CfgPatches
 {{
@@ -357,71 +473,51 @@ pub fn write_configs(w: &World, target: &Path, has_navmesh: bool) -> Result<()> 
 		units[]={{}};
 		weapons[]={{}};
 		requiredVersion=0.1;
-		requiredAddons[]={{\"DZ_Data\",\"DZ_Worlds_Enoch\"}};
+		requiredAddons[]={{{addons}}};
 		author=\"{author}\";
 		name=\"{name}\";
 	}};
 }};
-class CfgWorlds
+{scenes}class CfgWorlds
 {{
 	class CAWorld;
-	class Enoch: CAWorld
+	class {base}: CAWorld
 	{{
 		class Navmesh
 		{{
 			class GenParams;
 		}};
 		class UsedTerrainMaterials;
+		class OutsideTerrain
+		{{
+			class Layers
+			{{
+				class Layer0;
+			}};
+		}};
 	}};
-	class {id}: Enoch
+	class {id}: {base}
 	{{
-		description=\"{name}\";
-		hasOcean=1;
+		description=\"{description}\";
+		hasOcean={ocean};
 		worldName=\"{id}\\world\\{id_lc}.wrp\";
 		initWorld=\"{id}\";
 		cutscenes[]={{}};
-		centerPosition[]={{{cx:.1},{cz:.1},{sy:.1}}};
+		centerPosition[]={{{cx:.1},{cz:.1},{cy:.1}}};
 		longitude={lon};
 		latitude={lat};
-{navmesh}{holes}		class Grid
+{overrides}{navmesh}{holes}		class Grid
 		{{
 			offsetX=0;
 			offsetY={size:.0};
-			class Zoom1
-			{{
-				zoomMax=0.15000001;
-				format=\"XY\";
-				formatX=\"000\";
-				formatY=\"000\";
-				stepX=100;
-				stepY=-100;
-			}};
-			class Zoom2
-			{{
-				zoomMax=0.85000002;
-				format=\"XY\";
-				formatX=\"00\";
-				formatY=\"00\";
-				stepX=1000;
-				stepY=-1000;
-			}};
-			class Zoom3
-			{{
-				zoomMax=1e+30;
-				format=\"XY\";
-				formatX=\"0\";
-				formatY=\"0\";
-				stepX=10000;
-				stepY=-10000;
-			}};
-		}};
+{grid}		}};
 		class UsedTerrainMaterials: UsedTerrainMaterials
 		{{
 {materials}		}};
 		class Names
 		{{
 {names}		}};
-	}};
+{extra_world}	}};
 }};
 class CfgWorldList
 {{
@@ -429,10 +525,16 @@ class CfgWorldList
 	{{
 	}};
 }};
-",
-        author = w.meta.author, name = w.meta.name, id_lc = id.to_ascii_lowercase(),
-        cx = size * 0.5, cz = size * 0.5, lon = w.meta.longitude, lat = -w.meta.latitude,
+{extra_file}",
+        author = w.meta.author, name = w.meta.name, id_lc = id.to_ascii_lowercase(), ocean = cfg.has_ocean as u8,
+        cx = center[0], cz = center[1], lon = w.meta.longitude, lat = -w.meta.latitude,
     );
+    world
+}
+
+pub fn write_configs(w: &World, target: &Path, has_navmesh: bool) -> Result<()> {
+    let id = &w.meta.map_id;
+    let world = world_config_text(w, has_navmesh);
     atomic_write(&target.join("world").join("config.cpp"), world.as_bytes())?;
     let data = format!(
         "class CfgPatches\n{{\n\tclass {id}_data\n\t{{\n\t\tunits[]={{}};\n\t\tweapons[]={{}};\n\t\trequiredVersion=0.1;\n\t\trequiredAddons[]={{}};\n\t}};\n}};\n"
@@ -648,6 +750,50 @@ mod tests {
         assert!(target.join("data/layers/M_000_000_lca.paa").is_file());
         assert!(d.path().join("TestMap_Source/heightmap.asc").is_file());
         assert!(r.warnings.iter().any(|w| w.contains("navmesh")));
+    }
+
+    #[test]
+    fn the_world_config_takes_its_settings() {
+        let mut w = World::new(WorldMeta::new("Isle", 64, 8.0), 10.0);
+        let plain = world_config_text(&w, false);
+        assert!(plain.contains("class Isle: Enoch") && plain.contains("\"DZ_Data\",\"DZ_Worlds_Enoch\"") && plain.contains("description=\"Isle\"") && plain.contains("hasOcean=1"), "{plain}");
+        assert!(plain.contains("centerPosition[]={256.0,256.0,"), "{plain}");
+        w.meta.config.base = crate::world::BaseWorld::ChernarusPlus;
+        w.meta.config.description = "The isle".into();
+        w.meta.config.has_ocean = false;
+        w.meta.config.center = Some([100.0, 200.0]);
+        w.meta.config.grid_steps = [50, 500, 5000];
+        w.meta.config.required_addons = vec!["MyMod_Data".into(), "DZ_Data".into()];
+        w.meta.config.extra_world = "minTreesInForestSquare=10;\n\nclass Ambient {};".into();
+        w.meta.config.extra_file = "class CfgMods {};".into();
+        let cfg = world_config_text(&w, false);
+        assert!(cfg.contains("class ChernarusPlus: CAWorld") && cfg.contains("class Isle: ChernarusPlus"), "{cfg}");
+        assert!(cfg.contains("requiredAddons[]={\"DZ_Data\",\"DZ_Worlds_Chernarusplus\",\"MyMod_Data\"};"), "{cfg}");
+        assert!(cfg.contains("description=\"The isle\"") && cfg.contains("hasOcean=0") && cfg.contains("centerPosition[]={100.0,200.0,"), "{cfg}");
+        assert!(cfg.contains("stepX=50;") && cfg.contains("stepY=-5000;"), "{cfg}");
+        assert!(cfg.contains("\t\tminTreesInForestSquare=10;\n\t\tclass Ambient {};\n\t};"), "{cfg}");
+        assert!(cfg.trim_end().ends_with("class CfgMods {};"), "{cfg}");
+        assert!(!cfg.contains("cfgCharacterScenes") && !cfg.contains("startTime") && !cfg.contains("class OutsideTerrain: OutsideTerrain"), "nothing set, nothing written");
+        // What the editor sets is written over what the base world has.
+        w.meta.config.scenes = vec![crate::world::CharacterScene { name: "harbour".into(), position: [100.0, 200.0, 1.5], target: [120.0, 230.0, 14.0], ..Default::default() }];
+        w.meta.config.cutscenes = vec!["IsleIntro".into()];
+        w.meta.config.start_time = "6:30".into();
+        w.meta.config.ce_files = "Isle\\ce".into();
+        w.meta.config.map_texture_closed = "Isle\\data\\map_co.paa".into();
+        w.meta.config.outside_satellite = "Isle\\data\\out_co.paa".into();
+        w.meta.config.outside_synth = Some(false);
+        w.meta.config.clutter_dist = Some(150.0);
+        w.meta.config.min_trees_in_forest_square = Some(8);
+        w.meta.config.ocean_material = "Isle\\data\\sea.emat".into();
+        let cfg = world_config_text(&w, false);
+        assert!(cfg.contains("class cfgCharacterScenes\n{\n\tclass Isle\n\t{\n\t\tclass harbour") && cfg.contains("position[]={100.0,200.0,1.5};") && cfg.contains("date[]={1984,10,28,9,0};"), "{cfg}");
+        assert!(cfg.contains("cutscenes[]={\"IsleIntro\"};") && cfg.contains("startTime=\"6:30\";") && cfg.contains("ceFiles=\"Isle\\ce\";"), "{cfg}");
+        assert!(cfg.contains("mapTextureClosed=\"Isle\\data\\map_co.paa\";") && cfg.contains("clutterDist=150;") && cfg.contains("minTreesInForestSquare=8;"), "{cfg}");
+        assert!(cfg.contains("oceanStormMaterial=\"Isle\\data\\sea.emat\";"), "{cfg}");
+        assert!(cfg.contains("class OutsideTerrain: OutsideTerrain\n\t\t{\n\t\t\tsatellite=\"Isle\\data\\out_co.paa\";\n\t\t\tenableTerrainSynth=0;\n\t\t};"), "{cfg}");
+        assert_eq!(cfg.matches('{').count(), cfg.matches('}').count());
+        // Braces stay in pairs.
+        assert_eq!(cfg.matches('{').count(), cfg.matches('}').count());
     }
 
     #[test]
