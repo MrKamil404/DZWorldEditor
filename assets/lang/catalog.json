@@ -231,6 +231,10 @@
   "de": "Winkel",
   "pl": "Kąt"
  },
+ "Angle step with {0}": {
+  "de": "Winkelschritt mit {0}",
+  "pl": "Skok kąta z {0}"
+ },
  "Another task is still running": {
   "de": "Eine andere Aufgabe läuft noch",
   "pl": "Inne zadanie nadal trwa"
@@ -2115,6 +2119,10 @@
   "de": "Bewegen",
   "pl": "Przesuń"
  },
+ "Move and turn slowly": {
+  "de": "Langsam bewegen und drehen",
+  "pl": "Wolne przesuwanie i obracanie"
+ },
  "Move camera here": {
   "de": "Kamera hierher",
   "pl": "Przenieś tu kamerę"
@@ -3286,6 +3294,10 @@
  "Smooth instead": {
   "de": "Stattdessen glätten",
   "pl": "Wygładzaj zamiast tego"
+ },
+ "Snap to angle steps": {
+  "de": "An Winkelschritten einrasten",
+  "pl": "Przyciąganie do skoku kąta"
  },
  "Some actions share a key; only the first of them will work.": {
   "de": "Einige Aktionen teilen eine Taste; nur die erste davon wirkt.",

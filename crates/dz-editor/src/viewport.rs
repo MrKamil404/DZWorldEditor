@@ -59,6 +59,9 @@ pub struct ObjectDrag {
     /// Screen direction and metres per point for axis handles.
     axis: (egui::Vec2, V3, f32),
     grab_offset: [f32; 2],
+    /// The mouse as the drag sees it, and where the real one was last: held for precise
+    /// work, the first follows the second slowly.
+    virt: Option<(Pos2, Pos2)>,
 }
 
 /// Scripted input for automatic checks (`DZWE_AUTO`).
@@ -898,7 +901,12 @@ pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Optio
     }
     let model_id = doc.world.objects.intern(model);
     let seed = (x.to_bits() ^ z.to_bits().rotate_left(13)).wrapping_mul(2654435761);
-    let yaw = if random { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
+    let mut yaw = if random { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
+    // With the snap key held a random turn goes by whole angle steps.
+    if app.settings.keys.held(Hold::AngleSnap, app.modifiers_now) {
+        let step = app.settings.angle_step.max(0.1);
+        yaw = ((yaw / step).round() * step).rem_euclid(360.0);
+    }
     let k = ((seed >> 3) & 1023) as f32 / 1023.0;
     let scale = smin + (smax - smin) * k;
     // Models with a placement property are fitted to the ground by the game; tilting them too
@@ -1075,8 +1083,51 @@ fn gizmo_handle_any(app: &App, v: &View, p: V3, mouse: Pos2) -> Option<(Handle, 
     }
 }
 
+/// A point snapped so the line to it from `from` runs at a whole step of `step` degrees,
+/// counted clockwise from north as yaw is.
+pub fn snap_direction(from: [f32; 2], to: [f32; 2], step: f32) -> [f32; 2] {
+    let (dx, dz) = (to[0] - from[0], to[1] - from[1]);
+    let len = dx.hypot(dz);
+    if len < 1e-4 || step <= 0.0 {
+        return to;
+    }
+    let a = (dx.atan2(dz).to_degrees() / step).round() * step;
+    let (sin, cos) = a.to_radians().sin_cos();
+    [from[0] + sin * len, from[1] + cos * len]
+}
+
+/// Where a new point of a line or shape goes: with the snap key held, at a whole angle step
+/// from the point before it.
+fn line_point(app: &App, points: &[[f32; 2]], p: [f32; 2], modifiers: egui::Modifiers) -> [f32; 2] {
+    match points.last() {
+        Some(last) if app.settings.keys.held(Hold::AngleSnap, modifiers) => snap_direction(*last, p, app.settings.angle_step),
+        _ => p,
+    }
+}
+
+/// The angle and length of the segment being drawn, next to the cursor.
+fn segment_label(painter: &egui::Painter, v: &View, world: &dz_core::world::World, from: [f32; 2], to: [f32; 2]) {
+    let (dx, dz) = (to[0] - from[0], to[1] - from[1]);
+    let len = dx.hypot(dz);
+    if len < 0.5 {
+        return;
+    }
+    let angle = dx.atan2(dz).to_degrees().rem_euclid(360.0);
+    if let Some(s) = v.project([to[0], world.height.sample(to[0], to[1]), to[1]]) {
+        painter.text(s + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, format!("{angle:.0}°  {len:.1} m"), egui::FontId::proportional(12.0), Color32::WHITE);
+    }
+}
+
 fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
     let Some(mut drag) = app.drag.take() else { return };
+    // Held for precise work, the drag follows the mouse five times slower.
+    let precise = app.settings.keys.held(Hold::Precise, app.modifiers_now);
+    let (seen, last) = drag.virt.unwrap_or((mouse, mouse));
+    let seen = seen + (mouse - last) * if precise { 0.2 } else { 1.0 };
+    drag.virt = Some((seen, mouse));
+    let mouse = seen;
+    let angle_snap = app.settings.keys.held(Hold::AngleSnap, app.modifiers_now);
+    let step = app.settings.angle_step.max(0.1);
     let delta = mouse - drag.start;
     if !drag.started {
         if delta.length() < 3.0 {
@@ -1099,7 +1150,10 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
                 dz = p[2] + drag.grab_offset[1] - drag.pivot[2];
             }
         }
-        Handle::Spin => dyaw = delta.x * 0.5,
+        Handle::Spin => {
+            dyaw = delta.x * 0.5;
+            if angle_snap { dyaw = (dyaw / step).round() * step; }
+        }
         Handle::X | Handle::Y | Handle::Z => {
             let along = delta.dot(drag.axis.0) * drag.axis.2;
             let along = if snap { (along).round() } else { along };
@@ -1120,7 +1174,7 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
                 if su.x * sw.y - su.y * sw.x < 0.0 { a = -a; }
             }
             let mut deg = a.to_degrees();
-            if snap { deg = (deg / 15.0).round() * 15.0; }
+            if snap || angle_snap { deg = (deg / step).round() * step; }
             let angle = deg.to_radians();
             let mut updates = Vec::new();
             for (id, b) in &drag.before {
@@ -1466,7 +1520,8 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         Mode::Lines => {
             if resp.clicked() {
                 if let Some(h) = hit {
-                    app.line.points.push([h[0], h[2]]);
+                    let p = line_point(app, &app.line.points, [h[0], h[2]], modifiers);
+                    app.line.points.push(p);
                 }
             }
             let (enter, esc, back) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Backspace)));
@@ -1493,13 +1548,14 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         Mode::Generate => {}
         Mode::Select => {
             let pivot = selection_pivot(app);
-            if pressed && !modifiers.alt {
+            // Alt is free here unless it is the key for slow, precise moves.
+            if pressed && (!modifiers.alt || app.settings.keys.held(Hold::Precise, modifiers)) {
                 if let Some(p) = pivot {
                     if let Some((handle, dir, axis, scale)) = gizmo_handle(app, v, p, mouse) {
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let grab = hit.map(|h| [p[0] - h[0], p[2] - h[2]]).unwrap_or([0.0, 0.0]);
-                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab });
+                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab , virt: None });
                         return;
                     }
                 }
@@ -1513,7 +1569,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         if let (true, Some(p)) = (app.selection.contains(&id), selection_pivot(app)) {
                             let doc = app.doc.as_ref().unwrap();
                             let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
-                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] });
+                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] , virt: None });
                             return;
                         }
                     }
@@ -1524,7 +1580,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let handle = if modifiers.shift { Handle::Spin } else { Handle::Scale };
-                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] });
+                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None });
                         return;
                     }
                 }
@@ -2005,7 +2061,8 @@ fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         }
         if resp.clicked() {
             if let Some(h) = hit {
-                app.shape.points.push([h[0], h[2]]);
+                let p = line_point(app, &app.shape.points, [h[0], h[2]], modifiers);
+                app.shape.points.push(p);
                 if app.shape.tool == ShapeTool::Point {
                     app.finish_shape();
                 }
@@ -2264,8 +2321,11 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     if app.mode == Mode::Shapes && !app.shape.points.is_empty() {
         let col = Color32::from_rgb(255, 120, 40);
         let mut pts = app.shape.points.clone();
+        let mods = painter.ctx().input(|i| i.modifiers);
         if let Some(h) = resp.hover_pos().and_then(|m| { let (o, d) = v.ray(m); pick_terrain(&world.height, o, d, v.ortho) }) {
-            pts.push([h[0], h[2]]);
+            let p = line_point(app, &app.shape.points, [h[0], h[2]], mods);
+            if let Some(last) = app.shape.points.last() { segment_label(&painter, v, world, *last, p); }
+            pts.push(p);
         }
         if app.shape.tool == ShapeTool::Polygon && pts.len() > 2 {
             pts.push(pts[0]);
@@ -2339,10 +2399,13 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     }
     if app.mode == Mode::Lines && !app.line.points.is_empty() {
         let mut pts = app.line.points.clone();
+        let mods = painter.ctx().input(|i| i.modifiers);
         if let Some(m) = resp.hover_pos() {
             let (o, d) = v.ray(m);
             if let Some(h) = pick_terrain(&world.height, o, d, v.ortho) {
-                pts.push([h[0], h[2]]);
+                let p = line_point(app, &app.line.points, [h[0], h[2]], mods);
+                if let Some(last) = app.line.points.last() { segment_label(&painter, v, world, *last, p); }
+                pts.push(p);
             }
         }
         draw_polyline(&painter, v, world, &pts, Stroke::new(2.5_f32, Color32::from_rgb(255, 120, 40)));
@@ -2902,6 +2965,7 @@ fn welcome(app: &mut App, ui: &mut egui::Ui) {
 
 pub fn central(app: &mut App, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
+    app.modifiers_now = ctx.input(|i| i.modifiers);
     shortcuts(app, &ctx);
     // The views of this frame say again whether the pointer is over one of them.
     app.view_hovered = false;
@@ -3105,6 +3169,12 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "lassomode" => app.settings.lasso = arg == "1",
+        "objpos" => {
+            if let Some(d) = &app.doc {
+                for (id, o) in d.world.objects.iter().take(4) { eprintln!("OBJPOS {id} {:.2} {:.2}", o.x, o.z); }
+            }
+        }
+        "shapepts" => eprintln!("SHAPEPTS {:?}", app.shape.points),
         "selcount" => eprintln!("SELCOUNT {}", app.selection.len()),
         "selall" => {
             if let Some(d) = &app.doc {
@@ -3358,7 +3428,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     d.world.sync_attached(*id);
                 }
                 let pivot = before.first().map(|(_, o)| [o.x, 0.0, o.z]).unwrap_or([0.0; 3]);
-                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] });
+                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None });
                 end_object_drag(app);
             }
         }
@@ -3800,6 +3870,18 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
 #[cfg(test)]
 mod picking_tests {
     use super::*;
+
+    #[test]
+    fn points_snap_to_whole_angle_steps() {
+        // Almost east, 20 m away: east at the same length.
+        let p = snap_direction([0.0, 0.0], [20.0, 1.5], 15.0);
+        assert!((p[0] - 20.056).abs() < 0.01 && p[1].abs() < 1e-3, "{p:?}");
+        // 50 degrees goes to 45.
+        let q = snap_direction([10.0, 10.0], [10.0 + 50f32.to_radians().sin() * 8.0, 10.0 + 50f32.to_radians().cos() * 8.0], 15.0);
+        let a = (q[0] - 10.0).atan2(q[1] - 10.0).to_degrees();
+        assert!((a - 45.0).abs() < 1e-3, "{a}");
+        assert_eq!(snap_direction([1.0, 1.0], [1.0, 1.0], 15.0), [1.0, 1.0]);
+    }
 
     #[test]
     fn grass_footprint_follows_the_geometry_not_the_box() {
