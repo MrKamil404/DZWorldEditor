@@ -171,6 +171,7 @@ pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
     ui.checkbox(&mut app.show_objects, t("Objects")).on_hover_text(keys.tip(Action::ToggleObjects));
     ui.checkbox(&mut app.show_grass, t("Grass")).on_hover_text(keys.tip(Action::ToggleGrass));
     ui.add_enabled(app.show_grass, egui::Checkbox::new(&mut app.grass_under_objects, t("Grass under objects")));
+    ui.add_enabled(app.show_objects, egui::Checkbox::new(&mut app.show_proxies, t("Proxies in buildings"))).on_hover_text(t("Furniture and fittings that buildings place in their visual LOD, as the game shows them. Proxies of the geometry, fire, memory and roadway LODs are not drawn."));
     ui.checkbox(&mut app.show_shadows, t("Shadows"));
     ui.checkbox(&mut app.show_water, t("Water"));
     ui.checkbox(&mut app.show_lines, t("Roads and lines")).on_hover_text(keys.tip(Action::ToggleShapes));

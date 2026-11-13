@@ -418,6 +418,20 @@ fn texture_path(root: &Path, name: &str) -> Option<std::path::PathBuf> {
     Some(path)
 }
 
+/// Models placed in the most detailed visual LOD of an ODOL model (furniture, fittings), with
+/// their matrices in the coordinates of that LOD. The other LODs (geometry, fire, memory,
+/// roadway…) keep proxies of their own that are not drawn.
+pub fn visual_proxies(path: &Path) -> Result<Vec<(String, [f32; 12])>, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if let Some(msg) = describe_format_error(&bytes) {
+        return Err(msg);
+    }
+    let resolutions = odol::resolutions(&bytes).map_err(|e| format!("{}: {e:#}", path.display()))?;
+    let Some(first) = resolutions.iter().position(|r| *r < 1000.0) else { return Ok(Vec::new()) };
+    let mut lods = odol::read(&bytes, |i, _| i == first).map_err(|e| format!("{}: {e:#}", path.display()))?;
+    Ok(lods.pop().map(|l| l.proxies).unwrap_or_default())
+}
+
 /// Wczytuje najdokładniejszy LOD graficzny modelu ODOL. Tekstury są dekodowane
 /// z mipmapy nie większej niż `max_texture` i szukane względem `root` (dysk P:\).
 pub fn load_model(path: &Path, root: &Path, max_texture: u32) -> Result<ModelMesh, String> {
@@ -543,8 +557,17 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32, gpu_texture: u32) 
     let mut shading_of: HashMap<i32, Option<usize>> = HashMap::new();
     let mut order: Vec<(u16, i32)> = Vec::new();
     let mut groups: HashMap<(u16, i32), Vec<u32>> = HashMap::new();
+    // Each proxy also stands in the LOD as a bare triangle (no texture, no material) with a
+    // corner where the proxy goes; the game never draws those.
+    let proxy_points: Vec<[f32; 3]> = lod.proxies.iter().map(|(_, m)| [m[9], m[10], m[11]]).collect();
+    let proxy_triangle = |face_index: usize, face: &[u16]| {
+        !proxy_points.is_empty()
+            && lod.face_textures.get(face_index).is_none_or(|t| *t == u16::MAX)
+            && lod.face_materials.get(face_index).is_none_or(|m| *m < 0)
+            && face.iter().any(|v| lod.vertices.get(*v as usize).is_some_and(|p| proxy_points.iter().any(|q| (0..3).all(|k| (p[k] - q[k]).abs() < 0.01))))
+    };
     for (face_index, face) in lod.faces.iter().enumerate() {
-        if !valid(face) {
+        if !valid(face) || proxy_triangle(face_index, face) {
             continue;
         }
         let key = (lod.face_textures.get(face_index).copied().unwrap_or(u16::MAX), lod.face_materials.get(face_index).copied().unwrap_or(-1));
@@ -977,3 +1000,5 @@ mod tests {
         assert!(!mesh.textures.is_empty());
     }
 }
+
+

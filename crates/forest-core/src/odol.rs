@@ -23,6 +23,9 @@ pub struct Lod {
     pub uvs: Vec<[f32; 2]>,
     /// Second UV set, empty when the LOD has only one.
     pub uvs2: Vec<[f32; 2]>,
+    /// Models placed in the LOD: path as written (often without `.p3d`) and the 4×3 matrix
+    /// (three axis columns, then the position) in the LOD's coordinates.
+    pub proxies: Vec<(String, [f32; 12])>,
     /// Normal of each vertex as the model stores it; empty when it could not be read.
     /// Its sign is not settled here: compare with the faces before use.
     pub normals: Vec<[f32; 3]>,
@@ -273,10 +276,14 @@ fn lod_table(b: &[u8]) -> Result<LodTable> {
 
 fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
     let mut r = Reader { b, p: start };
+    let mut proxies = Vec::new();
     for _ in 0..r.count()? {
         // Proxy: model name, 4×3 matrix, four indices.
-        r.cstring()?;
-        r.skip(48 + 16)?;
+        let name = r.cstring()?;
+        let m = r.bytes(48)?;
+        let matrix: [f32; 12] = std::array::from_fn(|k| f32::from_le_bytes([m[k * 4], m[k * 4 + 1], m[k * 4 + 2], m[k * 4 + 3]]));
+        proxies.push((name, matrix));
+        r.skip(16)?;
     }
     let n = r.count()?;
     r.skip(n * 4)?;
@@ -400,7 +407,7 @@ fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
     let f = |o: usize| f32::from_le_bytes(data[o..o + 4].try_into().unwrap());
     let vertices: Vec<[f32; 3]> = (0..count).map(|i| [f(i * 12), f(i * 12 + 4), f(i * 12 + 8)]).collect();
     let normals = read_normals(&mut r, vertices.len()).unwrap_or_default();
-    Ok(Lod { resolution, vertices, selections, textures, faces, face_textures, face_materials, materials, uvs, uvs2, normals })
+    Ok(Lod { resolution, vertices, selections, textures, faces, face_textures, face_materials, materials, uvs, uvs2, normals, proxies })
 }
 
 /// Normals follow the positions: either three floats each or packed ten bits to a component.

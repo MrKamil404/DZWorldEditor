@@ -18,6 +18,7 @@ mod render;
 mod satellite;
 mod settings;
 mod theme;
+mod proxies;
 mod road_draw;
 mod updater;
 mod viewport;
