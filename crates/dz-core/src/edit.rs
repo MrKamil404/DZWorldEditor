@@ -167,6 +167,8 @@ pub enum Change {
     Routes(Vec<crate::world::RoadRoute>),
     Holes(crate::holes::Holes),
     KeyPoints(Vec<crate::keypoints::KeyPoint>),
+    /// Steps inside the server mission, in the order they undo.
+    Mission(Vec<crate::mission::MissionEdit>),
     Generators(Vec<crate::library::GeneratorInstance>),
     /// The satellite modifiers as they were.
     Satellite(Vec<crate::satmod::SatModifier>),
@@ -262,6 +264,7 @@ impl Change {
             }
             Change::Shapes(prev) => std::mem::swap(prev, &mut w.shape_layers),
             Change::KeyPoints(prev) => std::mem::swap(prev, &mut w.keypoints),
+            Change::Mission(edits) => crate::mission::toggle(&mut w.mission, edits),
             Change::Generators(prev) => std::mem::swap(prev, &mut w.generators),
             Change::Satellite(prev) => t.satellite = w.sat_set_modifiers(prev),
             Change::MaskMods(prev) => t.mask = w.mask_set_modifiers(prev),
@@ -300,6 +303,7 @@ impl Change {
             Change::Routes(r) => r.iter().map(|x| x.points.len() * 8 + x.centerline.len() * 8 + x.objects.len() * 4).sum(),
             Change::Holes(h) => h.len() * 8,
             Change::KeyPoints(k) => k.len() * 96,
+            Change::Mission(e) => e.iter().map(|e| e.bytes()).sum(),
             Change::Generators(l) => l.iter().map(|g| g.objects.len() * 4 + 4096).sum(),
             // Tiles are shared with the live modifiers until one of them is painted on.
             Change::Satellite(l) => l.iter().map(|m| m.tiles.len() * 4096 + 64).sum(),

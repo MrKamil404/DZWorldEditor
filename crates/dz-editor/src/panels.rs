@@ -50,6 +50,7 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
         detached_view(app, ctx);
     }
     dialogs(app, ctx);
+    crate::mission_ui::window(app, ctx);
     app.updater.window(ctx);
     crate::asset_browser::drag_ghost(app, ctx);
 }
@@ -304,7 +305,7 @@ fn icon_tool(ui: &mut egui::Ui, active: bool, icon: &str, label: Option<&str>, t
 }
 
 /// The modes with their icons and keys.
-pub const MODES: [(Mode, &str, &str, Action); 8] = [
+pub const MODES: [(Mode, &str, &str, Action); 9] = [
     (Mode::Select, icons::CURSOR, "Select", Action::ModeSelect),
     (Mode::Landscape, icons::MOUNTAINS, "Sculpt", Action::ModeSculpt),
     (Mode::Paint, icons::PAINT_BRUSH, "Paint", Action::ModePaint),
@@ -313,6 +314,7 @@ pub const MODES: [(Mode, &str, &str, Action); 8] = [
     (Mode::Shapes, icons::POLYGON, "Shapes", Action::ModeShapes),
     (Mode::KeyPoints, icons::MAP_PIN, "Key points", Action::ModeKeyPoints),
     (Mode::Satellite, icons::GLOBE_HEMISPHERE_WEST, "Satellite", Action::ModeSatellite),
+    (Mode::Mission, icons::FLAG_BANNER, "Mission", Action::ModeMission),
 ];
 
 fn toolbar(app: &mut App, ctx: &egui::Context) {
@@ -453,6 +455,7 @@ fn modes_panel(app: &mut App, ui: &mut egui::Ui) {
         Mode::Shapes => shapes_mode(app, ui),
         Mode::KeyPoints => keypoints_mode(app, ui),
         Mode::Satellite => crate::satellite::panel(app, ui),
+        Mode::Mission => crate::mission_ui::panel(app, ui),
     });
 }
 
@@ -1564,6 +1567,10 @@ fn import_window(app: &mut App, ui: &mut egui::Ui, d: &mut ImportDialog, close: 
             }
         }
     });
+    ui.weak(t("Objects of the layers stand on the chosen heightmap, and models that follow the ground (path panels, barriers) come in level when tilted by less than 10°. A built world (WRP) has them as the game shows them."));
+    if plan.objects_from_wrp && plan.wrp.is_some() && plan.layers.iter().any(|l| l.import) {
+        ui.colored_label(Color32::from_rgb(235, 170, 70), t("Objects from the WRP and from layers are both chosen; the same objects would come in twice."));
+    }
     egui::ScrollArea::vertical().id_salt("import_layers").max_height(190.0).auto_shrink([false, true]).show(ui, |ui| {
         for l in &mut plan.layers {
             ui.horizontal(|ui| {

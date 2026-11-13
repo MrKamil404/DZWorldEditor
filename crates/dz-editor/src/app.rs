@@ -36,6 +36,8 @@ pub enum Mode {
     Shapes,
     KeyPoints,
     Satellite,
+    /// The server mission: economy, spawns, territories and the rest.
+    Mission,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -462,6 +464,8 @@ pub struct App {
     pub synthetic: Vec<egui::Event>,
     /// Frame times collected by automated checks.
     pub perf: Option<Vec<f32>>,
+    /// The mission editor.
+    pub mission: crate::mission_ui::MissionState,
 }
 
 impl App {
@@ -500,7 +504,7 @@ impl App {
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
-            last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None,
+            last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(),
             settings,
         };
         app.rescan_assets();
@@ -1274,7 +1278,7 @@ impl App {
         } else {
             SaveParts::ALL
         };
-        match project::save(&doc.world, &dir, parts) {
+        match project::save(&doc.world, &dir, parts).and_then(|_| project::save_mission(&mut doc.world, &dir)) {
             Ok(()) => {
                 doc.dirty = Dirty::default();
                 doc.dir = Some(dir.clone());
@@ -1300,12 +1304,14 @@ impl App {
     }
 
     pub fn undo(&mut self) {
+        crate::mission_ui::flush(self);
         let Some(doc) = &mut self.doc else { return };
         if let Some(t) = doc.history.undo(&mut doc.world) {
             self.apply_touched(t);
         }
     }
     pub fn redo(&mut self) {
+        crate::mission_ui::flush(self);
         let Some(doc) = &mut self.doc else { return };
         if let Some(t) = doc.history.redo(&mut doc.world) {
             self.apply_touched(t);
@@ -1866,7 +1872,15 @@ impl App {
         let (assets, db) = (self.assets.clone(), self.db.clone());
         self.spawn(t("Importing map"), move |job| {
             let w = dz_core::import::import_plan(&plan, &assets, &db, job)?;
-            Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
+            Ok(Box::new(move |app: &mut App| {
+                // Tiles over the surface limit are marked in the top view straight away.
+                let over = dz_core::mask_limit::scan(&w);
+                app.open_world(w, None);
+                if !over.is_empty() {
+                    app.warn(tf("{0} texture tiles use more than the surfaces allowed; they are marked in the 2D view and Project settings can fix them", &[&over.len().to_string()]));
+                    app.tile_issues = over;
+                }
+            }) as Finish)
         });
     }
 
@@ -2382,7 +2396,18 @@ impl App {
             let id = w.meta.map_id.clone();
             dz_core::build::build_pbo(&paths, &id, job)?;
             let session = if run {
-                dz_core::build::prepare_mission(&paths, &id, w.meta.spawn, job)?;
+                match &w.mission {
+                    // The mission of the project, when it has one.
+                    Some(m) => {
+                        let target = paths.dayz.join("mpmissions").join(format!("dayzOffline.{id}"));
+                        job.log(format!("Mission: {}", target.display()));
+                        let mut m = (**m).clone();
+                        m.write(&target, false, false)?;
+                    }
+                    None => {
+                        dz_core::build::prepare_mission(&paths, &id, w.meta.spawn, job)?;
+                    }
+                }
                 Some(dz_core::build::launch(&paths, &id, &data_dir().join("session").join(&id), client, &mods, job)?)
             } else {
                 None

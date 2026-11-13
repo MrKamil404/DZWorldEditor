@@ -1,4 +1,8 @@
 {
+ "#name is the server name, #tmin the minutes left to the shutdown. Times are in minutes.": {
+  "de": "#name ist der Servername, #tmin die Minuten bis zum Herunterfahren. Zeiten in Minuten.",
+  "pl": "#name to nazwa serwera, #tmin minuty do wyłączenia. Czasy są w minutach."
+ },
  "(from the base world)": {
   "de": "(aus der Basiswelt)",
   "pl": "(ze świata bazowego)"
@@ -14,6 +18,22 @@
  "0 makes the edge an even band.": {
   "de": "0 ergibt einen gleichmäßigen Streifen.",
   "pl": "0 oznacza równy pas."
+ },
+ "1 lets food go bad.": {
+  "de": "1 lässt Essen verderben.",
+  "pl": "1 pozwala jedzeniu się psuć."
+ },
+ "1 puts loot on the proxies of buildings.": {
+  "de": "1 legt Beute auf die Proxys der Gebäude.",
+  "pl": "1 kładzie loot na proxy budynków."
+ },
+ "1 starts the server idle.": {
+  "de": "1 startet den Server im Leerlauf.",
+  "pl": "1 uruchamia serwer w trybie bezczynności."
+ },
+ "1 updates the wetness and temperature of the world.": {
+  "de": "1 aktualisiert Nässe und Temperatur der Welt.",
+  "pl": "1 aktualizuje wilgotność i temperaturę świata."
  },
  "1. Export files": {
   "de": "1. Dateien exportieren",
@@ -55,6 +75,10 @@
   "de": "Ein eingebautes Preset. Dupliziere es für eine eigene Version.",
   "pl": "Preset wbudowany. Zduplikuj go, aby zrobić własną wersję."
  },
+ "A contaminated area around each selected shape of the Shapes mode.": {
+  "de": "Ein verseuchtes Gebiet um jede in Formen ausgewählte Form.",
+  "pl": "Strefa skażenia wokół każdego kształtu zaznaczonego w trybie Kształty."
+ },
  "A file of that name is already there; choose another name or load it.": {
   "de": "Eine Datei mit diesem Namen existiert bereits; wähle einen anderen Namen oder lade sie.",
   "pl": "Plik o tej nazwie już istnieje; wybierz inną nazwę albo go wczytaj."
@@ -79,33 +103,89 @@
   "de": "Ein Meter Brücke zählt so viele Meter Straße. Senken, wenn billige Erdarbeiten die Straße in Täler statt darüber führen.",
   "pl": "Metr mostu liczy się jak tyle metrów drogi. Zmniejsz, gdy tanie roboty ziemne sprowadzają drogę w doliny zamiast nad nimi."
  },
+ "A mission holds the economy, spawns, territories and settings the server reads from mpmissions.": {
+  "de": "Eine Mission enthält Wirtschaft, Spawns, Territorien und Einstellungen, die der Server aus mpmissions liest.",
+  "pl": "Misja zawiera ekonomię, spawny, terytoria i ustawienia, które serwer czyta z mpmissions."
+ },
  "A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched.": {
   "de": "Ein Modifikator ebnet das Gelände unter dem Objekt und folgt ihm. Das modellierte Gelände bleibt unverändert.",
   "pl": "Modyfikator wyrównuje teren pod obiektem i podąża za nim. Rzeźbiony teren pozostaje nienaruszony."
+ },
+ "A new mission was made for the map.": {
+  "de": "Eine neue Mission für die Karte wurde erstellt.",
+  "pl": "Utworzono nową misję dla mapy."
  },
  "A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route.": {
   "de": "Eine am Anfang oder Ende verlängerte Route behält ihre Modelle; Neu einpassen legt Modelle nur vom alten Ende zu den neuen Punkten. Das Verschieben anderer Punkte passt weiterhin die ganze Route ein.",
   "pl": "Trasa przedłużona na początku lub końcu zachowuje swoje modele; Dopasuj ponownie układa modele tylko od starego końca do nowych punktów. Przesunięcie innych punktów nadal dopasowuje całą trasę."
  },
+ "A spawn of event {0} is outside the map ({1}, {2})": {
+  "de": "Ein Spawn des Events {0} liegt außerhalb der Karte ({1}, {2})",
+  "pl": "Spawn eventu {0} leży poza mapą ({1}, {2})"
+ },
+ "A spawn of event {0} places group {1} but has no height (y)": {
+  "de": "Ein Spawn des Events {0} setzt Gruppe {1}, hat aber keine Höhe (y)",
+  "pl": "Spawn eventu {0} stawia grupę {1}, ale nie ma wysokości (y)"
+ },
+ "A window of its own, which can go outside the program and onto another screen": {
+  "de": "Ein eigenes Fenster, das außerhalb des Programms und auf einem anderen Bildschirm stehen kann",
+  "pl": "Osobne okno, które może wyjść poza program i na inny ekran"
+ },
+ "A zone at each key point of the kinds ticked, in the file and territory of the zone tool.": {
+  "de": "Eine Zone an jedem Schlüsselpunkt der gewählten Arten, in Datei und Territorium des Zonenwerkzeugs.",
+  "pl": "Strefa przy każdym punkcie kluczowym zaznaczonych typów, w pliku i terytorium narzędzia stref."
+ },
  "About": {
   "de": "Über",
   "pl": "O programie"
+ },
+ "Adapt a mission of another map...": {
+  "de": "Mission einer anderen Karte anpassen...",
+  "pl": "Dostosuj misję innej mapy..."
  },
  "Add": {
   "de": "Hinzufügen",
   "pl": "Dodaj"
  },
+ "Add a file...": {
+  "de": "Datei hinzufügen...",
+  "pl": "Dodaj plik..."
+ },
  "Add a scene from the camera": {
   "de": "Szene von der Kamera hinzufügen",
   "pl": "Dodaj scenę z kamery"
+ },
+ "Add and remove": {
+  "de": "Hinzufügen und entfernen",
+  "pl": "Dodawanie i usuwanie"
  },
  "Add area": {
   "de": "Gebiet hinzufügen",
   "pl": "Dodaj obszar"
  },
+ "Add child": {
+  "de": "Kind hinzufügen",
+  "pl": "Dodaj dziecko"
+ },
  "Add edge preset": {
   "de": "Rand-Preset hinzufügen",
   "pl": "Dodaj preset granicy"
+ },
+ "Add effect area": {
+  "de": "Effektgebiet hinzufügen",
+  "pl": "Dodaj strefę efektu"
+ },
+ "Add empty prototypes": {
+  "de": "Leere Prototypen hinzufügen",
+  "pl": "Dodaj puste prototypy"
+ },
+ "Add event spawn": {
+  "de": "Event-Spawn hinzufügen",
+  "pl": "Dodaj spawn eventu"
+ },
+ "Add file": {
+  "de": "Datei hinzufügen",
+  "pl": "Dodaj plik"
  },
  "Add generator": {
   "de": "Generator hinzufügen",
@@ -131,6 +211,14 @@
   "de": "Modifikator zur Auswahl hinzufügen",
   "pl": "Dodaj modyfikator do zaznaczenia"
  },
+ "Add object": {
+  "de": "Objekt hinzufügen",
+  "pl": "Dodaj obiekt"
+ },
+ "Add player spawn": {
+  "de": "Spieler-Spawn hinzufügen",
+  "pl": "Dodaj spawn gracza"
+ },
  "Add preset": {
   "de": "Preset hinzufügen",
   "pl": "Dodaj preset"
@@ -138,6 +226,10 @@
  "Add rule": {
   "de": "Regel hinzufügen",
   "pl": "Dodaj regułę"
+ },
+ "Add safe position": {
+  "de": "Sichere Position hinzufügen",
+  "pl": "Dodaj bezpieczną pozycję"
  },
  "Add selected model": {
   "de": "Gewähltes Modell hinzufügen",
@@ -159,6 +251,14 @@
   "de": "Geländemodifikatoren hinzufügen",
   "pl": "Dodaj modyfikatory terenu"
  },
+ "Add to a group": {
+  "de": "Zu einer Gruppe hinzufügen",
+  "pl": "Dodaj do grupy"
+ },
+ "Add to event group": {
+  "de": "Zur Eventgruppe hinzufügen",
+  "pl": "Dodaj do grupy eventu"
+ },
  "Add to folder": {
   "de": "Zum Ordner hinzufügen",
   "pl": "Dodaj do folderu"
@@ -171,6 +271,14 @@
   "de": "Zum Projekt hinzufügen",
   "pl": "Dodaj do projektu"
  },
+ "Add to {0}": {
+  "de": "Zu {0} hinzufügen",
+  "pl": "Dodaj do {0}"
+ },
+ "Add trigger": {
+  "de": "Auslöser hinzufügen",
+  "pl": "Dodaj wyzwalacz"
+ },
  "Add your own brushes: grey pictures, white works fully, black not at all. They are copied to {0}": {
   "de": "Eigene Pinsel hinzufügen: Graustufenbilder, Weiß wirkt voll, Schwarz gar nicht. Sie werden nach {0} kopiert",
   "pl": "Dodaj własne pędzle: obrazki w skali szarości, biel działa w pełni, czerń wcale. Są kopiowane do {0}"
@@ -178,6 +286,10 @@
  "Add zone": {
   "de": "Zone hinzufügen",
   "pl": "Dodaj strefę"
+ },
+ "Add zones": {
+  "de": "Zonen hinzufügen",
+  "pl": "Dodaj strefy"
  },
  "Added {0} to {1}": {
   "de": "{0} zu {1} hinzugefügt",
@@ -198,6 +310,10 @@
  "All": {
   "de": "Alle",
   "pl": "Wszystkie"
+ },
+ "All files": {
+  "de": "Alle Dateien",
+  "pl": "Wszystkie pliki"
  },
  "All files...": {
   "de": "Alle Dateien...",
@@ -239,6 +355,10 @@
   "de": "Ein an seiner Form gehaltenes Objekt gleitet über den Boden, wie mit dem Punkt des Gizmos.",
   "pl": "Obiekt złapany za swój kształt przesuwa się po terenie, tak jak kropką gizmo."
  },
+ "And a spawn of {0} at the first object": {
+  "de": "Und ein Spawn von {0} am ersten Objekt",
+  "pl": "Oraz spawn {0} przy pierwszym obiekcie"
+ },
  "Angle": {
   "de": "Winkel",
   "pl": "Kąt"
@@ -246,6 +366,14 @@
  "Angle step with {0}": {
   "de": "Winkelschritt mit {0}",
   "pl": "Skok kąta z {0}"
+ },
+ "Animal and infected territories: which files in env each kind of animal uses.": {
+  "de": "Territorien von Tieren und Infizierten: welche Dateien in env jede Tierart nutzt.",
+  "pl": "Terytoria zwierząt i zarażonych: które pliki z env używa każdy rodzaj zwierzęcia."
+ },
+ "Animals": {
+  "de": "Tiere",
+  "pl": "Zwierzęta"
  },
  "Another task is still running": {
   "de": "Eine andere Aufgabe läuft noch",
@@ -267,13 +395,29 @@
   "de": "Gilt für das nächste Einbrennen. Einen eingebrannten Modifikator in der Hierarchie wählen, um ihn zu ändern.",
   "pl": "Dotyczy następnego wypalenia. Wybierz wypalony modyfikator w hierarchii, żeby go zmienić."
  },
+ "Apply": {
+  "de": "Anwenden",
+  "pl": "Zastosuj"
+ },
  "Archipelago": {
   "de": "Archipel",
   "pl": "Archipelag"
  },
+ "Area flags": {
+  "de": "Gebietsflags",
+  "pl": "Flagi obszarów"
+ },
+ "Area flags (2D view)": {
+  "de": "Gebietsflags (2D-Ansicht)",
+  "pl": "Flagi obszarów (widok 2D)"
+ },
  "Area radius": {
   "de": "Gebietsradius",
   "pl": "Promień obszaru"
+ },
+ "Area {0} has no position": {
+  "de": "Gebiet {0} hat keine Position",
+  "pl": "Strefa {0} nie ma pozycji"
  },
  "Area: High-density Cluster": {
   "de": "Fläche: Dichte Gruppen",
@@ -303,6 +447,10 @@
   "de": "Gebiete aus Formen",
   "pl": "Obszary z kształtów"
  },
+ "Areas from the selected shapes": {
+  "de": "Gebiete aus den ausgewählten Formen",
+  "pl": "Strefy z zaznaczonych kształtów"
+ },
  "As it is": {
   "de": "Wie es ist",
   "pl": "Bez zmian"
@@ -315,6 +463,10 @@
   "de": "Bei der Kamera",
   "pl": "Przy kamerze"
  },
+ "Attempts per type and pass to respawn loot.": {
+  "de": "Versuche pro Typ und Durchlauf, Beute neu zu spawnen.",
+  "pl": "Próby odrodzenia lootu na typ i przebieg."
+ },
  "Author": {
   "de": "Autor",
   "pl": "Autor"
@@ -326,6 +478,10 @@
  "Back": {
   "de": "Zurück",
   "pl": "Wstecz"
+ },
+ "Back into the main window": {
+  "de": "Zurück ins Hauptfenster",
+  "pl": "Z powrotem do głównego okna"
  },
  "Back to the defaults": {
   "de": "Auf Standard zurücksetzen",
@@ -387,6 +543,10 @@
   "de": "Breite des Uferwalls m",
   "pl": "Szerokość obwałowania m"
  },
+ "Base building": {
+  "de": "Basenbau",
+  "pl": "Budowanie baz"
+ },
  "Base height": {
   "de": "Grundhöhe",
   "pl": "Wysokość bazowa"
@@ -434,6 +594,10 @@
  "Box": {
   "de": "Rechteck",
   "pl": "Prostokąt"
+ },
+ "Breadcrumbs": {
+  "de": "Brotkrumen",
+  "pl": "Punkty pośrednie (breadcrumbs)"
  },
  "Bridge cost": {
   "de": "Brückenkosten",
@@ -559,9 +723,17 @@
   "de": "Canyons",
   "pl": "Kaniony"
  },
+ "Cargo, attachments and damage items spawn with; hoarder containers.": {
+  "de": "Ladung, Anbauteile und Schaden, mit denen Gegenstände spawnen; Hortbehälter.",
+  "pl": "Ładunek, dodatki i uszkodzenia, z jakimi pojawiają się przedmioty; pojemniki do chomikowania."
+ },
  "Carve rivers": {
   "de": "Flüsse eingraben",
   "pl": "Wyrzeźb rzeki"
+ },
+ "Category": {
+  "de": "Kategorie",
+  "pl": "Kategoria"
  },
  "Cell": {
   "de": "Zelle",
@@ -575,9 +747,21 @@
   "de": "Chance pro Knoten %",
   "pl": "Szansa na węzeł %"
  },
+ "Change the selected types ({0})": {
+  "de": "Ausgewählte Typen ändern ({0})",
+  "pl": "Zmień zaznaczone typy ({0})"
+ },
+ "Change types": {
+  "de": "Typen ändern",
+  "pl": "Zmień typy"
+ },
  "Changes: {0}": {
   "de": "Ändert: {0}",
   "pl": "Zmienia: {0}"
+ },
+ "Check": {
+  "de": "Prüfung",
+  "pl": "Sprawdzenie"
  },
  "Check for updates": {
   "de": "Nach Updates suchen",
@@ -595,6 +779,10 @@
   "de": "Suche nach Updates...",
   "pl": "Sprawdzanie aktualizacji..."
  },
+ "Children": {
+  "de": "Kinder",
+  "pl": "Dzieci"
+ },
  "Choose a Terrain Builder or built map folder": {
   "de": "Terrain-Builder- oder Kartenordner wählen",
   "pl": "Wybierz folder Terrain Buildera lub zbudowanej mapy"
@@ -610,6 +798,14 @@
  "Choose a heightmap or a WRP.": {
   "de": "Wähle eine Höhenkarte oder eine WRP.",
   "pl": "Wybierz mapę wysokości lub WRP."
+ },
+ "Choose a mapgroupproto.xml": {
+  "de": "mapgroupproto.xml wählen",
+  "pl": "Wybierz mapgroupproto.xml"
+ },
+ "Choose a mission folder": {
+  "de": "Missionsordner wählen",
+  "pl": "Wybierz folder misji"
  },
  "Choose a model for the line first": {
   "de": "Zuerst ein Modell für die Linie wählen",
@@ -635,6 +831,14 @@
   "de": "Pinselbilder wählen",
   "pl": "Wybierz obrazki pędzli"
  },
+ "Choose the event first.": {
+  "de": "Wähle zuerst das Event.",
+  "pl": "Najpierw wybierz event."
+ },
+ "Choose the mpmissions folder": {
+  "de": "mpmissions-Ordner wählen",
+  "pl": "Wybierz folder mpmissions"
+ },
  "Choose the source point in the preview first": {
   "de": "Zuerst den Quellpunkt in der Vorschau wählen",
   "pl": "Najpierw wybierz punkt źródłowy w podglądzie"
@@ -647,9 +851,29 @@
   "de": "Kreis",
   "pl": "Koło"
  },
+ "Class name": {
+  "de": "Klassenname",
+  "pl": "Nazwa klasy"
+ },
+ "Class names with _DE": {
+  "de": "Klassennamen mit _DE",
+  "pl": "Nazwy klas z _DE"
+ },
+ "Classes of the selected objects": {
+  "de": "Klassen der ausgewählten Objekte",
+  "pl": "Klasy zaznaczonych obiektów"
+ },
  "Clear project areas": {
   "de": "Projektgebiete löschen",
   "pl": "Wyczyść obszary projektu"
+ },
+ "Clear the flag everywhere": {
+  "de": "Flag überall löschen",
+  "pl": "Wyczyść flagę wszędzie"
+ },
+ "Clear the flag in the selected shapes": {
+  "de": "Flag in den ausgewählten Formen löschen",
+  "pl": "Wyczyść flagę w zaznaczonych kształtach"
  },
  "Clear the selection": {
   "de": "Auswahl aufheben",
@@ -675,6 +899,10 @@
   "de": "Auf einen Kurzbefehl klicken und die neue Taste mit ihren Modifikatoren drücken. Esc bricht ab, Rücktaste entfernt die Taste.",
   "pl": "Kliknij skrót i naciśnij nowy klawisz z modyfikatorami. Esc anuluje, Backspace zostawia akcję bez klawisza."
  },
+ "Click a type in the table.": {
+  "de": "Klicke einen Typ in der Tabelle.",
+  "pl": "Kliknij typ w tabeli."
+ },
  "Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it.": {
   "de": "In die Vorschau klicken, um die Quelle zu wählen, dann auf der Karte malen. Das Mausrad zoomt die Vorschau, Ziehen verschiebt sie.",
   "pl": "Kliknij w podglądzie, żeby wybrać miejsce źródłowe, potem maluj na mapie. Kółko przybliża podgląd, przeciąganie go przesuwa."
@@ -691,9 +919,33 @@
   "de": "Auf die Karte klicken",
   "pl": "Kliknij na mapie"
  },
+ "Click on the map adds a contaminated area.": {
+  "de": "Ein Klick auf die Karte fügt ein verseuchtes Gebiet hinzu.",
+  "pl": "Kliknięcie na mapie dodaje strefę skażenia."
+ },
  "Click on the map adds a key point.": {
   "de": "Ein Klick auf die Karte fügt einen Keypoint hinzu.",
   "pl": "Kliknięcie na mapie dodaje keypoint."
+ },
+ "Click on the map adds a position players are moved to out of an area.": {
+  "de": "Ein Klick auf die Karte fügt eine Position hinzu, auf die Spieler aus einem Gebiet versetzt werden.",
+  "pl": "Kliknięcie na mapie dodaje pozycję, na którą przenoszeni są gracze ze strefy."
+ },
+ "Click on the map adds a spawn of the event.": {
+  "de": "Ein Klick auf die Karte fügt einen Spawn des Events hinzu.",
+  "pl": "Kliknięcie na mapie dodaje spawn eventu."
+ },
+ "Click on the map adds a spawn position to the group.": {
+  "de": "Ein Klick auf die Karte fügt der Gruppe eine Spawnposition hinzu.",
+  "pl": "Kliknięcie na mapie dodaje pozycję spawnu do grupy."
+ },
+ "Click on the map adds a trigger box on the ground.": {
+  "de": "Ein Klick auf die Karte fügt eine Auslöserbox am Boden hinzu.",
+  "pl": "Kliknięcie na mapie dodaje prostopadłościan wyzwalacza na ziemi."
+ },
+ "Click on the map adds a zone.": {
+  "de": "Ein Klick auf die Karte fügt eine Zone hinzu.",
+  "pl": "Kliknięcie na mapie dodaje strefę."
  },
  "Click on the map to place it; it can also be dragged onto the map.": {
   "de": "Klicke auf die Karte, um es zu platzieren; es lässt sich auch auf die Karte ziehen.",
@@ -706,6 +958,10 @@
  "Click or drag to take the camera there; the wheel zooms, the right button moves the map.": {
   "de": "Klicken oder ziehen bringt die Kamera dorthin; das Mausrad zoomt, die rechte Taste verschiebt die Karte.",
   "pl": "Kliknij lub przeciągnij, aby przenieść tam kamerę; kółko przybliża, prawy przycisk przesuwa mapę."
+ },
+ "Click picks a place, drag moves it, Delete removes it.": {
+  "de": "Klick wählt einen Ort, Ziehen verschiebt ihn, Entf entfernt ihn.",
+  "pl": "Kliknięcie wybiera miejsce, przeciąganie je przesuwa, Delete usuwa."
  },
  "Click removes this sample": {
   "de": "Klick entfernt die Probe",
@@ -763,6 +1019,10 @@
   "de": "Gruppen pro Hektar",
   "pl": "Skupiska na hektar"
  },
+ "Clusters too (mapgroupcluster.xml)": {
+  "de": "Auch Cluster (mapgroupcluster.xml)",
+  "pl": "Także klastry (mapgroupcluster.xml)"
+ },
  "Coast": {
   "de": "Küste",
   "pl": "Wybrzeże"
@@ -779,6 +1039,10 @@
   "de": "Bestätigen",
   "pl": "Potwierdź"
  },
+ "Contaminated and other effect areas, and the safe positions players are moved to.": {
+  "de": "Verseuchte und andere Effektgebiete sowie die sicheren Positionen, auf die Spieler versetzt werden.",
+  "pl": "Strefy skażenia i inne strefy efektów oraz bezpieczne pozycje, na które przenoszeni są gracze."
+ },
  "Content Browser": {
   "de": "Inhaltsbrowser",
   "pl": "Biblioteka"
@@ -787,6 +1051,10 @@
   "de": "Höhenlinien",
   "pl": "Warstwice"
  },
+ "Copies a file into the mission, e.g. a types file of a mod.": {
+  "de": "Kopiert eine Datei in die Mission, z. B. eine Typendatei einer Mod.",
+  "pl": "Kopiuje plik do misji, np. plik typów moda."
+ },
  "Copy": {
   "de": "Kopieren",
   "pl": "Kopiuj"
@@ -794,6 +1062,14 @@
  "Copy from": {
   "de": "Kopieren aus",
   "pl": "Kopiuj z"
+ },
+ "Copy prototypes": {
+  "de": "Prototypen kopieren",
+  "pl": "Kopiuj prototypy"
+ },
+ "Copy prototypes from another mapgroupproto.xml...": {
+  "de": "Prototypen aus einer anderen mapgroupproto.xml kopieren...",
+  "pl": "Kopiuj prototypy z innego mapgroupproto.xml..."
  },
  "Copy the path": {
   "de": "Pfad kopieren",
@@ -806,6 +1082,10 @@
  "Could not check for updates": {
   "de": "Updates konnten nicht geprüft werden",
   "pl": "Nie udało się sprawdzić aktualizacji"
+ },
+ "Count cells": {
+  "de": "Zellen zählen",
+  "pl": "Policz komórki"
  },
  "Coverage": {
   "de": "Abdeckung",
@@ -839,6 +1119,10 @@
   "de": "Benutzerdefiniert",
   "pl": "Własne"
  },
+ "Custom spawns": {
+  "de": "Eigene Spawns",
+  "pl": "Własne spawny"
+ },
  "Cut": {
   "de": "Nur abtragen",
   "pl": "Tylko obniżaj"
@@ -858,6 +1142,10 @@
  "Date and time": {
   "de": "Datum und Uhrzeit",
   "pl": "Data i godzina"
+ },
+ "Date reset to": {
+  "de": "Datum zurücksetzen auf",
+  "pl": "Reset daty na"
  },
  "DayZ": {
   "de": "DayZ",
@@ -890,6 +1178,10 @@
  "Delete": {
   "de": "Löschen",
   "pl": "Usuń"
+ },
+ "Delete event": {
+  "de": "Event löschen",
+  "pl": "Usuń event"
  },
  "Delete folder": {
   "de": "Ordner löschen",
@@ -975,6 +1267,14 @@
   "de": "Auch die Route {0} löschen",
   "pl": "Usuń także trasę {0}"
  },
+ "Delete the selected types ({0})": {
+  "de": "Ausgewählte Typen löschen ({0})",
+  "pl": "Usuń zaznaczone typy ({0})"
+ },
+ "Delete types": {
+  "de": "Typen löschen",
+  "pl": "Usuń typy"
+ },
  "Delete with it:": {
   "de": "Mit löschen:",
   "pl": "Usuń razem z nim:"
@@ -1043,6 +1343,18 @@
   "de": "Abstand vom Anfang m",
   "pl": "Odległość od początku m"
  },
+ "Distance in metres from a player at which infected zones spawn.": {
+  "de": "Entfernung in Metern vom Spieler, ab der Infiziertenzonen spawnen.",
+  "pl": "Odległość w metrach od gracza, przy której pojawiają się strefy zarażonych."
+ },
+ "Distance in metres from a player within which no loot spawns.": {
+  "de": "Entfernung in Metern vom Spieler, in der keine Beute spawnt.",
+  "pl": "Odległość w metrach od gracza, w której nie pojawia się loot."
+ },
+ "Distance in metres from a player within which nothing is cleaned up.": {
+  "de": "Entfernung in Metern vom Spieler, in der nichts aufgeräumt wird.",
+  "pl": "Odległość w metrach od gracza, w której nic nie jest sprzątane."
+ },
  "Ditch depth": {
   "de": "Grabentiefe",
   "pl": "Głębokość rowu"
@@ -1062,6 +1374,10 @@
  "Downloading {0}": {
   "de": "{0} wird heruntergeladen",
   "pl": "Pobieranie {0}"
+ },
+ "Drag on the map paints the flag; with Shift it erases.": {
+  "de": "Ziehen auf der Karte malt das Flag; mit Umschalt wird radiert.",
+  "pl": "Przeciąganie po mapie maluje flagę; z Shift ją wymazuje."
  },
  "Drag selects": {
   "de": "Ziehen wählt",
@@ -1131,6 +1447,10 @@
   "de": "Straße duplizieren",
   "pl": "Powiel drogę"
  },
+ "Dynamic events: vehicles, wrecks, animals, infected and their children.": {
+  "de": "Dynamische Events: Fahrzeuge, Wracks, Tiere, Infizierte und ihre Kinder.",
+  "pl": "Dynamiczne eventy: pojazdy, wraki, zwierzęta, zarażeni i ich dzieci."
+ },
  "Each leaves a gap in the fence with its own object, or two leaves of a gate.": {
   "de": "Jede lässt eine Lücke im Zaun mit eigenem Objekt oder zwei Torflügeln.",
   "pl": "Każda zostawia w płocie przerwę z własnym obiektem albo dwoma skrzydłami bramy."
@@ -1143,6 +1463,10 @@
   "de": "Jede Shape-Ebene als Shapefile.",
   "pl": "Każda warstwa kształtów jako shapefile."
  },
+ "Each spawn of a static event places the objects of its group, offset from the spawn along the axes of the map; y is the height over the spawn, without it the object stands on the ground.": {
+  "de": "Jeder Spawn eines statischen Events setzt die Objekte seiner Gruppe, versetzt vom Spawn entlang der Kartenachsen; y ist die Höhe über dem Spawn, ohne sie steht das Objekt am Boden.",
+  "pl": "Każdy spawn eventu statycznego stawia obiekty swojej grupy, przesunięte od spawnu wzdłuż osi mapy; y to wysokość nad spawnem, bez niej obiekt stoi na ziemi."
+ },
  "Each surface in its colour from layers.cfg.": {
   "de": "Jede Oberfläche in ihrer Farbe aus layers.cfg.",
   "pl": "Każda nawierzchnia w swoim kolorze z layers.cfg."
@@ -1154,6 +1478,14 @@
  "Easting offset": {
   "de": "Easting-Versatz",
   "pl": "Przesunięcie easting"
+ },
+ "Economy": {
+  "de": "Wirtschaft",
+  "pl": "Ekonomia"
+ },
+ "Economy files written by the game": {
+  "de": "Wirtschaftsdateien, die das Spiel schreibt",
+  "pl": "Pliki ekonomii zapisywane przez grę"
  },
  "Edge blend in a shape": {
   "de": "Randübergang in einer Form",
@@ -1199,6 +1531,14 @@
   "de": "Alle bearbeiten",
   "pl": "Edytuj wszystkie"
  },
+ "Edit event": {
+  "de": "Event bearbeiten",
+  "pl": "Edytuj event"
+ },
+ "Edit event group": {
+  "de": "Eventgruppe bearbeiten",
+  "pl": "Edycja grupy eventu"
+ },
  "Edit key point": {
   "de": "Keypoint bearbeiten",
   "pl": "Edycja keypointu"
@@ -1219,6 +1559,14 @@
   "de": "Form bearbeiten",
   "pl": "Edycja kształtu"
  },
+ "Edit the group": {
+  "de": "Gruppe bearbeiten",
+  "pl": "Edytuj grupę"
+ },
+ "Edit type": {
+  "de": "Typ bearbeiten",
+  "pl": "Edytuj typ"
+ },
  "Editable": {
   "de": "Bearbeitbar",
   "pl": "Edytowalna"
@@ -1226,6 +1574,14 @@
  "Effect": {
   "de": "Wirkung",
   "pl": "Efekt"
+ },
+ "Effect area": {
+  "de": "Effektgebiet",
+  "pl": "Strefa efektu"
+ },
+ "Effect areas": {
+  "de": "Effektgebiete",
+  "pl": "Strefy efektów"
  },
  "Elevation": {
   "de": "Höhe über Gelände",
@@ -1251,6 +1607,10 @@
   "de": "Aktiviert",
   "pl": "Włączony"
  },
+ "Erase": {
+  "de": "Radieren",
+  "pl": "Wymazuj"
+ },
  "Erosion": {
   "de": "Erosion",
   "pl": "Erozja"
@@ -1262,6 +1622,66 @@
  "Evening": {
   "de": "Abend",
   "pl": "Wieczór"
+ },
+ "Event": {
+  "de": "Event",
+  "pl": "Event"
+ },
+ "Event group": {
+  "de": "Eventgruppe",
+  "pl": "Grupa eventu"
+ },
+ "Event group (cfgeventgroups)": {
+  "de": "Eventgruppe (cfgeventgroups)",
+  "pl": "Grupa eventu (cfgeventgroups)"
+ },
+ "Event groups (cfgeventgroups.xml)": {
+  "de": "Eventgruppen (cfgeventgroups.xml)",
+  "pl": "Grupy eventów (cfgeventgroups.xml)"
+ },
+ "Event spawn": {
+  "de": "Event-Spawn",
+  "pl": "Spawn eventu"
+ },
+ "Event spawns": {
+  "de": "Event-Spawns",
+  "pl": "Spawny eventów"
+ },
+ "Event {0} has fixed positions but no spawns in cfgeventspawns.xml": {
+  "de": "Event {0} hat feste Positionen, aber keine Spawns in cfgeventspawns.xml",
+  "pl": "Event {0} ma stałe pozycje, ale brak spawnów w cfgeventspawns.xml"
+ },
+ "Event {0} uses group {1}, which cfgeventgroups.xml does not define": {
+  "de": "Event {0} nutzt Gruppe {1}, die cfgeventgroups.xml nicht definiert",
+  "pl": "Event {0} używa grupy {1}, której nie ma w cfgeventgroups.xml"
+ },
+ "Event {0}: child {1} is not in the type files": {
+  "de": "Event {0}: Kind {1} ist nicht in den Typendateien",
+  "pl": "Event {0}: dziecka {1} nie ma w plikach typów"
+ },
+ "Events": {
+  "de": "Events",
+  "pl": "Eventy"
+ },
+ "Every building of the map that can hold loot, with its position and angle.": {
+  "de": "Jedes Gebäude der Karte, das Beute haben kann, mit Position und Winkel.",
+  "pl": "Każdy budynek mapy, który może mieć loot, z pozycją i kątem."
+ },
+ "Every cluster object of the map, made by the economy tools.": {
+  "de": "Jedes Clusterobjekt der Karte, erstellt von den Wirtschaftswerkzeugen.",
+  "pl": "Każdy obiekt klastra na mapie, utworzony przez narzędzia ekonomii."
+ },
+ "Every item the economy spawns: nominal, min, lifetime, restock, flags, category, usage, value and tags.": {
+  "de": "Jeder Gegenstand, den die Wirtschaft spawnt: nominal, min, lifetime, restock, Flags, Kategorie, usage, value und Tags.",
+  "pl": "Każdy przedmiot, który tworzy ekonomia: nominal, min, lifetime, restock, flagi, kategoria, usage, value i tagi."
+ },
+ "Every object a static event places is drawn as its model at each spawn; the class gives the model through the configs of the work drive.": {
+  "de": "Jedes Objekt, das ein statisches Event setzt, wird an jedem Spawn als sein Modell gezeichnet; das Modell ergibt sich aus der Klasse in den Configs des Arbeitslaufwerks.",
+  "pl": "Każdy obiekt stawiany przez event statyczny jest rysowany jako model przy każdym spawnie; model wynika z klasy w configach dysku roboczego."
+ },
+ "Every placed building whose class has a prototype goes into mapgrouppos.xml, with the position and angles the game would write.": {
+  "de": "Jedes platzierte Gebäude, dessen Klasse einen Prototyp hat, kommt in mapgrouppos.xml, mit Position und Winkeln wie vom Spiel geschrieben.",
+  "pl": "Każdy postawiony budynek, którego klasa ma prototyp, trafia do mapgrouppos.xml z pozycją i kątami, jakie zapisałaby gra."
  },
  "Everywhere except these colours": {
   "de": "Überall außer diesen Farben",
@@ -1347,6 +1767,10 @@
   "de": "Straße wird verlängert",
   "pl": "Przedłużanie drogi"
  },
+ "Extra seconds of logout after a fight.": {
+  "de": "Zusätzliche Sekunden beim Ausloggen nach einem Kampf.",
+  "pl": "Dodatkowe sekundy wylogowania po walce."
+ },
  "Eyedropper": {
   "de": "Pipette",
   "pl": "Pipeta"
@@ -1391,6 +1815,10 @@
   "de": "Grundriss von Gebäuden füllen",
   "pl": "Wypełnij obrys budynków"
  },
+ "Fill the selected shapes": {
+  "de": "Ausgewählte Formen füllen",
+  "pl": "Wypełnij zaznaczone kształty"
+ },
  "Fill up to the level": {
   "de": "Bis zur Höhe auffüllen",
   "pl": "Nasyp do poziomu"
@@ -1411,6 +1839,10 @@
   "de": "Beim Verlängern nur das neue Stück einpassen",
   "pl": "Przy przedłużaniu dopasuj tylko nowy odcinek"
  },
+ "Fit the flags to the map": {
+  "de": "Flags an die Karte anpassen",
+  "pl": "Dopasuj flagi do mapy"
+ },
  "Fix tiles": {
   "de": "Kacheln korrigieren",
   "pl": "Napraw kafle"
@@ -1426,6 +1858,10 @@
  "Fixed water level": {
   "de": "Fester Wasserstand",
   "pl": "Stały poziom wody"
+ },
+ "Flags": {
+  "de": "Flags",
+  "pl": "Flagi"
  },
  "Flatten": {
   "de": "Einebnen",
@@ -1479,6 +1915,10 @@
   "de": "Ordner",
   "pl": "Folder"
  },
+ "Folder name": {
+  "de": "Ordnername",
+  "pl": "Nazwa folderu"
+ },
  "Folder with Terrain Builder template libraries": {
   "de": "Ordner mit Terrain-Builder-Vorlagenbibliotheken",
   "pl": "Folder z bibliotekami szablonów Terrain Buildera"
@@ -1490,6 +1930,14 @@
  "Follow the slope": {
   "de": "Der Neigung folgen",
   "pl": "Podążaj za nachyleniem"
+ },
+ "For a new map: the server writes these files into its storage folder on the next start. Remove the calls once they are written.": {
+  "de": "Für eine neue Karte: Der Server schreibt diese Dateien beim nächsten Start in seinen storage-Ordner. Entferne die Aufrufe, sobald sie geschrieben sind.",
+  "pl": "Dla nowej mapy: serwer zapisze te pliki w folderze storage przy następnym starcie. Usuń wywołania, gdy pliki powstaną."
+ },
+ "For example from a vanilla mission, for buildings of the game.": {
+  "de": "Zum Beispiel aus einer Vanilla-Mission, für Gebäude des Spiels.",
+  "pl": "Na przykład z misji vanilla, dla budynków z gry."
  },
  "Forbidden areas": {
   "de": "Sperrgebiete",
@@ -1543,6 +1991,10 @@
   "de": "Aus den Arten des Projekts",
   "pl": "Z gatunków projektu"
  },
+ "From the selected objects ({0})": {
+  "de": "Aus den ausgewählten Objekten ({0})",
+  "pl": "Z zaznaczonych obiektów ({0})"
+ },
  "Full": {
   "de": "Voll",
   "pl": "Pełna"
@@ -1562,6 +2014,14 @@
  "Furthest from the line": {
   "de": "Am weitesten von der Linie",
   "pl": "Najdalej od linii"
+ },
+ "Gameplay": {
+  "de": "Gameplay",
+  "pl": "Rozgrywka"
+ },
+ "Gameplay settings: stamina, base building, map, UI and more (needs enableCfgGameplayFile).": {
+  "de": "Gameplay-Einstellungen: Ausdauer, Basenbau, Karte, Oberfläche und mehr (benötigt enableCfgGameplayFile).",
+  "pl": "Ustawienia rozgrywki: stamina, budowanie baz, mapa, interfejs i więcej (wymaga enableCfgGameplayFile)."
  },
  "Gap between the pieces. 0 makes them touch, negative values overlap them.": {
   "de": "Abstand zwischen den Teilen. 0 lässt sie aneinanderstoßen, negative Werte überlappen sie.",
@@ -1627,6 +2087,22 @@
   "de": "Generatoren ({0})",
   "pl": "Generatory ({0})"
  },
+ "Give it a height over the spawn": {
+  "de": "Eine Höhe über dem Spawn geben",
+  "pl": "Nadaj wysokość nad spawnem"
+ },
+ "Global numbers of the economy: counts, cleanup times, login and logout times.": {
+  "de": "Globale Werte der Wirtschaft: Anzahlen, Aufräumzeiten, Ein- und Ausloggzeiten.",
+  "pl": "Globalne liczby ekonomii: limity, czasy sprzątania, logowania i wylogowania."
+ },
+ "Globals": {
+  "de": "Globale Werte",
+  "pl": "Zmienne globalne"
+ },
+ "Go to": {
+  "de": "Hingehen",
+  "pl": "Przejdź"
+ },
  "Grade the terrain": {
   "de": "Gelände angleichen",
   "pl": "Wyrównaj teren"
@@ -1663,9 +2139,57 @@
   "de": "Boden folgt dem Objekt",
   "pl": "Teren podąża za obiektem"
  },
+ "Group": {
+  "de": "Gruppe",
+  "pl": "Grupa"
+ },
+ "Group {0} has no objects": {
+  "de": "Gruppe {0} hat keine Objekte",
+  "pl": "Grupa {0} nie ma obiektów"
+ },
+ "Group {0} is not placed by any event spawn": {
+  "de": "Gruppe {0} wird von keinem Event-Spawn gesetzt",
+  "pl": "Grupy {0} nie stawia żaden spawn eventu"
+ },
+ "Group {0} made of {1} objects": {
+  "de": "Gruppe {0} aus {1} Objekten erstellt",
+  "pl": "Utworzono grupę {0} z {1} obiektów"
+ },
+ "Group {0} made of {1} objects; place its spawns with the Event spawn tool.": {
+  "de": "Gruppe {0} aus {1} Objekten erstellt; setze ihre Spawns mit dem Werkzeug Event-Spawn.",
+  "pl": "Utworzono grupę {0} z {1} obiektów; rozmieść jej spawny narzędziem Spawn eventu."
+ },
+ "Group {0} uses {1}, which is not in cfglimitsdefinition.xml": {
+  "de": "Gruppe {0} nutzt {1}, das nicht in cfglimitsdefinition.xml steht",
+  "pl": "Grupa {0} używa {1}, którego nie ma w cfglimitsdefinition.xml"
+ },
+ "Group {0}: child {1} is not in the type files": {
+  "de": "Gruppe {0}: Kind {1} ist nicht in den Typendateien",
+  "pl": "Grupa {0}: dziecka {1} nie ma w plikach typów"
+ },
+ "Groups": {
+  "de": "Gruppen",
+  "pl": "Grupy"
+ },
+ "Groups from key points": {
+  "de": "Gruppen aus Schlüsselpunkten",
+  "pl": "Grupy z punktów kluczowych"
+ },
+ "Groups of objects spawned together by an event, as a train with its wagons.": {
+  "de": "Gruppen von Objekten, die ein Event zusammen spawnt, wie ein Zug mit Wagen.",
+  "pl": "Grupy obiektów tworzonych razem przez event, jak pociąg z wagonami."
+ },
+ "Groups:": {
+  "de": "Gruppen:",
+  "pl": "Grupy:"
+ },
  "Hardness": {
   "de": "Härte",
   "pl": "Twardość"
+ },
+ "Health of the starting items": {
+  "de": "Zustand der Startgegenstände",
+  "pl": "Stan przedmiotów startowych"
  },
  "Height": {
   "de": "Höhe",
@@ -1755,6 +2279,10 @@
   "de": "Wassererosion",
   "pl": "Erozja wodna"
  },
+ "Ignored type {0} is not in the type files": {
+  "de": "Ignorierter Typ {0} ist nicht in den Typendateien",
+  "pl": "Ignorowanego typu {0} nie ma w plikach typów"
+ },
  "Import": {
   "de": "Importieren",
   "pl": "Importuj"
@@ -1779,6 +2307,10 @@
   "de": "Terrain Builder oder fertige Karte importieren...",
   "pl": "Importuj Terrain Builder lub gotową mapę..."
  },
+ "Import a mission...": {
+  "de": "Mission importieren...",
+  "pl": "Importuj misję..."
+ },
  "Import heightmap": {
   "de": "Höhenkarte importieren",
   "pl": "Import mapy wysokości"
@@ -1790,6 +2322,10 @@
  "Import map": {
   "de": "Karte importieren",
   "pl": "Import mapy"
+ },
+ "Import mission": {
+  "de": "Mission importieren",
+  "pl": "Import misji"
  },
  "Import objects": {
   "de": "Objekte importieren",
@@ -1843,6 +2379,10 @@
   "de": "Beim Export einbeziehen",
   "pl": "Uwzględnij w eksporcie"
  },
+ "Infected": {
+  "de": "Infizierte",
+  "pl": "Zarażeni"
+ },
  "Installed. The new version starts after a restart.": {
   "de": "Installiert. Die neue Version startet nach einem Neustart.",
   "pl": "Zainstalowano. Nowa wersja zadziała po ponownym uruchomieniu."
@@ -1866,6 +2406,14 @@
  "Island": {
   "de": "Insel",
   "pl": "Wyspa"
+ },
+ "Items new characters get:": {
+  "de": "Gegenstände neuer Charaktere:",
+  "pl": "Przedmioty nowych postaci:"
+ },
+ "Items spawned per pass when the server starts.": {
+  "de": "Gegenstände pro Durchlauf beim Serverstart.",
+  "pl": "Przedmioty tworzone na przebieg przy starcie serwera."
  },
  "Its addon": {
   "de": "Sein Addon",
@@ -1894,6 +2442,10 @@
  "Keep free of trees": {
   "de": "Baumfrei halten",
   "pl": "Bez drzew"
+ },
+ "Keeps the economy of the mission and drops what was placed on the other map: spawns, zones, areas, map groups and area flags.": {
+  "de": "Behält die Wirtschaft der Mission und verwirft, was auf der anderen Karte platziert war: Spawns, Zonen, Gebiete, Kartengruppen und Gebietsflags.",
+  "pl": "Zachowuje ekonomię misji i usuwa to, co było rozmieszczone na innej mapie: spawny, strefy, obszary, grupy mapy i flagi obszarów."
  },
  "Kept as a mask modifier of this generator: running it again repaints it, deleting it brings the mask back.": {
   "de": "Bleibt als Masken-Modifikator dieses Generators: erneutes Ausführen malt ihn neu, Löschen stellt die Maske wieder her.",
@@ -1959,6 +2511,10 @@
   "de": "Ebenen",
   "pl": "Warstwy"
  },
+ "Least damage of spawned loot, 0..1.": {
+  "de": "Geringster Schaden gespawnter Beute, 0..1.",
+  "pl": "Najmniejsze uszkodzenie lootu, 0..1."
+ },
  "Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it.": {
   "de": "Lässt die im Gelände versunkenen Teile eines Objekts weg, sodass ein halb eingegrabener Pier nur seinen Teil darüber zeigt.",
   "pl": "Pomija części obiektu zagłębione w terenie, więc molo w połowie w ziemi pokazuje tylko część nad nią."
@@ -1995,9 +2551,17 @@
   "de": "Eigene Bibliothek",
   "pl": "Moja biblioteka"
  },
+ "Lifetime": {
+  "de": "Lebensdauer",
+  "pl": "Czas życia"
+ },
  "Lighting": {
   "de": "Beleuchtung",
   "pl": "Oświetlenie"
+ },
+ "Limits": {
+  "de": "Limits",
+  "pl": "Limity"
  },
  "Line": {
   "de": "Linie",
@@ -2067,6 +2631,10 @@
   "de": "Protokoll",
   "pl": "Dziennik"
  },
+ "Longest time in seconds a territory flag keeps the base alive.": {
+  "de": "Längste Zeit in Sekunden, die eine Territoriumsflagge die Basis erhält.",
+  "pl": "Najdłuższy czas w sekundach, przez jaki flaga terytorium utrzymuje bazę."
+ },
  "Longitude": {
   "de": "Längengrad",
   "pl": "Długość geogr."
@@ -2082,6 +2650,26 @@
  "Looks at": {
   "de": "Blickt auf",
   "pl": "Patrzy na"
+ },
+ "Loot (types)": {
+  "de": "Beute (Typen)",
+  "pl": "Loot (typy)"
+ },
+ "Loot of clusters such as fruit trees and stones, and the models that are clusters.": {
+  "de": "Beute von Clustern wie Obstbäumen und Steinen und die Modelle, die Cluster sind.",
+  "pl": "Loot klastrów, takich jak drzewa owocowe i kamienie, oraz modele będące klastrami."
+ },
+ "Loot of the dynamic event: the object gets loot of the prototype with de of its class.": {
+  "de": "Beute des dynamischen Events: das Objekt bekommt Beute aus dem Prototyp mit de seiner Klasse.",
+  "pl": "Loot eventu dynamicznego: obiekt dostaje loot z prototypu z de swojej klasy."
+ },
+ "Loot of types.xml": {
+  "de": "Beute aus types.xml",
+  "pl": "Loot z types.xml"
+ },
+ "Loot points of each building class: containers, categories, tags and usage.": {
+  "de": "Beutepunkte jeder Gebäudeklasse: Behälter, Kategorien, Tags und usage.",
+  "pl": "Punkty lootu każdej klasy budynku: pojemniki, kategorie, tagi i usage."
  },
  "Low": {
   "de": "Niedrig",
@@ -2111,9 +2699,33 @@
   "de": "In bearbeitbare Route umwandeln",
   "pl": "Zamień na edytowalną trasę"
  },
+ "Make it": {
+  "de": "Erstellen",
+  "pl": "Utwórz"
+ },
+ "Make map groups": {
+  "de": "Kartengruppen erstellen",
+  "pl": "Utwórz grupy mapy"
+ },
+ "Make map groups from the placed objects": {
+  "de": "Kartengruppen aus den platzierten Objekten erstellen",
+  "pl": "Utwórz grupy mapy z postawionych obiektów"
+ },
+ "Make one for the map": {
+  "de": "Für die Karte erstellen",
+  "pl": "Utwórz dla mapy"
+ },
  "Make terraces": {
   "de": "Terrassen erzeugen",
   "pl": "Utwórz tarasy"
+ },
+ "Makes env/<name>.xml and adds it to cfgenvironment.xml.": {
+  "de": "Erstellt env/<Name>.xml und trägt sie in cfgenvironment.xml ein.",
+  "pl": "Tworzy env/<nazwa>.xml i dodaje go do cfgenvironment.xml."
+ },
+ "Makes the file in the folder custom and adds it to cfgeconomycore.xml.": {
+  "de": "Erstellt die Datei im Ordner custom und trägt sie in cfgeconomycore.xml ein.",
+  "pl": "Tworzy plik w folderze custom i dodaje go do cfgeconomycore.xml."
  },
  "Map ID": {
   "de": "Karten-ID",
@@ -2130,6 +2742,10 @@
  "Map grid": {
   "de": "Kartenraster",
   "pl": "Siatka mapy"
+ },
+ "Map groups": {
+  "de": "Kartengruppen",
+  "pl": "Grupy mapy"
  },
  "Map item": {
   "de": "Kartengegenstand",
@@ -2203,6 +2819,14 @@
   "de": "Mittel",
   "pl": "Średnie"
  },
+ "Messages": {
+  "de": "Nachrichten",
+  "pl": "Wiadomości"
+ },
+ "Messages shown to players: welcome, repeated and shutdown countdowns.": {
+  "de": "Nachrichten an Spieler: Begrüßung, wiederholte und Countdowns zum Herunterfahren.",
+  "pl": "Wiadomości dla graczy: powitania, powtarzane i odliczania do wyłączenia."
+ },
  "Middle": {
   "de": "Mittel",
   "pl": "Średnio"
@@ -2210,6 +2834,10 @@
  "Middle distance texture": {
   "de": "Textur mittlerer Entfernung",
   "pl": "Tekstura średniej odległości"
+ },
+ "Min": {
+  "de": "Min",
+  "pl": "Min"
  },
  "Min height": {
   "de": "Min. Höhe",
@@ -2238,6 +2866,18 @@
  "Minimum radius": {
   "de": "Mindestradius",
   "pl": "Minimalny promień"
+ },
+ "Mission": {
+  "de": "Mission",
+  "pl": "Misja"
+ },
+ "Mission editor": {
+  "de": "Missionseditor",
+  "pl": "Edytor misji"
+ },
+ "Mission {0} read from {1}": {
+  "de": "Mission {0} aus {1} gelesen",
+  "pl": "Wczytano misję {0} z {1}"
  },
  "Model": {
   "de": "Modell",
@@ -2294,6 +2934,30 @@
  "Morning": {
   "de": "Morgen",
   "pl": "Rano"
+ },
+ "Most animals alive at once.": {
+  "de": "Höchstzahl gleichzeitig lebender Tiere.",
+  "pl": "Najwięcej zwierząt naraz."
+ },
+ "Most damage of spawned loot, 0..1.": {
+  "de": "Größter Schaden gespawnter Beute, 0..1.",
+  "pl": "Największe uszkodzenie lootu, 0..1."
+ },
+ "Most infected alive at once.": {
+  "de": "Höchstzahl gleichzeitig lebender Infizierter.",
+  "pl": "Najwięcej zarażonych naraz."
+ },
+ "Most items of one type respawned in a pass.": {
+  "de": "Höchstzahl Gegenstände eines Typs pro Durchlauf.",
+  "pl": "Najwięcej przedmiotów jednego typu odradzanych w przebiegu."
+ },
+ "Most things cleaned up in one pass.": {
+  "de": "Höchstzahl aufgeräumter Dinge pro Durchlauf.",
+  "pl": "Najwięcej rzeczy sprzątanych w jednym przebiegu."
+ },
+ "Most types respawned in a pass.": {
+  "de": "Höchstzahl Typen pro Durchlauf.",
+  "pl": "Najwięcej typów odradzanych w przebiegu."
  },
  "Mountains": {
   "de": "Berge",
@@ -2359,6 +3023,18 @@
   "de": "Namensschlüssel",
   "pl": "Klucz nazwy"
  },
+ "Named groups of usage and value flags for types.xml.": {
+  "de": "Benannte Gruppen von usage- und value-Flags für types.xml.",
+  "pl": "Nazwane grupy flag usage i value dla types.xml."
+ },
+ "Named sets of cargo and attachments, with chances, used by spawnable types.": {
+  "de": "Benannte Sätze von Ladung und Anbauteilen mit Chancen, genutzt von spawnable types.",
+  "pl": "Nazwane zestawy ładunku i dodatków z szansami, używane przez spawnable types."
+ },
+ "Names of the categories, tags, usage and value flags the other files may use.": {
+  "de": "Namen der Kategorien, Tags, usage- und value-Flags, die andere Dateien nutzen dürfen.",
+  "pl": "Nazwy kategorii, tagów oraz flag usage i value, których mogą używać inne pliki."
+ },
  "Names of the intro missions, separated by commas; the base world's intro shows its own map.": {
   "de": "Namen der Intro-Missionen, durch Kommas getrennt; das Intro der Basiswelt zeigt deren Karte.",
   "pl": "Nazwy misji intro rozdzielone przecinkami; intro świata bazowego pokazuje jego mapę."
@@ -2370,6 +3046,26 @@
  "Nearest to the line": {
   "de": "Am nächsten zur Linie",
   "pl": "Najbliżej linii"
+ },
+ "New": {
+  "de": "Neu",
+  "pl": "Nowy"
+ },
+ "New attribute": {
+  "de": "Neues Attribut",
+  "pl": "Nowy atrybut"
+ },
+ "New element": {
+  "de": "Neues Element",
+  "pl": "Nowy element"
+ },
+ "New event": {
+  "de": "Neues Event",
+  "pl": "Nowy event"
+ },
+ "New event group": {
+  "de": "Neue Eventgruppe",
+  "pl": "Nowa grupa eventu"
  },
  "New folder": {
   "de": "Neuer Ordner",
@@ -2383,9 +3079,33 @@
   "de": "Neuer Generator",
   "pl": "Nowy generator"
  },
+ "New group": {
+  "de": "Neue Gruppe",
+  "pl": "Nowa grupa"
+ },
+ "New group of the prefab": {
+  "de": "Neue Gruppe aus dem Prefab",
+  "pl": "Nowa grupa z prefabu"
+ },
+ "New group of them": {
+  "de": "Neue Gruppe daraus",
+  "pl": "Nowa grupa z nich"
+ },
  "New layer": {
   "de": "Neue Ebene",
   "pl": "Nowa warstwa"
+ },
+ "New message": {
+  "de": "Neue Nachricht",
+  "pl": "Nowa wiadomość"
+ },
+ "New mission": {
+  "de": "Neue Mission",
+  "pl": "Nowa misja"
+ },
+ "New mission for this map": {
+  "de": "Neue Mission für diese Karte",
+  "pl": "Nowa misja dla tej mapy"
  },
  "New modifier": {
   "de": "Neuer Modifikator",
@@ -2419,6 +3139,18 @@
   "de": "Neue Vorlagenbibliothek...",
   "pl": "Nowa biblioteka szablonów..."
  },
+ "New territory file": {
+  "de": "Neue Territoriumsdatei",
+  "pl": "Nowy plik terytoriów"
+ },
+ "New type": {
+  "de": "Neuer Typ",
+  "pl": "Nowy typ"
+ },
+ "New types file": {
+  "de": "Neue Typendatei",
+  "pl": "Nowy plik typów"
+ },
  "New version {0}": {
   "de": "Neue Version {0}",
   "pl": "Nowa wersja {0}"
@@ -2427,9 +3159,17 @@
   "de": "Nein",
   "pl": "Nie"
  },
+ "No date reset in the script.": {
+  "de": "Das Skript setzt kein Datum zurück.",
+  "pl": "Skrypt nie resetuje daty."
+ },
  "No key points in this file": {
   "de": "In dieser Datei gibt es keine Keypoints",
   "pl": "W tym pliku nie ma keypointów"
+ },
+ "No model found for {0} classes": {
+  "de": "Kein Modell für {0} Klassen gefunden",
+  "pl": "Nie znaleziono modelu dla {0} klas"
  },
  "No objects to bake": {
   "de": "Keine Objekte zum Einbrennen",
@@ -2467,6 +3207,14 @@
   "de": "Rauschen",
   "pl": "Szum"
  },
+ "Nominal": {
+  "de": "Nominal",
+  "pl": "Nominal"
+ },
+ "Nominal and min ×": {
+  "de": "Nominal und min ×",
+  "pl": "Nominal i min ×"
+ },
  "None": {
   "de": "Keine",
   "pl": "Żadne"
@@ -2482,6 +3230,10 @@
  "Noon": {
   "de": "Mittag",
   "pl": "Południe"
+ },
+ "Not in cfglimitsdefinition.xml": {
+  "de": "Nicht in cfglimitsdefinition.xml",
+  "pl": "Brak w cfglimitsdefinition.xml"
  },
  "Nothing here": {
   "de": "Hier ist nichts",
@@ -2543,6 +3295,10 @@
   "de": "Objekte aus der WRP",
   "pl": "Obiekty z WRP"
  },
+ "Objects from the WRP and from layers are both chosen; the same objects would come in twice.": {
+  "de": "Objekte aus der WRP und aus Ebenen sind beide gewählt; dieselben Objekte kämen doppelt.",
+  "pl": "Zaznaczone są obiekty z WRP i z warstw; te same obiekty weszłyby dwa razy."
+ },
  "Objects in a cluster": {
   "de": "Objekte pro Gruppe",
   "pl": "Obiektów w skupisku"
@@ -2555,29 +3311,65 @@
   "de": "Objekte in Terrain-Builder-Ebenen, die mit diesen Vorlagen gesetzt wurden, verlieren dort ihr Modell.",
   "pl": "Obiekty w warstwach Terrain Buildera postawione tymi szablonami stracą tam swój model."
  },
+ "Objects of event groups as models": {
+  "de": "Objekte der Eventgruppen als Modelle",
+  "pl": "Obiekty grup eventów jako modele"
+ },
  "Objects of roads and generators stay. Running again or deleting this generator with its objects brings the removed ones back.": {
   "de": "Objekte von Straßen und Generatoren bleiben. Erneutes Ausführen oder Löschen dieses Generators mit seinen Objekten bringt die entfernten zurück.",
   "pl": "Obiekty dróg i generatorów zostają. Ponowne uruchomienie albo usunięcie generatora razem z obiektami przywraca usunięte."
+ },
+ "Objects of the layers stand on the chosen heightmap, and models that follow the ground (path panels, barriers) come in level when tilted by less than 10°. A built world (WRP) has them as the game shows them.": {
+  "de": "Objekte der Ebenen stehen auf der gewählten Höhenkarte, und Modelle, die dem Boden folgen (Wegplatten, Leitplanken), kommen bei weniger als 10° Neigung eben. Eine gebaute Welt (WRP) hat sie so, wie das Spiel sie zeigt.",
+  "pl": "Obiekty z warstw stoją na wybranej mapie wysokości, a modele dopasowujące się do terenu (panele ścieżek, bariery) wchodzą poziomo, gdy ich przechył jest mniejszy niż 10°. Zbudowany świat (WRP) ma je tak, jak pokazuje je gra."
  },
  "Off": {
   "de": "Aus",
   "pl": "Wyłączone"
  },
+ "Off leaves the weather to the game.": {
+  "de": "Aus überlässt das Wetter dem Spiel.",
+  "pl": "Wyłączone zostawia pogodę grze."
+ },
+ "Off starts the economy of the server afresh.": {
+  "de": "Aus startet die Wirtschaft des Servers neu.",
+  "pl": "Wyłączone uruchamia ekonomię serwera od nowa."
+ },
  "Offset": {
   "de": "Versatz",
   "pl": "Przesunięcie"
+ },
+ "Offsets are measured from the first spawn of the group of this event.": {
+  "de": "Versätze werden vom ersten Spawn der Gruppe dieses Events gemessen.",
+  "pl": "Przesunięcia liczone są od pierwszego spawnu tej grupy w tym evencie."
  },
  "On": {
   "de": "An",
   "pl": "Włączone"
  },
+ "On ignores the weather saved in the persistence.": {
+  "de": "An ignoriert das in der Persistenz gespeicherte Wetter.",
+  "pl": "Włączone pomija pogodę zapisaną w persistence."
+ },
+ "On the ground": {
+  "de": "Am Boden",
+  "pl": "Na ziemi"
+ },
  "One above the other": {
   "de": "Übereinander",
   "pl": "Jeden nad drugim"
  },
+ "One container without loot points for each; ExportProxyProto in init.c makes the points in the game.": {
+  "de": "Je ein Behälter ohne Beutepunkte; ExportProxyProto in init.c erzeugt die Punkte im Spiel.",
+  "pl": "Po jednym pojemniku bez punktów lootu; ExportProxyProto w init.c tworzy punkty w grze."
+ },
  "One file for each layer": {
   "de": "Eine Datei pro Ebene",
   "pl": "Osobny plik dla każdej warstwy"
+ },
+ "One group at each town and village key point of the map.": {
+  "de": "Eine Gruppe an jedem Stadt- und Dorf-Schlüsselpunkt der Karte.",
+  "pl": "Jedna grupa przy każdym punkcie kluczowym miasta i wsi."
  },
  "One image": {
   "de": "Ein Bild",
@@ -2586,6 +3378,10 @@
  "One of the {0} models selected in the Content Browser is placed at random.": {
   "de": "Eines der {0} im Content Browser ausgewählten Modelle wird zufällig platziert.",
   "pl": "Stawiany jest losowo jeden z {0} modeli zaznaczonych w przeglądarce assetów."
+ },
+ "Only XML, JSON and .c files can be added.": {
+  "de": "Nur XML-, JSON- und .c-Dateien können hinzugefügt werden.",
+  "pl": "Można dodać tylko pliki XML, JSON i .c."
  },
  "Only inside shapes": {
   "de": "Nur innerhalb von Formen",
@@ -2667,6 +3463,10 @@
   "de": "Projekt öffnen...",
   "pl": "Otwórz projekt..."
  },
+ "Open the area flags": {
+  "de": "Gebietsflags öffnen",
+  "pl": "Otwórz flagi obszarów"
+ },
  "Opened {0}": {
   "de": "{0} geöffnet",
   "pl": "Otwarto {0}"
@@ -2699,9 +3499,17 @@
   "de": "Bedeckt",
   "pl": "Pochmurno"
  },
+ "Overcast, fog, rain and snowfall go from 0 to 1, wind in m/s, its direction in radians, times in seconds.": {
+  "de": "Bewölkung, Nebel, Regen und Schneefall von 0 bis 1, Wind in m/s, Richtung in Radiant, Zeiten in Sekunden.",
+  "pl": "Zachmurzenie, mgła, deszcz i śnieg od 0 do 1, wiatr w m/s, jego kierunek w radianach, czasy w sekundach."
+ },
  "Overlap of the water models m": {
   "de": "Überlappung der Wassermodelle m",
   "pl": "Zakładka modeli wody m"
+ },
+ "Overview": {
+  "de": "Übersicht",
+  "pl": "Przegląd"
  },
  "Own map centre": {
   "de": "Eigene Kartenmitte",
@@ -2714,6 +3522,14 @@
  "Paint": {
   "de": "Malen",
   "pl": "Malowanie"
+ },
+ "Paint area flags": {
+  "de": "Gebietsflags malen",
+  "pl": "Maluj flagi obszarów"
+ },
+ "Paint on the map": {
+  "de": "Auf der Karte malen",
+  "pl": "Maluj na mapie"
  },
  "Paint only on": {
   "de": "Nur malen auf",
@@ -2811,9 +3627,33 @@
   "de": "Pro Hektar",
   "pl": "Na hektar"
  },
+ "Percent of the loot spawned again after a restart.": {
+  "de": "Prozent der Beute, die nach einem Neustart wieder spawnt.",
+  "pl": "Procent lootu tworzonego ponownie po restarcie."
+ },
+ "Percent of the nominal spawned when the server starts.": {
+  "de": "Prozent des Nominalwerts, der beim Serverstart spawnt.",
+  "pl": "Procent nominalu tworzony przy starcie serwera."
+ },
+ "Persistence": {
+  "de": "Persistenz",
+  "pl": "Persistence"
+ },
+ "Persistence of the server: what is on the map now. Deleting it starts the economy afresh.": {
+  "de": "Persistenz des Servers: was jetzt auf der Karte ist. Löschen startet die Wirtschaft neu.",
+  "pl": "Persistence serwera: to, co jest teraz na mapie. Usunięcie uruchamia ekonomię od nowa."
+ },
  "Perspective": {
   "de": "Perspektive",
   "pl": "Perspektywa"
+ },
+ "Pick a file.": {
+  "de": "Wähle eine Datei.",
+  "pl": "Wybierz plik."
+ },
+ "Pick an event.": {
+  "de": "Wähle ein Event.",
+  "pl": "Wybierz event."
  },
  "Pick from the map": {
   "de": "Von der Karte nehmen",
@@ -2839,6 +3679,10 @@
   "de": "Platzieren",
   "pl": "Stawianie"
  },
+ "Place areas on the map": {
+  "de": "Gebiete auf der Karte platzieren",
+  "pl": "Rozmieść strefy na mapie"
+ },
  "Place it with a click on the fence": {
   "de": "Mit einem Klick auf den Zaun setzen",
   "pl": "Ustaw kliknięciem na płocie"
@@ -2851,9 +3695,33 @@
   "de": "Objekte platzieren",
   "pl": "Stawianie obiektów"
  },
+ "Place on the map": {
+  "de": "Auf der Karte platzieren",
+  "pl": "Rozmieść na mapie"
+ },
  "Place selected model here": {
   "de": "Gewähltes Modell hier platzieren",
   "pl": "Postaw tu wybrany model"
+ },
+ "Place spawns of this group": {
+  "de": "Spawns dieser Gruppe platzieren",
+  "pl": "Rozmieść spawny tej grupy"
+ },
+ "Place spawns on the map": {
+  "de": "Spawns auf der Karte platzieren",
+  "pl": "Rozmieść spawny na mapie"
+ },
+ "Place the props on the map, select them in the Select mode and make a group of them. The first selected object stands where the spawn will be.": {
+  "de": "Platziere die Props auf der Karte, wähle sie im Modus Auswählen und mache eine Gruppe daraus. Das erste ausgewählte Objekt steht dort, wo der Spawn sein wird.",
+  "pl": "Postaw propy na mapie, zaznacz je w trybie Zaznacz i zrób z nich grupę. Pierwszy zaznaczony obiekt stoi w miejscu spawnu."
+ },
+ "Place triggers on the map": {
+  "de": "Auslöser auf der Karte platzieren",
+  "pl": "Rozmieść wyzwalacze na mapie"
+ },
+ "Place zones on the map": {
+  "de": "Zonen auf der Karte platzieren",
+  "pl": "Rozmieść strefy na mapie"
  },
  "Place {0}": {
   "de": "{0} platzieren",
@@ -2883,9 +3751,25 @@
   "de": "Starten",
   "pl": "Uruchom"
  },
+ "Play starts the server with this mission. Export writes it into a folder of your choice.": {
+  "de": "Spielen startet den Server mit dieser Mission. Export schreibt sie in einen Ordner deiner Wahl.",
+  "pl": "Graj uruchamia serwer z tą misją. Eksport zapisuje ją do wybranego folderu."
+ },
+ "Player spawn": {
+  "de": "Spieler-Spawn",
+  "pl": "Spawn gracza"
+ },
+ "Player spawns": {
+  "de": "Spieler-Spawns",
+  "pl": "Spawny graczy"
+ },
  "Player start": {
   "de": "Spielerstart",
   "pl": "Start gracza"
+ },
+ "Players": {
+  "de": "Spieler",
+  "pl": "Gracze"
  },
  "Plot size": {
   "de": "Grundstücksgröße",
@@ -2910,6 +3794,10 @@
  "Position": {
   "de": "Position",
   "pl": "Położenie"
+ },
+ "Positions of dirt piles; usually empty.": {
+  "de": "Positionen von Erdhaufen; meist leer.",
+  "pl": "Pozycje kopców ziemi; zwykle pusty."
  },
  "Power line": {
   "de": "Stromleitung",
@@ -2955,6 +3843,22 @@
   "de": "Eigenschaften",
   "pl": "Właściwości"
  },
+ "Prototype {0}: category {1} is not in cfglimitsdefinition.xml": {
+  "de": "Prototyp {0}: Kategorie {1} ist nicht in cfglimitsdefinition.xml",
+  "pl": "Prototyp {0}: kategorii {1} nie ma w cfglimitsdefinition.xml"
+ },
+ "Prototype {0}: tag {1} is not in cfglimitsdefinition.xml": {
+  "de": "Prototyp {0}: Tag {1} ist nicht in cfglimitsdefinition.xml",
+  "pl": "Prototyp {0}: tagu {1} nie ma w cfglimitsdefinition.xml"
+ },
+ "Prototype {0}: usage {1} is not in cfglimitsdefinition.xml": {
+  "de": "Prototyp {0}: usage {1} ist nicht in cfglimitsdefinition.xml",
+  "pl": "Prototyp {0}: usage {1} nie ma w cfglimitsdefinition.xml"
+ },
+ "Prototype {0}: value {1} is not in cfglimitsdefinition.xml": {
+  "de": "Prototyp {0}: value {1} ist nicht in cfglimitsdefinition.xml",
+  "pl": "Prototyp {0}: value {1} nie ma w cfglimitsdefinition.xml"
+ },
  "Put back the objects it removed ({0})": {
   "de": "Die entfernten Objekte zurücklegen ({0})",
   "pl": "Przywróć usunięte przez niego obiekty ({0})"
@@ -2991,6 +3895,10 @@
   "de": "Rampe",
   "pl": "Rampa"
  },
+ "Random events": {
+  "de": "Zufallsereignisse",
+  "pl": "Losowe zdarzenia"
+ },
  "Random rotation": {
   "de": "Zufällige Drehung",
   "pl": "Losowy obrót"
@@ -3002,6 +3910,14 @@
  "Reading road types": {
   "de": "Straßentypen werden gelesen",
   "pl": "Wczytywanie typów dróg"
+ },
+ "Reading the classes of the configs...": {
+  "de": "Klassen der Configs werden gelesen...",
+  "pl": "Wczytywanie klas z configów..."
+ },
+ "Reads a mission folder as it is, for this map or another.": {
+  "de": "Liest einen Missionsordner unverändert, für diese oder eine andere Karte.",
+  "pl": "Wczytuje folder misji bez zmian, dla tej lub innej mapy."
  },
  "Recent projects": {
   "de": "Letzte Projekte",
@@ -3019,9 +3935,17 @@
   "de": "Aus TV4P neu laden",
   "pl": "Wczytaj ponownie z TV4P"
  },
+ "Remove": {
+  "de": "Entfernen",
+  "pl": "Usuń"
+ },
  "Remove brush": {
   "de": "Pinsel entfernen",
   "pl": "Usuń pędzel"
+ },
+ "Remove file": {
+  "de": "Datei entfernen",
+  "pl": "Usuń plik"
  },
  "Remove from this folder": {
   "de": "Aus diesem Ordner entfernen",
@@ -3039,9 +3963,17 @@
   "de": "Objekte entfernen",
   "pl": "Usuwanie obiektów"
  },
+ "Remove the file from the mission": {
+  "de": "Datei aus der Mission entfernen",
+  "pl": "Usuń plik z misji"
+ },
  "Remove the holes": {
   "de": "Löcher entfernen",
   "pl": "Usuń dziury"
+ },
+ "Remove the mission": {
+  "de": "Mission entfernen",
+  "pl": "Usuń misję"
  },
  "Removes the generator and what it made.": {
   "de": "Entfernt den Generator und was er erzeugt hat.",
@@ -3054,6 +3986,10 @@
  "Rename": {
   "de": "Umbenennen",
   "pl": "Zmień nazwę"
+ },
+ "Replace the group": {
+  "de": "Gruppe ersetzen",
+  "pl": "Zastąp grupę"
  },
  "Replace with the selection": {
   "de": "Durch die Auswahl ersetzen",
@@ -3086,6 +4022,10 @@
  "Restart to use {0}": {
   "de": "Neu starten, um {0} zu verwenden",
   "pl": "Uruchom ponownie, aby użyć {0}"
+ },
+ "Restock": {
+  "de": "Restock",
+  "pl": "Restock"
  },
  "Reverse": {
   "de": "Umkehren",
@@ -3183,6 +4123,10 @@
   "de": "Rollen",
   "pl": "Przechył"
  },
+ "Root classes of the economy, its defaults and logging, and the extra files it reads (ce folders).": {
+  "de": "Wurzelklassen der Wirtschaft, ihre Standardwerte und Protokollierung und die zusätzlichen Dateien, die sie liest (ce-Ordner).",
+  "pl": "Klasy główne ekonomii, jej domyślne ustawienia i logowanie oraz dodatkowe pliki, które czyta (foldery ce)."
+ },
  "Rotate": {
   "de": "Drehen",
   "pl": "Obróć"
@@ -3218,6 +4162,14 @@
  "Runs through the whole tide of the game, up to MaxTide 1.5 m, in two minutes.": {
   "de": "Durchläuft die ganzen Gezeiten des Spiels, bis MaxTide 1,5 m, in zwei Minuten.",
   "pl": "Przechodzi przez cały pływ z gry, do MaxTide 1,5 m, w dwie minuty."
+ },
+ "Safe position": {
+  "de": "Sichere Position",
+  "pl": "Bezpieczna pozycja"
+ },
+ "Safe positions": {
+  "de": "Sichere Positionen",
+  "pl": "Bezpieczne pozycje"
  },
  "Satellite": {
   "de": "Satellit",
@@ -3303,6 +4255,10 @@
   "de": "Objekte werden verteilt",
   "pl": "Rozrzucanie obiektów"
  },
+ "Script the server runs: starts the economy, sets the date, gives new characters their items.": {
+  "de": "Skript des Servers: startet die Wirtschaft, setzt das Datum, gibt neuen Charakteren ihre Gegenstände.",
+  "pl": "Skrypt serwera: uruchamia ekonomię, ustawia datę, daje nowym postaciom przedmioty."
+ },
  "Sculpt": {
   "de": "Modellieren",
   "pl": "Rzeźbienie"
@@ -3355,6 +4311,58 @@
   "de": "Suchen...",
   "pl": "Szukaj..."
  },
+ "Seconds a dead animal stays.": {
+  "de": "Sekunden, die ein totes Tier bleibt.",
+  "pl": "Sekundy, przez które zostaje martwe zwierzę."
+ },
+ "Seconds a dead infected stays.": {
+  "de": "Sekunden, die ein toter Infizierter bleibt.",
+  "pl": "Sekundy, przez które zostaje martwy zarażony."
+ },
+ "Seconds a dead player stays.": {
+  "de": "Sekunden, die ein toter Spieler bleibt.",
+  "pl": "Sekundy, przez które zostaje martwy gracz."
+ },
+ "Seconds a ruined item stays.": {
+  "de": "Sekunden, die ein zerstörter Gegenstand bleibt.",
+  "pl": "Sekundy, przez które zostaje zniszczony przedmiot."
+ },
+ "Seconds between the refreshes of a territory flag.": {
+  "de": "Sekunden zwischen den Auffrischungen einer Territoriumsflagge.",
+  "pl": "Sekundy między odświeżeniami flagi terytorium."
+ },
+ "Seconds of penalty for changing servers.": {
+  "de": "Strafsekunden für Serverwechsel.",
+  "pl": "Sekundy kary za zmianę serwera."
+ },
+ "Seconds of the login countdown.": {
+  "de": "Sekunden des Login-Countdowns.",
+  "pl": "Sekundy odliczania przy logowaniu."
+ },
+ "Seconds of the logout countdown.": {
+  "de": "Sekunden des Logout-Countdowns.",
+  "pl": "Sekundy odliczania przy wylogowaniu."
+ },
+ "Seconds other things stay when their type gives no lifetime.": {
+  "de": "Sekunden, die andere Dinge bleiben, wenn ihr Typ keine Lebensdauer angibt.",
+  "pl": "Sekundy, przez które zostają inne rzeczy, gdy typ nie podaje lifetime."
+ },
+ "Seconds without players before the economy goes idle.": {
+  "de": "Sekunden ohne Spieler, bevor die Wirtschaft in den Leerlauf geht.",
+  "pl": "Sekundy bez graczy, zanim ekonomia przejdzie w bezczynność."
+ },
+ "Section": {
+  "de": "Abschnitt",
+  "pl": "Sekcja"
+ },
+ "Section {0} has no spawn positions": {
+  "de": "Abschnitt {0} hat keine Spawnpositionen",
+  "pl": "Sekcja {0} nie ma pozycji spawnu"
+ },
+ "Section {0} is missing": {
+  "de": "Abschnitt {0} fehlt",
+  "pl": "Brak sekcji {0}"
+ },
  "Seed": {
   "de": "Seed",
   "pl": "Ziarno"
@@ -3367,13 +4375,37 @@
   "de": "Alles auswählen",
   "pl": "Zaznacz wszystko"
  },
+ "Select and move": {
+  "de": "Auswählen und verschieben",
+  "pl": "Zaznacz i przesuń"
+ },
  "Select models or presets to see them here. Ctrl and Shift select several; drag them onto the map to place them all.": {
   "de": "Modelle oder Presets auswählen, um sie hier zu sehen. Strg und Umschalt wählen mehrere; auf die Karte ziehen platziert alle.",
   "pl": "Zaznacz modele lub presety, aby je tu zobaczyć. Ctrl i Shift zaznaczają kilka; przeciągnięcie na mapę stawia wszystkie."
  },
+ "Select none": {
+  "de": "Keine auswählen",
+  "pl": "Odznacz"
+ },
  "Select objects": {
   "de": "Objekte auswählen",
   "pl": "Zaznacz obiekty"
+ },
+ "Select objects, and place a spawn of the group first.": {
+  "de": "Wähle Objekte und setze zuerst einen Spawn der Gruppe.",
+  "pl": "Zaznacz obiekty i najpierw postaw spawn tej grupy."
+ },
+ "Select polygons in the Shapes mode first.": {
+  "de": "Wähle zuerst Polygone im Modus Formen.",
+  "pl": "Najpierw zaznacz wielokąty w trybie Kształty."
+ },
+ "Select shapes in the Shapes mode first.": {
+  "de": "Wähle zuerst Formen im Modus Formen.",
+  "pl": "Najpierw zaznacz kształty w trybie Kształty."
+ },
+ "Select shown": {
+  "de": "Angezeigte auswählen",
+  "pl": "Zaznacz widoczne"
  },
  "Select the objects of the prefab first": {
   "de": "Wähle zuerst die Objekte des Prefabs aus",
@@ -3382,6 +4414,10 @@
  "Select whole roads and generators": {
   "de": "Ganze Straßen und Generatoren auswählen",
   "pl": "Zaznaczaj całe drogi i generatory"
+ },
+ "Selected": {
+  "de": "Ausgewählt",
+  "pl": "Zaznaczone"
  },
  "Selected route": {
   "de": "Ausgewählte Route",
@@ -3395,13 +4431,33 @@
   "de": "Auswahl",
   "pl": "Zaznaczenie"
  },
+ "Server mission": {
+  "de": "Servermission",
+  "pl": "Misja serwera"
+ },
+ "Server mission...": {
+  "de": "Servermission...",
+  "pl": "Misja serwera..."
+ },
+ "Set": {
+  "de": "Setzen",
+  "pl": "Ustaw"
+ },
  "Set player start here": {
   "de": "Spielerstart hier setzen",
   "pl": "Ustaw tu start gracza"
  },
+ "Sets the flag in every cell inside the polygons selected in the Shapes mode.": {
+  "de": "Setzt das Flag in jeder Zelle innerhalb der im Modus Formen ausgewählten Polygone.",
+  "pl": "Ustawia flagę w każdej komórce wewnątrz wielokątów zaznaczonych w trybie Kształty."
+ },
  "Settings": {
   "de": "Einstellungen",
   "pl": "Ustawienia"
+ },
+ "Settings found in the script": {
+  "de": "Im Skript gefundene Einstellungen",
+  "pl": "Ustawienia znalezione w skrypcie"
  },
  "Settings...": {
   "de": "Einstellungen...",
@@ -3495,6 +4551,10 @@
   "de": "Auf der Karte anzeigen",
   "pl": "Pokaż na mapie"
  },
+ "Show on the map": {
+  "de": "Auf der Karte zeigen",
+  "pl": "Pokaż na mapie"
+ },
  "Show project areas as shapes": {
   "de": "Projektgebiete als Formen anzeigen",
   "pl": "Pokaż obszary projektu jako kształty"
@@ -3571,6 +4631,18 @@
   "de": "Abstand 0 nimmt die Länge des Leitungsmodells.",
   "pl": "Odstęp 0 bierze długość modelu przewodów."
  },
+ "Spawnable type {0} is not in the type files": {
+  "de": "Spawnbarer Typ {0} ist nicht in den Typendateien",
+  "pl": "Spawnable type {0} nie występuje w plikach typów"
+ },
+ "Spawnable types": {
+  "de": "Spawnbare Typen",
+  "pl": "Spawnable types"
+ },
+ "Spawns of event {0}, which the event files do not define": {
+  "de": "Spawns des Events {0}, das die Eventdateien nicht definieren",
+  "pl": "Spawny eventu {0}, którego nie definiują pliki eventów"
+ },
  "Split view": {
   "de": "Geteilte Ansicht",
   "pl": "Widok dzielony"
@@ -3610,6 +4682,10 @@
  "Starting navmesh tools": {
   "de": "Navmesh-Werkzeuge werden gestartet",
   "pl": "Uruchamianie narzędzi navmesh"
+ },
+ "Static events (convoys, trains, police) have no children; each spawn places a group of cfgeventgroups.xml around it, at the height of the ground.": {
+  "de": "Statische Events (Konvois, Züge, Polizei) haben keine Kinder; jeder Spawn setzt eine Gruppe aus cfgeventgroups.xml um sich, auf Bodenhöhe.",
+  "pl": "Eventy statyczne (konwoje, pociągi, policja) nie mają dzieci; każdy spawn stawia wokół siebie grupę z cfgeventgroups.xml, na wysokości terenu."
  },
  "Step height": {
   "de": "Stufenhöhe",
@@ -3879,6 +4955,30 @@
   "de": "Gelände {0} × {0}, Zelle {1} m, Karte {2} m",
   "pl": "Teren {0} × {0}, komórka {1} m, mapa {2} m"
  },
+ "Territories": {
+  "de": "Territorien",
+  "pl": "Terytoria"
+ },
+ "Territory": {
+  "de": "Territorium",
+  "pl": "Terytorium"
+ },
+ "Territory zone": {
+  "de": "Territoriumszone",
+  "pl": "Strefa terytorium"
+ },
+ "Territory zones": {
+  "de": "Territoriumszonen",
+  "pl": "Strefy terytoriów"
+ },
+ "Territory zones of animals and infected.": {
+  "de": "Territoriumszonen von Tieren und Infizierten.",
+  "pl": "Strefy terytoriów zwierząt i zarażonych."
+ },
+ "Territory {0} uses {1}, which is not a file in env": {
+  "de": "Territorium {0} nutzt {1}, das keine Datei in env ist",
+  "pl": "Terytorium {0} używa {1}, którego nie ma w env"
+ },
  "Test session ended": {
   "de": "Testsitzung beendet",
   "pl": "Sesja testowa zakończona"
@@ -3935,6 +5035,10 @@
   "de": "Die Höhe wird dann ab Meeresspiegel gemessen",
   "pl": "Wysokość jest wtedy liczona od poziomu morza"
  },
+ "The files of the mission agree with each other.": {
+  "de": "Die Dateien der Mission stimmen überein.",
+  "pl": "Pliki misji są ze sobą zgodne."
+ },
  "The forest has no surface to paint under its trees: choose one in the generator": {
   "de": "Der Wald hat keine Oberfläche für den Boden unter den Bäumen: im Generator eine wählen",
   "pl": "Las nie ma powierzchni do pomalowania pod drzewami: wybierz ją w generatorze"
@@ -3959,6 +5063,18 @@
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
   "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
  },
+ "The map has no town or village key points.": {
+  "de": "Die Karte hat keine Stadt- oder Dorf-Schlüsselpunkte.",
+  "pl": "Mapa nie ma punktów kluczowych miast ani wsi."
+ },
+ "The map is {0} m; the flags cover {1} m.": {
+  "de": "Die Karte ist {0} m groß; die Flags decken {1} m ab.",
+  "pl": "Mapa ma {0} m; flagi pokrywają {1} m."
+ },
+ "The map shows every flag of the layer; the chosen one is the one painted and stands out.": {
+  "de": "Die Karte zeigt alle Flags der Ebene; das gewählte wird gemalt und hervorgehoben.",
+  "pl": "Mapa pokazuje wszystkie flagi warstwy; wybrana to ta, którą malujesz, i jest wyróżniona."
+ },
  "The map takes over the settings of this world: its weather, light, sounds and the rest the config does not set.": {
   "de": "Die Karte übernimmt die Einstellungen dieser Welt: Wetter, Licht, Klänge und alles, was die Config nicht setzt.",
   "pl": "Mapa przejmuje ustawienia tego świata: pogodę, światło, dźwięki i wszystko, czego config nie ustawia."
@@ -3966,6 +5082,18 @@
  "The mask colour painted under the model, by trees as their forest ground and by the tool that paints under objects.": {
   "de": "Die Maskenfarbe unter dem Modell: für Bäume als Waldboden und für das Werkzeug, das unter Objekte malt.",
   "pl": "Kolor maski malowany pod modelem: przez drzewa jako podłoże lasu i przez narzędzie malujące pod obiektami."
+ },
+ "The mission folder {0}, as the server reads it from mpmissions.": {
+  "de": "Der Missionsordner {0}, wie der Server ihn aus mpmissions liest.",
+  "pl": "Folder misji {0}, tak jak serwer czyta go z mpmissions."
+ },
+ "The mission has no areaflags.map.": {
+  "de": "Die Mission hat keine areaflags.map.",
+  "pl": "Misja nie ma areaflags.map."
+ },
+ "The mission has no {0}": {
+  "de": "Die Mission hat kein {0}",
+  "pl": "Misja nie ma {0}"
  },
  "The model could not be read": {
   "de": "Das Modell konnte nicht gelesen werden",
@@ -3999,9 +5127,21 @@
   "de": "Die von ihm gesetzten Objekte ({0})",
   "pl": "Obiekty, które postawił ({0})"
  },
+ "The objects of static events such as convoys; place the spawns of the group with the Event spawn tool.": {
+  "de": "Die Objekte statischer Events wie Konvois; setze die Spawns der Gruppe mit dem Werkzeug Event-Spawn.",
+  "pl": "Obiekty eventów statycznych, np. konwojów; spawny grupy rozmieść narzędziem Spawn eventu."
+ },
+ "The objects of the prefab as the objects of a static event such as a convoy, around its middle; place the spawns of the group with the Event spawn tool.": {
+  "de": "Die Objekte des Prefabs als Objekte eines statischen Events wie eines Konvois, um seine Mitte; setze die Spawns der Gruppe mit dem Werkzeug Event-Spawn.",
+  "pl": "Obiekty prefabu jako obiekty eventu statycznego, np. konwoju, wokół jego środka; spawny grupy rozmieść narzędziem Spawn eventu."
+ },
  "The open end of the route was not found among its models, so the whole route is fitted again": {
   "de": "Das offene Ende der Route wurde unter ihren Modellen nicht gefunden, daher wird die ganze Route neu eingepasst",
   "pl": "Nie znaleziono otwartego końca trasy wśród jej modeli, więc dopasowywana jest cała trasa"
+ },
+ "The order of the usage and value flags is the order of the bits of areaflags.map.": {
+  "de": "Die Reihenfolge der usage- und value-Flags ist die Reihenfolge der Bits in areaflags.map.",
+  "pl": "Kolejność flag usage i value to kolejność bitów w areaflags.map."
  },
  "The paper map players carry and the tourist boards; empty fields keep those of the base world.": {
   "de": "Die Papierkarte der Spieler und die Touristentafeln; leere Felder behalten die der Basiswelt.",
@@ -4019,6 +5159,10 @@
   "de": "Das Prefab übernimmt die ausgewählten Objekte statt seiner bisherigen.",
   "pl": "Prefab przejmuje zaznaczone obiekty w miejsce dotychczasowych."
  },
+ "The project has no mission.": {
+  "de": "Das Projekt hat keine Mission.",
+  "pl": "Projekt nie ma misji."
+ },
  "The project has no satellite image": {
   "de": "Das Projekt hat kein Satellitenbild",
   "pl": "Projekt nie ma satki"
@@ -4026,6 +5170,10 @@
  "The project has no satellite image.": {
   "de": "Das Projekt hat kein Satellitenbild.",
   "pl": "Projekt nie ma obrazu satelitarnego."
+ },
+ "The project has no server mission yet.": {
+  "de": "Das Projekt hat noch keine Servermission.",
+  "pl": "Projekt nie ma jeszcze misji serwera."
  },
  "The project has no shapes.": {
   "de": "Das Projekt hat keine Shapes.",
@@ -4055,6 +5203,18 @@
   "de": "Das Satellitenbild der Karte.",
   "pl": "Obraz satelitarny mapy."
  },
+ "The secondary event (infected) of the event may spawn at this object.": {
+  "de": "An diesem Objekt darf das Sekundärevent (Infizierte) spawnen.",
+  "pl": "Przy tym obiekcie może pojawić się event wtórny (zarażeni)."
+ },
+ "The server finds the mission by this name in mpmissions: dayzOffline.<world>.": {
+  "de": "Der Server findet die Mission unter diesem Namen in mpmissions: dayzOffline.<Welt>.",
+  "pl": "Serwer znajduje misję po tej nazwie w mpmissions: dayzOffline.<świat>."
+ },
+ "The server keeps its date within a month from this day.": {
+  "de": "Der Server hält sein Datum innerhalb eines Monats ab diesem Tag.",
+  "pl": "Serwer utrzymuje datę w ciągu miesiąca od tego dnia."
+ },
  "The shape this generator works on no longer exists": {
   "de": "Die Form dieses Generators existiert nicht mehr",
   "pl": "Kształt, na którym działa generator, już nie istnieje"
@@ -4078,6 +5238,10 @@
  "The textures of the base world show its own terrain; a map of its own needs its own.": {
   "de": "Die Texturen der Basiswelt zeigen deren Gelände; eine eigene Karte braucht eigene.",
   "pl": "Tekstury świata bazowego pokazują jego teren; własna mapa potrzebuje własnych."
+ },
+ "The variants of the objects made for dynamic events end in _DE (StaticObj_Wreck_BMP2_DE). Check the names below: they are guessed from the models.": {
+  "de": "Die Varianten der Objekte für dynamische Events enden auf _DE (StaticObj_Wreck_BMP2_DE). Prüfe die Namen unten: sie sind aus den Modellen geraten.",
+  "pl": "Warianty obiektów dla eventów dynamicznych kończą się na _DE (StaticObj_Wreck_BMP2_DE). Sprawdź nazwy poniżej: są zgadywane z modeli."
  },
  "The view is in a window of its own.": {
   "de": "Die Ansicht ist in einem eigenen Fenster.",
@@ -4106,6 +5270,10 @@
  "Thermal erosion": {
   "de": "Thermische Erosion",
   "pl": "Erozja termiczna"
+ },
+ "This file is copied as it is.": {
+  "de": "Diese Datei wird unverändert kopiert.",
+  "pl": "Ten plik jest kopiowany bez zmian."
  },
  "This generator needs a polygon": {
   "de": "Dieser Generator braucht ein Polygon",
@@ -4146,6 +5314,10 @@
  "Tolerance m": {
   "de": "Toleranz m",
   "pl": "Tolerancja m"
+ },
+ "Tool": {
+  "de": "Werkzeug",
+  "pl": "Narzędzie"
  },
  "Tools": {
   "de": "Werkzeuge",
@@ -4195,6 +5367,10 @@
   "de": "Bäume für ein Waldfeld",
   "pl": "Drzew na pole lasu"
  },
+ "Trigger boxes that darken the view underground, with breadcrumbs.": {
+  "de": "Auslöserboxen, die die Sicht unter der Erde abdunkeln, mit Brotkrumen.",
+  "pl": "Prostopadłościany wyzwalaczy przyciemniające widok pod ziemią, z punktami pośrednimi."
+ },
  "Turn": {
   "de": "Drehung",
   "pl": "Obrót"
@@ -4206,6 +5382,50 @@
  "Type": {
   "de": "Typ",
   "pl": "Typ"
+ },
+ "Type {0} is defined again (first in {1}); the later one wins": {
+  "de": "Typ {0} ist erneut definiert (zuerst in {1}); der spätere gilt",
+  "pl": "Typ {0} jest zdefiniowany ponownie (najpierw w {1}); wygrywa późniejszy"
+ },
+ "Type {0} spawns but has no usage or category, so the economy has nowhere to put it": {
+  "de": "Typ {0} spawnt, hat aber weder usage noch Kategorie, also weiß die Wirtschaft nicht wohin",
+  "pl": "Typ {0} się pojawia, ale nie ma usage ani kategorii, więc ekonomia nie ma gdzie go położyć"
+ },
+ "Type {0}: category {1} is not in cfglimitsdefinition.xml": {
+  "de": "Typ {0}: Kategorie {1} ist nicht in cfglimitsdefinition.xml",
+  "pl": "Typ {0}: kategorii {1} nie ma w cfglimitsdefinition.xml"
+ },
+ "Type {0}: min {1} is above nominal {2}": {
+  "de": "Typ {0}: min {1} liegt über nominal {2}",
+  "pl": "Typ {0}: min {1} jest większe niż nominal {2}"
+ },
+ "Type {0}: tag {1} is not in cfglimitsdefinition.xml": {
+  "de": "Typ {0}: Tag {1} ist nicht in cfglimitsdefinition.xml",
+  "pl": "Typ {0}: tagu {1} nie ma w cfglimitsdefinition.xml"
+ },
+ "Type {0}: usage group {1} is not in cfglimitsdefinitionuser.xml": {
+  "de": "Typ {0}: usage-Gruppe {1} ist nicht in cfglimitsdefinitionuser.xml",
+  "pl": "Typ {0}: grupy usage {1} nie ma w cfglimitsdefinitionuser.xml"
+ },
+ "Type {0}: usage {1} is not in cfglimitsdefinition.xml": {
+  "de": "Typ {0}: usage {1} ist nicht in cfglimitsdefinition.xml",
+  "pl": "Typ {0}: usage {1} nie ma w cfglimitsdefinition.xml"
+ },
+ "Type {0}: value group {1} is not in cfglimitsdefinitionuser.xml": {
+  "de": "Typ {0}: value-Gruppe {1} ist nicht in cfglimitsdefinitionuser.xml",
+  "pl": "Typ {0}: grupy value {1} nie ma w cfglimitsdefinitionuser.xml"
+ },
+ "Type {0}: value {1} is not in cfglimitsdefinition.xml": {
+  "de": "Typ {0}: value {1} ist nicht in cfglimitsdefinition.xml",
+  "pl": "Typ {0}: value {1} nie ma w cfglimitsdefinition.xml"
+ },
+ "Types": {
+  "de": "Typen",
+  "pl": "Typy"
+ },
+ "Types the economy leaves alone at cleanup.": {
+  "de": "Typen, die die Wirtschaft beim Aufräumen in Ruhe lässt.",
+  "pl": "Typy, których ekonomia nie rusza przy sprzątaniu."
  },
  "U sets the underground flag of the selection, B lets the camera below the terrain.": {
   "de": "U schaltet die Underground-Markierung der Auswahl um, B lässt die Kamera unter das Gelände.",
@@ -4235,13 +5455,33 @@
   "de": "Underground-Markierung bei {0} Objekten gesetzt",
   "pl": "Ustawiono flagę underground na obiektach: {0}"
  },
+ "Underground trigger": {
+  "de": "Untergrund-Auslöser",
+  "pl": "Wyzwalacz podziemny"
+ },
+ "Underground triggers": {
+  "de": "Untergrund-Auslöser",
+  "pl": "Wyzwalacze podziemne"
+ },
  "Undo": {
   "de": "Rückgängig",
   "pl": "Cofnij"
  },
+ "Undo brings it back; the files in the project folder stay until you delete them.": {
+  "de": "Rückgängig holt sie zurück; die Dateien im Projektordner bleiben, bis du sie löschst.",
+  "pl": "Cofnij ją przywraca; pliki w folderze projektu zostają, dopóki ich nie usuniesz."
+ },
  "Up": {
   "de": "Nach oben",
   "pl": "W górę"
+ },
+ "Usage": {
+  "de": "Usage",
+  "pl": "Usage"
+ },
+ "Usage and value flags painted over the map; the economy uses them for loot without a building.": {
+  "de": "Über die Karte gemalte usage- und value-Flags; die Wirtschaft nutzt sie für Beute ohne Gebäude.",
+  "pl": "Flagi usage i value namalowane na mapie; ekonomia używa ich dla lootu poza budynkami."
  },
  "Use as a road or object line": {
   "de": "Als Straßen- oder Objektlinie verwenden",
@@ -4270,6 +5510,14 @@
  "User map folder": {
   "de": "Ordner der Benutzerkarte",
   "pl": "Folder mapy użytkownika"
+ },
+ "Value": {
+  "de": "Value",
+  "pl": "Value"
+ },
+ "Vehicles": {
+  "de": "Fahrzeuge",
+  "pl": "Pojazdy"
  },
  "Version": {
   "de": "Version",
@@ -4331,6 +5579,14 @@
   "de": "Schwächerer Pinsel",
   "pl": "Słabszy pędzel"
  },
+ "Weather": {
+  "de": "Wetter",
+  "pl": "Pogoda"
+ },
+ "Weather: overcast, fog, rain, wind, snowfall and storms, with their limits.": {
+  "de": "Wetter: Bewölkung, Nebel, Regen, Wind, Schneefall und Gewitter mit ihren Grenzen.",
+  "pl": "Pogoda: zachmurzenie, mgła, deszcz, wiatr, śnieg i burze wraz z limitami."
+ },
  "What is not ticked stays on the map. All of it can be undone in one step.": {
   "de": "Was nicht angehakt ist, bleibt auf der Karte. Alles lässt sich in einem Schritt rückgängig machen.",
   "pl": "To, co nie jest zaznaczone, zostaje na mapie. Całość można cofnąć jednym krokiem."
@@ -4355,6 +5611,14 @@
   "de": "Wenn eine Kachel wirklich 6 verwendet, wird die ganze Karte wie im 6-Material-Modus des Terrain Builders (TerrainX) exportiert, ohne Satelliten-Normalenkarten.",
   "pl": "Gdy jakiś kafel naprawdę używa 6, cała mapa jest eksportowana jak w trybie 6 materiałów z Terrain Buildera (TerrainX), bez normalnych z satelity."
  },
+ "Where new players spawn (fresh), after changing servers (hop) and after travel.": {
+  "de": "Wo neue Spieler spawnen (fresh), nach Serverwechsel (hop) und nach Reisen (travel).",
+  "pl": "Gdzie pojawiają się nowi gracze (fresh), po zmianie serwera (hop) i po podróży (travel)."
+ },
+ "Where on the map each event may spawn, with optional zones and groups.": {
+  "de": "Wo auf der Karte jedes Event spawnen kann, mit optionalen Zonen und Gruppen.",
+  "pl": "Gdzie na mapie może pojawić się każdy event, z opcjonalnymi strefami i grupami."
+ },
  "Where the 3D camera stands and what it looks at.": {
   "de": "Wo die 3D-Kamera steht und wohin sie blickt.",
   "pl": "Gdzie stoi kamera 3D i na co patrzy."
@@ -4370,6 +5634,10 @@
  "Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper.": {
   "de": "Wo zwei Oberflächen der Maske aufeinandertreffen, zeigen sich zuerst die höheren Teile ihres Reliefs; höher macht die Grenze schärfer.",
   "pl": "Tam, gdzie stykają się dwie powierzchnie maski, najpierw przebijają wyższe części ich reliefu; wyżej daje ostrzejszą granicę."
+ },
+ "Which parts of the economy start, load, respawn and save.": {
+  "de": "Welche Teile der Wirtschaft starten, laden, neu spawnen und speichern.",
+  "pl": "Które części ekonomii startują, wczytują, odradzają i zapisują."
  },
  "Whole map": {
   "de": "Ganze Karte",
@@ -4387,9 +5655,17 @@
   "de": "Pforten und Tore",
   "pl": "Furtki i bramy"
  },
+ "Widen the layer": {
+  "de": "Ebene verbreitern",
+  "pl": "Poszerz warstwę"
+ },
  "Width": {
   "de": "Breite",
   "pl": "Szerokość"
+ },
+ "Wipe persistence": {
+  "de": "Persistenz löschen",
+  "pl": "Wyczyść persistence"
  },
  "Wireframe": {
   "de": "Drahtgitter",
@@ -4418,6 +5694,10 @@
  "With the models selected in the browser.": {
   "de": "Mit den im Browser ausgewählten Modellen.",
   "pl": "Z modelami zaznaczonymi w przeglądarce."
+ },
+ "With the persistence (storage folders)": {
+  "de": "Mit der Persistenz (storage-Ordner)",
+  "pl": "Z persistence (foldery storage)"
  },
  "Without template libraries the layers cannot be matched to models.": {
   "de": "Ohne Vorlagenbibliotheken lassen sich die Ebenen keinen Modellen zuordnen.",
@@ -4479,6 +5759,18 @@
   "de": "Deine Version: {0}",
   "pl": "Twoja wersja: {0}"
  },
+ "Zone {0} is outside the map ({1}, {2})": {
+  "de": "Zone {0} liegt außerhalb der Karte ({1}, {2})",
+  "pl": "Strefa {0} leży poza mapą ({1}, {2})"
+ },
+ "Zone {0} names no event of the event files": {
+  "de": "Zone {0} nennt kein Event der Eventdateien",
+  "pl": "Strefa {0} nie wskazuje żadnego eventu z plików eventów"
+ },
+ "Zones from key points": {
+  "de": "Zonen aus Schlüsselpunkten",
+  "pl": "Strefy z punktów kluczowych"
+ },
  "Zones from the mask": {
   "de": "Zonen aus der Maske",
   "pl": "Strefy z maski"
@@ -4491,9 +5783,53 @@
   "de": "Verkleinern",
   "pl": "Oddal"
  },
+ "all": {
+  "de": "alle",
+  "pl": "wszystkie"
+ },
+ "areaflags.map could not be read": {
+  "de": "areaflags.map konnte nicht gelesen werden",
+  "pl": "Nie udało się odczytać areaflags.map"
+ },
+ "areaflags.map covers {0} m, the map is {1} m": {
+  "de": "areaflags.map deckt {0} m ab, die Karte ist {1} m groß",
+  "pl": "areaflags.map obejmuje {0} m, mapa ma {1} m"
+ },
+ "areaflags.map has room for {0} usage flags, cfglimitsdefinition.xml has {1}": {
+  "de": "areaflags.map fasst {0} usage-Flags, cfglimitsdefinition.xml hat {1}",
+  "pl": "areaflags.map mieści {0} flag usage, cfglimitsdefinition.xml ma {1}"
+ },
+ "areaflags.map has room for {0} value flags, cfglimitsdefinition.xml has {1}": {
+  "de": "areaflags.map fasst {0} value-Flags, cfglimitsdefinition.xml hat {1}",
+  "pl": "areaflags.map mieści {0} flag value, cfglimitsdefinition.xml ma {1}"
+ },
  "backups in the project folder": {
   "de": "backups im Projektordner",
   "pl": "backups w folderze projektu"
+ },
+ "bit {0}": {
+  "de": "Bit {0}",
+  "pl": "bit {0}"
+ },
+ "category": {
+  "de": "Kategorie",
+  "pl": "kategoria"
+ },
+ "cfgeconomycore.xml names {0}, which the mission does not have": {
+  "de": "cfgeconomycore.xml nennt {0}, das die Mission nicht hat",
+  "pl": "cfgeconomycore.xml wskazuje {0}, którego misja nie ma"
+ },
+ "cfgenvironment.xml names {0}, which the mission does not have": {
+  "de": "cfgenvironment.xml nennt {0}, das die Mission nicht hat",
+  "pl": "cfgenvironment.xml wskazuje {0}, którego misja nie ma"
+ },
+ "cfgeventgroups.xml has no group {0}": {
+  "de": "cfgeventgroups.xml hat keine Gruppe {0}",
+  "pl": "cfgeventgroups.xml nie ma grupy {0}"
+ },
+ "cfglimitsdefinition.xml has {0} flags; the layer holds {1}.": {
+  "de": "cfglimitsdefinition.xml hat {0} Flags; die Ebene fasst {1}.",
+  "pl": "cfglimitsdefinition.xml ma {0} flag; warstwa mieści {1}."
  },
  "click": {
   "de": "Klick",
@@ -4503,13 +5839,33 @@
   "de": "Kopie",
   "pl": "kopia"
  },
+ "day ": {
+  "de": "Tag ",
+  "pl": "dzień "
+ },
+ "ground": {
+  "de": "Boden",
+  "pl": "ziemia"
+ },
  "hidden in Terrain Builder": {
   "de": "in Terrain Builder ausgeblendet",
   "pl": "ukryta w Terrain Builderze"
  },
+ "init: spawn at start; load: read from the persistence; respawn: spawn again over time; save: write to the persistence.": {
+  "de": "init: beim Start spawnen; load: aus der Persistenz lesen; respawn: mit der Zeit neu spawnen; save: in die Persistenz schreiben.",
+  "pl": "init: tworzenie przy starcie; load: wczytanie z persistence; respawn: ponowne tworzenie z czasem; save: zapis do persistence."
+ },
  "layers.cfg...": {
   "de": "layers.cfg...",
   "pl": "layers.cfg..."
+ },
+ "month ": {
+  "de": "Monat ",
+  "pl": "miesiąc "
+ },
+ "name": {
+  "de": "Name",
+  "pl": "nazwa"
  },
  "none": {
   "de": "keine",
@@ -4519,6 +5875,26 @@
   "de": "Objekte",
   "pl": "obiektów"
  },
+ "of {0}": {
+  "de": "von {0}",
+  "pl": "z {0}"
+ },
+ "tag": {
+  "de": "Tag",
+  "pl": "tag"
+ },
+ "usage": {
+  "de": "usage",
+  "pl": "usage"
+ },
+ "user": {
+  "de": "Benutzer",
+  "pl": "użytkownik"
+ },
+ "value": {
+  "de": "value",
+  "pl": "value"
+ },
  "wheel": {
   "de": "Rad",
   "pl": "kółko"
@@ -4527,9 +5903,33 @@
   "de": "{0} (Basiswelt)",
   "pl": "{0} (świat bazowy)"
  },
+ "{0} buildings and {1} clusters written.": {
+  "de": "{0} Gebäude und {1} Cluster geschrieben.",
+  "pl": "Zapisano {0} budynków i {1} klastrów."
+ },
+ "{0} buildings of class {1} have no prototype in mapgroupproto.xml": {
+  "de": "{0} Gebäude der Klasse {1} haben keinen Prototyp in mapgroupproto.xml",
+  "pl": "{0} budynków klasy {1} nie ma prototypu w mapgroupproto.xml"
+ },
  "{0} cells": {
   "de": "{0} Zellen",
   "pl": "Komórki: {0}"
+ },
+ "{0} cells changed": {
+  "de": "{0} Zellen geändert",
+  "pl": "Zmieniono {0} komórek"
+ },
+ "{0} could not be read as XML; it is copied as it is": {
+  "de": "{0} konnte nicht als XML gelesen werden; es wird unverändert kopiert",
+  "pl": "Nie udało się odczytać {0} jako XML; jest kopiowany bez zmian"
+ },
+ "{0} does not look like a mission folder (no init.c, db/types.xml or cfgeconomycore.xml)": {
+  "de": "{0} sieht nicht wie ein Missionsordner aus (kein init.c, db/types.xml oder cfgeconomycore.xml)",
+  "pl": "{0} nie wygląda na folder misji (brak init.c, db/types.xml i cfgeconomycore.xml)"
+ },
+ "{0} errors": {
+  "de": "{0} Fehler",
+  "pl": "Błędy: {0}"
  },
  "{0} errors, {1} warnings since the log was last open": {
   "de": "{0} Fehler, {1} Warnungen seit dem letzten Öffnen des Protokolls",
@@ -4538,6 +5938,14 @@
  "{0} files": {
   "de": "{0} Dateien",
   "pl": "Pliki: {0}"
+ },
+ "{0} files, {1} MB": {
+  "de": "{0} Dateien, {1} MB",
+  "pl": "{0} plików, {1} MB"
+ },
+ "{0} files, {1} changed since saved": {
+  "de": "{0} Dateien, {1} seit dem Speichern geändert",
+  "pl": "{0} plików, {1} zmienionych od zapisu"
  },
  "{0} items": {
   "de": "{0} Elemente",
@@ -4559,9 +5967,17 @@
   "de": "{0} Modelle, {1} andere",
   "pl": "{0} modeli, {1} innych"
  },
+ "{0} notes": {
+  "de": "{0} Hinweise",
+  "pl": "Uwagi: {0}"
+ },
  "{0} objects": {
   "de": "{0} Objekte",
   "pl": "Obiekty: {0}"
+ },
+ "{0} objects in the group": {
+  "de": "{0} Objekte in der Gruppe",
+  "pl": "{0} obiektów w grupie"
  },
  "{0} objects removed": {
   "de": "{0} Objekte entfernt",
@@ -4575,9 +5991,21 @@
   "de": "{0} Objekte werden importiert",
   "pl": "Obiekty do wczytania: {0}"
  },
+ "{0} of {1}": {
+  "de": "{0} von {1}",
+  "pl": "{0} z {1}"
+ },
+ "{0} of {1} types, {2} selected": {
+  "de": "{0} von {1} Typen, {2} ausgewählt",
+  "pl": "{0} z {1} typów, zaznaczono {2}"
+ },
  "{0} pixels were left as they were, as their texture tiles already hold {1} surfaces": {
   "de": "{0} Pixel blieben unverändert, weil ihre Texturkacheln bereits {1} Oberflächen haben",
   "pl": "{0} pikseli zostało bez zmian, bo ich kafle tekstur mają już {1} powierzchni"
+ },
+ "{0} placed classes have no prototype": {
+  "de": "{0} platzierte Klassen haben keinen Prototyp",
+  "pl": "{0} postawionych klas nie ma prototypu"
  },
  "{0} points": {
   "de": "{0} Punkte",
@@ -4587,6 +6015,18 @@
   "de": "{0} Masttypen, {1} Leitungstypen",
   "pl": "Typy słupów: {0}, typy przewodów: {1}"
  },
+ "{0} positions outside groups": {
+  "de": "{0} Positionen außerhalb von Gruppen",
+  "pl": "{0} pozycji poza grupami"
+ },
+ "{0} prototypes copied": {
+  "de": "{0} Prototypen kopiert",
+  "pl": "Skopiowano {0} prototypów"
+ },
+ "{0} prototypes, {1} buildings in mapgrouppos.xml, {2} cluster models; {3} objects on the map.": {
+  "de": "{0} Prototypen, {1} Gebäude in mapgrouppos.xml, {2} Clustermodelle; {3} Objekte auf der Karte.",
+  "pl": "{0} prototypów, {1} budynków w mapgrouppos.xml, {2} modeli klastrów; {3} obiektów na mapie."
+ },
  "{0} selected": {
   "de": "{0} ausgewählt",
   "pl": "Zaznaczono: {0}"
@@ -4594,6 +6034,18 @@
  "{0} shapes selected": {
   "de": "{0} Formen ausgewählt",
   "pl": "Zaznaczone kształty: {0}"
+ },
+ "{0} spawn groups added": {
+  "de": "{0} Spawngruppen hinzugefügt",
+  "pl": "Dodano {0} grup spawnu"
+ },
+ "{0} spawns on the map": {
+  "de": "{0} Spawns auf der Karte",
+  "pl": "{0} spawnów na mapie"
+ },
+ "{0} spawns without a group": {
+  "de": "{0} Spawns ohne Gruppe",
+  "pl": "{0} spawnów bez grupy"
  },
  "{0} species have a surface of their own in the forest project and keep it": {
   "de": "{0} Arten haben im Waldprojekt eine eigene Oberfläche und behalten sie",
@@ -4611,12 +6063,40 @@
   "de": "{0} Vorlagen aus {1} entfernt",
   "pl": "Usunięto {0} szablonów z {1}"
  },
+ "{0} texture tiles use more than the surfaces allowed; they are marked in the 2D view and Project settings can fix them": {
+  "de": "{0} Texturkacheln nutzen mehr Oberflächen als erlaubt; sie sind in der 2D-Ansicht markiert und die Projekteinstellungen können sie beheben",
+  "pl": "{0} kafli tekstur ma więcej powierzchni niż wolno; są zaznaczone w widoku 2D, a ustawienia projektu mogą je poprawić"
+ },
  "{0} tiles over the limit, marked in the 2D view": {
   "de": "{0} Kacheln über dem Limit, in der 2D-Ansicht markiert",
   "pl": "Kafle ponad limit: {0}, zaznaczone w widoku 2D"
  },
+ "{0} types changed": {
+  "de": "{0} Typen geändert",
+  "pl": "Zmieniono {0} typów"
+ },
+ "{0} warnings": {
+  "de": "{0} Warnungen",
+  "pl": "Ostrzeżenia: {0}"
+ },
+ "{0} zones added": {
+  "de": "{0} Zonen hinzugefügt",
+  "pl": "Dodano {0} stref"
+ },
  "{0} × {0} samples": {
   "de": "{0} × {0} Punkte",
   "pl": "{0} × {0} próbek"
+ },
+ "{0} × {1} cells over {2} × {3} m; {4} bits of usage, {5} bits of value.": {
+  "de": "{0} × {1} Zellen über {2} × {3} m; {4} Bits usage, {5} Bits value.",
+  "pl": "{0} × {1} komórek na {2} × {3} m; {4} bitów usage, {5} bitów value."
+ },
+ "{0}: item {1} is not in the type files": {
+  "de": "{0}: Gegenstand {1} ist nicht in den Typendateien",
+  "pl": "{0}: przedmiotu {1} nie ma w plikach typów"
+ },
+ "{0}: preset {1} is not in cfgrandompresets.xml": {
+  "de": "{0}: Preset {1} ist nicht in cfgrandompresets.xml",
+  "pl": "{0}: presetu {1} nie ma w cfgrandompresets.xml"
  }
 }

@@ -27,13 +27,15 @@ pub struct ExportSettings {
     pub shapes: ShapesOptions,
     pub objects_on: bool,
     pub objects: ObjectsOptions,
+    pub mission_on: bool,
+    pub mission: MissionOptions,
 }
 impl Default for ExportSettings {
     fn default() -> Self {
         Self {
             folder: String::new(), selection_only: false,
             heightmap_on: true, heightmap: Default::default(), satellite_on: true, satellite: Default::default(), mask_on: true, mask: Default::default(),
-            layers_on: true, layers: Default::default(), shapes_on: false, shapes: Default::default(), objects_on: true, objects: Default::default(),
+            layers_on: true, layers: Default::default(), shapes_on: false, shapes: Default::default(), objects_on: true, objects: Default::default(), mission_on: true, mission: Default::default(),
         }
     }
 }
@@ -47,6 +49,7 @@ pub enum Part {
     Layers,
     Shapes,
     Objects,
+    Mission,
 }
 impl Part {
     fn title(self) -> String {
@@ -57,6 +60,7 @@ impl Part {
             Part::Layers => "layers.cfg".into(),
             Part::Shapes => t("Shapes (SHP)"),
             Part::Objects => t("Objects (Terrain Builder TXT)"),
+            Part::Mission => t("Server mission"),
         }
     }
 }
@@ -72,11 +76,12 @@ impl ExportSettings {
             layers_cfg: on(Part::Layers, self.layers_on).then(|| self.layers.clone()),
             shapes: on(Part::Shapes, self.shapes_on).then(|| self.shapes.clone()),
             objects: on(Part::Objects, self.objects_on).then(|| self.objects.clone()),
+            mission: on(Part::Mission, self.mission_on).then(|| self.mission.clone()),
             selection: if self.selection_only { selection } else { Vec::new() },
         }
     }
     fn any(&self) -> bool {
-        self.heightmap_on || self.satellite_on || self.mask_on || self.layers_on || self.shapes_on || self.objects_on
+        self.heightmap_on || self.satellite_on || self.mask_on || self.layers_on || self.shapes_on || self.objects_on || self.mission_on
     }
 }
 
@@ -102,7 +107,7 @@ fn part(ui: &mut egui::Ui, only: Option<Part>, me: Part, on: &mut bool, enabled:
             egui::Frame::new().inner_margin(egui::Margin { left: 22, right: 4, top: 2, bottom: 6 }).show(ui, body);
         }
     });
-    if me != Part::Objects {
+    if me != Part::Mission {
         ui.separator();
     }
 }
@@ -193,6 +198,11 @@ pub fn window(app: &mut App, ctx: &egui::Context, only: Option<Part>, open: &mut
                 ui.checkbox(&mut o.full_path, t("Model names with their whole path")).on_hover_text(t("Terrain Builder matches objects by file name; the whole path helps other tools."));
                 ui.checkbox(&mut o.offset, t("With easting and northing"));
             });
+            let has_mission = w.mission.is_some();
+            let hint = if has_mission { tf("The mission folder {0}, as the server reads it from mpmissions.", &[&w.mission.as_ref().map(|m| m.name.clone()).unwrap_or_default()]) } else { t("The project has no mission.") };
+            part(ui, only, Part::Mission, &mut s.mission_on, has_mission, &hint, |ui| {
+                ui.checkbox(&mut s.mission.storage, t("With the persistence (storage folders)")).on_hover_text(t("Off starts the economy of the server afresh."));
+            });
         });
         ui.separator();
         row(ui, &t("Folder"), |ui| {
@@ -225,6 +235,7 @@ pub fn run(app: &mut App, only: Option<Part>) {
     let mut parts = s.parts(app.selection.iter().copied().collect(), only);
     if doc.world.satellite.is_none() { parts.satellite = None; }
     if doc.world.shape_layers.iter().all(|l| l.shapes.is_empty()) { parts.shapes = None; }
+    if doc.world.mission.is_none() { parts.mission = None; }
     let world = doc.world.export_copy(parts.satellite.is_some());
     let db = app.db.clone();
     app.spawn(t("Export files"), move |job| {
@@ -253,6 +264,7 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
     if ui.button(t("layers.cfg...")).clicked() { chosen = Some(Some(Part::Layers)); }
     if ui.button(t("Terrain Builder objects (TXT)...")).clicked() { chosen = Some(Some(Part::Objects)); }
     if ui.add_enabled(has_shapes, egui::Button::new(t("Shapes (SHP)..."))).on_disabled_hover_text(t("The project has no shapes.")).clicked() { chosen = Some(Some(Part::Shapes)); }
+    if ui.add_enabled(w.mission.is_some(), egui::Button::new(t("Server mission..."))).on_disabled_hover_text(t("The project has no mission.")).clicked() { chosen = Some(Some(Part::Mission)); }
     if let Some(only) = chosen {
         ui.close_menu();
         open(app, only);

@@ -8,6 +8,17 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub const PROJECT_FILE: &str = "project.dzwe";
+/// Folder of the project that holds the server mission, as the server reads it.
+pub const MISSION_DIR: &str = "mission";
+
+/// Writes the files of the mission that changed into the project; the project file says
+/// whether there is one, so a removed mission leaves its folder for the user to delete.
+pub fn save_mission(w: &mut World, dir: &Path) -> Result<()> {
+    if let Some(m) = w.mission.as_mut() {
+        m.write(&dir.join(MISSION_DIR), true, true).context("mission")?;
+    }
+    Ok(())
+}
 const VERSION: u32 = 1;
 
 #[derive(Serialize, Deserialize)]
@@ -45,6 +56,9 @@ struct ProjectFile {
     holes: crate::holes::Holes,
     #[serde(default)]
     keypoints: Vec<crate::keypoints::KeyPoint>,
+    /// Folder name of the server mission, kept in `mission/` of the project.
+    #[serde(default)]
+    mission: Option<String>,
 }
 
 /// Which parts need rewriting; rasters are large, so unchanged ones are skipped.
@@ -119,6 +133,7 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         shape_layers: w.shape_layers.clone(),
         holes: w.holes.clone(),
         keypoints: w.keypoints.clone(),
+        mission: w.mission.as_ref().map(|m| m.name.clone()),
         active_shape_layer: w.active_shape_layer,
         generators,
         road_removed: w.road_removed.clone(),
@@ -245,6 +260,14 @@ pub fn load(dir: &Path) -> Result<World> {
     w.routes = file.routes;
     w.holes = file.holes;
     w.keypoints = file.keypoints;
+    if let Some(name) = file.mission {
+        let mdir = dir.join(MISSION_DIR);
+        if mdir.is_dir() {
+            let mut m = crate::mission::Mission::load(&mdir).context("mission")?;
+            m.name = name;
+            w.mission = Some(Box::new(m));
+        }
+    }
     for r in &mut w.routes {
         if r.id == 0 {
             r.id = crate::library::new_id();
