@@ -96,6 +96,10 @@ pub enum Action {
     SelectAll,
     Deselect,
     Duplicate,
+    /// A copy of the selection under the cursor.
+    PasteHere,
+    /// A copy of what was selected last, under the cursor.
+    PasteLast,
     Delete,
     Focus,
     Underground,
@@ -133,9 +137,9 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 47] = [
+    pub const ALL: [Action; 49] = [
         Action::NewProject, Action::Open, Action::Save, Action::SaveAs, Action::Undo, Action::Redo, Action::Settings, Action::Shortcuts, Action::Build, Action::Play,
-        Action::SelectAll, Action::Deselect, Action::Duplicate, Action::Delete, Action::Focus, Action::Underground,
+        Action::SelectAll, Action::Deselect, Action::Duplicate, Action::PasteHere, Action::PasteLast, Action::Delete, Action::Focus, Action::Underground,
         Action::ModeSelect, Action::ModeSculpt, Action::ModePaint, Action::ModePlace, Action::ModeRoads, Action::ModeShapes, Action::ModeKeyPoints, Action::ModeSatellite, Action::ModeMission,
         Action::GizmoMove, Action::GizmoRotate, Action::GizmoScale, Action::GizmoSpace,
         Action::View3d, Action::View2d, Action::ViewSplit, Action::CameraBelow, Action::ToggleGrass, Action::ToggleObjects, Action::ToggleShapes,
@@ -157,6 +161,8 @@ impl Action {
             Action::SelectAll => "Select all",
             Action::Deselect => "Clear the selection",
             Action::Duplicate => "Duplicate",
+            Action::PasteHere => "Copy the selection to the cursor",
+            Action::PasteLast => "Copy the last selection to the cursor",
             Action::Delete => "Delete",
             Action::Focus => "Frame the selection",
             Action::Underground => "Underground flag",
@@ -197,7 +203,7 @@ impl Action {
         use Action::*;
         match self {
             NewProject | Open | Save | SaveAs | Undo | Redo | Settings | Shortcuts | Build | Play => "General",
-            SelectAll | Deselect | Duplicate | Delete | Focus | Underground => "Selection",
+            SelectAll | Deselect | Duplicate | PasteHere | PasteLast | Delete | Focus | Underground => "Selection",
             ModeSelect | ModeSculpt | ModePaint | ModePlace | ModeRoads | ModeShapes | ModeKeyPoints | ModeSatellite | ModeMission | GizmoMove | GizmoRotate | GizmoScale | GizmoSpace => "Tools",
             View3d | View2d | ViewSplit | CameraBelow | ToggleGrass | ToggleObjects | ToggleShapes | SearchAssets => "View",
             BrushSmaller | BrushBigger | BrushWeaker | BrushStronger => "Brushes",
@@ -220,6 +226,8 @@ impl Action {
             SelectAll => Shortcut::ctrl(Key::A),
             Deselect => Shortcut::new(Key::Escape),
             Duplicate => Shortcut::ctrl(Key::D),
+            PasteHere => Shortcut::new(Key::C),
+            PasteLast => Shortcut::new(Key::V),
             Delete => Shortcut::new(Key::Delete),
             Focus => Shortcut::new(Key::F),
             Underground => Shortcut::new(Key::U),

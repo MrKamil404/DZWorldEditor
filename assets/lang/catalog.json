@@ -307,6 +307,10 @@
   "de": "An Hang ausrichten",
   "pl": "Dopasuj do spadku"
  },
+ "Align to the ground": {
+  "de": "Am Boden ausrichten",
+  "pl": "Dopasuj do terenu"
+ },
  "All": {
   "de": "Alle",
   "pl": "Wszystkie"
@@ -995,6 +999,10 @@
   "de": "Klicken wählt aus, Ziehen zieht einen Rahmen, Shift ergänzt. W, E, R wechseln das Gizmo. F zeigt die Auswahl.",
   "pl": "Kliknij, aby zaznaczyć, przeciągnij dla ramki, Shift dodaje. W, E, R zmieniają gizmo. F pokazuje zaznaczenie."
  },
+ "Click to select, drag for a box, Shift adds. With objects selected, a drag with Shift held turns them, with Ctrl+Shift by steps (the wheel changes the step), with Alt scales them.": {
+  "de": "Klicken wählt, Ziehen zieht einen Rahmen, Umschalt fügt hinzu. Bei ausgewählten Objekten dreht Ziehen mit Umschalt sie, mit Strg+Umschalt in Schritten (das Mausrad ändert den Schritt), mit Alt skaliert es sie.",
+  "pl": "Kliknięcie zaznacza, przeciągnięcie zaznacza ramką, Shift dodaje. Przy zaznaczonych obiektach przeciągnięcie z Shift je obraca, z Ctrl+Shift obraca skokami (kółko zmienia skok), a z Alt skaluje."
+ },
  "Click: active layer (new objects go here). Ctrl+click: turn editing on or off.": {
   "de": "Klick: aktive Ebene (neue Objekte landen hier). Strg+Klick: Bearbeitung ein- oder ausschalten.",
   "pl": "Kliknięcie: aktywna warstwa (tu trafiają nowe obiekty). Ctrl+kliknięcie: włącza lub wyłącza edycję."
@@ -1063,6 +1071,10 @@
   "de": "Kopieren aus",
   "pl": "Kopiuj z"
  },
+ "Copy objects": {
+  "de": "Objekte kopieren",
+  "pl": "Kopiuj obiekty"
+ },
  "Copy prototypes": {
   "de": "Prototypen kopieren",
   "pl": "Kopiuj prototypy"
@@ -1071,9 +1083,17 @@
   "de": "Prototypen aus einer anderen mapgroupproto.xml kopieren...",
   "pl": "Kopiuj prototypy z innego mapgroupproto.xml..."
  },
+ "Copy the last selection to the cursor": {
+  "de": "Letzte Auswahl an den Cursor kopieren",
+  "pl": "Kopia ostatniego zaznaczenia pod kursor"
+ },
  "Copy the path": {
   "de": "Pfad kopieren",
   "pl": "Kopiuj ścieżkę"
+ },
+ "Copy the selection to the cursor": {
+  "de": "Auswahl an den Cursor kopieren",
+  "pl": "Kopia zaznaczenia pod kursor"
  },
  "Corner tower": {
   "de": "Eckmast",
@@ -1394,6 +1414,18 @@
  "Drag to turn the model, double-click to reset the view.": {
   "de": "Ziehen dreht das Modell, Doppelklick setzt die Ansicht zurück.",
   "pl": "Przeciągnij, aby obrócić model; dwuklik przywraca widok."
+ },
+ "Drag: scale": {
+  "de": "Ziehen: skalieren",
+  "pl": "Przeciąganie: skalowanie"
+ },
+ "Drag: turn": {
+  "de": "Ziehen: drehen",
+  "pl": "Przeciąganie: obrót"
+ },
+ "Drag: turn by steps": {
+  "de": "Ziehen: in Schritten drehen",
+  "pl": "Przeciąganie: obrót skokami"
  },
  "Draw": {
   "de": "Zeichnen",
@@ -3003,6 +3035,10 @@
   "de": "Verschieben, drehen, skalieren",
   "pl": "Przesuń, obróć, skaluj"
  },
+ "Moved and turned objects tilt with the ground under them.": {
+  "de": "Verschobene und gedrehte Objekte neigen sich mit dem Boden darunter.",
+  "pl": "Przesuwane i obracane obiekty przechylają się zgodnie z terenem pod nimi."
+ },
  "Moved {0} to {1}": {
   "de": "{0} nach {1} verschoben",
   "pl": "Przeniesiono {0} do {1}"
@@ -3242,6 +3278,10 @@
  "Nothing selected": {
   "de": "Nichts ausgewählt",
   "pl": "Nic nie zaznaczono"
+ },
+ "Nothing was selected yet": {
+  "de": "Es wurde noch nichts ausgewählt",
+  "pl": "Nic jeszcze nie było zaznaczone"
  },
  "Object": {
   "de": "Objekt",
@@ -4391,6 +4431,10 @@
   "de": "Objekte auswählen",
   "pl": "Zaznacz obiekty"
  },
+ "Select objects first": {
+  "de": "Wähle zuerst Objekte aus",
+  "pl": "Najpierw zaznacz obiekty"
+ },
  "Select objects, and place a spawn of the group first.": {
   "de": "Wähle Objekte und setze zuerst einen Spawn der Gruppe.",
   "pl": "Zaznacz obiekty i najpierw postaw spawn tej grupy."
@@ -4694,6 +4738,10 @@
  "Steps of the grid on the in-game map at its three zoom levels.": {
   "de": "Rasterschritte auf der Spielkarte in ihren drei Zoomstufen.",
   "pl": "Skoki siatki na mapie w grze dla trzech poziomów przybliżenia."
+ },
+ "Stick to the ground": {
+  "de": "Am Boden haften",
+  "pl": "Przyklejaj do terenu"
  },
  "Stop": {
   "de": "Stoppen",
@@ -5303,6 +5351,10 @@
   "de": "Kacheln",
   "pl": "Kafle"
  },
+ "Tilts the selected objects to the ground under them now.": {
+  "de": "Neigt die ausgewählten Objekte jetzt nach dem Boden darunter.",
+  "pl": "Przechyla teraz zaznaczone obiekty zgodnie z terenem pod nimi."
+ },
  "To restore a backup, open the project.dzwe inside it and use Save as.": {
   "de": "Um eine Sicherung wiederherzustellen, öffne die darin enthaltene project.dzwe und verwende „Speichern unter“.",
   "pl": "Aby przywrócić kopię, otwórz znajdujący się w niej plik project.dzwe i użyj „Zapisz jako”."
@@ -5843,6 +5895,10 @@
   "de": "Tag ",
   "pl": "dzień "
  },
+ "during a drag": {
+  "de": "während des Ziehens",
+  "pl": "w trakcie ruchu"
+ },
  "ground": {
   "de": "Boden",
   "pl": "ziemia"
@@ -6098,5 +6154,9 @@
  "{0}: preset {1} is not in cfgrandompresets.xml": {
   "de": "{0}: Preset {1} ist nicht in cfgrandompresets.xml",
   "pl": "{0}: presetu {1} nie ma w cfgrandompresets.xml"
+ },
+ "{0}°  ·  step {1}° (wheel)": {
+  "de": "{0}°  ·  Schritt {1}° (Mausrad)",
+  "pl": "{0}°  ·  skok {1}° (kółko)"
  }
 }

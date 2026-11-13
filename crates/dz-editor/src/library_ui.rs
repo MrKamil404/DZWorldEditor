@@ -1145,6 +1145,7 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
         });
     }
     if let Some((id, code)) = action {
+        if code == 0 || code == 2 { app.leave_browser(); }
         match code {
             0 => {
                 app.selected_generator = Some(id);

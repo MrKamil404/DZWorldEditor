@@ -114,6 +114,24 @@ fn edge_panels(app: &mut App, ctx: &egui::Context) {
             toolbar_contents(app, ui);
         }));
     }
+    // Work going on in the background, which the hidden status bar would show.
+    if let Some(task) = &app.task {
+        let (title, stage, progress) = (task.title.clone(), task.job.current_stage(), task.job.progress());
+        let mut cancel = false;
+        let at = pos2(screen.center().x - 200.0, screen.bottom() - if app.edge_open[3] { 320.0 } else { 46.0 });
+        egui::Area::new(egui::Id::new("fullscreen_task")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
+            frame.show(ui, |ui| {
+                ui.set_width(400.0);
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.add(egui::ProgressBar::new(progress).desired_width(300.0).text(format!("{title}: {stage}")));
+                    cancel = ui.small_button(t("Cancel")).clicked();
+                });
+            });
+        });
+        if cancel { task.job.cancel(); }
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+    }
     // A hint where the panels are, faint until used.
     if !app.edge_open.iter().any(|o| *o) {
         let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("edge_hint")));
@@ -462,7 +480,7 @@ fn modes_panel(app: &mut App, ui: &mut egui::Ui) {
 fn select_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::CURSOR_CLICK, &t("Selection")), true, |ui| {
         ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
-        ui.weak(t("Click to select, drag for a box, Shift adds. Shift or Ctrl held while dragging a selected object rotates or scales it."));
+        ui.weak(t("Click to select, drag for a box, Shift adds. With objects selected, a drag with Shift held turns them, with Ctrl+Shift by steps (the wheel changes the step), with Alt scales them."));
         ui.horizontal(|ui| {
             ui.label(t("Drag selects"));
             let mut changed = false;
@@ -473,12 +491,21 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
         ui.checkbox(&mut app.select_whole, t("Select whole roads and generators"));
         if ui.checkbox(&mut app.settings.drag_by_body, t("Move objects by dragging them")).on_hover_text(t("An object held by its shape slides over the ground, as with the dot of the gizmo.")).changed() { app.settings.save(); }
         angle_snap_ui(app, ui);
+        ui.horizontal(|ui| {
+            if ui.checkbox(&mut app.settings.align_to_ground, t("Stick to the ground")).on_hover_text(t("Moved and turned objects tilt with the ground under them.")).changed() { app.settings.save(); }
+            if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("Align to the ground"))).on_hover_text(t("Tilts the selected objects to the ground under them now.")).clicked() { app.align_selection_to_ground(); }
+        });
         let k = &app.settings.keys;
         key_hints(ui, &[
             (format!("{} / {} / {}", k.text(Action::GizmoMove), k.text(Action::GizmoRotate), k.text(Action::GizmoScale)), t("Move, rotate, scale")),
-            (k.hold(Hold::Precise).name().to_string(), t("Move and turn slowly")),
+            (format!("{} ({})", k.hold(Hold::Precise).name(), t("during a drag")), t("Move and turn slowly")),
             (k.text(Action::Focus), t(Action::Focus.name())),
             (k.text(Action::Duplicate), t(Action::Duplicate.name())),
+            (k.text(Action::PasteHere), t(Action::PasteHere.name())),
+            (k.text(Action::PasteLast), t(Action::PasteLast.name())),
+            ("Shift".to_string(), t("Drag: turn")),
+            ("Ctrl+Shift".to_string(), t("Drag: turn by steps")),
+            ("Alt".to_string(), t("Drag: scale")),
             (k.text(Action::Underground), t(Action::Underground.name())),
             (k.text(Action::CameraBelow), t(Action::CameraBelow.name())),
         ]);
@@ -1227,6 +1254,9 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     });
     app.outliner_rev = app.selection_rev;
     if let Some(p) = reveal { app.show_in_browser(&p); }
+    if select_model.is_some() || shape_pick.is_some() || select_route.is_some() || select_modifier.is_some() {
+        app.leave_browser();
+    }
     if let Some(m) = select_model {
         let shift = ui.input(|i| i.modifiers.shift);
         if !shift { app.selection.clear(); }
@@ -1285,11 +1315,21 @@ fn details(app: &mut App, ui: &mut egui::Ui) {
         selection_layer(app, ui);
         if app.selection.len() == 1 {
             object_details(app, ui);
+            ground_fit(app, ui);
         } else if app.selection.len() > 1 {
             ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
+            ground_fit(app, ui);
         } else {
             ui.weak(t("Nothing selected"));
         }
+    });
+}
+
+/// Tilting the selected objects with the slope under them, now or as they are moved.
+fn ground_fit(app: &mut App, ui: &mut egui::Ui) {
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(t("Align to the ground")).on_hover_text(t("Tilts the selected objects to the ground under them now.")).clicked() { app.align_selection_to_ground(); }
+        if ui.checkbox(&mut app.settings.align_to_ground, t("Stick to the ground")).on_hover_text(t("Moved and turned objects tilt with the ground under them.")).changed() { app.settings.save(); }
     });
 }
 
