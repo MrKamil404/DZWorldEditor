@@ -416,7 +416,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         }
     });
     section(ui, &crate::icons::with(crate::icons::PAINT_BRUSH, &t("Clone brush")), true, |ui| {
-        ui.weak(t("Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it."));
+        crate::panels::hint(ui, &t("Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it."));
         crate::panels::brush_hints(app, ui, None, false, true, true);
         row(ui, &t("Copy from"), |ui| {
             let before = app.sat.from_file;

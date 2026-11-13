@@ -195,8 +195,12 @@ pub struct LineSettings {
     pub selected_point: Option<usize>,
     /// Waypoints before the drag in progress.
     pub point_drag: Option<Vec<[f32; 2]>>,
+    /// Waypoints before values were typed into the point list; they wait for Fit again.
+    pub typed: Option<(usize, Vec<[f32; 2]>)>,
     /// Shape layer whose polygons the route must avoid.
     pub forbidden: Option<usize>,
+    /// How clicks lay a road.
+    pub draw: crate::road_draw::RoadDraw,
 }
 
 pub struct NewProject {
@@ -360,6 +364,10 @@ pub struct App {
     pub mask_tool: crate::maskmods::MaskTool,
     pub place: PlaceSettings,
     pub line: LineSettings,
+    /// The road fitted to the mouse while drawing live.
+    pub live: crate::road_draw::LiveFit,
+    /// The road being laid piece by piece.
+    pub road_parts: crate::road_draw::PartsDraw,
     pub stroke: Option<SculptStroke>,
     pub mask_stroke: Option<MaskStroke>,
 
@@ -506,7 +514,7 @@ impl App {
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
-            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, forbidden: None },
+            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default() }, live: Default::default(), road_parts: Default::default(),
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(),
@@ -569,7 +577,7 @@ impl App {
         let world = self.doc.as_ref().map(|d| &d.world);
         let forbidden = self.line.forbidden.and_then(|i| world?.shape_layers.get(i)).map(|l| l.shapes.iter().filter(|s| s.kind == ShapeKind::Polygon).map(|s| s.points.clone()).collect()).unwrap_or_default();
         let roads = world.map(|w| w.routes.iter().filter(|r| !dayz_road_tool::rails::is_track_family(&r.family)).map(|r| r.centerline.clone()).collect()).unwrap_or_default();
-        gen::RouteRequest { family, points, terrain_route, settings, forbidden, roads, start: None }
+        gen::RouteRequest { family, points, terrain_route, settings, forbidden, roads, start: None, laid: Vec::new() }
     }
 
     /// Makes the terrain modifier of a route match its line and options. Returns what to undo.
@@ -714,7 +722,7 @@ impl App {
             None => {
                 let n = doc.world.routes.len() + 1;
                 let kind = if dayz_road_tool::rails::is_track_family(&req.family) { "Track" } else { "Road" };
-                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, id: dz_core::library::new_id(), grading: self.line.grading, profile: road.profile, decks: road.decks.clone(), terrain_route: req.terrain_route, settings: req.settings, grade: grade || !road.decks.is_empty(), grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None, parts: road.parts.clone(), fitted: Vec::new() });
+                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, id: dz_core::library::new_id(), grading: self.line.grading, profile: road.profile, decks: road.decks.clone(), terrain_route: req.terrain_route, settings: req.settings, grade: grade || !road.decks.is_empty(), grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None, parts: road.parts.clone(), fitted: Vec::new(), method: if req.laid.is_empty() { self.line.draw } else { crate::road_draw::RoadDraw::Parts } });
                 doc.world.routes.len() - 1
             }
         };
@@ -747,7 +755,8 @@ impl App {
             self.warn(t("Another task is still running"));
             return;
         }
-        if self.line.extend_only {
+        // A route edited live is built as its preview showed it: all of it fitted again.
+        if self.line.extend_only && r.method != crate::road_draw::RoadDraw::Live {
             if let Some((at_end, from)) = extension(&r) {
                 self.extend_route(i, at_end, from, before);
                 return;
@@ -2599,7 +2608,8 @@ fn route_decks(world: &dz_core::world::World, i: usize) -> Vec<dz_core::world::B
 /// its new waypoints beyond the old end, nearest first.
 fn extension(r: &dz_core::world::RoadRoute) -> Option<(bool, Vec<[f32; 2]>)> {
     let (old, now) = (&r.fitted, &r.points);
-    if r.parts.is_empty() || old.len() < 2 {
+    // The waypoints of the last fit tell it best; without them it is guessed from the line.
+    if old.len() < 2 {
         return beyond_centerline(r);
     }
     if now.len() <= old.len() {

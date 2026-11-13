@@ -1248,6 +1248,8 @@ pub struct RouteRequest {
     /// The open end of a road this one goes on from: it starts there with that heading and
     /// without an end piece.
     pub start: Option<dayz_road_tool::geometry::Port>,
+    /// Pieces laid by hand, built as they are instead of fitted.
+    pub laid: Vec<dayz_road_tool::roads::PlacedPart>,
 }
 
 /// Track pieces, which are not part of a road project.
@@ -1276,7 +1278,9 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
     } else {
         Crossings::none()
     };
-    let planned = if req.terrain_route {
+    let planned = if !req.laid.is_empty() {
+        Planned { parts: req.laid.clone(), ..Default::default() }
+    } else if req.terrain_route {
         job.stage("Preparing the terrain");
         let dir = tempfile_dir()?;
         let result = (|| -> Result<Planned> {
@@ -2865,7 +2869,7 @@ mod tests {
         w.recompose(None);
         for (cut, fill) in [(0.0, 0.0), (5.0, 6.0)] {
             let settings = dayz_road_tool::document::RoutingSettings { max_cut: cut, max_fill: fill, ..Default::default() };
-            let req = RouteRequest { family: family.clone(), points: vec![[200.0, 500.0], [800.0, 500.0]], terrain_route: false, settings, forbidden: vec![], roads: vec![], start: None };
+            let req = RouteRequest { family: family.clone(), points: vec![[200.0, 500.0], [800.0, 500.0]], terrain_route: false, settings, forbidden: vec![], roads: vec![], start: None, laid: vec![] };
             let r = build_route(&mut w, &crate::model_info::ModelDb::new("Z:/none"), &req, &catalog, &Job::default()).unwrap();
             assert!(!r.decks.is_empty(), "no bridge with cut {cut} and fill {fill}");
             let d = r.decks[0];
@@ -2900,7 +2904,7 @@ mod tests {
         // The polygon is the same rectangle.
         let poly = &inland.polygons()[1];
         assert!(poly.iter().all(|p| (p[0] - 500.0).abs() <= 12.01 && (p[1] - 500.0).abs() <= 12.01), "{poly:?}");
-        let req = RouteRequest { family, points: vec![[200.0, 500.0], [800.0, 500.0]], terrain_route: false, settings: Default::default(), forbidden: vec![], roads: vec![], start: None };
+        let req = RouteRequest { family, points: vec![[200.0, 500.0], [800.0, 500.0]], terrain_route: false, settings: Default::default(), forbidden: vec![], roads: vec![], start: None, laid: vec![] };
         let r = build_route(&mut w, &db, &req, &catalog, &Job::default()).unwrap();
         assert!(!r.decks.is_empty(), "no bridge over the river");
         let d = r.decks[0];
@@ -2918,7 +2922,7 @@ mod tests {
         let family = if road_families(&catalog).iter().any(|f| f == "asf2") { "asf2".to_string() } else { road_families(&catalog)[0].clone() };
         let mut w = World::new(crate::world::WorldMeta::new("E", 128, 8.0), 100.0);
         let db = crate::model_info::ModelDb::new("Z:/none");
-        let req = |points: Vec<[f32; 2]>, start| RouteRequest { family: family.clone(), points, terrain_route: false, settings: Default::default(), forbidden: vec![], roads: vec![], start };
+        let req = |points: Vec<[f32; 2]>, start| RouteRequest { family: family.clone(), points, terrain_route: false, settings: Default::default(), forbidden: vec![], roads: vec![], start, laid: vec![] };
         let first = build_route(&mut w, &db, &req(vec![[300.0, 500.0], [500.0, 500.0]], None), &catalog, &Job::default()).unwrap();
         assert!(is_cap(first.parts.last().unwrap(), &catalog) && is_cap(&first.parts[0], &catalog));
         let joined = |chain: &[dayz_road_tool::roads::PlacedPart]| {
@@ -2960,7 +2964,7 @@ mod tests {
         w.base = g.map;
         w.recompose(None);
         let t0 = std::time::Instant::now();
-        let mut req = RouteRequest { family: "asf2".into(), points: vec![[2200.0, 6500.0], [2500.0, 6300.0]], terrain_route: true, settings: Default::default(), forbidden: vec![], roads: vec![], start: None };
+        let mut req = RouteRequest { family: "asf2".into(), points: vec![[2200.0, 6500.0], [2500.0, 6300.0]], terrain_route: true, settings: Default::default(), forbidden: vec![], roads: vec![], start: None, laid: vec![] };
         let r = build_route(&mut w, &crate::model_info::ModelDb::new("Z:/none"), &req, &catalog, &Job::default()).unwrap();
         println!("catalog {} parts {} in {:?}, line {}", catalog.len(), r.objects.len(), t0.elapsed(), r.centerline.len());
         assert!(!r.objects.is_empty());

@@ -566,6 +566,19 @@ pub struct RoadRoute {
     /// The waypoints of the last fit.
     #[serde(default)]
     pub fitted: Vec<[f32; 2]>,
+    /// How the route was laid, and so how it is edited.
+    #[serde(default)]
+    pub method: RouteMethod,
+}
+
+/// How a road is laid: models fitted to clicked points when they are all there, fitted while
+/// the mouse moves, or chosen piece by piece.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum RouteMethod {
+    #[default]
+    Points,
+    Live,
+    Parts,
 }
 
 /// A move over the map as the gizmo makes it: a turn by `yaw` degrees about `pivot`, the way

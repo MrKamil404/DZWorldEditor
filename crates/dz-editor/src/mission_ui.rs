@@ -499,7 +499,7 @@ fn tool_settings(app: &mut App, ui: &mut egui::Ui) {
     let Some(m) = app.doc.as_ref().and_then(|d| d.world.mission.as_deref()) else { return };
     match app.mission.tool {
         MapTool::Select => {
-            ui.weak(t("Click picks a place, drag moves it, Delete removes it."));
+            crate::panels::hint(ui, &t("Click picks a place, drag moves it, Delete removes it."));
         }
         MapTool::EventSpawn => {
             let events = mission::ce::event_names(m);
@@ -517,7 +517,7 @@ fn tool_settings(app: &mut App, ui: &mut egui::Ui) {
                     for g in &groups { ui.selectable_value(&mut app.mission.event_group, g.clone(), g); }
                 });
             });
-            ui.weak(t("Click on the map adds a spawn of the event."));
+            crate::panels::hint(ui, &t("Click on the map adds a spawn of the event."));
             ui.weak(t("Static events (convoys, trains, police) have no children; each spawn places a group of cfgeventgroups.xml around it, at the height of the ground."));
         }
         MapTool::PlayerSpawn => {
@@ -525,7 +525,7 @@ fn tool_settings(app: &mut App, ui: &mut egui::Ui) {
                 for s in ["fresh", "hop", "travel"] { ui.selectable_value(&mut app.mission.spawn_section, s.to_string(), s); }
             });
             row(ui, &t("Group"), |ui| { ui.text_edit_singleline(&mut app.mission.spawn_group); });
-            ui.weak(t("Click on the map adds a spawn position to the group."));
+            crate::panels::hint(ui, &t("Click on the map adds a spawn position to the group."));
         }
         MapTool::Zone => {
             let files = m.territory_files();
@@ -546,21 +546,21 @@ fn tool_settings(app: &mut App, ui: &mut egui::Ui) {
             row(ui, &t("Radius"), |ui| { ui.add(egui::DragValue::new(&mut app.mission.zone_radius).range(1.0..=5000.0).suffix(" m")); });
             row(ui, "smin / smax", |ui| { ui.add(egui::DragValue::new(&mut app.mission.zone_static[0])); ui.add(egui::DragValue::new(&mut app.mission.zone_static[1])); });
             row(ui, "dmin / dmax", |ui| { ui.add(egui::DragValue::new(&mut app.mission.zone_dynamic[0])); ui.add(egui::DragValue::new(&mut app.mission.zone_dynamic[1])); });
-            ui.weak(t("Click on the map adds a zone."));
+            crate::panels::hint(ui, &t("Click on the map adds a zone."));
         }
         MapTool::Area => {
             row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut app.mission.area_name); });
             row(ui, &t("Radius"), |ui| { ui.add(egui::DragValue::new(&mut app.mission.area_radius).range(1.0..=5000.0).suffix(" m")); });
-            ui.weak(t("Click on the map adds a contaminated area."));
+            crate::panels::hint(ui, &t("Click on the map adds a contaminated area."));
         }
         MapTool::SafePosition => {
-            ui.weak(t("Click on the map adds a position players are moved to out of an area."));
+            crate::panels::hint(ui, &t("Click on the map adds a position players are moved to out of an area."));
         }
         MapTool::Trigger => {
             row(ui, &t("Size"), |ui| {
                 for v in &mut app.mission.trigger_size { ui.add(egui::DragValue::new(v).range(0.1..=500.0).speed(0.1)); }
             });
-            ui.weak(t("Click on the map adds a trigger box on the ground."));
+            crate::panels::hint(ui, &t("Click on the map adds a trigger box on the ground."));
         }
         MapTool::Flags => flag_tool_ui(app, ui),
     }
@@ -595,7 +595,7 @@ fn flag_tool_ui(app: &mut App, ui: &mut egui::Ui) {
     row(ui, &t("Radius"), |ui| { ui.add(egui::DragValue::new(&mut app.mission.flag_radius).range(1.0..=2000.0).suffix(" m")); });
     ui.checkbox(&mut app.mission.flag_erase, t("Erase"));
     ui.weak(t("The map shows every flag of the layer; the chosen one is the one painted and stands out."));
-    ui.weak(t("Drag on the map paints the flag; with Shift it erases."));
+    crate::panels::hint(ui, &t("Drag on the map paints the flag; with Shift it erases."));
 }
 
 fn selected_ui(app: &mut App, ui: &mut egui::Ui) {
@@ -1803,7 +1803,7 @@ fn types_tab(app: &mut App, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().id_salt("type_detail").auto_shrink([false, false]).show(ui, |ui| {
             let focus = app.mission.type_focus.clone().and_then(|k| rows.iter().find(|(f, i, _)| (f, i) == (&k.0, &k.1)).cloned());
             section(ui, &t("Type"), true, |ui| {
-                let Some((f, idx, r)) = focus else { ui.weak(t("Click a type in the table.")); return };
+                let Some((f, idx, r)) = focus else { crate::panels::hint(ui, &t("Click a type in the table.")); return };
                 let mut row = r.clone();
                 ui.weak(&f);
                 ui.horizontal(|ui| { ui.label(t("Name")); ui.text_edit_singleline(&mut row.name); });
