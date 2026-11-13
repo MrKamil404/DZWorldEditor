@@ -50,6 +50,7 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
         detached_view(app, ctx);
     }
     dialogs(app, ctx);
+    crate::mission_ui::window(app, ctx);
     app.updater.window(ctx);
     crate::asset_browser::drag_ghost(app, ctx);
 }
@@ -304,7 +305,7 @@ fn icon_tool(ui: &mut egui::Ui, active: bool, icon: &str, label: Option<&str>, t
 }
 
 /// The modes with their icons and keys.
-pub const MODES: [(Mode, &str, &str, Action); 8] = [
+pub const MODES: [(Mode, &str, &str, Action); 9] = [
     (Mode::Select, icons::CURSOR, "Select", Action::ModeSelect),
     (Mode::Landscape, icons::MOUNTAINS, "Sculpt", Action::ModeSculpt),
     (Mode::Paint, icons::PAINT_BRUSH, "Paint", Action::ModePaint),
@@ -313,6 +314,7 @@ pub const MODES: [(Mode, &str, &str, Action); 8] = [
     (Mode::Shapes, icons::POLYGON, "Shapes", Action::ModeShapes),
     (Mode::KeyPoints, icons::MAP_PIN, "Key points", Action::ModeKeyPoints),
     (Mode::Satellite, icons::GLOBE_HEMISPHERE_WEST, "Satellite", Action::ModeSatellite),
+    (Mode::Mission, icons::FLAG_BANNER, "Mission", Action::ModeMission),
 ];
 
 fn toolbar(app: &mut App, ctx: &egui::Context) {
@@ -453,6 +455,7 @@ fn modes_panel(app: &mut App, ui: &mut egui::Ui) {
         Mode::Shapes => shapes_mode(app, ui),
         Mode::KeyPoints => keypoints_mode(app, ui),
         Mode::Satellite => crate::satellite::panel(app, ui),
+        Mode::Mission => crate::mission_ui::panel(app, ui),
     });
 }
 

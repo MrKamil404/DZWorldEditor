@@ -136,6 +136,14 @@ impl Default for ShapesOptions {
     }
 }
 
+/// How the mission is exported.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct MissionOptions {
+    /// The persistence folders (`storage_*`) go along.
+    pub storage: bool,
+}
+
 /// What to export and how; `None` leaves a part out.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -146,6 +154,8 @@ pub struct FileExport {
     pub layers_cfg: Option<LayersOptions>,
     pub shapes: Option<ShapesOptions>,
     pub objects: Option<ObjectsOptions>,
+    /// The server mission, into a folder of its name.
+    pub mission: Option<MissionOptions>,
     /// Only these objects, when some are given.
     #[serde(skip)]
     pub selection: Vec<u32>,
@@ -162,6 +172,7 @@ impl World {
         w.mask_mods = self.mask_mods.clone();
         w.objects = self.objects.clone();
         w.shape_layers = self.shape_layers.clone();
+        w.mission = self.mission.clone();
         w
     }
 }
@@ -203,6 +214,11 @@ pub fn export(w: &World, db: &ModelDb, o: &FileExport, dir: &Path, job: &Job) ->
     if let Some(ob) = &o.objects {
         job.stage("Writing the objects");
         out.extend(write_objects(w, db, ob, &o.selection, dir, &id)?);
+    }
+    if let (Some(mo), Some(m)) = (&o.mission, &w.mission) {
+        job.stage("Writing the mission");
+        let mut m = (**m).clone();
+        out.extend(m.write(&dir.join(&m.name.clone()), false, mo.storage)?);
     }
     Ok(out)
 }
@@ -388,6 +404,7 @@ mod tests {
             layers_cfg: Some(LayersOptions { only_used: true, ..Default::default() }),
             shapes: Some(ShapesOptions::default()),
             objects: Some(ObjectsOptions { full_path: true, offset: false, ..Default::default() }),
+            mission: None,
             selection: Vec::new(),
         };
         let files = export(&w, &ModelDb::new(d.path()), &o, d.path(), &Job::default()).unwrap();

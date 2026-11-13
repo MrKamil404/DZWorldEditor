@@ -11,6 +11,7 @@ mod icons;
 mod keys;
 mod library_ui;
 mod maskmods;
+mod mission_ui;
 mod models;
 mod panels;
 mod render;

@@ -7,7 +7,7 @@ description = "World model, generators, import and export for DZ World Editor"
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
 rayon.workspace = true
 image.workspace = true
 rand.workspace = true

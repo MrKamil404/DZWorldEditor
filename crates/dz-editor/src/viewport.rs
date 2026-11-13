@@ -29,7 +29,7 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
-    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32, usize)>,
+    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32, usize, u64)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -68,6 +68,11 @@ pub struct ObjectDrag {
 pub struct AutoScript {
     pub steps: Vec<String>,
     pub wait: u32,
+}
+
+/// The point of the terrain a ray hits.
+pub fn terrain_hit(h: &Heightmap, o: V3, d: V3, ortho: bool) -> Option<V3> {
+    pick_terrain(h, o, d, ortho)
 }
 
 fn pick_terrain(h: &Heightmap, o: V3, d: V3, ortho: bool) -> Option<V3> {
@@ -233,7 +238,7 @@ impl Footprint {
 
 /// Keeps the finest geometry seen of each model.
 pub fn remember_pick_mesh(meshes: &mut HashMap<u32, std::sync::Arc<PickMesh>>, m: &crate::render::MeshData) {
-    if m.key.0 >= CLUTTER_BASE || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
+    if m.key.0 >= MISSION_BASE || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
         return;
     }
     let positions: Vec<[f32; 3]> = m.vertices.chunks_exact(10).map(|v| [v[0], v[1], v[2]]).collect();
@@ -417,6 +422,9 @@ fn write_box(out: &mut Vec<f32>, o: &Obj, y: f32, info: &ModelInfo, tint: [f32; 
 
 /// Model ids at and above this are ground clutter, not objects of the map.
 const CLUTTER_BASE: u32 = 0x8000_0000;
+/// Model ids at and above this (and below the clutter) are objects of the event groups of the
+/// mission, drawn where the events would place them.
+const MISSION_BASE: u32 = 0x7000_0000;
 
 const SELECT_TINT: [f32; 4] = [1.0, 0.55, 0.05, 1.0];
 
@@ -432,14 +440,15 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     let Some(doc) = &app.doc else { return ObjectDraw::default() };
     let world = &doc.world;
     let cache = match which { 0 => &mut app.view3, 1 => &mut app.view2, _ => &mut app.view_mini };
-    if !app.show_objects || (world.objects.is_empty() && app.clutter_models.is_empty()) {
+    if !app.show_objects || (world.objects.is_empty() && app.clutter_models.is_empty() && crate::mission_ui::ghosts_of(&app.mission, app.mode).is_none()) {
         cache.draw = ObjectDraw::default();
         return ObjectDraw::default();
     }
     // The top view lists more than is on screen, so panning needs no rebuild until it nears the edge.
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
     let shadow_range = app.settings.lighting.shadow_range;
-    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32, app.pick_meshes.len());
+    let ghost_version = crate::mission_ui::ghosts_of(&app.mission, app.mode).map_or(0, |g| g.version() | 1);
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32, app.pick_meshes.len(), ghost_version);
     let toggled = cache.toggles != Some(toggles);
     let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
@@ -629,6 +638,38 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
             }
         }
     }
+    // The objects of the event groups of the mission, where the events would place them.
+    let mut ghost_requests: Vec<(u32, u8)> = Vec::new();
+    if let Some(g) = crate::mission_ui::ghosts_of(&app.mission, app.mode) {
+        let close_top = v.ortho && app.settings.top_models && v.mpp < 1.5;
+        if !v.ortho || close_top {
+            let half = (v.rect.width().max(v.rect.height()) * v.mpp * 0.75).max(10.0);
+            for gh in &g.list {
+                let d = ((gh.x - v.eye[0]).powi(2) + (gh.z - v.eye[2]).powi(2)).sqrt();
+                if if v.ortho { (gh.x - v.eye[0]).abs() > half || (gh.z - v.eye[2]).abs() > half } else { d > 2500.0 } {
+                    continue;
+                }
+                let info = &g.infos[gh.model as usize];
+                let o = Obj { x: gh.x, z: gh.z, elevation: gh.y.unwrap_or(0.0), yaw: gh.yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: if gh.y.is_some() { dz_core::objects::FLAG_ABSOLUTE } else { 0 } };
+                let y0 = ObjectStore::origin_y(&o, &world.height);
+                let (m, y) = placed_matrix(&o, info, &world.height, y0);
+                let id = MISSION_BASE + gh.model;
+                let last = renderer.lod_count(id).map_or(u8::MAX, |c| c.saturating_sub(1));
+                let want = if v.ortho { 0 } else if d < 80.0 { 0 } else if d < 400.0 { 1 } else { 2 }.min(last);
+                match renderer.best_lod(id, want) {
+                    Some((lod, _)) => {
+                        write_instance(instances.entry((id, lod)).or_default(), &m, [gh.x, y, gh.z], [1.0, 0.72, 0.3, 0.3]);
+                        if lod != want {
+                            ghost_requests.push((gh.model, want));
+                        }
+                    }
+                    None => ghost_requests.push((gh.model, want)),
+                }
+            }
+        }
+    }
+    ghost_requests.sort_unstable();
+    ghost_requests.dedup();
     // Ground clutter on a 1 m grid, thinned with distance like the game's clutter range.
     let mut clutter_requests: Vec<(u32, u8)> = Vec::new();
     if !v.ortho && app.show_grass && !app.clutter_models.is_empty() {
@@ -787,6 +828,11 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     let to_load: Vec<(u32, u8, String)> = requests.into_iter().map(|(m, l)| (m, l, world.objects.models[m as usize].path.clone())).collect();
     for (m, l, path) in to_load {
         app.loader.request((m, l), &path);
+    }
+    for (m, l) in ghost_requests {
+        if let Some(path) = app.mission.ghosts.models.get(m as usize).cloned() {
+            app.loader.request((MISSION_BASE + m, l), &path);
+        }
     }
     for (m, l) in clutter_requests {
         let path = app.clutter_models[m as usize].clone();
@@ -1584,6 +1630,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                 keypoint_input(app, ctx, resp, v, hit, mouse);
             }
         }
+        Mode::Mission => crate::mission_ui::map_input(app, ctx, resp, v, hit, mouse),
         Mode::Generate => {}
         Mode::Select => {
             let pivot = selection_pivot(app);
@@ -2471,6 +2518,7 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
             draw_gizmo(app, &painter, v, p, app.drag.as_ref().map(|d| d.handle).or(hover));
         }
     }
+    crate::mission_ui::draw_map(app, &painter, v, resp);
     // Compass.
     let c = pos2(v.rect.right() - 34.0, v.rect.bottom() - 34.0);
     let (nx, nz) = if v.ortho { (0.0, -1.0) } else { (-v.right[2], -(v.forward[2] * 0.5 + 0.5).max(0.3)) };
@@ -2518,6 +2566,7 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
         Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: if app.paint.picture.is_some() { 1 } else { app.paint.shape as i32 } }),
         Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: if app.place.brush { app.place.brush_radius } else { 2.0 }, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
         Mode::Satellite => Some(BrushView { x: h[0], z: h[2], radius: app.sat.radius, falloff: 1.0 - app.sat.hardness, color: [1.0, 0.82, 0.24], shape: 0 }),
+        Mode::Mission => crate::mission_ui::brush(app, h),
         _ => None,
     }
 }
@@ -2942,7 +2991,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         return;
     }
     if k(Action::Duplicate) { app.duplicate_selection(); }
-    if k(Action::Delete) && !matches!(app.mode, Mode::Shapes | Mode::KeyPoints) { app.delete_selection(); }
+    if k(Action::Delete) && !matches!(app.mode, Mode::Shapes | Mode::KeyPoints | Mode::Mission) { app.delete_selection(); }
     if k(Action::Focus) { focus_selection(app); }
     if k(Action::Underground) { app.toggle_underground(); }
     if k(Action::CameraBelow) { app.camera_under = !app.camera_under; }
@@ -2968,7 +3017,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
             app.selection_rev += 1;
         }
     }
-    for (a, m) in [(Action::ModeSelect, Mode::Select), (Action::ModeSculpt, Mode::Landscape), (Action::ModePaint, Mode::Paint), (Action::ModePlace, Mode::Place), (Action::ModeRoads, Mode::Lines), (Action::ModeShapes, Mode::Shapes), (Action::ModeKeyPoints, Mode::KeyPoints), (Action::ModeSatellite, Mode::Satellite)] {
+    for (a, m) in [(Action::ModeSelect, Mode::Select), (Action::ModeSculpt, Mode::Landscape), (Action::ModePaint, Mode::Paint), (Action::ModePlace, Mode::Place), (Action::ModeRoads, Mode::Lines), (Action::ModeShapes, Mode::Shapes), (Action::ModeKeyPoints, Mode::KeyPoints), (Action::ModeSatellite, Mode::Satellite), (Action::ModeMission, Mode::Mission)] {
         if k(a) { app.mode = m; }
     }
     for (a, g) in [(Action::GizmoMove, Gizmo::Move), (Action::GizmoRotate, Gizmo::Rotate), (Action::GizmoScale, Gizmo::Scale)] {
@@ -3039,6 +3088,7 @@ pub fn central(app: &mut App, ui: &mut egui::Ui) {
         welcome(app, ui);
         return;
     }
+    crate::mission_ui::prepare(app, &ctx);
     let rect = ui.available_rect_before_wrap();
     if app.settings.top_follow && app.view_mode == ViewMode::Split {
         app.top_center = [app.camera.pos[0], app.camera.pos[2]];
@@ -3353,6 +3403,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "shapeexport" => app.write_shapes(std::path::Path::new(&arg)),
         "shapeimport" => app.load_shape_files(vec![arg.into()]),
         "grassunder" => app.grass_under_objects = arg == "1",
+        "mission" => crate::mission_ui::script(app, &arg),
         "layer" => {
             use crate::app::LayerAction as A;
             let mut it = arg.split_whitespace();
@@ -3400,6 +3451,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 "lines" => Mode::Lines,
                 "shapes" => Mode::Shapes,
                 "keypoints" => Mode::KeyPoints,
+                "mission" => Mode::Mission,
                 "gen" => Mode::Generate,
                 _ => Mode::Select,
             }

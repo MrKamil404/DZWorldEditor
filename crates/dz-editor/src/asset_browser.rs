@@ -812,6 +812,10 @@ enum Act {
     Rename(String),
     DeleteFolder(String),
     MakePreset(Vec<String>),
+    /// A new group of cfgeventgroups.xml laid out as this prefab.
+    EventGroup(u64),
+    /// The objects of the prefab added to a group of cfgeventgroups.xml.
+    AddToEventGroup(String, u64),
     Duplicate(Pick),
     Delete(Pick),
     IntoPreset(u64, Vec<String>),
@@ -1480,6 +1484,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         });
                                     }
                                     if models.len() > 1 && ui.button(t("Make a preset of them")).clicked() { acts.push(Act::MakePreset(models.clone())); ui.close_menu(); }
+                                    if let (Pick::Prefab(id), 1) = (pick, group.len()) { event_group_menu(ui, app, *id, &mut acts); }
                                     if group.len() == 1 {
                                         if let Pick::Model(m) = pick {
                                             if ui.button(t("Show in its folder")).clicked() { acts.push(Act::Go(Source::Drive(m.rsplit_once('\\').map_or("", |x| x.0).to_string()))); ui.close_menu(); }
@@ -1632,6 +1637,8 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                 }
                 app.lib_dirty = true;
             }
+            Act::EventGroup(id) => crate::mission_ui::group_from_prefab(app, id),
+            Act::AddToEventGroup(group, id) => crate::mission_ui::add_prefab_to_group(app, &group, id),
             Act::MakePreset(models) => {
                 let id = dz_core::library::new_id();
                 let folder = app.preset_folder.clone().unwrap_or_default();
@@ -2085,9 +2092,10 @@ fn details(app: &mut App, ui: &mut egui::Ui, layers: &[(String, [u8; 3])], acts:
                         if ui.button(t("Add to the project")).clicked() { crate::library_ui::add_forest(app, n, None); }
                         if ui.button(if locked { t("Edit a copy") } else { t("Edit") }).clicked() { if locked { duplicate(app, one) } else { open(app, one) } }
                     }
-                    Pick::Prefab(_) => {
+                    Pick::Prefab(id) => {
                         if ui.button(t("Place")).clicked() { activate(app, one, true); app.mode = Mode::Place; }
                         if ui.button(t("Edit")).clicked() { open(app, one); }
+                        event_group_menu(ui, app, *id, acts);
                     }
                     Pick::Road(_) => {
                         if ui.button(t("Draw the road")).clicked() { activate(app, one, true); }
@@ -2389,4 +2397,30 @@ pub fn library_demo(app: &mut App, show: &str) {
         _ => Source::Group(Group::Library),
     };
     app.browser.go(to);
+}
+
+/// Makes an event group laid out as a prefab, or adds the prefab to one, when the project has
+/// a mission.
+fn event_group_menu(ui: &mut egui::Ui, app: &App, prefab: u64, acts: &mut Vec<Act>) {
+    let Some(m) = crate::mission_ui::mission(app) else { return };
+    let groups = dz_core::mission::ce::event_group_names(m);
+    ui.menu_button(crate::icons::with(crate::icons::LIGHTNING, &t("Event group (cfgeventgroups)")), |ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        if ui.button(crate::icons::with(crate::icons::PLUS, &t("New group of the prefab"))).on_hover_text(t("The objects of the prefab as the objects of a static event such as a convoy, around its middle; place the spawns of the group with the Event spawn tool.")).clicked() {
+            acts.push(Act::EventGroup(prefab));
+            ui.close_menu();
+        }
+        if !groups.is_empty() {
+            ui.separator();
+            ui.weak(t("Add to a group"));
+            egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                for g in &groups {
+                    if ui.button(g).clicked() {
+                        acts.push(Act::AddToEventGroup(g.clone(), prefab));
+                        ui.close_menu();
+                    }
+                }
+            });
+        }
+    });
 }
