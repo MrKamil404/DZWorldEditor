@@ -30,7 +30,7 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
-    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32, usize, u64)>,
+    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32, usize, u64, bool, u64)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -432,6 +432,11 @@ const CLUTTER_BASE: u32 = 0x8000_0000;
 /// Model ids at and above this (and below the clutter) are objects of the event groups of the
 /// mission, drawn where the events would place them.
 const MISSION_BASE: u32 = 0x7000_0000;
+/// Model ids at and above this (and below the clutter) are models buildings place through
+/// proxies: `crate::proxies::Proxies::models`.
+const PROXY_BASE: u32 = 0x7800_0000;
+/// How far away the proxies of buildings are drawn, m.
+const PROXY_RANGE: f32 = 150.0;
 
 const SELECT_TINT: [f32; 4] = [1.0, 0.55, 0.05, 1.0];
 
@@ -455,7 +460,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
     let shadow_range = app.settings.lighting.shadow_range;
     let ghost_version = crate::mission_ui::ghosts_of(&app.mission, app.mode).map_or(0, |g| g.version() | 1);
-    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32, app.pick_meshes.len(), ghost_version);
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32, app.pick_meshes.len(), ghost_version, app.show_proxies, app.proxies.rev);
     let toggled = cache.toggles != Some(toggles);
     let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
@@ -488,6 +493,8 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     let infos = &cache.infos;
     let tints = &cache.tints;
     let mut requests: Vec<(u32, u8)> = Vec::new();
+    let mut proxy_requests: Vec<(u32, u8)> = Vec::new();
+    let show_proxies = app.show_proxies;
 
     let mut boxes = Vec::new();
     let mut instances: HashMap<(u32, u8), Vec<f32>> = HashMap::new();
@@ -609,6 +616,24 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                                 no_billboard_left -= n as i64;
                             }
                             write_instance(instances.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                            // What the building holds, as the game shows it close up.
+                            if show_proxies && d < PROXY_RANGE {
+                                if let Some(list) = app.proxies.get(&world.objects.models[m0 as usize].path, &app.db, &app.ctx) {
+                                    for p in list.iter() {
+                                        let (axes, at) = crate::proxies::place(&placed_m, [o.x, y, o.z], p);
+                                        let id = PROXY_BASE + p.model;
+                                        let want = if d < 40.0 { 0 } else if d < 90.0 { 1 } else { 2 }.min(renderer.lod_count(id).map_or(u8::MAX, |c| c.saturating_sub(1)));
+                                        match renderer.best_lod(id, want).filter(|_| triangles_left > 0) {
+                                            Some((plod, pn)) => {
+                                                triangles_left -= pn as i64;
+                                                write_instance(instances.entry((id, plod)).or_default(), &axes, at, tint);
+                                                if plod != want { proxy_requests.push((p.model, want)); }
+                                            }
+                                            None => proxy_requests.push((p.model, want)),
+                                        }
+                                    }
+                                }
+                            }
                             if d < shadow_range {
                                 // Shadows are cast by the next coarser LOD when it is there.
                                 let caster = renderer.best_lod(m0, want.saturating_add(1).min(last)).map_or(lod, |l| l.0);
@@ -839,6 +864,13 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     for (m, l) in ghost_requests {
         if let Some(path) = app.mission.ghosts.models.get(m as usize).cloned() {
             app.loader.request((MISSION_BASE + m, l), &path);
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    proxy_requests.retain(|r| seen.insert(*r));
+    for (m, l) in proxy_requests {
+        if let Some(path) = app.proxies.models.get(m as usize).cloned() {
+            app.loader.request((PROXY_BASE + m, l), &path);
         }
     }
     for (m, l) in clutter_requests {
@@ -4044,6 +4076,36 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "railgrade" => app.line.rail_routing.max_grade = nums.first().copied().unwrap_or(3.0) as f64,
         "routemode" => app.line.route = arg != "fit",
         "routetool" => app.line.action = LineAction::Edit,
+        "proxies" => app.show_proxies = arg == "1",
+        // `camproxy n`: the camera 2.5 m from proxy n of the first object, a little above it,
+        // looking at it.
+        "camproxy" => {
+            let n = nums.first().map(|v| *v as usize).unwrap_or(0);
+            let found = app.doc.as_ref().and_then(|d| {
+                let (_, o) = d.world.objects.iter().next()?;
+                let path = d.world.objects.models[o.model as usize].path.clone();
+                Some((*o, path))
+            });
+            if let Some((o, path)) = found {
+                let (ctx, db) = (app.ctx.clone(), app.db.clone());
+                if let Some(list) = app.proxies.get(&path, &db, &ctx) {
+                    if let Some(p) = list.get(n) {
+                        let world = &app.doc.as_ref().unwrap().world;
+                        let info = db.get(&path);
+                        let (m, y) = placed_matrix(&o, &info, &world.height, ObjectStore::origin_y(&o, &world.height));
+                        let (_, at) = crate::proxies::place(&m, [o.x, y, o.z], p);
+                        eprintln!("PROXY {n} {} at {:?}", app.proxies.models[p.model as usize], at);
+                        // From the side of the building's middle, where the room is.
+                        let (dx, dz) = (o.x - at[0], o.z - at[2]);
+                        let l = dx.hypot(dz).max(0.01);
+                        let (dx, dz) = (dx / l, dz / l);
+                        app.camera.pos = [at[0] + dx * 2.2, at[1] + 1.4, at[2] + dz * 2.2];
+                        app.camera.yaw = (-dx).atan2(-dz);
+                        app.camera.pitch = -28f32.to_radians();
+                    }
+                }
+            }
+        }
         // Clicks lengthen the selected route at its "start" or "end".
         "routeextend" => app.line.extend = match arg.as_str() { "start" => Some(true), "end" => Some(false), _ => None },
         "routepts" => {

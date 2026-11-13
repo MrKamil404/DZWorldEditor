@@ -594,13 +594,15 @@ void main(){
     N = bump(N, T(u_m1, 1).xyz * 2.0 - 1.0, UV(1));
   } else if (u_mode == 2) {
     vec4 m = T(u_m4, 4);
-    float base = max(1.0 - m.r - m.g - m.b, 0.0);
+    // The layers are laid one over another as the game does: red lays layer 1 over the base,
+    // green layer 2 over that, blue layer 3 over all. Masks whose channels overlap (red and
+    // green together on the walls of a police station) stay as bright as their layers.
+    vec4 w = vec4((1.0 - m.r) * (1.0 - m.g) * (1.0 - m.b), m.r * (1.0 - m.g) * (1.0 - m.b), m.g * (1.0 - m.b), m.b);
     if (u_top.x >= 0.0) {
-      vec4 w = vec4(base, m.rgb);
       vec4 only = vec4(equal(vec4(u_top.x), vec4(0.0, 1.0, 2.0, 3.0)));
       w = mix(w, only, smoothstep(u_top.z, u_top.y, G.y));
-      base = w.x; m.rgb = w.yzw;
     }
+    float base = w.x; m.rgb = w.yzw;
     vec4 d0 = T(u_m11, 11), d1 = T(u_m12, 12), d2 = T(u_m13, 13), d3 = T(u_m14, 14);
     // A plain specular map in a detail slot has no detail pattern in its red.
     if (u_xo[11].z > 1.5) d0.r = 0.5;

@@ -2083,6 +2083,10 @@
   "de": "Vollbild",
   "pl": "Pełny ekran"
  },
+ "Furniture and fittings that buildings place in their visual LOD, as the game shows them. Proxies of the geometry, fire, memory and roadway LODs are not drawn.": {
+  "de": "Möbel und Ausstattung, die Gebäude in ihrem sichtbaren LOD platzieren, wie das Spiel sie zeigt. Proxys der Geometrie-, Fire-, Memory- und Roadway-LODs werden nicht gezeichnet.",
+  "pl": "Meble i wyposażenie, które budynki wstawiają w LOD-zie widoku, tak jak pokazuje je gra. Proxy z LOD-ów geometrii, fire, memory i roadway nie są rysowane."
+ },
  "Further edge presets, with their share": {
   "de": "Weitere Rand-Presets und ihr Anteil",
   "pl": "Kolejne presety granicy i ich udział"
@@ -3994,6 +3998,10 @@
  "Prototype {0}: value {1} is not in cfglimitsdefinition.xml": {
   "de": "Prototyp {0}: value {1} ist nicht in cfglimitsdefinition.xml",
   "pl": "Prototyp {0}: value {1} nie ma w cfglimitsdefinition.xml"
+ },
+ "Proxies in buildings": {
+  "de": "Proxys in Gebäuden",
+  "pl": "Proxy w budynkach"
  },
  "Put back the objects it removed ({0})": {
   "de": "Die entfernten Objekte zurücklegen ({0})",

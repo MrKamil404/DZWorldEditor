@@ -323,6 +323,9 @@ pub struct App {
     pub wireframe: bool,
     pub show_objects: bool,
     pub show_grass: bool,
+    /// Furniture and fittings buildings place through the proxies of their visual LOD.
+    pub show_proxies: bool,
+    pub proxies: crate::proxies::Proxies,
     pub show_shadows: bool,
     pub clutter_db: dz_core::clutter::ClutterDb,
     /// Per layer: (index in `clutter_models`, cumulative probability, scale min, scale max).
@@ -509,7 +512,7 @@ impl App {
             doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
-            shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
+            shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
@@ -1096,6 +1099,7 @@ impl App {
             }
         }
         self.renderer.lock().unwrap().shadow_size = self.settings.shadow_map as i32;
+        self.proxies.poll();
         // Models arriving from the workers.
         {
             let (renderer, fits, picks) = (self.renderer.clone(), &mut self.impostor_fits, &mut self.pick_meshes);
