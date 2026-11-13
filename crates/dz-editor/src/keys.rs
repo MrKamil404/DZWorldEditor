@@ -128,6 +128,14 @@ pub enum Action {
     BrushWeaker,
     BrushStronger,
     SearchAssets,
+    /// Key help shown in the panels or not.
+    ToggleHints,
+    /// Laying a road piece by piece: the chosen piece goes on.
+    RoadPieceAdd,
+    RoadPiecePrev,
+    RoadPieceNext,
+    /// Curves bend the other way.
+    RoadPieceSide,
     CameraForward,
     CameraBack,
     CameraLeft,
@@ -137,13 +145,14 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 49] = [
+    pub const ALL: [Action; 54] = [
         Action::NewProject, Action::Open, Action::Save, Action::SaveAs, Action::Undo, Action::Redo, Action::Settings, Action::Shortcuts, Action::Build, Action::Play,
         Action::SelectAll, Action::Deselect, Action::Duplicate, Action::PasteHere, Action::PasteLast, Action::Delete, Action::Focus, Action::Underground,
         Action::ModeSelect, Action::ModeSculpt, Action::ModePaint, Action::ModePlace, Action::ModeRoads, Action::ModeShapes, Action::ModeKeyPoints, Action::ModeSatellite, Action::ModeMission,
         Action::GizmoMove, Action::GizmoRotate, Action::GizmoScale, Action::GizmoSpace,
         Action::View3d, Action::View2d, Action::ViewSplit, Action::CameraBelow, Action::ToggleGrass, Action::ToggleObjects, Action::ToggleShapes,
-        Action::BrushSmaller, Action::BrushBigger, Action::BrushWeaker, Action::BrushStronger, Action::SearchAssets,
+        Action::BrushSmaller, Action::BrushBigger, Action::BrushWeaker, Action::BrushStronger, Action::SearchAssets, Action::ToggleHints,
+        Action::RoadPieceAdd, Action::RoadPiecePrev, Action::RoadPieceNext, Action::RoadPieceSide,
         Action::CameraForward, Action::CameraBack, Action::CameraLeft, Action::CameraRight, Action::CameraUp, Action::CameraDown,
     ];
     pub fn name(self) -> &'static str {
@@ -191,6 +200,11 @@ impl Action {
             Action::BrushWeaker => "Weaker brush",
             Action::BrushStronger => "Stronger brush",
             Action::SearchAssets => "Search the Content Browser",
+            Action::ToggleHints => "Show key help",
+            Action::RoadPieceAdd => "Lay the chosen piece",
+            Action::RoadPiecePrev => "Previous piece",
+            Action::RoadPieceNext => "Next piece",
+            Action::RoadPieceSide => "Curve to the other side",
             Action::CameraForward => "Fly forward",
             Action::CameraBack => "Fly back",
             Action::CameraLeft => "Fly left",
@@ -205,7 +219,8 @@ impl Action {
             NewProject | Open | Save | SaveAs | Undo | Redo | Settings | Shortcuts | Build | Play => "General",
             SelectAll | Deselect | Duplicate | PasteHere | PasteLast | Delete | Focus | Underground => "Selection",
             ModeSelect | ModeSculpt | ModePaint | ModePlace | ModeRoads | ModeShapes | ModeKeyPoints | ModeSatellite | ModeMission | GizmoMove | GizmoRotate | GizmoScale | GizmoSpace => "Tools",
-            View3d | View2d | ViewSplit | CameraBelow | ToggleGrass | ToggleObjects | ToggleShapes | SearchAssets => "View",
+            View3d | View2d | ViewSplit | CameraBelow | ToggleGrass | ToggleObjects | ToggleShapes | SearchAssets | ToggleHints => "View",
+            RoadPieceAdd | RoadPiecePrev | RoadPieceNext | RoadPieceSide => "Roads piece by piece",
             BrushSmaller | BrushBigger | BrushWeaker | BrushStronger => "Brushes",
             CameraForward | CameraBack | CameraLeft | CameraRight | CameraUp | CameraDown => "Camera (with the right mouse button held)",
         }
@@ -256,6 +271,11 @@ impl Action {
             BrushWeaker => Shortcut::shift(Key::OpenBracket),
             BrushStronger => Shortcut::shift(Key::CloseBracket),
             SearchAssets => Shortcut::ctrl(Key::F),
+            ToggleHints => Shortcut::new(Key::F2),
+            RoadPieceAdd => Shortcut::new(Key::Space),
+            RoadPiecePrev => Shortcut::new(Key::Z),
+            RoadPieceNext => Shortcut::new(Key::X),
+            RoadPieceSide => Shortcut::new(Key::S),
             CameraForward => Shortcut::new(Key::W),
             CameraBack => Shortcut::new(Key::S),
             CameraLeft => Shortcut::new(Key::A),

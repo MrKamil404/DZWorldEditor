@@ -751,6 +751,10 @@
   "de": "Chance pro Knoten %",
   "pl": "Szansa na węzeł %"
  },
+ "Change the pieces at the": {
+  "de": "Teile ändern am",
+  "pl": "Zmieniaj party na"
+ },
  "Change the selected types ({0})": {
   "de": "Ausgewählte Typen ändern ({0})",
   "pl": "Zmień zaznaczone typy ({0})"
@@ -822,6 +826,10 @@
  "Choose a model in the Content Browser first": {
   "de": "Zuerst ein Modell im Inhaltsbrowser wählen",
   "pl": "Najpierw wybierz model w bibliotece"
+ },
+ "Choose a piece and click on the map (or press its key) to lay it.": {
+  "de": "Wähle ein Teil und klicke auf die Karte (oder drücke seine Taste), um es zu legen.",
+  "pl": "Wybierz part i kliknij na mapie (albo naciśnij jego klawisz), aby go położyć."
  },
  "Choose a surface first": {
   "de": "Zuerst eine Oberfläche wählen",
@@ -983,6 +991,10 @@
   "de": "Klick wählt eine Form aus. Ziehe einen Punkt zum Verschieben, Strg+Klick auf eine Kante fügt einen hinzu, Entf löscht den Punkt oder die Form.",
   "pl": "Kliknięcie zaznacza kształt. Przeciągnij wierzchołek, aby go przesunąć, Ctrl+klik na krawędzi dodaje nowy, Delete usuwa wierzchołek lub kształt."
  },
+ "Click the points of the road; the models are fitted when Enter finishes it.": {
+  "de": "Klicke die Punkte der Straße; die Modelle werden eingepasst, wenn Enter sie abschließt.",
+  "pl": "Klikaj punkty drogi; modele są dopasowywane po zakończeniu Enterem."
+ },
  "Click to add points. Enter finishes, Backspace removes the last point, Esc cancels.": {
   "de": "Punkte per Klick setzen. Enter beendet, Rücktaste entfernt den letzten Punkt, Esc bricht ab.",
   "pl": "Klikaj, aby dodać punkty. Enter kończy, Backspace usuwa ostatni punkt, Esc anuluje."
@@ -1002,6 +1014,14 @@
  "Click to select, drag for a box, Shift adds. With objects selected, a drag with Shift held turns them, with Ctrl+Shift by steps (the wheel changes the step), with Alt scales them.": {
   "de": "Klicken wählt, Ziehen zieht einen Rahmen, Umschalt fügt hinzu. Bei ausgewählten Objekten dreht Ziehen mit Umschalt sie, mit Strg+Umschalt in Schritten (das Mausrad ändert den Schritt), mit Alt skaliert es sie.",
   "pl": "Kliknięcie zaznacza, przeciągnięcie zaznacza ramką, Shift dodaje. Przy zaznaczonych obiektach przeciągnięcie z Shift je obraca, z Ctrl+Shift obraca skokami (kółko zmienia skok), a z Alt skaluje."
+ },
+ "Click where the road heads.": {
+  "de": "Klicke, wohin die Straße führt.",
+  "pl": "Kliknij, w którą stronę biegnie droga."
+ },
+ "Click where the road starts.": {
+  "de": "Klicke, wo die Straße beginnt.",
+  "pl": "Kliknij, gdzie zaczyna się droga."
  },
  "Click: active layer (new objects go here). Ctrl+click: turn editing on or off.": {
   "de": "Klick: aktive Ebene (neue Objekte landen hier). Strg+Klick: Bearbeitung ein- oder ausschalten.",
@@ -1131,9 +1151,17 @@
   "de": "Strömung in die andere Richtung",
   "pl": "Nurt w przeciwną stronę"
  },
+ "Curve to the other side": {
+  "de": "Kurve zur anderen Seite",
+  "pl": "Łuk w drugą stronę"
+ },
  "Curves": {
   "de": "Kurven",
   "pl": "Łuki"
+ },
+ "Curves bend": {
+  "de": "Kurven biegen",
+  "pl": "Łuki skręcają"
  },
  "Custom": {
   "de": "Benutzerdefiniert",
@@ -1342,6 +1370,10 @@
  "Diamond": {
   "de": "Raute",
   "pl": "Romb"
+ },
+ "Discard the changes": {
+  "de": "Änderungen verwerfen",
+  "pl": "Odrzuć zmiany"
  },
  "Display": {
   "de": "Anzeige",
@@ -1562,6 +1594,10 @@
  "Edit all": {
   "de": "Alle bearbeiten",
   "pl": "Edytuj wszystkie"
+ },
+ "Edit as": {
+  "de": "Bearbeiten als",
+  "pl": "Edytuj jako"
  },
  "Edit event": {
   "de": "Event bearbeiten",
@@ -1859,6 +1895,10 @@
   "de": "Sucht die Straße durch die geklickten Punkte innerhalb der Steigung, um Wasser und Sperrgebiete herum, mit Brücken. Aus: Teile folgen der geklickten Linie.",
   "pl": "Szuka drogi przez kliknięte punkty w granicach nachylenia, omijając wodę i obszary zakazane, z mostami. Wyłączone: części drogi idą po klikniętej linii."
  },
+ "Finish the road": {
+  "de": "Straße abschließen",
+  "pl": "Zakończ drogę"
+ },
  "First object": {
   "de": "Erstes Objekt",
   "pl": "Obiekt na początku"
@@ -1870,6 +1910,10 @@
  "Fit only the new stretch when extending": {
   "de": "Beim Verlängern nur das neue Stück einpassen",
   "pl": "Przy przedłużaniu dopasuj tylko nowy odcinek"
+ },
+ "Fit settings": {
+  "de": "Einpassung",
+  "pl": "Ustawienia dopasowania"
  },
  "Fit the flags to the map": {
   "de": "Flags an die Karte anpassen",
@@ -2535,6 +2579,26 @@
   "de": "Breite und Länge bestimmen den Stand von Sonne und Sternen.",
   "pl": "Szerokość i długość geograficzna ustalają położenie słońca i gwiazd."
  },
+ "Lay": {
+  "de": "Legen",
+  "pl": "Połóż"
+ },
+ "Lay at least one piece first": {
+  "de": "Lege zuerst mindestens ein Teil",
+  "pl": "Najpierw połóż przynajmniej jeden part"
+ },
+ "Lay pieces at the open end or take them away, then apply.": {
+  "de": "Lege Teile am offenen Ende an oder nimm sie weg, dann übernehmen.",
+  "pl": "Dokładaj party na otwartym końcu lub je zdejmuj, potem zastosuj."
+ },
+ "Lay the chosen piece": {
+  "de": "Gewähltes Teil legen",
+  "pl": "Połóż wybrany part"
+ },
+ "Lay the road one chosen piece after another, as Terrain Builder's Road Tool does.": {
+  "de": "Lege die Straße Teil für Teil, wie das Road Tool von Terrain Builder.",
+  "pl": "Układaj drogę part po parcie, jak Road Tool w Terrain Builderze."
+ },
  "Layer": {
   "de": "Ebene",
   "pl": "Warstwa"
@@ -2550,6 +2614,10 @@
  "Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it.": {
   "de": "Lässt die im Gelände versunkenen Teile eines Objekts weg, sodass ein halb eingegrabener Pier nur seinen Teil darüber zeigt.",
   "pl": "Pomija części obiektu zagłębione w terenie, więc molo w połowie w ziemi pokazuje tylko część nad nią."
+ },
+ "Left": {
+  "de": "Links",
+  "pl": "W lewo"
  },
  "Left leaf": {
   "de": "Linker Flügel",
@@ -2630,6 +2698,10 @@
  "Lit": {
   "de": "Beleuchtet",
   "pl": "Oświetlony"
+ },
+ "Live": {
+  "de": "Live",
+  "pl": "Na żywo"
  },
  "Load DayZForests project...": {
   "de": "DayZForests-Projekt laden...",
@@ -3191,6 +3263,10 @@
   "de": "Neue Version {0}",
   "pl": "Nowa wersja {0}"
  },
+ "Next piece": {
+  "de": "Nächstes Teil",
+  "pl": "Następny part"
+ },
  "No": {
   "de": "Nein",
   "pl": "Nie"
@@ -3218,6 +3294,10 @@
  "No picture": {
   "de": "Kein Bild",
   "pl": "Brak obrazu"
+ },
+ "No pieces of this road type are loaded": {
+  "de": "Für diesen Straßentyp sind keine Teile geladen",
+  "pl": "Nie wczytano partów tego typu drogi"
  },
  "No release notes": {
   "de": "Keine Versionshinweise",
@@ -3711,6 +3791,10 @@
   "de": "Bilder",
   "pl": "Obrazki"
  },
+ "Piece by piece": {
+  "de": "Teil für Teil",
+  "pl": "Part po parcie"
+ },
  "Pitch": {
   "de": "Neigung",
   "pl": "Pochylenie"
@@ -3819,6 +3903,10 @@
   "de": "Punkt",
   "pl": "Punkt"
  },
+ "Points": {
+  "de": "Punkte",
+  "pl": "Punkty"
+ },
  "Polygon": {
   "de": "Polygon",
   "pl": "Wielokąt"
@@ -3862,6 +3950,14 @@
  "Press a key...": {
   "de": "Taste drücken...",
   "pl": "Naciśnij klawisz..."
+ },
+ "Previous or next piece": {
+  "de": "Vorheriges oder nächstes Teil",
+  "pl": "Poprzedni lub następny part"
+ },
+ "Previous piece": {
+  "de": "Vorheriges Teil",
+  "pl": "Poprzedni part"
  },
  "Program update": {
   "de": "Programmupdate",
@@ -4071,6 +4167,10 @@
   "de": "Umkehren",
   "pl": "Odwróć"
  },
+ "Right": {
+  "de": "Rechts",
+  "pl": "W prawo"
+ },
  "Right leaf": {
   "de": "Rechter Flügel",
   "pl": "Prawe skrzydło"
@@ -4146,6 +4246,10 @@
  "Roads from TV4P...": {
   "de": "Straßen aus TV4P...",
   "pl": "Drogi z TV4P..."
+ },
+ "Roads piece by piece": {
+  "de": "Straßen Teil für Teil",
+  "pl": "Drogi part po parcie"
  },
  "Roads, pads and ponds cut into the terrain; without them the terrain as sculpted.": {
   "de": "Straßen, Flächen und Teiche im Gelände; ohne sie das Gelände wie modelliert.",
@@ -4587,6 +4691,10 @@
   "de": "Im Ordner zeigen",
   "pl": "Pokaż w folderze"
  },
+ "Show key help": {
+  "de": "Tastenhilfe anzeigen",
+  "pl": "Pokazuj pomoc klawiszową"
+ },
  "Show objects": {
   "de": "Objekte zeigen",
   "pl": "Pokaż obiekty"
@@ -4883,6 +4991,14 @@
   "de": "Oberflächen unter Objekten, Straßen und Wäldern; ohne sie die Maske wie gemalt.",
   "pl": "Nawierzchnie pod obiektami, drogami i lasami; bez nich maska taka, jak namalowana."
  },
+ "Take the last away": {
+  "de": "Letztes entfernen",
+  "pl": "Usuń ostatni"
+ },
+ "Take the last piece away": {
+  "de": "Letztes Teil entfernen",
+  "pl": "Usuń ostatni part"
+ },
  "Take the surface under the cursor": {
   "de": "Oberfläche unter dem Cursor aufnehmen",
   "pl": "Pobierz powierzchnię spod kursora"
@@ -5111,6 +5227,10 @@
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
   "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
  },
+ "The key tables and the lines telling what clicks and keys do, in all panels.": {
+  "de": "Die Tastentabellen und die Zeilen, die erklären, was Klicks und Tasten tun, in allen Bereichen.",
+  "pl": "Tabele klawiszy i opisy działania kliknięć i klawiszy we wszystkich panelach."
+ },
  "The map has no town or village key points.": {
   "de": "Die Karte hat keine Stadt- oder Dorf-Schlüsselpunkte.",
   "pl": "Mapa nie ma punktów kluczowych miast ani wsi."
@@ -5154,6 +5274,10 @@
  "The models are already in {0}": {
   "de": "Die Modelle sind bereits in {0}",
   "pl": "Te modele już są w {0}"
+ },
+ "The models follow the mouse as it moves: green where they fit, red where they cannot. A click keeps the road up to there.": {
+  "de": "Die Modelle folgen der Maus: grün, wo sie passen, rot, wo nicht. Ein Klick behält die Straße bis dorthin.",
+  "pl": "Modele podążają za myszą: zielone, gdy pasują, czerwone, gdy się nie da. Kliknięcie zatwierdza drogę do tego miejsca."
  },
  "The name the game shows; empty takes the name of the project.": {
   "de": "Der Name im Spiel; leer nimmt den Projektnamen.",
@@ -5238,6 +5362,10 @@
  "The river runs from the first point of the line to the last.": {
   "de": "Der Fluss fließt vom ersten zum letzten Punkt der Linie.",
   "pl": "Rzeka płynie od pierwszego do ostatniego punktu linii."
+ },
+ "The road cannot reach this point": {
+  "de": "Die Straße erreicht diesen Punkt nicht",
+  "pl": "Droga nie dojdzie do tego punktu"
  },
  "The road crosses a track on a bend or too obliquely, so no level crossing was laid there": {
   "de": "Die Straße kreuzt ein Gleis in einer Kurve oder zu schräg, daher wurde dort kein Bahnübergang gelegt",
@@ -5334,6 +5462,10 @@
  "This preset has no models yet": {
   "de": "Dieses Preset hat noch keine Modelle",
   "pl": "Ten preset nie ma jeszcze modeli"
+ },
+ "This route keeps no pieces to go on from. Fit it again with points first.": {
+  "de": "Diese Route hat keine gespeicherten Teile. Passe sie zuerst mit Punkten neu ein.",
+  "pl": "Ta trasa nie ma zapisanych partów. Najpierw dopasuj ją ponownie jako punkty."
  },
  "Tide m": {
   "de": "Gezeiten m",
@@ -5899,6 +6031,10 @@
   "de": "während des Ziehens",
   "pl": "w trakcie ruchu"
  },
+ "end": {
+  "de": "Ende",
+  "pl": "końcu"
+ },
  "ground": {
   "de": "Boden",
   "pl": "ziemia"
@@ -5934,6 +6070,10 @@
  "of {0}": {
   "de": "von {0}",
   "pl": "z {0}"
+ },
+ "start": {
+  "de": "Anfang",
+  "pl": "początku"
  },
  "tag": {
   "de": "Tag",
@@ -6054,6 +6194,10 @@
  "{0} of {1} types, {2} selected": {
   "de": "{0} von {1} Typen, {2} ausgewählt",
   "pl": "{0} z {1} typów, zaznaczono {2}"
+ },
+ "{0} pieces laid": {
+  "de": "{0} Teile gelegt",
+  "pl": "Położono partów: {0}"
  },
  "{0} pixels were left as they were, as their texture tiles already hold {1} surfaces": {
   "de": "{0} Pixel blieben unverändert, weil ihre Texturkacheln bereits {1} Oberflächen haben",

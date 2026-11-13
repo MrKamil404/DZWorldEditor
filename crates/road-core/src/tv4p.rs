@@ -1459,3 +1459,7 @@ mod editor_tests {
         fs::remove_dir_all(dir).unwrap();
     }
 }
+
+#[cfg(test)]
+#[path = "tb_probe.rs"]
+pub(crate) mod tb_probe;

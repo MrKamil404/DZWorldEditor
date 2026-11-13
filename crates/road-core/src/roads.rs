@@ -145,32 +145,82 @@ pub fn smooth(points: &[Point], radius: f64) -> Result<Vec<Point>> {
     out.push(*points.last().unwrap());
     Ok(out)
 }
-/// Nearest point of `line` limited to the progress window `[lo, hi]`, as (distance, progress).
-/// The window keeps parallel legs of serpentines from being mistaken for the current one.
-fn nearest_progress_in(p: Point, line: &[Point], lo: f64, hi: f64) -> (f64, f64) {
-    let mut walked = 0.;
+/// Round the corners of a drawn line as wide as the legs allow, the way a road is laid out:
+/// gentle bends become long gentle curves, while a sharp corner keeps close to the point
+/// clicked (within `miss` metres) and never turns tighter than `min_radius`.
+pub fn widen(points: &[Point], min_radius: f64, miss: f64) -> Result<Vec<Point>> {
+    ensure!(
+        points.len() >= 2 && min_radius.is_finite() && min_radius > 0.,
+        "Nieprawidłowa trasa lub promień"
+    );
+    let legs: Vec<f64> = points.windows(2).map(|w| norm(sub(w[1], w[0]))).collect();
+    ensure!(legs.iter().all(|l| *l > 1e-6), "Usuń powtórzone punkty trasy");
+    let mut out = vec![points[0]];
+    for (k, w) in points.windows(3).enumerate() {
+        let (a, b) = (legs[k], legs[k + 1]);
+        let u = mul(sub(w[1], w[0]), 1. / a);
+        let v = mul(sub(w[2], w[1]), 1. / b);
+        let turn = (u[0] * v[0] + u[1] * v[1]).clamp(-1., 1.).acos();
+        if turn < 0.002 {
+            out.push(w[1]);
+            continue;
+        }
+        ensure!(turn < std::f64::consts::PI - 0.01, "Trasa zawraca w jednym punkcie");
+        let half = (turn / 2.).tan();
+        // Each leg is shared by the curves at both of its ends, unless it is the first or last.
+        let share = |leg: f64, outer: bool| if outer { leg * 0.9 } else { leg * 0.48 };
+        let room = share(a, k == 0).min(share(b, k + 2 == points.len() - 1));
+        let fits = room / half;
+        let close = miss / (1. / (turn / 2.).cos() - 1.).max(1e-9);
+        let radius = fits.min(close).max(min_radius);
+        let mut tangent = radius * half;
+        if tangent > room {
+            // Too tight for the legs: a corner the models cannot round is left to the fit.
+            ensure!(
+                fits >= min_radius * 0.5,
+                "Punkty są za blisko, aby zmieścić promień {min_radius} m. Rozsuń punkty lub zmniejsz promień"
+            );
+            tangent = room;
+        }
+        let radius = tangent / half;
+        let sign = (u[0] * v[1] - u[1] * v[0]).signum();
+        let entry = sub(w[1], mul(u, tangent));
+        let center = add(entry, mul([-u[1], u[0]], radius * sign));
+        let radial = sub(entry, center);
+        let steps = (turn.to_degrees() / 2.).ceil().max(2.) as usize;
+        for i in 0..=steps {
+            out.push(add(center, rotate(radial, turn * sign * i as f64 / steps as f64)));
+        }
+    }
+    out.push(*points.last().unwrap());
+    Ok(out)
+}
+/// Nearest point of `line` within the progress window `[lo, hi]`, as (distance, progress),
+/// looking only at the segments of the window, found from the
+/// distance walked to each point of `line`.
+fn nearest_progress_within(p: Point, line: &[Point], cumulative: &[f64], lo: f64, hi: f64) -> (f64, f64) {
     let mut best = (f64::INFINITY, 0.);
-    for w in line.windows(2) {
-        let delta = sub(w[1], w[0]);
-        let length = norm(delta);
+    let first = cumulative.partition_point(|c| *c < lo).saturating_sub(1);
+    for i in first..line.len().saturating_sub(1) {
+        let walked = cumulative[i];
+        if walked > hi {
+            break;
+        }
+        let delta = sub(line[i + 1], line[i]);
+        let length = cumulative[i + 1] - walked;
         if length < 1e-8 {
             continue;
         }
-        let (t0, t1) = (
-            ((lo - walked) / length).max(0.),
-            ((hi - walked) / length).min(1.),
-        );
+        let (t0, t1) = (((lo - walked) / length).max(0.), ((hi - walked) / length).min(1.));
         if t0 > t1 {
-            walked += length;
             continue;
         }
-        let rel = sub(p, w[0]);
+        let rel = sub(p, line[i]);
         let t = ((rel[0] * delta[0] + rel[1] * delta[1]) / (length * length)).clamp(t0, t1);
-        let d = norm(sub(p, add(w[0], mul(delta, t))));
+        let d = norm(sub(p, add(line[i], mul(delta, t))));
         if d < best.0 {
             best = (d, walked + t * length);
         }
-        walked += length;
     }
     best
 }
@@ -321,7 +371,7 @@ pub fn fit(
     allowed: impl Fn(Point, Point) -> bool,
 ) -> Result<Vec<PlacedPart>> {
     ensure!(points.len() >= 2, "Wskaż przynajmniej dwa punkty");
-    let smoothed = smooth(points, s.min_radius)?;
+    let smoothed = widen(points, s.min_radius, (s.tolerance * 1.2).max(4.))?;
     fit_path(&smoothed, family, catalog, s, allowed)
 }
 /// Fit models to an already curvature-limited centreline (for example a terrain route)
@@ -349,7 +399,7 @@ pub fn fit_from(
     allowed: impl Fn(Point, Point) -> bool,
 ) -> Result<Vec<PlacedPart>> {
     ensure!(points.len() >= 2, "Wskaż przynajmniej dwa punkty");
-    let smoothed = smooth(points, s.min_radius)?;
+    let smoothed = widen(points, s.min_radius, (s.tolerance * 1.2).max(4.))?;
     fit_path_inner(&smoothed, family, catalog, s, allowed, Some(start))
 }
 
@@ -445,7 +495,13 @@ fn fit_path_inner(
         .fold(cap_length, f64::max)
         + s.tolerance * 2.
         + 10.;
-    let near = |p: Point, from: f64| nearest_progress_in(p, points, from - s.tolerance * 2., from + ahead);
+    let cumulative: Vec<f64> = std::iter::once(0.)
+        .chain(points.windows(2).scan(0., |walked, w| {
+            *walked += norm(sub(w[1], w[0]));
+            Some(*walked)
+        }))
+        .collect();
+    let near = |p: Point, from: f64| nearest_progress_within(p, points, &cumulative, from - s.tolerance * 2., from + ahead);
     let valid_part = |part: &PlacedPart, model: &Model, from: f64| {
         let world: Vec<_> = model
             .line
@@ -466,33 +522,67 @@ fn fit_path_inner(
         at = placed_endpoint(&first, &cap.model)?;
         parts.push(first);
     }
-    let base = parts.len();
-    let mut progress = near(at.p, 0.).1;
-    // Depth-first with the best-scored models first: when no model fits, step back and try
-    // the next alternative of an earlier choice. Frame `i` holds the untried alternatives
-    // for `parts[i + 1]`, best last.
-    let mut stack: Vec<Vec<(PlacedPart, Port, f64)>> = Vec::new();
-    let mut furthest = progress;
-    for _ in 0..50000 {
+    let start_progress = near(at.p, 0.).1;
+    // Best-first over progress: the cheapest few ways of reaching each stretch of the line are
+    // carried on, so one piece is chosen for how the whole road goes on and not only for
+    // where it ends. The cost follows a Road Tool user: pieces bending as the line bends
+    // (gentle curves along gentle bends, straights along straight stretches), no curves
+    // turning back and forth, and few pieces.
+    struct Node {
+        parent: usize,
+        part: Option<PlacedPart>,
+        at: Port,
+        progress: f64,
+        cost: f64,
+        bend: f64,
+        pieces: usize,
+        alive: bool,
+    }
+    const BUCKET: f64 = 2.;
+    const KEEP: usize = 6;
+    let tol2 = (s.tolerance * s.tolerance).max(1e-6);
+    let mut nodes = vec![Node { parent: usize::MAX, part: None, at, progress: start_progress, cost: 0., bend: 0., pieces: 0, alive: true }];
+    let mut buckets: std::collections::HashMap<i64, Vec<usize>> = std::collections::HashMap::new();
+    let mut queue: std::collections::BinaryHeap<std::cmp::Reverse<(i64, usize)>> = std::collections::BinaryHeap::new();
+    queue.push(std::cmp::Reverse(((start_progress * 1000.) as i64, 0)));
+    let mut furthest = start_progress;
+    let mut best_end: Option<(f64, usize, Option<PlacedPart>)> = None;
+    let mut expanded = 0usize;
+    while let Some(std::cmp::Reverse((_, id))) = queue.pop() {
+        if !nodes[id].alive {
+            continue;
+        }
+        expanded += 1;
+        if expanded > 60000 {
+            break;
+        }
+        let (at, progress, cost, bend, pieces) = (nodes[id].at, nodes[id].progress, nodes[id].cost, nodes[id].bend, nodes[id].pieces);
+        if best_end.as_ref().is_some_and(|(c, _, _)| cost >= *c) {
+            continue;
+        }
+        furthest = furthest.max(progress);
         if let Some(cap) = cap {
             let last = place(cap, at, false)?;
             let last_end = placed_endpoint(&last, &cap.model)?;
-            if norm(sub(last_end.p, end)) <= s.tolerance
+            let miss = norm(sub(last_end.p, end));
+            if miss <= s.tolerance
                 && near(last_end.p, progress).1 >= length - s.tolerance * 2.
                 && valid_part(&last, &cap.model, progress)
             {
-                parts.push(last);
-                return Ok(parts);
+                let total = cost + miss * 0.5;
+                if best_end.as_ref().is_none_or(|(c, _, _)| total < *c) {
+                    best_end = Some((total, id, Some(last)));
+                }
             }
-        } else if parts.len() > base
+        } else if pieces > 0
             && norm(sub(at.p, end)) <= s.tolerance + slack
             && progress >= length - s.tolerance * 2. - slack
         {
-            return merge_straights(parts, &choices, |_, line: &[Point]| {
-                line.windows(2).all(|w| allowed(w[0], w[1]))
-            });
+            let total = cost + norm(sub(at.p, end)) * 0.5;
+            if best_end.as_ref().is_none_or(|(c, _, _)| total < *c) {
+                best_end = Some((total, id, None));
+            }
         }
-        let mut options = Vec::new();
         for item in &choices {
             for reverse in [false, true] {
                 // Only curves support the native reversed-segment code; a straight track
@@ -503,9 +593,9 @@ fn fit_path_inner(
                 let model = &item.model;
                 let a = model.ports[0].context("Brak początku")?;
                 let b = model.ports[1].context("Brak końca")?;
-                let turn = (-a.outward[0] * b.outward[1] + a.outward[1] * b.outward[0])
-                    .atan2(-a.outward[0] * b.outward[0] - a.outward[1] * b.outward[1])
-                    .abs();
+                let own = (-a.outward[0] * b.outward[1] + a.outward[1] * b.outward[0])
+                    .atan2(-a.outward[0] * b.outward[0] - a.outward[1] * b.outward[1]);
+                let turn = own.abs();
                 if turn > 1e-5 && model.length / turn < s.min_radius - 1e-6 {
                     continue;
                 }
@@ -530,79 +620,86 @@ fn fit_path_inner(
                     .iter()
                     .map(|q| add(rotate(*q, angle), p.position))
                     .collect();
-                if world
-                    .iter()
-                    .any(|q| near(*q, progress).0 > s.tolerance)
-                    || !world.windows(2).all(|w| allowed(w[0], w[1]))
-                {
-                    continue;
-                }
-                let remaining = length - pr;
-                // Looking past the final point makes a straight exit appear worse
-                // than a curve that curls back into the route's end corridor.
-                let look = add(next.p, mul(next.outward, remaining.clamp(0., 10.)));
-                let future = near(look, progress).0;
-                let target_direction = direction_at(points, pr);
-                let heading_error = (next.outward[0] * target_direction[1]
-                    - next.outward[1] * target_direction[0])
-                    .atan2(next.outward[0] * target_direction[0]
-                        + next.outward[1] * target_direction[1])
-                    .abs();
-                let incoming_error = (at.outward[0] * target_direction[1]
-                    - at.outward[1] * target_direction[0])
-                    .atan2(at.outward[0] * target_direction[0]
-                        + at.outward[1] * target_direction[1])
-                    .abs();
-                if turn > 1e-5 && heading_error >= incoming_error
-                    && near(at.p, progress).0 < s.tolerance * 0.5
-                {
-                    continue;
-                }
-                // Endpoint distance alone rewards alternating curves inside the
-                // tolerance corridor. Prefer aligned exits and avoid needless turns.
-                let score = deviation * 3.
-                    + future
-                    + heading_error * 4.
-                    + turn
-                    + if remaining < 50. {
-                        norm(sub(next.p, end)) * 0.2
-                    } else {
-                        0.
+                let mut off2 = deviation * deviation;
+                let mut inside = true;
+                for q in &world {
+                    let d = near(*q, progress).0;
+                    if d > s.tolerance {
+                        inside = false;
+                        break;
                     }
-                    - model.length * 0.03;
-                options.push((score, p, next, pr));
+                    off2 += d * d;
+                }
+                if !inside || !world.windows(2).all(|w| allowed(w[0], w[1])) {
+                    continue;
+                }
+                off2 /= (world.len() + 1) as f64;
+                // The bend of the piece as driven, left positive.
+                let bent = (at.outward[0] * next.outward[1] - at.outward[1] * next.outward[0])
+                    .atan2(at.outward[0] * next.outward[0] + at.outward[1] * next.outward[1]);
+                let (from_dir, to_dir) = (direction_at(points, progress), direction_at(points, pr));
+                let wanted = (from_dir[0] * to_dir[1] - from_dir[1] * to_dir[0])
+                    .atan2(from_dir[0] * to_dir[0] + from_dir[1] * to_dir[1]);
+                let heading = (next.outward[0] * to_dir[1] - next.outward[1] * to_dir[0])
+                    .atan2(next.outward[0] * to_dir[0] + next.outward[1] * to_dir[1])
+                    .to_degrees();
+                let span = pr - progress;
+                let mut step = off2 / tol2 * span * 0.6
+                    + (bent - wanted).abs().to_degrees() * 0.35
+                    + heading * heading * 0.02
+                    + 0.8;
+                // A curve the other way after one, straights between or not, is the weaving Road
+                // Tool users avoid, unless the line itself bends the other way there.
+                if bent.abs() > 0.012 && bend.abs() > 0.012 && bent.signum() != bend.signum() {
+                    step += if bent * wanted > 0. && wanted.abs() > 0.004 { 1. } else { 5. };
+                }
+                let total = cost + step;
+                let key = (pr / BUCKET).floor() as i64;
+                let slot = buckets.entry(key).or_default();
+                if slot.len() >= KEEP {
+                    let (worst_at, worst) = slot
+                        .iter()
+                        .enumerate()
+                        .map(|(i, n)| (i, nodes[*n].cost))
+                        .max_by(|a, b| a.1.total_cmp(&b.1))
+                        .unwrap();
+                    if total >= worst {
+                        continue;
+                    }
+                    let gone = slot.swap_remove(worst_at);
+                    nodes[gone].alive = false;
+                }
+                let new_bend = if bent.abs() > 0.012 { bent } else { bend };
+                nodes.push(Node { parent: id, part: Some(p), at: next, progress: pr, cost: total, bend: new_bend, pieces: pieces + 1, alive: true });
+                let n = nodes.len() - 1;
+                buckets.get_mut(&key).unwrap().push(n);
+                queue.push(std::cmp::Reverse(((pr * 1000.) as i64, n)));
             }
-        }
-        if !options.is_empty() {
-            options.sort_by(|a, b| b.0.total_cmp(&a.0));
-            let keep = options.len().saturating_sub(4);
-            stack.push(
-                options
-                    .into_iter()
-                    .skip(keep)
-                    .map(|(_, p, next, pr)| (p, next, pr))
-                    .collect(),
-            );
-        }
-        loop {
-            let Some(frame) = stack.last_mut() else {
-                anyhow::bail!(
-                    "Nie można dopasować modeli przy {:.0} m trasy. Złagodź zakręty, zwiększ tolerancję lub użyj segmentów",
-                    furthest
-                );
-            };
-            if let Some((p, next, pr)) = frame.pop() {
-                parts.truncate(base + stack.len() - 1);
-                parts.push(p);
-                at = next;
-                progress = pr;
-                furthest = furthest.max(pr);
-                break;
-            }
-            stack.pop();
         }
     }
-    anyhow::bail!("Przekroczono limit prób dopasowania modeli. Złagodź zakręty, zwiększ tolerancję lub dodaj punkty pośrednie")
+    let Some((_, last, closing)) = best_end else {
+        anyhow::bail!(
+            "Nie można dopasować modeli przy {:.0} m trasy. Złagodź zakręty, zwiększ tolerancję lub użyj segmentów",
+            furthest
+        );
+    };
+    let mut chain = Vec::new();
+    let mut k = last;
+    while nodes[k].parent != usize::MAX {
+        chain.push(nodes[k].part.clone().unwrap());
+        k = nodes[k].parent;
+    }
+    chain.reverse();
+    parts.extend(chain);
+    match closing {
+        Some(c) => {
+            parts.push(c);
+            Ok(parts)
+        }
+        None => merge_straights(parts, &choices, |_, line: &[Point]| {
+            line.windows(2).all(|w| allowed(w[0], w[1]))
+        }),
+    }
 }
 
 #[cfg(test)]

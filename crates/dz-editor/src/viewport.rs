@@ -2,6 +2,7 @@
 use crate::app::SelectedWhole;
 use crate::app::ShapeTool;
 use crate::app::{App, Finish, Gizmo, LineAction, Mode, ViewMode};
+use crate::road_draw::RoadDraw;
 use crate::camera::{add, dot, mul, norm, sub, View, V3};
 use crate::i18n::{t, tf};
 use crate::keys::{Action, Hold};
@@ -1063,7 +1064,9 @@ fn finish_line(app: &mut App) {
         LineAction::Edit => {}
         LineAction::Road => {
             let settings = if dayz_road_tool::rails::is_track_family(&family) { app.line.rail_routing.clone() } else { app.line.routing.clone() };
-            let terrain_route = app.line.route;
+            // A live road is built as it was shown, along the clicked line.
+            let terrain_route = app.line.route && app.line.draw == RoadDraw::Points;
+            app.live.shown = None;
             let req = app.route_request(family, points, terrain_route, settings);
             // The route remembers this; its modifier is made when the models are in place.
             app.start_route(req, None, None, grade);
@@ -1625,11 +1628,32 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
             }
         }
         Mode::Lines if app.line.action == LineAction::Edit => routes_input(app, ctx, resp, v, hit, mouse),
+        Mode::Lines if app.line.action == LineAction::Road && app.line.draw == RoadDraw::Parts => {
+            if resp.clicked() {
+                if let Some(h) = hit {
+                    crate::road_draw::parts_click(app, [h[0], h[2]]);
+                }
+            }
+            let typing = ctx.wants_keyboard_input();
+            let (enter, esc, back) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Backspace)));
+            if !typing {
+                if back { crate::road_draw::parts_back(app); }
+                if enter { crate::road_draw::parts_finish(app, app.line.grade); }
+            }
+            if esc {
+                app.road_parts = crate::road_draw::PartsDraw { next: app.road_parts.next.take(), left: app.road_parts.left, ..Default::default() };
+            }
+        }
         Mode::Lines => {
+            let live = app.line.action == LineAction::Road && app.line.draw == RoadDraw::Live;
+            if live {
+                let cursor = hit.map(|h| line_point(app, &app.line.points, [h[0], h[2]], modifiers));
+                crate::road_draw::live_update(app, cursor, ctx);
+            }
             if resp.clicked() {
                 if let Some(h) = hit {
                     let p = line_point(app, &app.line.points, [h[0], h[2]], modifiers);
-                    app.line.points.push(p);
+                    if live { crate::road_draw::live_click(app, p) } else { app.line.points.push(p) }
                 }
             }
             let (enter, esc, back) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Backspace)));
@@ -2002,12 +2026,28 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
                 if let Some(q) = app.doc.as_mut().unwrap().world.routes.get_mut(r).and_then(|x| x.points.get_mut(p)) {
                     *q = [h[0], h[2]];
                 }
+                if app.doc.as_ref().and_then(|d| d.world.routes.get(r)).is_some_and(|x| x.method == RoadDraw::Live) {
+                    crate::road_draw::live_route(app, r, ctx);
+                }
             }
             ctx.request_repaint();
         } else if let (Some(before), Some(r)) = (app.line.point_drag.take(), route) {
+            app.live.shown = None;
             app.refit_route(r, before);
         }
         return;
+    }
+    // A route laid piece by piece is changed piece by piece, from the panel and the keys.
+    let pieces = app.line.selected_route.and_then(|i| app.doc.as_ref()?.world.routes.get(i)).is_some_and(|r| r.method == RoadDraw::Parts);
+    if pieces && app.road_parts.target.is_some() && !ctx.wants_keyboard_input() {
+        let (enter, esc, back) = ctx.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Backspace)));
+        if back { crate::road_draw::parts_back(app); }
+        if enter && app.task.is_none() { crate::road_draw::parts_finish(app, false); }
+        if esc {
+            // Taken again from the route by the panel.
+            app.road_parts.stamp = 0;
+            return;
+        }
     }
     let Some(doc) = &app.doc else { return };
     let world = &doc.world;
@@ -2016,47 +2056,76 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         app.line.selected_point = None;
     }
     let busy = app.task.is_some();
+    // Its waypoints have no handles then.
+    let handles = if pieces { None } else { selected };
     if resp.drag_started_by(egui::PointerButton::Primary) {
         let origin = ctx.input(|i| i.pointer.press_origin()).unwrap_or(mouse);
-        if let (RouteHit::Point(i), false, Some(r)) = (route_hit(world, v, selected, origin), busy, selected) {
+        if let (RouteHit::Point(i), false, Some(r)) = (route_hit(world, v, handles, origin), busy, handles) {
             app.line.selected_point = Some(i);
             app.line.point_drag = Some(world.routes[r].points.clone());
+            remember_fit(app, r);
         }
         return;
     }
     let ctrl = ctx.input(|i| i.modifiers.command);
-    if resp.clicked() && selected.is_some() && (ctrl || app.line.extend.is_some()) {
-        // New road beyond either end; the models follow on "Fit again".
-        if let (Some(r), Some(h)) = (selected, hit) {
-            let points = &world.routes[r].points;
-            let at = [h[0], h[2]];
-            let distance = |p: [f32; 2]| (p[0] - at[0]).powi(2) + (p[1] - at[1]).powi(2);
-            let start = app.line.extend.unwrap_or_else(|| distance(points[0]) < distance(*points.last().unwrap()));
-            let previous = world.routes.clone();
-            let doc = app.doc.as_mut().unwrap();
-            let list = &mut doc.world.routes[r].points;
-            if start {
-                list.insert(0, at);
-                app.line.selected_point = Some(0);
-            } else {
-                list.push(at);
-                app.line.selected_point = Some(list.len() - 1);
+    // A click on a point or on a + is that, also while extending.
+    let on_handle = matches!(route_hit(world, v, handles, mouse), RouteHit::Point(_) | RouteHit::Between(..));
+    let extending = handles.is_some() && !on_handle && (ctrl || app.line.extend.is_some());
+    // A route edited live is fitted again as soon as its points change, as a new one is drawn.
+    let live = selected.and_then(|r| world.routes.get(r)).is_some_and(|x| x.method == RoadDraw::Live);
+    // Where a click would add a point: the route's points with it, and whether at the start.
+    let extended = |at: [f32; 2]| -> Option<(Vec<[f32; 2]>, bool)> {
+        let points = &world.routes.get(selected?)?.points;
+        let distance = |p: [f32; 2]| (p[0] - at[0]).powi(2) + (p[1] - at[1]).powi(2);
+        let start = app.line.extend.unwrap_or_else(|| distance(points[0]) < distance(*points.last().unwrap()));
+        let mut list = points.clone();
+        if start { list.insert(0, at) } else { list.push(at) }
+        Some((list, start))
+    };
+    let candidate = if extending { hit.and_then(|h| extended([h[0], h[2]])) } else { None };
+    if live && extending && !busy {
+        if let (Some(r), Some((list, _))) = (selected, candidate.clone()) {
+            crate::road_draw::live_route_with(app, r, list, ctx);
+        }
+    } else if live && app.live.shown.is_some() {
+        app.live.shown = None;
+    }
+    let Some(doc) = &app.doc else { return };
+    let world = &doc.world;
+    if resp.clicked() && extending {
+        // New road beyond either end; the models follow on "Fit again", or at once when live.
+        if let (Some(r), Some((list, start))) = (selected, candidate) {
+            if live {
+                if let Err(e) = crate::road_draw::live_fits(app, &list) {
+                    app.warn(format!("{}: {e}", t("The road cannot reach this point")));
+                    return;
+                }
             }
+            let previous = world.routes.clone();
+            let before = world.routes[r].points.clone();
+            remember_fit(app, r);
+            let doc = app.doc.as_mut().unwrap();
+            app.line.selected_point = Some(if start { 0 } else { list.len() - 1 });
+            doc.world.routes[r].points = list;
             doc.history.push(t("Edit route"), Change::Routes(previous));
+            if live && !busy { app.refit_route(r, before); }
         }
         return;
     }
     if resp.clicked() {
-        match route_hit(world, v, selected, mouse) {
+        match route_hit(world, v, handles, mouse) {
             RouteHit::Point(i) => app.line.selected_point = Some(i),
             RouteHit::Between(i, at) if !busy => {
                 // A new point waits for "Fit again" or for being dragged.
                 let r = selected.unwrap();
                 let previous = world.routes.clone();
+                let before = world.routes[r].points.clone();
+                remember_fit(app, r);
                 let doc = app.doc.as_mut().unwrap();
                 doc.world.routes[r].points.insert(i + 1, at);
                 doc.history.push(t("Edit route"), Change::Routes(previous));
                 app.line.selected_point = Some(i + 1);
+                if live { app.refit_route(r, before); }
             }
             RouteHit::Between(..) => {}
             RouteHit::Route(i) => {
@@ -2073,8 +2142,9 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
     if del && !typing && !busy {
         if let (Some(r), Some(p)) = (selected, app.line.selected_point) {
             let points = &world.routes[r].points;
-            if points.len() > 2 && p < points.len() {
+            if points.len() > 2 && p < points.len() && !pieces {
                 let before = points.clone();
+                remember_fit(app, r);
                 app.doc.as_mut().unwrap().world.routes[r].points.remove(p);
                 app.line.selected_point = None;
                 app.refit_route(r, before);
@@ -2086,6 +2156,15 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
             app.line.selected_route = None;
             app.line.selected_point = None;
         }
+    }
+}
+
+/// Notes the waypoints of a route's fit before they are changed, for a route that has no
+/// record of it (made before routes kept one, or brought in): only then does a point added
+/// past an end tell apart from one added in between.
+fn remember_fit(app: &mut App, r: usize) {
+    if let Some(route) = app.doc.as_mut().and_then(|d| d.world.routes.get_mut(r)) {
+        if route.fitted.len() < 2 { route.fitted = route.points.clone(); }
     }
 }
 
@@ -2369,7 +2448,7 @@ fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
     }
 }
 
-fn draw_polyline(painter: &egui::Painter, v: &View, world: &dz_core::world::World, points: &[[f32; 2]], stroke: Stroke) {
+pub(crate) fn draw_polyline(painter: &egui::Painter, v: &View, world: &dz_core::world::World, points: &[[f32; 2]], stroke: Stroke) {
     let mut prev: Option<Pos2> = None;
     for p in points {
         let q = v.project([p[0], world.height.sample(p[0], p[1]) + 0.3, p[1]]);
@@ -2394,7 +2473,7 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
         }
     }
     if app.mode == Mode::Lines && app.line.action == LineAction::Edit {
-        if let Some(r) = app.line.selected_route.and_then(|i| world.routes.get(i)) {
+        if let Some(r) = app.line.selected_route.and_then(|i| world.routes.get(i)).filter(|r| r.method != RoadDraw::Parts) {
             let col = Color32::from_rgb(255, 170, 40);
             draw_polyline(&painter, v, world, &r.points, Stroke::new(1.0_f32, col));
             for (i, p) in r.points.iter().enumerate() {
@@ -2549,6 +2628,10 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
                 painter.circle_filled(s, 4.0, Color32::from_rgb(255, 120, 40));
             }
         }
+    }
+    if app.mode == Mode::Lines && matches!(app.line.action, LineAction::Road | LineAction::Edit) {
+        let cursor = resp.hover_pos().and_then(|m| { let (o, d) = v.ray(m); pick_terrain(&world.height, o, d, v.ortho) }).map(|h| [h[0], h[2]]);
+        crate::road_draw::draw(app, &painter, v, world, cursor);
     }
     if let Some((a, b, _)) = app.box_select {
         if app.lasso_points.len() >= 2 {
@@ -3020,6 +3103,7 @@ pub fn brush_wheel(app: &App, m: egui::Modifiers) -> bool {
 }
 
 fn shortcuts(app: &mut App, ctx: &egui::Context) {
+    crate::panels::HINTS.store(app.settings.show_hints, std::sync::atomic::Ordering::Relaxed);
     if ctx.wants_keyboard_input() || app.key_capture.is_some() {
         return;
     }
@@ -3060,6 +3144,19 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     }
     if k(Action::Delete) && !matches!(app.mode, Mode::Shapes | Mode::KeyPoints | Mode::Mission) { app.delete_selection(); }
     if k(Action::Focus) { focus_selection(app); }
+    if k(Action::ToggleHints) {
+        app.settings.show_hints = !app.settings.show_hints;
+        app.settings.save();
+    }
+    let laying = app.line.action == LineAction::Road && app.line.draw == RoadDraw::Parts;
+    let changing = app.line.action == LineAction::Edit && app.road_parts.target.is_some_and(|t| app.line.selected_route == Some(t.0));
+    if app.mode == Mode::Lines && (laying || changing) {
+        if k(Action::RoadPieceAdd) { crate::road_draw::add_piece(app); }
+        if k(Action::RoadPieceSide) { app.road_parts.left = !app.road_parts.left; }
+        for (a, step) in [(Action::RoadPiecePrev, -1), (Action::RoadPieceNext, 1)] {
+            if k(a) { crate::road_draw::cycle_piece(app, step); }
+        }
+    }
     if k(Action::Underground) { app.toggle_underground(); }
     if k(Action::CameraBelow) { app.camera_under = !app.camera_under; }
     if k(Action::ToggleGrass) { app.show_grass = !app.show_grass; }
@@ -3772,6 +3869,19 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.synthetic.push(egui::Event::PointerButton { pos: at, button, pressed: nums[0] != 0.0, modifiers: app.synthetic_modifiers });
         }
         "winsize" if nums.len() >= 2 => ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(nums[0], nums[1]))),
+        // How clicks lay a road: points, live or parts; `roadpiece <name part>` picks a piece.
+        "roaddraw" => {
+            app.mode = Mode::Lines;
+            app.line.action = LineAction::Road;
+            app.line.draw = match arg.as_str() { "live" => RoadDraw::Live, "parts" => RoadDraw::Parts, _ => RoadDraw::Points };
+        }
+        "roadpiece" => {
+            if let Some(c) = crate::road_draw::choices(&app.road_catalog, &app.line.family).into_iter().find(|c| c.path.to_lowercase().contains(&arg.to_lowercase())) { app.road_parts.next = Some(c.path); }
+        }
+        "roadstate" => {
+            eprintln!("ROADSTATE points={} live={:?} parts={} open={}", app.line.points.len(), app.live.shown.as_ref().map(|(k, r)| (k.len(), r.as_ref().map(|p| p.len()).map_err(|e| e.clone()))), app.road_parts.parts.len(), app.road_parts.open.is_some());
+            if let Some(d) = &app.doc { eprintln!("ROADSTATE routes={} objects={}", d.world.routes.len(), d.world.objects.len()); }
+        }
         // Only the last object selected, as a plain click on it with whole selection off.
         "selone" => {
             if let Some(id) = app.doc.as_ref().and_then(|d| d.world.objects.iter().map(|(id, _)| id).last()) {
@@ -3934,6 +4044,16 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "railgrade" => app.line.rail_routing.max_grade = nums.first().copied().unwrap_or(3.0) as f64,
         "routemode" => app.line.route = arg != "fit",
         "routetool" => app.line.action = LineAction::Edit,
+        // Clicks lengthen the selected route at its "start" or "end".
+        "routeextend" => app.line.extend = match arg.as_str() { "start" => Some(true), "end" => Some(false), _ => None },
+        "routepts" => {
+            if let Some(d) = &app.doc {
+                for r in &d.world.routes {
+                    let f = |p: &[f32; 2]| format!("({:.0},{:.0})", p[0], p[1]);
+                    eprintln!("ROUTEPTS {:?} points={} fitted={} center {}..{}", r.name, r.points.iter().map(f).collect::<Vec<_>>().join(" "), r.fitted.iter().map(f).collect::<Vec<_>>().join(" "), r.centerline.first().map(f).unwrap_or_default(), r.centerline.last().map(f).unwrap_or_default());
+                }
+            }
+        }
         "routes" => {
             if let Some(d) = &app.doc {
                 for r in &d.world.routes {
