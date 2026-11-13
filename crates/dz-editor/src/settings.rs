@@ -69,6 +69,8 @@ pub struct Settings {
     /// Where backups go; empty keeps them in the project folder.
     pub backup_folder: String,
     pub check_updates: bool,
+    /// Features still being worked on (for now the mission editor) are shown.
+    pub experimental: bool,
     pub extra_mods: String,
     pub with_client: bool,
     pub asset_roots: Vec<String>,
@@ -181,7 +183,7 @@ impl Default for Settings {
         Self {
             language: "pl".into(), ui_scale: 1.0, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
-            check_updates: true, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, lasso: false, angle_step: 15.0, align_to_ground: false, show_hints: true, split_ratio: 0.5, split_stacked: false, split_swapped: false, top_follow: false, top_models: true, minimap: true, minimap_size: 200.0, camera_speed: 60.0, lighting: Lighting::default(),
+            check_updates: true, experimental: false, extra_mods: String::new(), with_client: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, lasso: false, angle_step: 15.0, align_to_ground: false, show_hints: true, split_ratio: 0.5, split_stacked: false, split_swapped: false, top_follow: false, top_models: true, minimap: true, minimap_size: 200.0, camera_speed: 60.0, lighting: Lighting::default(),
             texture_size: 2048, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6, keys: Default::default(), export: Default::default(),
         }
     }

@@ -3135,6 +3135,9 @@ pub fn brush_wheel(app: &App, m: egui::Modifiers) -> bool {
 }
 
 fn shortcuts(app: &mut App, ctx: &egui::Context) {
+    // Experimental features turned off take their tools with them.
+    if !app.mode_enabled(app.mode) { app.mode = Mode::Select; }
+    if !app.settings.experimental { app.mission.open = false; }
     crate::panels::HINTS.store(app.settings.show_hints, std::sync::atomic::Ordering::Relaxed);
     if ctx.wants_keyboard_input() || app.key_capture.is_some() {
         return;
@@ -3214,7 +3217,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         }
     }
     for (a, m) in [(Action::ModeSelect, Mode::Select), (Action::ModeSculpt, Mode::Landscape), (Action::ModePaint, Mode::Paint), (Action::ModePlace, Mode::Place), (Action::ModeRoads, Mode::Lines), (Action::ModeShapes, Mode::Shapes), (Action::ModeKeyPoints, Mode::KeyPoints), (Action::ModeSatellite, Mode::Satellite), (Action::ModeMission, Mode::Mission)] {
-        if k(a) { app.mode = m; }
+        if k(a) && app.mode_enabled(m) { app.mode = m; }
     }
     for (a, g) in [(Action::GizmoMove, Gizmo::Move), (Action::GizmoRotate, Gizmo::Rotate), (Action::GizmoScale, Gizmo::Scale)] {
         if k(a) { app.gizmo = g; }
@@ -4077,6 +4080,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "routemode" => app.line.route = arg != "fit",
         "routetool" => app.line.action = LineAction::Edit,
         "proxies" => app.show_proxies = arg == "1",
+        "experimental" => app.settings.experimental = arg == "1",
         // `camproxy n`: the camera 2.5 m from proxy n of the first object, a little above it,
         // looking at it.
         "camproxy" => {
