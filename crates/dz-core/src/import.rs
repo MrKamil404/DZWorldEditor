@@ -30,8 +30,17 @@ pub fn mask_from_image(img: &RgbImage, layers: &mut Vec<SurfaceLayer>, job: &Job
         }
     }
     // Colours present in meaningful amounts become layers; the rest are blends or noise.
-    let mut extra: Vec<_> = unknown.into_iter().filter(|(_, n)| *n > img.width * img.height / 20000).collect();
+    let total = img.width * img.height;
+    let stray: usize = unknown.iter().filter(|(_, n)| **n <= total / 20000).map(|(_, n)| *n).sum();
+    let mut extra: Vec<_> = unknown.into_iter().filter(|(_, n)| *n > total / 20000).collect();
     extra.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+    if !layers.is_empty() && !extra.is_empty() {
+        let list = extra.iter().take(12).map(|(c, n)| format!("#{:02X}{:02X}{:02X} ({:.2}%)", c[0], c[1], c[2], *n as f64 * 100.0 / total as f64)).collect::<Vec<_>>().join(", ");
+        job.log(format!("{} mask colours are not in layers.cfg and became layers of their own: {list}", extra.len()));
+    }
+    if stray > 0 {
+        job.log(format!("{stray} mask pixels have colours of no surface (blends or noise) and took the nearest one"));
+    }
     for (c, _) in extra {
         if layers.len() >= 255 {
             job.log("More than 255 mask colours; remaining ones map to the nearest layer.");
@@ -110,10 +119,13 @@ pub fn parse_tb_objects(text: &str, w: &mut World, assets: &AssetIndex, db: &Mod
 /// Models the game fits to the ground (path panels, kerbs) come out of Terrain Builder with
 /// tilts of a few degrees that have nothing to do with the ground under them: on Balticrus
 /// path panels tilted by 1-5 degrees lie on slopes of up to 10. A tilt keeps a model rigid,
-/// so such a model would sink into the slope on one side. They come in level and follow the
-/// ground, as one placed by hand does.
+/// so such a model would sink into the slope on one side. Below 10 degrees they come in level
+/// and follow the ground, as one placed by hand does; a bigger tilt is meant (a log lying on
+/// its side, a barrier on an embankment) and stays as the built world has it.
+const LEVEL_BELOW: f32 = 10.0;
+
 fn level_on_ground(info: &crate::model_info::ModelInfo, pitch: f32, roll: f32) -> (f32, f32) {
-    if info.placement.skews() {
+    if info.placement.skews() && pitch.abs() < LEVEL_BELOW && roll.abs() < LEVEL_BELOW {
         (0.0, 0.0)
     } else {
         (pitch, roll)
@@ -376,13 +388,21 @@ impl ImportPlan {
         let dir = if root.is_file() { root.parent().unwrap_or(root) } else { root };
         let name = dir.file_name().map(|s| s.to_string_lossy().trim_end_matches("Source").trim_end_matches(['_', '-', ' ']).to_string()).filter(|s| !s.is_empty()).unwrap_or_else(|| "Imported".into());
         let asc = scan.asc.first().cloned();
-        let has_layers = scan.layers.iter().any(|l| l.import);
+        // Objects of a built world stand as the game shows them; layers of Terrain Builder may
+        // differ from it (their tilts and the heightmap they are put on), so with a WRP its
+        // objects are taken and the layers only on request.
+        let wrp = scan.wrp.first().cloned();
+        let mut layers = scan.layers.clone();
+        if wrp.is_some() {
+            layers.iter_mut().for_each(|l| l.import = false);
+        }
+        let has_layers = layers.iter().any(|l| l.import);
         // A built map has its surfaces in the tiles; loose pictures only belong to a source.
         let source = asc.is_some() || scan.tile_dir.is_none();
         Self {
             name,
-            wrp: scan.wrp.first().cloned(),
-            objects_from_wrp: !has_layers && scan.objects.is_empty(),
+            objects_from_wrp: wrp.is_some() || (!has_layers && scan.objects.is_empty()),
+            wrp,
             tile_dir: scan.tile_dir.clone(),
             satellite: scan.satellite.first().filter(|_| source).cloned(),
             mask: scan.mask.first().filter(|_| source).cloned(),
@@ -390,11 +410,11 @@ impl ImportPlan {
             holes_cfg: scan.holes_cfg.first().cloned(),
             tv4p: scan.tv4p.first().cloned(),
             libraries: scan.libraries.clone(),
-            layers: scan.layers.clone(),
+            layers,
             max_tile_surfaces: 6,
             shapes: scan.shapes.clone(),
             // Lists are usually exports of the same layers.
-            lists: scan.objects.iter().map(|p| (p.clone(), !has_layers)).collect(),
+            lists: scan.objects.iter().map(|p| (p.clone(), !has_layers && scan.wrp.is_empty())).collect(),
             asc,
         }
     }
@@ -710,8 +730,16 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
         if let Some(path) = &plan.wrp {
             job.stage("Reading WRP objects");
             let wrp = Wrp::parse(&std::fs::read(path).with_context(|| format!("{}", path.display()))?)?;
-            w.objects = objects_from_wrp(&wrp, &w.height, 0.0, db);
+            // Heights over the ground are taken on the WRP's own terrain, so the objects stand
+            // as in the game also when the heightmap chosen here is a different one.
+            let own = Heightmap { cols: wrp.terrain_x as usize, rows: wrp.terrain_y as usize, cell: wrp.cell(), data: wrp.elevations.clone() };
+            w.objects = objects_from_wrp(&wrp, &own, 0.0, db);
             job.log(format!("{}: {} objects", path.display(), w.objects.len()));
+            let size = w.meta.size_m();
+            let off = (1..8).flat_map(|i| (1..8).map(move |j| (i as f32 * size / 8.0, j as f32 * size / 8.0))).map(|(x, z)| (w.height.sample(x, z) - own.sample(x, z)).abs()).fold(0.0f32, f32::max);
+            if off > 1.0 {
+                job.log(format!("The heightmap differs from the WRP's terrain by up to {off:.0} m; objects keep their height over the ground"));
+            }
         }
     }
     let chosen: Vec<LayerFile> = plan.layers.iter().filter(|l| l.import).cloned().collect();
@@ -983,7 +1011,9 @@ mod tests {
         let (o, _) = parse_tb_objects(text, &mut w, &a, &ModelDb::new("P:/"), false);
         assert_eq!(o.len(), 3);
         assert!(o[0].pitch == 0.0 && o[0].roll == 0.0, "{:?}", o[0]);
-        assert!(o.iter().all(|o| o.pitch == 0.0 && o.roll == 0.0), "{o:?}");
+        assert!(o[2].pitch == 0.0 && o[2].roll == 0.0, "a stray tilt of a few degrees: {:?}", o[2]);
+        // A tilt of 10 degrees and more is meant, and the game keeps it.
+        assert!(o[1].pitch.abs() + o[1].roll.abs() > 14.0, "{:?}", o[1]);
         // Models that do not follow the ground keep their tilt.
         let a = from_paths(vec![r"dz\t_a.p3d".into()]);
         let (o, _) = parse_tb_objects("\"t_a\";100;50;92.4;0;5;1;0;0;\n", &mut w, &a, &ModelDb::new("Z:/none"), false);
@@ -999,6 +1029,19 @@ mod tests {
         assert_eq!(missing, vec!["nope (1)".to_string()]);
         assert!((o[0].x - 100.5).abs() < 1e-2 && o[0].scale == 1.5);
         assert_eq!(o[0].flags, FLAG_UNDERGROUND);
+    }
+
+    #[test]
+    fn a_built_world_takes_its_objects_rather_than_the_layers() {
+        let layer = |name: &str| LayerFile { path: PathBuf::from(format!("{name}.tv4l")), info: crate::tv4l::LayerInfo { name: name.into(), visible: true, objects: 10, ..Default::default() }, import: true };
+        let mut scan = FolderScan { layers: vec![layer("buildings"), layer("trees")], objects: vec![PathBuf::from("objects.txt")], ..Default::default() };
+        let plan = ImportPlan::from_scan(Path::new("Map"), &scan);
+        assert!(!plan.objects_from_wrp && plan.layers.iter().all(|l| l.import), "without a WRP the layers are taken");
+        assert!(plan.lists.iter().all(|l| !l.1), "lists are exports of the layers");
+        scan.wrp = vec![PathBuf::from("map.wrp")];
+        let plan = ImportPlan::from_scan(Path::new("Map"), &scan);
+        assert!(plan.objects_from_wrp, "the objects of the built world");
+        assert!(plan.layers.iter().all(|l| !l.import) && plan.lists.iter().all(|l| !l.1), "layers and lists only on request");
     }
 
     #[test]
@@ -1244,4 +1287,5 @@ mod tests {
         assert!(e[e.len() / 2].abs() < 0.5, "median elevation {}", e[e.len() / 2]);
     }
 }
+
 

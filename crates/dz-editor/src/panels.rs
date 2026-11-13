@@ -1567,6 +1567,10 @@ fn import_window(app: &mut App, ui: &mut egui::Ui, d: &mut ImportDialog, close: 
             }
         }
     });
+    ui.weak(t("Objects of the layers stand on the chosen heightmap, and models that follow the ground (path panels, barriers) come in level when tilted by less than 10°. A built world (WRP) has them as the game shows them."));
+    if plan.objects_from_wrp && plan.wrp.is_some() && plan.layers.iter().any(|l| l.import) {
+        ui.colored_label(Color32::from_rgb(235, 170, 70), t("Objects from the WRP and from layers are both chosen; the same objects would come in twice."));
+    }
     egui::ScrollArea::vertical().id_salt("import_layers").max_height(190.0).auto_shrink([false, true]).show(ui, |ui| {
         for l in &mut plan.layers {
             ui.horizontal(|ui| {

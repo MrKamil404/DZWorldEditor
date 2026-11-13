@@ -1872,7 +1872,15 @@ impl App {
         let (assets, db) = (self.assets.clone(), self.db.clone());
         self.spawn(t("Importing map"), move |job| {
             let w = dz_core::import::import_plan(&plan, &assets, &db, job)?;
-            Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
+            Ok(Box::new(move |app: &mut App| {
+                // Tiles over the surface limit are marked in the top view straight away.
+                let over = dz_core::mask_limit::scan(&w);
+                app.open_world(w, None);
+                if !over.is_empty() {
+                    app.warn(tf("{0} texture tiles use more than the surfaces allowed; they are marked in the 2D view and Project settings can fix them", &[&over.len().to_string()]));
+                    app.tile_issues = over;
+                }
+            }) as Finish)
         });
     }
 

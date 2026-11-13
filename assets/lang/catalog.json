@@ -3295,6 +3295,10 @@
   "de": "Objekte aus der WRP",
   "pl": "Obiekty z WRP"
  },
+ "Objects from the WRP and from layers are both chosen; the same objects would come in twice.": {
+  "de": "Objekte aus der WRP und aus Ebenen sind beide gewählt; dieselben Objekte kämen doppelt.",
+  "pl": "Zaznaczone są obiekty z WRP i z warstw; te same obiekty weszłyby dwa razy."
+ },
  "Objects in a cluster": {
   "de": "Objekte pro Gruppe",
   "pl": "Obiektów w skupisku"
@@ -3314,6 +3318,10 @@
  "Objects of roads and generators stay. Running again or deleting this generator with its objects brings the removed ones back.": {
   "de": "Objekte von Straßen und Generatoren bleiben. Erneutes Ausführen oder Löschen dieses Generators mit seinen Objekten bringt die entfernten zurück.",
   "pl": "Obiekty dróg i generatorów zostają. Ponowne uruchomienie albo usunięcie generatora razem z obiektami przywraca usunięte."
+ },
+ "Objects of the layers stand on the chosen heightmap, and models that follow the ground (path panels, barriers) come in level when tilted by less than 10°. A built world (WRP) has them as the game shows them.": {
+  "de": "Objekte der Ebenen stehen auf der gewählten Höhenkarte, und Modelle, die dem Boden folgen (Wegplatten, Leitplanken), kommen bei weniger als 10° Neigung eben. Eine gebaute Welt (WRP) hat sie so, wie das Spiel sie zeigt.",
+  "pl": "Obiekty z warstw stoją na wybranej mapie wysokości, a modele dopasowujące się do terenu (panele ścieżek, bariery) wchodzą poziomo, gdy ich przechył jest mniejszy niż 10°. Zbudowany świat (WRP) ma je tak, jak pokazuje je gra."
  },
  "Off": {
   "de": "Aus",
@@ -6054,6 +6062,10 @@
  "{0} templates taken out of {1}": {
   "de": "{0} Vorlagen aus {1} entfernt",
   "pl": "Usunięto {0} szablonów z {1}"
+ },
+ "{0} texture tiles use more than the surfaces allowed; they are marked in the 2D view and Project settings can fix them": {
+  "de": "{0} Texturkacheln nutzen mehr Oberflächen als erlaubt; sie sind in der 2D-Ansicht markiert und die Projekteinstellungen können sie beheben",
+  "pl": "{0} kafli tekstur ma więcej powierzchni niż wolno; są zaznaczone w widoku 2D, a ustawienia projektu mogą je poprawić"
  },
  "{0} tiles over the limit, marked in the 2D view": {
   "de": "{0} Kacheln über dem Limit, in der 2D-Ansicht markiert",
