@@ -333,6 +333,8 @@ pub struct App {
     pub synthetic_modifiers: egui::Modifiers,
     /// The pointer was over a 3D or top view in the last frame.
     pub view_hovered: bool,
+    /// The pointer was over a view in the frame before, for keys that act at the cursor.
+    pub view_hovered_last: bool,
     /// The user's own brush pictures.
     pub brushes: Vec<crate::brushes::CustomBrush>,
     /// Metres of height between two contour lines.
@@ -384,6 +386,13 @@ pub struct App {
     pub lasso_points: Vec<egui::Pos2>,
     /// The modifier keys held this frame.
     pub modifiers_now: egui::Modifiers,
+    /// The ground under the cursor in a view, last frame.
+    pub cursor_ground: Option<[f32; 3]>,
+    /// For automated checks: a screenshot taken once background work is running.
+    pub shot_during_task: Option<String>,
+    /// What was selected last, laid out as a prefab to be copied again, and the state it was
+    /// taken in.
+    pub last_copy: Option<(dz_core::library::Prefab, (u64, u64))>,
     /// How far the minimap is zoomed in (1 shows the whole map) and the middle it shows.
     pub minimap_zoom: f32,
     pub minimap_center: [f32; 2],
@@ -493,7 +502,7 @@ impl App {
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
-            show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
+            show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
@@ -502,7 +511,7 @@ impl App {
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], fullscreen: false, edge_open: [false; 4], detached: false,
+            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(),
             settings,
@@ -1507,6 +1516,7 @@ impl App {
         self.edit_generator = None;
         self.edit_forest = None;
         self.edit_prefab = Some(id);
+        self.leave_world_details();
         self.info(tf("{0} made of {1} objects", &[&name, &objects.len().to_string()]));
         Some(id)
     }
@@ -1514,6 +1524,61 @@ impl App {
     /// Places a prefab with its middle at (x, z) and selects what it placed.
     pub fn place_prefab(&mut self, id: u64, x: f32, z: f32) -> Vec<u32> {
         let Some(prefab) = self.library.prefabs.iter().find(|p| p.id == id).cloned() else { return Vec::new() };
+        let label = tf("Place {0}", &[&prefab.name]);
+        self.place_layout(&prefab, x, z, label)
+    }
+
+    /// The selected objects laid out round their middle, as a prefab is.
+    pub fn selection_layout(&self) -> Option<dz_core::library::Prefab> {
+        let doc = self.doc.as_ref()?;
+        let objects: Vec<(String, dz_core::objects::Obj)> = self.selection.iter().take(20_000).filter_map(|id| doc.world.objects.get(*id)).map(|o| (doc.world.objects.model_path(o).to_string(), *o)).collect();
+        (!objects.is_empty()).then(|| dz_core::library::Prefab::from_objects(0, String::new(), &objects, &doc.world.height))
+    }
+
+    /// A pick in the view or the outliner takes the details over from the asset browser.
+    pub fn leave_browser(&mut self) {
+        self.browser.selected.clear();
+        self.edit_object = None;
+        self.edit_generator = None;
+        self.edit_forest = None;
+        self.edit_prefab = None;
+    }
+
+    /// A pick in the asset browser takes the details over from the generator, route or modifier chosen in the view.
+    pub fn leave_world_details(&mut self) {
+        self.selected_generator = None;
+        self.selected_modifier = None;
+        self.whole = None;
+    }
+
+    /// Keeps a copy of what is selected, for V to place again once something else is.
+    pub fn remember_selection(&mut self) {
+        let Some(doc) = &self.doc else { return };
+        if self.selection.is_empty() {
+            return;
+        }
+        let key = (self.selection_rev, doc.world.objects.revision);
+        if self.last_copy.as_ref().is_some_and(|c| c.1 == key) {
+            return;
+        }
+        if let Some(p) = self.selection_layout() {
+            self.last_copy = Some((p, key));
+        }
+    }
+
+    /// Copies of the selection (`last` false) or of the last selection under the cursor.
+    pub fn paste_at_cursor(&mut self, last: bool) {
+        let Some(at) = self.cursor_ground else { return };
+        let layout = if last { self.last_copy.as_ref().map(|c| c.0.clone()) } else { self.selection_layout() };
+        let Some(layout) = layout else {
+            self.warn(if last { t("Nothing was selected yet") } else { t("Select objects first") });
+            return;
+        };
+        self.place_layout(&layout, at[0], at[2], t("Copy objects"));
+    }
+
+    /// Objects laid out as a prefab, with its middle at (x, z), selected once placed.
+    pub fn place_layout(&mut self, prefab: &dz_core::library::Prefab, x: f32, z: f32, label: String) -> Vec<u32> {
         let Some(doc) = self.doc.as_mut() else { return Vec::new() };
         let layer = doc.world.target_layer();
         if !doc.world.object_layers[layer as usize].interactive() {
@@ -1532,13 +1597,35 @@ impl App {
         if change.is_empty() {
             return ids;
         }
-        doc.history.push(tf("Place {0}", &[&prefab.name]), Change::Objects(change));
+        doc.history.push(label, Change::Objects(change));
         doc.dirty.objects = true;
         self.whole = None;
         self.selected_generator = None;
         self.selection = ids.iter().copied().collect();
         self.selection_rev += 1;
         ids
+    }
+
+    /// Tilts the selected objects to the ground under them; models the game fits to the
+    /// ground themselves are left level.
+    pub fn align_selection_to_ground(&mut self) {
+        let Some(doc) = &mut self.doc else { return };
+        let mut change = Vec::new();
+        for id in self.selection.iter() {
+            let Some(o) = doc.world.objects.get(*id).copied() else { continue };
+            let mut n = o;
+            if !self.db.get(doc.world.objects.model_path(&o)).placement.skews() {
+                (n.pitch, n.roll) = dz_core::gen::slope_angles(&doc.world.height, o.x, o.z, o.yaw);
+            }
+            if n != o {
+                doc.world.objects.update(*id, n);
+                change.push((*id, Some(o), Some(n)));
+            }
+        }
+        if !change.is_empty() {
+            doc.history.push(t("Align to the ground"), Change::Objects(change));
+            doc.dirty.objects = true;
+        }
     }
 
     /// Copies the selection in place. A whole road or generator is copied as one, with what

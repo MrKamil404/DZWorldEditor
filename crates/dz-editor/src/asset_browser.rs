@@ -1836,6 +1836,7 @@ fn activate(app: &mut App, pick: &Pick, single: bool) {
             app.edit_generator = None;
             app.edit_forest = None;
             app.edit_prefab = Some(*id);
+            app.leave_world_details();
             if single && app.mode == Mode::Select { app.mode = Mode::Place; }
         }
         Pick::Road(f) => {
@@ -1854,7 +1855,7 @@ fn open(app: &mut App, pick: &Pick) {
         app.edit_generator = None;
         app.edit_forest = None;
         app.edit_prefab = None;
-        app.selected_generator = None;
+        app.leave_world_details();
     };
     match pick {
         Pick::Preset(id) => { clear(app); app.edit_object = Some(*id); }

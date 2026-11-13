@@ -62,6 +62,12 @@ pub struct ObjectDrag {
     /// The mouse as the drag sees it, and where the real one was last: held for precise
     /// work, the first follows the second slowly.
     virt: Option<(Pos2, Pos2)>,
+    /// A release before the mouse moved is a click here, adding to the selection when true.
+    click: Option<(Pos2, bool)>,
+    /// Turns by whole steps of the angle step, which the wheel changes meanwhile.
+    stepped: bool,
+    /// The modifier keys that chose what the drag does.
+    mods: egui::Modifiers,
 }
 
 /// Scripted input for automatic checks (`DZWE_AUTO`).
@@ -1206,7 +1212,8 @@ fn segment_label(painter: &egui::Painter, v: &View, world: &dz_core::world::Worl
 fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
     let Some(mut drag) = app.drag.take() else { return };
     // Held for precise work, the drag follows the mouse five times slower.
-    let precise = app.settings.keys.held(Hold::Precise, app.modifiers_now);
+    // The key for slow moves does not slow a drag it chose itself (Alt scales).
+    let precise = app.settings.keys.held(Hold::Precise, app.modifiers_now) && !app.settings.keys.held(Hold::Precise, drag.mods);
     let (seen, last) = drag.virt.unwrap_or((mouse, mouse));
     let seen = seen + (mouse - last) * if precise { 0.2 } else { 1.0 };
     drag.virt = Some((seen, mouse));
@@ -1237,7 +1244,7 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
         }
         Handle::Spin => {
             dyaw = delta.x * 0.5;
-            if angle_snap { dyaw = (dyaw / step).round() * step; }
+            if angle_snap || drag.stepped { dyaw = (dyaw / step).round() * step; }
         }
         Handle::X | Handle::Y | Handle::Z => {
             let along = delta.dot(drag.axis.0) * drag.axis.2;
@@ -1309,6 +1316,15 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
         o.scale = b.scale * factor;
         updates.push((*id, o));
     }
+    // Stuck to the ground, moved and turned objects take its tilt; a whole road or
+    // generator keeps its own, and models the game fits to the ground stay level.
+    if app.settings.align_to_ground && app.whole.is_none() && matches!(drag.handle, Handle::Plane | Handle::X | Handle::Z | Handle::Spin) {
+        for (_, o) in &mut updates {
+            if !app.db.get(world.objects.model_path(o)).placement.skews() {
+                (o.pitch, o.roll) = gen::slope_angles(&world.height, o.x, o.z, o.yaw);
+            }
+        }
+    }
     for (id, o) in updates {
         world.objects.update(id, o);
         if let Some(r) = world.sync_attached(id) {
@@ -1322,20 +1338,26 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
     }
 }
 
-fn end_object_drag(app: &mut App) {
-    let Some(drag) = app.drag.take() else { return };
+/// Ends a drag; a release before the mouse moved gives back the click it was.
+fn end_object_drag(app: &mut App) -> Option<(Pos2, bool)> {
+    let Some(drag) = app.drag.take() else { return None };
+    if !drag.started {
+        if let Some(c) = drag.click {
+            return Some(c);
+        }
+    }
     if let (Some(id), false) = (drag.toggle, drag.started) {
         app.selection.remove(&id);
         app.selection_rev += 1;
-        return;
+        return None;
     }
-    let Some(doc) = &mut app.doc else { return };
+    let Some(doc) = &mut app.doc else { return None };
     let change: Vec<_> = drag.before.iter().filter_map(|(id, b)| {
         let now = doc.world.objects.get(*id).copied()?;
         (now != *b).then_some((*id, Some(*b), Some(now)))
     }).collect();
     if change.is_empty() {
-        return;
+        return None;
     }
     // A whole road or generator brings its line, modifier and shape along; a change of size
     // leaves them as they are.
@@ -1344,7 +1366,7 @@ fn end_object_drag(app: &mut App) {
         Some(m) if app.whole.is_some() => app.move_whole(&m),
         _ => Vec::new(),
     };
-    let Some(doc) = &mut app.doc else { return };
+    let Some(doc) = &mut app.doc else { return None };
     if extra.is_empty() {
         doc.history.push(t("Transform objects"), Change::Objects(change));
     } else {
@@ -1352,6 +1374,7 @@ fn end_object_drag(app: &mut App) {
         steps.extend(extra);
         doc.history.push(t("Transform objects"), Change::Group(steps));
     }
+    None
 }
 
 fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View, top: bool, typing: bool) {
@@ -1383,7 +1406,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
             app.camera.speed = (app.camera.speed * (scroll * 0.002).exp()).clamp(1.0, 4000.0);
             app.settings.camera_speed = app.camera.speed;
         }
-    } else if hover && scroll != 0.0 && !brush_wheel(app, modifiers) && !app.minimap_hover {
+    } else if hover && scroll != 0.0 && !brush_wheel(app, modifiers) && !app.minimap_hover && !app.drag.as_ref().is_some_and(|d| d.stepped) {
         let f = app.camera.forward();
         let clearance = app.doc.as_ref().map(|d| (app.camera.pos[1] - d.world.height.sample(app.camera.pos[0], app.camera.pos[2])).abs()).unwrap_or(50.0);
         app.camera.pos = add(app.camera.pos, mul(f, scroll * (clearance * 0.0035).max(0.15)));
@@ -1634,16 +1657,28 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         Mode::Generate => {}
         Mode::Select => {
             let pivot = selection_pivot(app);
-            // Alt is free here unless it is the key for slow, precise moves.
-            if pressed && (!modifiers.alt || app.settings.keys.held(Hold::Precise, modifiers)) {
+            if pressed {
                 if let Some(p) = pivot {
                     if let Some((handle, dir, axis, scale)) = gizmo_handle(app, v, p, mouse) {
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let grab = hit.map(|h| [p[0] - h[0], p[2] - h[2]]).unwrap_or([0.0, 0.0]);
-                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab , virt: None });
+                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE });
                         return;
                     }
+                }
+                // Held keys make a drag anywhere turn or scale the selection about its middle:
+                // Shift turns it, Ctrl+Shift turns it by steps, Alt scales it. A click without
+                // moving still selects, Shift adding to the selection.
+                let stepped = modifiers.shift && (modifiers.ctrl || modifiers.command);
+                let turn = modifiers.shift && !(modifiers.ctrl || modifiers.command);
+                let scale = modifiers.alt && !modifiers.shift && !(modifiers.ctrl || modifiers.command) && handle_allowed(app, Handle::Scale);
+                if let (true, Some(p)) = (turn || stepped || scale, pivot) {
+                    let doc = app.doc.as_ref().unwrap();
+                    let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
+                    let handle = if scale { Handle::Scale } else { Handle::Spin };
+                    app.drag = Some(ObjectDrag { toggle: None, started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0], virt: None, click: Some((mouse, modifiers.shift || modifiers.ctrl)), stepped, mods: modifiers });
+                    return;
                 }
                 // Held by its shape, an object slides over the ground; one not yet selected is
                 // picked first, as a click would.
@@ -1655,31 +1690,40 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         if let (true, Some(p)) = (app.selection.contains(&id), selection_pivot(app)) {
                             let doc = app.doc.as_ref().unwrap();
                             let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
-                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] , virt: None });
+                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE });
                             return;
                         }
                     }
                 }
-                // Held on a selected object, Shift turns it and Ctrl scales it.
-                if modifiers.shift || (modifiers.ctrl && handle_allowed(app, Handle::Scale)) {
+                // Held on a selected object, Ctrl scales it.
+                if modifiers.ctrl && !modifiers.shift && handle_allowed(app, Handle::Scale) {
                     if let (Some(p), Some(id)) = (pivot, pick_object(app, v, mouse).filter(|id| app.selection.contains(id))) {
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let handle = if modifiers.shift { Handle::Spin } else { Handle::Scale };
-                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None });
+                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE });
                         return;
                     }
                 }
                 app.box_select = Some((mouse, mouse, modifiers.shift || modifiers.ctrl));
                 app.lasso_points = if app.settings.lasso { vec![mouse] } else { Vec::new() };
             }
+            if app.drag.as_ref().is_some_and(|d| d.stepped) {
+                let wheel = ctx.input(|i| i.raw_scroll_delta.y + i.raw_scroll_delta.x);
+                if wheel != 0.0 {
+                    const STEPS: [f32; 9] = [1.0, 2.5, 5.0, 10.0, 15.0, 22.5, 30.0, 45.0, 90.0];
+                    let now = STEPS.iter().position(|s| *s >= app.settings.angle_step - 0.01).unwrap_or(4);
+                    let next = if wheel > 0.0 { (now + 1).min(STEPS.len() - 1) } else { now.saturating_sub(1) };
+                    app.settings.angle_step = STEPS[next];
+                }
+            }
             if app.drag.is_some() {
                 if primary_down {
                     let snap = modifiers.ctrl && app.drag.as_ref().is_some_and(|d| d.toggle.is_none());
                     apply_object_drag(app, v, mouse, snap);
                     ctx.request_repaint();
-                } else {
-                    end_object_drag(app);
+                } else if let Some((at, add)) = end_object_drag(app) {
+                    finish_selection(app, v, at, at, add);
                 }
                 return;
             }
@@ -1747,6 +1791,7 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
 
 /// Selects what is in the box from `a` to `b`, or within `outline` when one is drawn.
 fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool, outline: Option<&[Pos2]>) {
+    app.leave_browser();
     if !add_mode {
         app.selection.clear();
         app.selected_modifier = None;
@@ -2202,6 +2247,9 @@ fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         }
         return;
     }
+    if app.shape.boxing.is_some() && !primary_down {
+        app.leave_browser();
+    }
     let Some(doc) = &app.doc else { return };
     let world = &doc.world;
     if let Some((_, end, _)) = &mut app.shape.boxing {
@@ -2299,6 +2347,7 @@ fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
             // The square only moves things when dragged.
         } else {
             let picked = pick_shape(world, v, mouse, hit);
+            app.leave_browser();
             app.shape.vertex = None;
             if modifiers.shift {
                 if let Some(p) = picked {
@@ -2763,6 +2812,9 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         let (o, dir) = v.ray(m);
         pick_terrain(&d.world.height, o, dir, v.ortho)
     });
+    if resp.hovered() {
+        app.cursor_ground = hover;
+    }
     if let Some(h) = hover {
         if resp.hovered() {
             let d = app.doc.as_ref().unwrap();
@@ -2839,6 +2891,15 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         ctx.request_repaint();
     }
     view_header(app, ui, rect, top);
+    // How far a turn has gone, and its step while it goes by steps.
+    if let (Some(d), Some(m)) = (app.drag.as_ref().filter(|d| d.started && d.handle == Handle::Spin), ctx.pointer_latest_pos()) {
+        if let Some((id, b)) = d.before.first() {
+            let now = app.doc.as_ref().and_then(|doc| doc.world.objects.get(*id)).map_or(b.yaw, |o| o.yaw);
+            let turned = ((now - b.yaw + 540.0).rem_euclid(360.0)) - 180.0;
+            let text = if d.stepped { tf("{0}°  ·  step {1}° (wheel)", &[&format!("{turned:.1}"), &format!("{}", app.settings.angle_step)]) } else { format!("{turned:.1}°") };
+            ui.painter_at(rect).text(m + vec2(16.0, -16.0), egui::Align2::LEFT_BOTTOM, text, egui::FontId::proportional(13.0), Color32::WHITE);
+        }
+    }
     if top {
         camera_marker(app, &ui.painter_at(rect), &v);
     } else if app.settings.minimap {
@@ -2848,6 +2909,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         if let Some(m) = ctx.input(|i| i.pointer.interact_pos()) {
             if let Some(id) = pick_object(app, &v, m) {
                 if !app.selection.contains(&id) {
+                    app.leave_browser();
                     app.selection.clear();
                     app.selection.insert(id);
                     app.selected_generator = None;
@@ -2991,6 +3053,11 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         return;
     }
     if k(Action::Duplicate) { app.duplicate_selection(); }
+    app.remember_selection();
+    if matches!(app.mode, Mode::Select | Mode::Place) && app.view_hovered_last {
+        if k(Action::PasteHere) { app.paste_at_cursor(false); }
+        if k(Action::PasteLast) { app.paste_at_cursor(true); }
+    }
     if k(Action::Delete) && !matches!(app.mode, Mode::Shapes | Mode::KeyPoints | Mode::Mission) { app.delete_selection(); }
     if k(Action::Focus) { focus_selection(app); }
     if k(Action::Underground) { app.toggle_underground(); }
@@ -3081,6 +3148,12 @@ fn welcome(app: &mut App, ui: &mut egui::Ui) {
 pub fn central(app: &mut App, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
     app.modifiers_now = ctx.input(|i| i.modifiers);
+    app.view_hovered_last = app.view_hovered;
+    if app.task.is_some() {
+        if let Some(p) = app.shot_during_task.take() {
+            app.pending_shot(p, &ctx);
+        }
+    }
     shortcuts(app, &ctx);
     // The views of this frame say again whether the pointer is over one of them.
     app.view_hovered = false;
@@ -3533,7 +3606,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "lassomode" => app.settings.lasso = arg == "1",
         "objpos" => {
             if let Some(d) = &app.doc {
-                for (id, o) in d.world.objects.iter().take(4) { eprintln!("OBJPOS {id} {:.2} {:.2}", o.x, o.z); }
+                eprintln!("OBJCOUNT {}", d.world.objects.len());
+                for (id, o) in d.world.objects.iter().take(8) { eprintln!("OBJPOS {id} {:.2} {:.2} yaw {:.1} pitch {:.2} roll {:.2} scale {:.2}", o.x, o.z, o.yaw, o.pitch, o.roll, o.scale); }
             }
         }
         "shapepts" => eprintln!("SHAPEPTS {:?}", app.shape.points),
@@ -3548,6 +3622,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "mapconfig" => app.dialog = crate::app::Dialog::MapConfig,
+        "aligntoground" => app.settings.align_to_ground = arg == "1",
+        "shottask" => app.shot_during_task = Some(arg),
         "selcount" => eprintln!("SELCOUNT {}", app.selection.len()),
         "fullscreen" => crate::panels::set_fullscreen(app, ctx, arg == "1"),
         "edge" => { if let Ok(k) = arg.parse::<usize>() { if k < 4 { app.edge_open[k] = true; } } }
@@ -3685,7 +3761,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "brushinfo" => eprintln!("BRUSH sculpt={:.2}/{:.2} paint={:.2} holes={:.2} place={:.2}/{:.2} sat={:.2}/{:.2}", app.sculpt.radius, app.sculpt.strength, app.paint.radius, app.hole_radius, app.place.brush_radius, app.place.brush_spacing, app.sat.radius, app.sat.opacity),
         "mods" => {
-            app.synthetic_modifiers = egui::Modifiers { shift: arg == "shift", ctrl: arg == "ctrl", command: arg == "ctrl", alt: arg == "alt", ..Default::default() };
+            app.synthetic_modifiers = egui::Modifiers { shift: arg.contains("shift"), ctrl: arg.contains("ctrl"), command: arg.contains("ctrl"), alt: arg == "alt", ..Default::default() };
         }
         "mmove" if nums.len() >= 2 => app.synthetic.push(egui::Event::PointerMoved(pos2(nums[0], nums[1]))),
         "mbutton" if nums.len() >= 2 => {
@@ -3696,6 +3772,14 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             app.synthetic.push(egui::Event::PointerButton { pos: at, button, pressed: nums[0] != 0.0, modifiers: app.synthetic_modifiers });
         }
         "winsize" if nums.len() >= 2 => ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(vec2(nums[0], nums[1]))),
+        // Only the last object selected, as a plain click on it with whole selection off.
+        "selone" => {
+            if let Some(id) = app.doc.as_ref().and_then(|d| d.world.objects.iter().map(|(id, _)| id).last()) {
+                app.selection = [id].into_iter().collect();
+                app.leave_world_details();
+                app.selection_rev += 1;
+            }
+        }
         "selinfo" => {
             if let Some(d) = &app.doc {
                 let first = app.selection.iter().next().and_then(|i| d.world.objects.get(*i));
@@ -3804,8 +3888,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     d.world.sync_attached(*id);
                 }
                 let pivot = before.first().map(|(_, o)| [o.x, 0.0, o.z]).unwrap_or([0.0; 3]);
-                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None });
-                end_object_drag(app);
+                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE });
+                let _ = end_object_drag(app);
             }
         }
         "routeinfo" => {
