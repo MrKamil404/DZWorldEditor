@@ -27,7 +27,7 @@ pub enum MaskKind {
     Paint,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MaskModifier {
     pub id: u32,
     pub name: String,
@@ -53,11 +53,16 @@ impl MaskLayers {
     pub fn keys_of(list: &[MaskModifier]) -> BTreeSet<Key> {
         list.iter().flat_map(|m| m.tiles.keys().copied()).collect()
     }
+    /// Layers made of `modifiers`, with the painted mask under them still to be kept.
+    pub fn from_modifiers(modifiers: Vec<MaskModifier>) -> Self {
+        let next_id = modifiers.iter().map(|m| m.id.saturating_add(1)).max().unwrap_or(1);
+        MaskLayers { modifiers, base: HashMap::new(), next_id }
+    }
     /// Adds an empty modifier and returns its id.
     pub fn add(&mut self, kind: MaskKind, name: String) -> u32 {
-        self.next_id = self.next_id.max(self.modifiers.iter().map(|m| m.id + 1).max().unwrap_or(1)).max(1);
-        let id = self.next_id;
-        self.next_id += 1;
+        // Random, so that two people working on copies of one map do not make the same id.
+        let id = free_id(|id| self.modifiers.iter().any(|m| m.id == id));
+        self.next_id = self.next_id.max(id.saturating_add(1));
         self.modifiers.push(MaskModifier { id, name, kind, enabled: true, tiles: HashMap::new() });
         id
     }
@@ -132,6 +137,16 @@ impl MaskLayers {
             modifiers.push(MaskModifier { id, name, kind, enabled, tiles: tiles(&mut take)? });
         }
         Ok(Self { modifiers, base, next_id })
+    }
+}
+
+/// A random id of a modifier that `taken` does not know, above the small ids of older projects.
+pub fn free_id(taken: impl Fn(u32) -> bool) -> u32 {
+    loop {
+        let id = rand::random::<u32>() | 0x0100_0000;
+        if id != u32::MAX && !taken(id) {
+            return id;
+        }
     }
 }
 

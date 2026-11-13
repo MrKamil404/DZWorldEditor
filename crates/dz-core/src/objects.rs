@@ -48,9 +48,12 @@ pub struct ModelRef {
 pub struct ObjectStore {
     pub models: Vec<ModelRef>,
     by_path: HashMap<String, u32>,
-    /// Objects by id; `None` marks a free slot.
+    /// Objects by id; `None` marks a removed object. Slots are not reused, so an id and the
+    /// identity in `uids` stay with one object through undo and redo.
     slots: Vec<Option<Obj>>,
-    free: Vec<u32>,
+    /// Identity of the object in each slot that lasts across saves and copies of the project,
+    /// so the work of several people can be merged. Kept after removal for undo.
+    uids: Vec<u64>,
     alive: usize,
     grid: HashMap<(i32, i32), Vec<u32>>,
     /// Bumped on every change; lets views refresh lazily.
@@ -62,6 +65,16 @@ pub struct ObjectStore {
 pub fn is_water_model(path: &str) -> bool {
     let p = path.to_ascii_lowercase();
     (p.contains("\\water\\") || p.contains("\\water_")) && !p.contains("streambed")
+}
+
+/// A random identity, never 0.
+pub fn new_uid() -> u64 {
+    loop {
+        let v: u64 = rand::random();
+        if v != 0 {
+            return v;
+        }
+    }
 }
 
 pub fn grid_key(x: f32, z: f32) -> (i32, i32) {
@@ -88,20 +101,25 @@ impl ObjectStore {
         self.by_path.insert(key, i);
         i
     }
+    /// Lasting identity of the object `id`; 0 when there is none.
+    pub fn uid(&self, id: u32) -> u64 {
+        if self.get(id).is_some() { self.uids[id as usize] } else { 0 }
+    }
+    /// Ids by lasting identity, of the objects on the map.
+    pub fn ids_by_uid(&self) -> HashMap<u64, u32> {
+        self.iter().map(|(id, _)| (self.uids[id as usize], id)).collect()
+    }
     pub fn get(&self, id: u32) -> Option<&Obj> {
         self.slots.get(id as usize).and_then(|s| s.as_ref())
     }
     pub fn insert(&mut self, o: Obj) -> u32 {
-        let id = match self.free.pop() {
-            Some(id) => {
-                self.slots[id as usize] = Some(o);
-                id
-            }
-            None => {
-                self.slots.push(Some(o));
-                self.slots.len() as u32 - 1
-            }
-        };
+        self.insert_with_uid(o, 0)
+    }
+    /// Adds an object with a known identity; 0 gives it a new one.
+    pub fn insert_with_uid(&mut self, o: Obj, uid: u64) -> u32 {
+        self.slots.push(Some(o));
+        self.uids.push(if uid == 0 { new_uid() } else { uid });
+        let id = self.slots.len() as u32 - 1;
         self.index(id, &o);
         self.alive += 1;
         self.revision += 1;
@@ -111,13 +129,14 @@ impl ObjectStore {
     pub fn insert_at(&mut self, id: u32, o: Obj) {
         let i = id as usize;
         if i >= self.slots.len() {
-            let old = self.slots.len() as u32;
             self.slots.resize(i + 1, None);
-            self.free.extend(old..id);
+            self.uids.resize(i + 1, 0);
         } else if self.slots[i].is_some() {
             self.remove(id);
         }
-        self.free.retain(|f| *f != id);
+        if self.uids[i] == 0 {
+            self.uids[i] = new_uid();
+        }
         self.slots[i] = Some(o);
         self.index(id, &o);
         self.alive += 1;
@@ -140,7 +159,6 @@ impl ObjectStore {
     pub fn remove(&mut self, id: u32) -> Option<Obj> {
         let o = self.slots.get_mut(id as usize)?.take()?;
         self.unindex(id, &o);
-        self.free.push(id);
         self.alive -= 1;
         self.revision += 1;
         Some(o)
@@ -225,7 +243,7 @@ impl ObjectStore {
     // Binary persistence: compact and fast for millions of objects.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(16 + self.alive * 36 + self.models.len() * 48);
-        out.extend_from_slice(b"DZOB\x01\0\0\0");
+        out.extend_from_slice(b"DZOB\x02\0\0\0");
         out.extend_from_slice(&(self.models.len() as u32).to_le_bytes());
         for m in &self.models {
             out.extend_from_slice(&(m.path.len() as u32).to_le_bytes());
@@ -239,11 +257,16 @@ impl ObjectStore {
             out.extend_from_slice(&o.model.to_le_bytes());
             out.extend_from_slice(&o.flags.to_le_bytes());
         }
+        // Identities follow the objects, in the same order.
+        for (id, _) in self.iter() {
+            out.extend_from_slice(&self.uids[id as usize].to_le_bytes());
+        }
         out
     }
     pub fn from_bytes(b: &[u8]) -> anyhow::Result<Self> {
         use anyhow::{ensure, Context};
-        ensure!(b.starts_with(b"DZOB\x01"), "Unsupported object file");
+        ensure!(b.starts_with(b"DZOB\x01") || b.starts_with(b"DZOB\x02"), "Unsupported object file");
+        let with_uids = b[4] == 2;
         let u = |p: usize| -> anyhow::Result<u32> {
             Ok(u32::from_le_bytes(b.get(p..p + 4).context("Truncated object file")?.try_into()?))
         };
@@ -271,6 +294,16 @@ impl ObjectStore {
             };
             s.insert(o);
             p += 36;
+        }
+        // Older files have none, so their objects get new identities.
+        if with_uids {
+            ensure!(b.len() >= p + n * 8, "Truncated object file");
+            for i in 0..n {
+                let uid = u64::from_le_bytes(b[p + i * 8..p + i * 8 + 8].try_into().unwrap());
+                if uid != 0 {
+                    s.uids[i] = uid;
+                }
+            }
         }
         Ok(s)
     }
@@ -364,7 +397,7 @@ mod tests {
         assert!((m[2][0] + 0.998).abs() < 0.002 && (m[2][2] - 0.061).abs() < 0.002);
     }
     #[test]
-    fn store_reuses_ids_and_keeps_grid_in_sync() {
+    fn store_keeps_ids_and_grid_in_sync() {
         let mut s = ObjectStore::default();
         let a = s.insert(obj(10.0, 10.0));
         let b = s.insert(obj(500.0, 500.0));
@@ -377,7 +410,26 @@ mod tests {
         let mut found = 0;
         s.for_each_in(896.0, 0.0, 1000.0, 100.0, |_, _| found += 1);
         assert_eq!(found, 1);
-        assert_eq!(s.insert(obj(1.0, 1.0)), a);
+        assert_ne!(s.insert(obj(1.0, 1.0)), a, "ids are not reused");
+    }
+    #[test]
+    fn identities_survive_undo_and_saving() {
+        let mut s = ObjectStore::default();
+        let a = s.insert(obj(10.0, 10.0));
+        let b = s.insert(obj(20.0, 10.0));
+        let (ua, ub) = (s.uid(a), s.uid(b));
+        assert!(ua != 0 && ub != 0 && ua != ub);
+        let o = s.remove(a).unwrap();
+        assert_eq!(s.uid(a), 0);
+        s.insert(obj(30.0, 10.0));
+        s.insert_at(a, o);
+        assert_eq!(s.uid(a), ua, "undo brings back the same identity");
+        let t = ObjectStore::from_bytes(&s.to_bytes()).unwrap();
+        let mut uids: Vec<u64> = t.iter().map(|(id, _)| t.uid(id)).collect();
+        uids.sort();
+        let mut want: Vec<u64> = s.iter().map(|(id, _)| s.uid(id)).collect();
+        want.sort();
+        assert_eq!(uids, want);
     }
     #[test]
     fn layer_shares_flags_without_touching_them() {

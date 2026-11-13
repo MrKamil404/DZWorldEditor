@@ -670,6 +670,9 @@ pub struct ObjectLayer {
     pub export: bool,
     #[serde(default)]
     pub deleted: bool,
+    /// Who works on this layer in team work; empty when anyone does.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner: String,
 }
 
 fn yes() -> bool {
@@ -678,7 +681,7 @@ fn yes() -> bool {
 
 impl ObjectLayer {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), visible: true, editable: true, export: true, deleted: false }
+        Self { name: name.into(), visible: true, editable: true, export: true, deleted: false, owner: String::new() }
     }
     /// Tools may pick and change the objects of this layer.
     pub fn interactive(&self) -> bool {
@@ -730,6 +733,14 @@ pub struct World {
     pub holes: crate::holes::Holes,
     /// Goes up whenever `holes` changes, so the view can follow.
     pub holes_rev: u32,
+    /// Who made each terrain modifier, road and generator, by id, in team work. `None` until
+    /// team work starts; what was there then has an empty author.
+    pub authors: Option<std::collections::BTreeMap<u64, String>>,
+    /// The name of the person working on this copy in team work; empty without team work.
+    /// Not saved.
+    pub team_me: String,
+    /// Layers of others this person chose to edit anyway, by name. Not saved.
+    pub team_unlocked: std::collections::BTreeSet<String>,
     next_modifier: u64,
 }
 
@@ -778,12 +789,13 @@ impl World {
             road_project: None, template_libraries: Vec::new(),
             routes: Vec::new(),
             meta,
+            authors: None, team_me: String::new(), team_unlocked: Default::default(),
             next_modifier: 1,
         }
     }
     pub fn from_parts(meta: WorldMeta, base: Heightmap, mask: MaskMap, layers: Vec<SurfaceLayer>, satellite: Option<RgbImage>, objects: ObjectStore, modifiers: Vec<TerrainModifier>) -> Self {
         let next_modifier = modifiers.iter().map(|m| m.id).max().unwrap_or(0) + 1;
-        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, sat: Default::default(), mask_mods: Default::default(), objects, modifiers, holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), mission: None, object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, template_libraries: Vec::new(), routes: Vec::new(), next_modifier };
+        let mut w = Self { height: base.clone(), base, meta, mask, layers, satellite, sat: Default::default(), mask_mods: Default::default(), objects, modifiers, holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), mission: None, object_layers: default_object_layers(), active_layer: 0, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, template_libraries: Vec::new(), routes: Vec::new(), authors: None, team_me: String::new(), team_unlocked: Default::default(), next_modifier };
         w.recompose(None);
         w
     }
@@ -795,7 +807,7 @@ impl World {
         }
         World {
             meta: self.meta.clone(), base: self.base.clone(), height: self.height.clone(), mask: self.mask.clone(),
-            layers: self.layers.clone(), satellite: None, sat: Default::default(), mask_mods: Default::default(), objects, modifiers: Vec::new(), holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), mission: None, object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, template_libraries: Vec::new(), routes: Vec::new(), next_modifier: self.next_modifier,
+            layers: self.layers.clone(), satellite: None, sat: Default::default(), mask_mods: Default::default(), objects, modifiers: Vec::new(), holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), mission: None, object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, template_libraries: Vec::new(), routes: Vec::new(), authors: None, team_me: self.team_me.clone(), team_unlocked: self.team_unlocked.clone(), next_modifier: self.next_modifier,
         }
     }
     #[inline]
@@ -809,7 +821,39 @@ impl World {
     /// Tools may pick and change this object.
     #[inline]
     pub fn object_interactive(&self, o: &Obj) -> bool {
-        self.object_layer(o).is_none_or(ObjectLayer::interactive)
+        self.object_layer(o).is_none_or(|l| l.interactive() && self.may_edit(l))
+    }
+    /// In team work, a layer of someone else is left alone unless this person unlocked it.
+    pub fn may_edit(&self, l: &ObjectLayer) -> bool {
+        l.owner.is_empty() || self.team_me.is_empty() || l.owner == self.team_me || self.team_unlocked.contains(&l.name)
+    }
+    /// Objects of the layer may be picked, changed and added.
+    pub fn layer_interactive(&self, layer: u16) -> bool {
+        self.object_layers.get(layer as usize).is_some_and(|l| l.interactive() && self.may_edit(l))
+    }
+    /// The layer belongs to someone else in team work and is not unlocked.
+    pub fn layer_foreign(&self, layer: u16) -> bool {
+        self.object_layers.get(layer as usize).is_some_and(|l| !self.may_edit(l))
+    }
+    /// Who made a terrain modifier, road or generator; empty when no one is known.
+    pub fn author(&self, id: u64) -> &str {
+        self.authors.as_ref().and_then(|a| a.get(&id)).map(String::as_str).unwrap_or("")
+    }
+    /// In team work: the modifiers, roads and generators made since get `team_me` as their
+    /// author. The first time, what is there is marked as made by no one.
+    pub fn note_authors(&mut self) {
+        if self.team_me.is_empty() {
+            return;
+        }
+        let ids: Vec<u64> = self.modifiers.iter().map(|m| m.id).chain(self.routes.iter().map(|r| r.id)).chain(self.generators.iter().map(|g| g.id)).collect();
+        match &mut self.authors {
+            None => self.authors = Some(ids.into_iter().map(|id| (id, String::new())).collect()),
+            Some(a) => {
+                for id in ids {
+                    a.entry(id).or_insert_with(|| self.team_me.clone());
+                }
+            }
+        }
     }
     #[inline]
     pub fn object_exported(&self, o: &Obj) -> bool {
@@ -831,13 +875,21 @@ impl World {
             unique = format!("{name} {k}");
             k += 1;
         }
-        self.object_layers.push(ObjectLayer::new(unique));
+        let mut layer = ObjectLayer::new(unique);
+        // In team work a new layer belongs to the one who made it.
+        layer.owner = self.team_me.clone();
+        self.object_layers.push(layer);
         (self.object_layers.len() - 1) as u16
     }
+    /// An id no other modifier has, also in copies of the project other people work on.
     pub fn new_modifier_id(&mut self) -> u64 {
-        let id = self.next_modifier;
-        self.next_modifier += 1;
-        id
+        loop {
+            let id = crate::library::new_id().max(self.next_modifier);
+            if !self.modifiers.iter().any(|m| m.id == id) {
+                self.next_modifier = id + 1;
+                return id;
+            }
+        }
     }
     /// The vertex rectangle a modifier can touch.
     pub fn modifier_rect(&self, m: &TerrainModifier) -> Option<Rect> {

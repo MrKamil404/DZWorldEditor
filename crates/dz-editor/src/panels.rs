@@ -52,6 +52,7 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
     }
     dialogs(app, ctx);
     crate::mission_ui::window(app, ctx);
+    crate::team_ui::window(app, ctx);
     app.updater.window(ctx);
     crate::asset_browser::drag_ghost(app, ctx);
 }
@@ -280,6 +281,9 @@ fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                     if ui.button(t("Generate navmesh...")).clicked() { ui.close_menu(); app.generate_navmesh(); }
                 });
             });
+            if app.settings.experimental {
+                crate::team_ui::menu(app, ui);
+            }
             ui.menu_button(t("Language"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 let cur = crate::i18n::current();
                 for (code, name) in crate::i18n::languages() {
@@ -1224,7 +1228,14 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let active = doc.world.target_layer();
     let has_selection = !app.selection.is_empty();
     let mut layer_action = None;
-    let mods: Vec<(u64, String)> = doc.world.modifiers.iter().map(|m| (m.id, m.name.clone())).collect();
+    // In team work: whose things are shown, and who made each.
+    let team = crate::team_ui::active(app);
+    let me = doc.world.team_me.clone();
+    let by = |who: &str| if team && !who.is_empty() { format!("  · {who}") } else { String::new() };
+    let mods: Vec<(u64, String)> = doc.world.modifiers.iter().filter(|m| crate::team_ui::shown(app, doc.world.author(m.id))).map(|m| (m.id, format!("{}{}", m.name, by(doc.world.author(m.id))))).collect();
+    let foreign: Vec<bool> = (0..doc.world.object_layers.len()).map(|i| doc.world.layer_foreign(i as u16)).collect();
+    let unlocked: Vec<bool> = doc.world.object_layers.iter().map(|l| doc.world.team_unlocked.contains(&l.name)).collect();
+    let layer_open: Vec<bool> = (0..doc.world.object_layers.len()).map(|i| doc.world.layer_interactive(i as u16)).collect();
     let paths: Vec<String> = hist.iter().map(|(m, _)| doc.world.objects.models[*m as usize].path.clone()).collect();
     let shape_rows: Vec<(usize, String, bool, usize)> = doc.world.shape_layers.iter().enumerate().map(|(i, l)| (i, l.name.clone(), l.visible, l.shapes.len())).collect();
     let active_shape = doc.world.active_shape_layer;
@@ -1233,12 +1244,12 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let selected_models: std::collections::HashSet<u32> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| o.model)).collect();
     let scroll = app.outliner_rev != app.selection_rev;
     let mut reveal: Option<String> = None;
-    let generators: Vec<(u64, String, &'static str, usize)> = doc.world.generators.iter().map(|g| (g.id, g.name.clone(), g.kind.type_name(), g.objects.len())).collect();
+    let generators: Vec<(u64, String, &'static str, usize)> = doc.world.generators.iter().filter(|g| crate::team_ui::shown(app, doc.world.author(g.id))).map(|g| (g.id, format!("{}{}", g.name, by(doc.world.author(g.id))), g.kind.type_name(), g.objects.len())).collect();
     let open_shapes: Vec<(usize, Vec<(usize, dz_core::shapes::ShapeKind, usize)>)> = app.shape_open.iter().filter_map(|l| Some((*l, doc.world.shape_layers.get(*l)?.shapes.iter().enumerate().map(|(i, s)| (i, s.kind, s.points.len())).collect()))).collect();
     let mut shape_pick: Option<(usize, usize, bool)> = None;
     let mut shape_move: Option<(usize, usize, usize)> = None;
     let mut toggle_open: Option<usize> = None;
-    let routes: Vec<(usize, String, String)> = doc.world.routes.iter().enumerate().map(|(i, r)| (i, r.name.clone(), r.family.clone())).collect();
+    let routes: Vec<(usize, String, String)> = doc.world.routes.iter().enumerate().filter(|(_, r)| crate::team_ui::shown(app, doc.world.author(r.id))).map(|(i, r)| (i, r.name.clone(), format!("{}{}", r.family, by(doc.world.author(r.id))))).collect();
     let mut select_route = None;
     let mut delete_route = None;
     let mut shape_action = None;
@@ -1246,6 +1257,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut select_model = None;
     let mut start_rename = None;
     let mut select_modifier = None;
+    crate::team_ui::filter_ui(app, ui);
     egui::ScrollArea::vertical().id_salt("outl").auto_shrink([false, false]).show(ui, |ui| {
         outliner_section(fold, "Terrain modifiers", icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()]))).show(ui, |ui| {
             for (id, name) in mods.iter().filter(|(_, n)| n.to_ascii_lowercase().contains(&filter)) {
@@ -1312,11 +1324,21 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
             });
             for (i, l) in layers.iter().enumerate().filter(|(_, l)| !l.deleted) {
                 if !filter.is_empty() && !l.name.to_ascii_lowercase().contains(&filter) { continue; }
+                if team && !crate::team_ui::shown(app, &l.owner) { continue; }
                 let id = i as u16;
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     if ui.add(egui::Button::new("👁").small().selected(l.visible)).on_hover_text(t("Visible")).clicked() { layer_action = Some(LayerAction::Visible(id)); }
                     if ui.add(egui::Button::new("✏").small().selected(l.editable)).on_hover_text(t("Editable")).clicked() { layer_action = Some(LayerAction::Editable(id)); }
+                    // A layer of someone else in team work: locked until unlocked here.
+                    if foreign[i] || unlocked[i] {
+                        let (icon, tip) = if foreign[i] {
+                            (icons::LOCK_SIMPLE, tf("The layer of {0}. Click to work on it anyway.", &[&l.owner]))
+                        } else {
+                            (icons::LOCK_SIMPLE_OPEN, tf("The layer of {0}, unlocked. Click to leave it again.", &[&l.owner]))
+                        };
+                        if ui.add(egui::Button::new(icon).small().selected(foreign[i])).on_hover_text(tip).clicked() { layer_action = Some(LayerAction::Unlock(id)); }
+                    }
                     if let Some((_, name)) = app.layer_rename.as_mut().filter(|(r, _)| *r == id) {
                         let edit = ui.add(egui::TextEdit::singleline(name).desired_width(f32::INFINITY));
                         edit.request_focus();
@@ -1326,8 +1348,8 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                         }
                         return;
                     }
-                    let mut text = RichText::new(format!("{}  ({})", l.name, counts.get(i).copied().unwrap_or(0)));
-                    if !l.interactive() { text = text.weak(); }
+                    let mut text = RichText::new(format!("{}  ({}){}", l.name, counts.get(i).copied().unwrap_or(0), by(&l.owner)));
+                    if !layer_open[i] { text = text.weak(); }
                     if !l.export { text = text.italics(); }
                     let row = ui.selectable_label(active == id, text).on_hover_text(t("Click: active layer (new objects go here). Ctrl+click: turn editing on or off."));
                     if row.clicked() {
@@ -1339,6 +1361,11 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                         if ui.add_enabled(has_selection, egui::Button::new(t("Move selection here"))).clicked() { layer_action = Some(LayerAction::MoveSelection(id)); ui.close_menu(); }
                         let mut export = l.export;
                         if ui.checkbox(&mut export, t("Include in export")).clicked() { layer_action = Some(LayerAction::Export(id)); ui.close_menu(); }
+                        if team {
+                            ui.separator();
+                            if ui.add_enabled(l.owner != me, egui::Button::new(icons::with(icons::USER, &t("Make it my layer")))).clicked() { layer_action = Some(LayerAction::Owner(id, me.clone())); ui.close_menu(); }
+                            if ui.add_enabled(!l.owner.is_empty(), egui::Button::new(t("Layer of no one"))).on_hover_text(t("Anyone may work on it without unlocking it.")).clicked() { layer_action = Some(LayerAction::Owner(id, String::new())); ui.close_menu(); }
+                        }
                         ui.separator();
                         if ui.button(t("Rename")).clicked() { start_rename = Some((id, l.name.clone())); ui.close_menu(); }
                         if ui.add_enabled(id != 0, egui::Button::new(t("Delete layer, keep objects"))).clicked() { layer_action = Some(LayerAction::Delete(id)); ui.close_menu(); }
@@ -1930,7 +1957,7 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
         section(ui, &icons::with(icons::GEAR, &t("General")), true, |ui| {
             row(ui, &t("Autosave every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
             ui.checkbox(&mut app.settings.check_updates, t("Check for updates at start"));
-            ui.checkbox(&mut app.settings.experimental, t("Show experimental features")).on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor."));
+            ui.checkbox(&mut app.settings.experimental, t("Show experimental features")).on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor and team work."));
         });
         section(ui, &icons::with(icons::CLOCK, &t("Backups")), true, |ui| {
             ui.checkbox(&mut app.settings.backup_enabled, t("Make backups automatically"));

@@ -884,6 +884,7 @@ name = "dz-core"
 version = "0.1.9+1"
 dependencies = [
  "anyhow",
+ "flate2",
  "forest-core",
  "image",
  "rand 0.8.8",

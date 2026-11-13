@@ -59,6 +59,9 @@ struct ProjectFile {
     /// Folder name of the server mission, kept in `mission/` of the project.
     #[serde(default)]
     mission: Option<String>,
+    /// Who made the modifiers, roads and generators, in team work.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    authors: Option<std::collections::BTreeMap<u64, String>>,
 }
 
 /// Which parts need rewriting; rasters are large, so unchanged ones are skipped.
@@ -134,6 +137,7 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         holes: w.holes.clone(),
         keypoints: w.keypoints.clone(),
         mission: w.mission.as_ref().map(|m| m.name.clone()),
+        authors: w.authors.clone(),
         active_shape_layer: w.active_shape_layer,
         generators,
         road_removed: w.road_removed.clone(),
@@ -219,6 +223,12 @@ pub fn write_backup(w: &World, root: &Path, name: &str, keep: usize, satellite_f
 }
 
 pub fn load(dir: &Path) -> Result<World> {
+    load_with(dir, true)
+}
+
+/// Loads a project; without `satellite` the image keeps only its size, which is enough to
+/// change the rest and save it again without the image.
+pub fn load_with(dir: &Path, satellite: bool) -> Result<World> {
     let path = dir.join(PROJECT_FILE);
     let file: ProjectFile = serde_json::from_slice(&std::fs::read(&path).with_context(|| format!("{}", path.display()))?)
         .with_context(|| format!("{}", path.display()))?;
@@ -231,6 +241,7 @@ pub fn load(dir: &Path) -> Result<World> {
     ensure!(mask_data.len() == file.mask_size[0] * file.mask_size[1], "mask.u8 does not match the project");
     let mask = MaskMap { width: file.mask_size[0], height: file.mask_size[1], data: mask_data };
     let satellite = match file.satellite_size {
+        Some([width, height]) if !satellite => Some(RgbImage { width, height, data: Vec::new() }),
         Some([width, height]) => {
             let data = std::fs::read(dir.join("satellite.rgb")).context("satellite.rgb")?;
             ensure!(data.len() == width * height * 3, "satellite.rgb does not match the project");
@@ -260,6 +271,7 @@ pub fn load(dir: &Path) -> Result<World> {
     w.routes = file.routes;
     w.holes = file.holes;
     w.keypoints = file.keypoints;
+    w.authors = file.authors;
     if let Some(name) = file.mission {
         let mdir = dir.join(MISSION_DIR);
         if mdir.is_dir() {
@@ -348,7 +360,7 @@ mod tests {
         assert_eq!(r.objects.len(), 1);
         // Modifiers are applied on load.
         assert_eq!(r.height.at(50, 50), 53.0);
-        assert_eq!(r.new_modifier_id(), 10);
+        assert!(r.new_modifier_id() > 9);
         assert_eq!(r.object_layers.len(), 1);
     }
     #[test]

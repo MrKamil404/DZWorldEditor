@@ -91,6 +91,10 @@
   "de": "Ein eigener Ordner; Modelle und Presets werden hineingelegt, ohne ihre Dateien zu verschieben.",
   "pl": "Własny folder; modele i presety trafiają do niego bez przenoszenia ich plików."
  },
+ "A folder that Dropbox, Google Drive, OneDrive or Syncthing keeps the same on every computer. Keep the project itself outside it.": {
+  "de": "Ein Ordner, den Dropbox, Google Drive, OneDrive oder Syncthing auf jedem Computer gleich hält. Das Projekt selbst gehört nicht hinein.",
+  "pl": "Folder, który Dropbox, Google Drive, OneDrive lub Syncthing utrzymuje taki sam na każdym komputerze. Sam projekt trzymaj poza nim."
+ },
  "A gate where a road or track crosses the fence": {
   "de": "Ein Tor, wo eine Straße oder ein Gleis den Zaun kreuzt",
   "pl": "Brama tam, gdzie płot przecina droga lub tor"
@@ -162,6 +166,10 @@
  "Add area": {
   "de": "Gebiet hinzufügen",
   "pl": "Dodaj obszar"
+ },
+ "Add both": {
+  "de": "Beide addieren",
+  "pl": "Dodaj oba"
  },
  "Add child": {
   "de": "Kind hinzufügen",
@@ -323,9 +331,17 @@
   "de": "Alle Dateien...",
   "pl": "Wszystkie pliki..."
  },
+ "All mine": {
+  "de": "Alle meine",
+  "pl": "Wszystko moje"
+ },
  "All models": {
   "de": "Alle Modelle",
   "pl": "Wszystkie modele"
+ },
+ "All theirs": {
+  "de": "Alle fremden",
+  "pl": "Wszystko cudze"
  },
  "Along the line": {
   "de": "Entlang der Linie",
@@ -390,6 +406,10 @@
  "Antialiasing": {
   "de": "Kantenglättung",
   "pl": "Wygładzanie krawędzi"
+ },
+ "Anyone may work on it without unlocking it.": {
+  "de": "Jeder kann daran arbeiten, ohne sie zu entsperren.",
+  "pl": "Każdy może na niej pracować bez odblokowywania."
  },
  "Applies the type, settings and typed points.": {
   "de": "Übernimmt Typ, Einstellungen und eingegebene Punkte.",
@@ -458,6 +478,10 @@
  "As it is": {
   "de": "Wie es ist",
   "pl": "Bez zmian"
+ },
+ "As suggested": {
+  "de": "Wie vorgeschlagen",
+  "pl": "Jak proponowane"
  },
  "Assigned in the asset browser, with the right mouse button on a model or a folder. The surface above is for the other models.": {
   "de": "Wird im Asset-Browser mit der rechten Maustaste auf einem Modell oder Ordner zugewiesen. Die Oberfläche oben gilt für die übrigen Modelle.",
@@ -555,6 +579,10 @@
   "de": "Grundhöhe",
   "pl": "Wysokość bazowa"
  },
+ "Before every merge the project is copied to .team/before-merge.": {
+  "de": "Vor jedem Zusammenführen wird das Projekt nach .team/before-merge kopiert.",
+  "pl": "Przed każdym scaleniem projekt jest kopiowany do .team/before-merge."
+ },
  "Bends of the same family are used where the line turns. The bed and its blend stay within the width of the water.": {
   "de": "Wo die Linie abbiegt, werden Kurven derselben Familie verwendet. Das Bett samt Übergang bleibt innerhalb der Wasserbreite.",
   "pl": "Tam, gdzie linia skręca, używane są zakręty z tej samej rodziny. Koryto razem z przejściem mieści się w szerokości wody."
@@ -595,6 +623,30 @@
   "de": "Fleckengröße m",
   "pl": "Wielkość plam m"
  },
+ "Both height changes are added together.": {
+  "de": "Beide Höhenänderungen werden addiert.",
+  "pl": "Obie zmiany wysokości są sumowane."
+ },
+ "Both of you changed it differently": {
+  "de": "Beide haben es unterschiedlich geändert",
+  "pl": "Oboje zmieniliście to inaczej"
+ },
+ "Both of you changed the same lines": {
+  "de": "Beide haben dieselben Zeilen geändert",
+  "pl": "Oboje zmieniliście te same linie"
+ },
+ "Both of you changed the satellite image here": {
+  "de": "Beide haben hier das Satellitenbild geändert",
+  "pl": "Oboje zmieniliście tu zdjęcie satelitarne"
+ },
+ "Both of you changed the terrain here": {
+  "de": "Beide haben hier das Gelände geändert",
+  "pl": "Oboje zmieniliście tu teren"
+ },
+ "Both of you painted different surfaces here": {
+  "de": "Beide haben hier verschiedene Oberflächen gemalt",
+  "pl": "Oboje pomalowaliście tu różne powierzchnie"
+ },
  "Box": {
   "de": "Rechteck",
   "pl": "Prostokąt"
@@ -618,6 +670,10 @@
  "Bring the view back": {
   "de": "Ansicht zurückholen",
   "pl": "Przywróć podgląd"
+ },
+ "Brings: {0}": {
+  "de": "Enthält: {0}",
+  "pl": "Zawiera: {0}"
  },
  "Brush": {
   "de": "Pinsel",
@@ -763,6 +819,14 @@
   "de": "Typen ändern",
   "pl": "Zmień typy"
  },
+ "Changed but not carried over: {0}": {
+  "de": "Geändert, aber nicht übertragen: {0}",
+  "pl": "Zmienione, ale nieprzenoszone: {0}"
+ },
+ "Changes of others": {
+  "de": "Änderungen der anderen",
+  "pl": "Zmiany innych"
+ },
  "Changes: {0}": {
   "de": "Ändert: {0}",
   "pl": "Zmienia: {0}"
@@ -847,6 +911,10 @@
   "de": "Wähle zuerst das Event.",
   "pl": "Najpierw wybierz event."
  },
+ "Choose the full copy in the team folder": {
+  "de": "Vollständige Kopie im Teamordner wählen",
+  "pl": "Wybierz pełną kopię w folderze zespołu"
+ },
  "Choose the mpmissions folder": {
   "de": "mpmissions-Ordner wählen",
   "pl": "Wybierz folder mpmissions"
@@ -854,6 +922,14 @@
  "Choose the source point in the preview first": {
   "de": "Zuerst den Quellpunkt in der Vorschau wählen",
   "pl": "Najpierw wybierz punkt źródłowy w podglądzie"
+ },
+ "Choose the team folder": {
+  "de": "Teamordner wählen",
+  "pl": "Wybierz folder zespołu"
+ },
+ "Choose where to keep your copy": {
+  "de": "Wählen, wo deine Kopie liegen soll",
+  "pl": "Wybierz, gdzie trzymać swoją kopię"
  },
  "Choose...": {
   "de": "Auswählen...",
@@ -1083,6 +1159,14 @@
   "de": "Kopiert eine Datei in die Mission, z. B. eine Typendatei einer Mod.",
   "pl": "Kopiuje plik do misji, np. plik typów moda."
  },
+ "Copies a project someone sent to the team folder to your computer and opens it.": {
+  "de": "Kopiert ein Projekt, das jemand in den Teamordner gelegt hat, auf deinen Computer und öffnet es.",
+  "pl": "Kopiuje projekt wysłany przez kogoś do folderu zespołu na twój komputer i go otwiera."
+ },
+ "Copies the whole project to the team folder, for someone who joins.": {
+  "de": "Kopiert das ganze Projekt in den Teamordner, für jemanden, der dazukommt.",
+  "pl": "Kopiuje cały projekt do folderu zespołu, dla osoby, która dołącza."
+ },
  "Copy": {
   "de": "Kopieren",
   "pl": "Kopiuj"
@@ -1114,6 +1198,14 @@
  "Copy the selection to the cursor": {
   "de": "Auswahl an den Cursor kopieren",
   "pl": "Kopia zaznaczenia pod kursor"
+ },
+ "Copying the project": {
+  "de": "Projekt wird kopiert",
+  "pl": "Kopiowanie projektu"
+ },
+ "Copying the project to the team folder": {
+  "de": "Projekt wird in den Teamordner kopiert",
+  "pl": "Kopiowanie projektu do folderu zespołu"
  },
  "Corner tower": {
   "de": "Eckmast",
@@ -1639,6 +1731,10 @@
   "de": "Bearbeitbar",
   "pl": "Edytowalna"
  },
+ "Editing waits until the merge is done.": {
+  "de": "Bearbeiten ist möglich, sobald das Zusammenführen fertig ist.",
+  "pl": "Edycja będzie możliwa po zakończeniu scalania."
+ },
  "Effect": {
   "de": "Wirkung",
   "pl": "Efekt"
@@ -1751,6 +1847,14 @@
   "de": "Jedes platzierte Gebäude, dessen Klasse einen Prototyp hat, kommt in mapgrouppos.xml, mit Position und Winkeln wie vom Spiel geschrieben.",
   "pl": "Każdy postawiony budynek, którego klasa ma prototyp, trafia do mapgrouppos.xml z pozycją i kątami, jakie zapisałaby gra."
  },
+ "Everyone": {
+  "de": "Alle",
+  "pl": "Wszyscy"
+ },
+ "Everyone works on their own copy of the map. At the end of the day one person sends their changes, the other merges them and sends the result back.": {
+  "de": "Jeder arbeitet an seiner eigenen Kopie der Karte. Am Ende des Tages sendet eine Person ihre Änderungen, die andere führt sie zusammen und sendet das Ergebnis zurück.",
+  "pl": "Każdy pracuje na własnej kopii mapy. Na koniec dnia jedna osoba wysyła swoje zmiany, druga je scala i odsyła wynik."
+ },
  "Everywhere except these colours": {
   "de": "Überall außer diesen Farben",
   "pl": "Wszędzie oprócz tych kolorów"
@@ -1855,9 +1959,9 @@
   "de": "Formgröße",
   "pl": "Rozmiar form"
  },
- "Features still being worked on, which may change or not work fully yet. For now: the mission editor.": {
-  "de": "Funktionen, an denen noch gearbeitet wird; sie können sich ändern oder noch nicht ganz funktionieren. Vorerst: der Missionseditor.",
-  "pl": "Funkcje, nad którymi trwają prace; mogą się zmieniać lub nie działać jeszcze w pełni. Na razie: edytor misji."
+ "Features still being worked on, which may change or not work fully yet. For now: the mission editor and team work.": {
+  "de": "Funktionen, an denen noch gearbeitet wird; sie können sich ändern oder noch nicht ganz funktionieren. Vorerst: der Missionseditor und Teamarbeit.",
+  "pl": "Funkcje, nad którymi trwają prace; mogą się zmieniać lub nie działać jeszcze w pełni. Na razie: edytor misji i praca zespołowa."
  },
  "Fence": {
   "de": "Zaun",
@@ -2078,6 +2182,10 @@
  "Full": {
   "de": "Voll",
   "pl": "Pełna"
+ },
+ "Full copy written to {0}": {
+  "de": "Vollständige Kopie geschrieben nach {0}",
+  "pl": "Pełna kopia zapisana w {0}"
  },
  "Full detail distance": {
   "de": "Distanz volle Details",
@@ -2527,6 +2635,10 @@
   "de": "Baumfrei halten",
   "pl": "Bez drzew"
  },
+ "Keep mine": {
+  "de": "Meine behalten",
+  "pl": "Zostaw moje"
+ },
  "Keeps the economy of the mission and drops what was placed on the other map: spawns, zones, areas, map groups and area flags.": {
   "de": "Behält die Wirtschaft der Mission und verwirft, was auf der anderen Karte platziert war: Spawns, Zonen, Gebiete, Kartengruppen und Gebietsflags.",
   "pl": "Zachowuje ekonomię misji i usuwa to, co było rozmieszczone na innej mapie: spawny, strefy, obszary, grupy mapy i flagi obszarów."
@@ -2610,6 +2722,10 @@
  "Layer": {
   "de": "Ebene",
   "pl": "Warstwa"
+ },
+ "Layer of no one": {
+  "de": "Ebene ohne Besitzer",
+  "pl": "Warstwa bez właściciela"
  },
  "Layers": {
   "de": "Ebenen",
@@ -2751,6 +2867,10 @@
   "de": "Längengrad",
   "pl": "Długość geogr."
  },
+ "Look again": {
+  "de": "Erneut nachsehen",
+  "pl": "Sprawdź ponownie"
+ },
  "Look from here": {
   "de": "Von hier sehen",
   "pl": "Zobacz stąd"
@@ -2815,6 +2935,10 @@
   "de": "Erstellen",
   "pl": "Utwórz"
  },
+ "Make it my layer": {
+  "de": "Zu meiner Ebene machen",
+  "pl": "Ustaw jako moją warstwę"
+ },
  "Make map groups": {
   "de": "Kartengruppen erstellen",
   "pl": "Utwórz grupy mapy"
@@ -2843,6 +2967,10 @@
   "de": "Karten-ID",
   "pl": "ID mapy"
  },
+ "Map class name or terrain size (send a full copy)": {
+  "de": "Klassenname der Karte oder Geländegröße (vollständige Kopie senden)",
+  "pl": "Nazwa klasy mapy lub rozmiar terenu (wyślij pełną kopię)"
+ },
  "Map config": {
   "de": "Karten-Config",
   "pl": "Config mapy"
@@ -2863,6 +2991,10 @@
   "de": "Kartengegenstand",
   "pl": "Mapa-przedmiot"
  },
+ "Map settings": {
+  "de": "Karteneinstellungen",
+  "pl": "Ustawienia mapy"
+ },
  "Margin": {
   "de": "Rand",
   "pl": "Margines"
@@ -2882,6 +3014,10 @@
  "Mask modifier": {
   "de": "Masken-Modifikator",
   "pl": "Modyfikator maski"
+ },
+ "Mask modifiers": {
+  "de": "Maskenmodifikatoren",
+  "pl": "Modyfikatory maski"
  },
  "Mask modifiers ({0})": {
   "de": "Masken-Modifikatoren ({0})",
@@ -2931,6 +3067,30 @@
   "de": "Mittel",
   "pl": "Średnie"
  },
+ "Merge": {
+  "de": "Zusammenführen",
+  "pl": "Scal"
+ },
+ "Merge changes of others": {
+  "de": "Änderungen anderer zusammenführen",
+  "pl": "Scal zmiany innych"
+ },
+ "Merge changes of others ({0})": {
+  "de": "Änderungen anderer zusammenführen ({0})",
+  "pl": "Scal zmiany innych ({0})"
+ },
+ "Merge the changes of {0}": {
+  "de": "Änderungen von {0} zusammenführen",
+  "pl": "Scal zmiany: {0}"
+ },
+ "Merged the changes of {0}: {1}": {
+  "de": "Änderungen von {0} zusammengeführt: {1}",
+  "pl": "Scalono zmiany ({0}): {1}"
+ },
+ "Merging the changes": {
+  "de": "Änderungen werden zusammengeführt",
+  "pl": "Scalanie zmian"
+ },
  "Messages": {
   "de": "Nachrichten",
   "pl": "Wiadomości"
@@ -2966,6 +3126,10 @@
  "Min slope": {
   "de": "Min. Neigung",
   "pl": "Min. nachylenie"
+ },
+ "Mine ({0})": {
+  "de": "Meine ({0})",
+  "pl": "Moje ({0})"
  },
  "Minimap": {
   "de": "Minikarte",
@@ -3279,6 +3443,10 @@
   "de": "Nein",
   "pl": "Nie"
  },
+ "No conflicts: everything can be merged as it is.": {
+  "de": "Keine Konflikte: alles kann so zusammengeführt werden.",
+  "pl": "Brak konfliktów: wszystko można scalić bez zmian."
+ },
  "No date reset in the script.": {
   "de": "Das Skript setzt kein Datum zurück.",
   "pl": "Skrypt nie resetuje daty."
@@ -3359,9 +3527,17 @@
   "de": "Nicht in cfglimitsdefinition.xml",
   "pl": "Brak w cfglimitsdefinition.xml"
  },
+ "Not merged: {0}": {
+  "de": "Nicht zusammengeführt: {0}",
+  "pl": "Nie scalono: {0}"
+ },
  "Nothing here": {
   "de": "Hier ist nichts",
   "pl": "Nic tu nie ma"
+ },
+ "Nothing new in the team folder.": {
+  "de": "Nichts Neues im Teamordner.",
+  "pl": "Nic nowego w folderze zespołu."
  },
  "Nothing selected": {
   "de": "Nichts ausgewählt",
@@ -3642,6 +3818,14 @@
  "Own map centre": {
   "de": "Eigene Kartenmitte",
   "pl": "Własny środek mapy"
+ },
+ "Owner of the layer": {
+  "de": "Besitzer der Ebene",
+  "pl": "Właściciel warstwy"
+ },
+ "Owners of layers": {
+  "de": "Besitzer der Ebenen",
+  "pl": "Właściciele warstw"
  },
  "Package the map": {
   "de": "Karte packen",
@@ -4059,6 +4243,10 @@
   "de": "Straßentypen werden gelesen",
   "pl": "Wczytywanie typów dróg"
  },
+ "Reading the changes": {
+  "de": "Änderungen werden gelesen",
+  "pl": "Wczytywanie zmian"
+ },
  "Reading the classes of the configs...": {
   "de": "Klassen der Configs werden gelesen...",
   "pl": "Wczytywanie klas z configów..."
@@ -4335,6 +4523,10 @@
   "de": "Satellitenbild",
   "pl": "Obraz satelitarny"
  },
+ "Satellite image of another size (send a full copy)": {
+  "de": "Satellitenbild anderer Größe (vollständige Kopie senden)",
+  "pl": "Zdjęcie satelitarne o innym rozmiarze (wyślij pełną kopię)"
+ },
  "Satellite image...": {
   "de": "Satellitenbild...",
   "pl": "Obraz satelitarny..."
@@ -4342,6 +4534,10 @@
  "Satellite modifier": {
   "de": "Satelliten-Modifikator",
   "pl": "Modyfikator satki"
+ },
+ "Satellite modifiers": {
+  "de": "Satellitenmodifikatoren",
+  "pl": "Modyfikatory satelity"
  },
  "Satellite modifiers ({0})": {
   "de": "Satelliten-Modifikatoren ({0})",
@@ -4591,6 +4787,26 @@
   "de": "Auswahl",
   "pl": "Zaznaczenie"
  },
+ "Send a full copy": {
+  "de": "Vollständige Kopie senden",
+  "pl": "Wyślij pełną kopię"
+ },
+ "Send my changes": {
+  "de": "Meine Änderungen senden",
+  "pl": "Wyślij moje zmiany"
+ },
+ "Sending my changes": {
+  "de": "Meine Änderungen werden gesendet",
+  "pl": "Wysyłanie moich zmian"
+ },
+ "Sent {0}: no changes since the last shared version": {
+  "de": "{0} gesendet: keine Änderungen seit der letzten gemeinsamen Version",
+  "pl": "Wysłano {0}: brak zmian od ostatniej wspólnej wersji"
+ },
+ "Sent {0}: {1}": {
+  "de": "{0} gesendet: {1}",
+  "pl": "Wysłano {0}: {1}"
+ },
  "Server mission": {
   "de": "Servermission",
   "pl": "Misja serwera"
@@ -4610,6 +4826,10 @@
  "Sets the flag in every cell inside the polygons selected in the Shapes mode.": {
   "de": "Setzt das Flag in jeder Zelle innerhalb der im Modus Formen ausgewählten Polygone.",
   "pl": "Ustawia flagę w każdej komórce wewnątrz wielokątów zaznaczonych w trybie Kształty."
+ },
+ "Setting up team work": {
+  "de": "Teamarbeit wird eingerichtet",
+  "pl": "Konfigurowanie pracy zespołowej"
  },
  "Settings": {
   "de": "Einstellungen",
@@ -4839,6 +5059,10 @@
   "de": "Startdatum",
   "pl": "Data startu"
  },
+ "Start team work": {
+  "de": "Teamarbeit beginnen",
+  "pl": "Rozpocznij pracę zespołową"
+ },
  "Start the game client too": {
   "de": "Auch den Spielclient starten",
   "pl": "Uruchom także klienta gry"
@@ -5007,6 +5231,10 @@
   "de": "Oberflächen unter Objekten, Straßen und Wäldern; ohne sie die Maske wie gemalt.",
   "pl": "Nawierzchnie pod obiektami, drogami i lasami; bez nich maska taka, jak namalowana."
  },
+ "Take a full copy...": {
+  "de": "Vollständige Kopie übernehmen...",
+  "pl": "Pobierz pełną kopię..."
+ },
  "Take the last away": {
   "de": "Letztes entfernen",
   "pl": "Usuń ostatni"
@@ -5023,6 +5251,10 @@
   "de": "Breite vom Straßenmodell übernehmen",
   "pl": "Weź szerokość z modelu drogi"
  },
+ "Take theirs": {
+  "de": "Fremde übernehmen",
+  "pl": "Weź cudze"
+ },
  "Takes the 3D camera to this scene.": {
   "de": "Bringt die 3D-Kamera zu dieser Szene.",
   "pl": "Przenosi kamerę 3D do tej sceny."
@@ -5034,6 +5266,26 @@
  "Takes the surface under the cursor. Alt+click does the same.": {
   "de": "Übernimmt die Oberfläche unter dem Cursor. Alt+Klick tut dasselbe.",
   "pl": "Pobiera powierzchnię spod kursora. To samo robi Alt+klik."
+ },
+ "Team": {
+  "de": "Team",
+  "pl": "Zespół"
+ },
+ "Team folder": {
+  "de": "Teamordner",
+  "pl": "Folder zespołu"
+ },
+ "Team work": {
+  "de": "Teamarbeit",
+  "pl": "Praca zespołowa"
+ },
+ "Team work is set up. Send a full copy to the others.": {
+  "de": "Teamarbeit ist eingerichtet. Sende den anderen eine vollständige Kopie.",
+  "pl": "Praca zespołowa skonfigurowana. Wyślij pozostałym pełną kopię."
+ },
+ "Team work...": {
+  "de": "Teamarbeit...",
+  "pl": "Praca zespołowa..."
  },
  "Template libraries": {
   "de": "Vorlagenbibliotheken",
@@ -5111,6 +5363,10 @@
   "de": "Geländemodifikator",
   "pl": "Modyfikator terenu"
  },
+ "Terrain modifiers": {
+  "de": "Geländemodifikatoren",
+  "pl": "Modyfikatory terenu"
+ },
  "Terrain modifiers ({0})": {
   "de": "Geländemodifikatoren ({0})",
   "pl": "Modyfikatory terenu ({0})"
@@ -5187,6 +5443,10 @@
   "de": "Die in das Projekt geladenen Terrain-Builder-Vorlagenbibliotheken.",
   "pl": "Biblioteki szablonów Terrain Buildera wczytane do projektu."
  },
+ "The active layer belongs to {0}. Unlock it in the outliner to work on it anyway.": {
+  "de": "Die aktive Ebene gehört {0}. Entsperre sie in der Hierarchie, um trotzdem daran zu arbeiten.",
+  "pl": "Aktywna warstwa należy do: {0}. Odblokuj ją w hierarchii, żeby mimo to na niej pracować."
+ },
  "The active layer is hidden or locked": {
   "de": "Die aktive Ebene ist ausgeblendet oder gesperrt",
   "pl": "Aktywna warstwa jest ukryta lub zablokowana"
@@ -5246,6 +5506,14 @@
  "The key tables and the lines telling what clicks and keys do, in all panels.": {
   "de": "Die Tastentabellen und die Zeilen, die erklären, was Klicks und Tasten tun, in allen Bereichen.",
   "pl": "Tabele klawiszy i opisy działania kliknięć i klawiszy we wszystkich panelach."
+ },
+ "The layer of {0}, unlocked. Click to leave it again.": {
+  "de": "Ebene von {0}, entsperrt. Klicken, um sie wieder zu sperren.",
+  "pl": "Warstwa należąca do: {0}, odblokowana. Kliknij, aby ją znów zablokować."
+ },
+ "The layer of {0}. Click to work on it anyway.": {
+  "de": "Ebene von {0}. Klicken, um trotzdem daran zu arbeiten.",
+  "pl": "Warstwa należąca do: {0}. Kliknij, aby mimo to na niej pracować."
  },
  "The map has no town or village key points.": {
   "de": "Die Karte hat keine Stadt- oder Dorf-Schlüsselpunkte.",
@@ -5467,6 +5735,10 @@
   "de": "Diese Datei wird unverändert kopiert.",
   "pl": "Ten plik jest kopiowany bez zmian."
  },
+ "This folder holds no project": {
+  "de": "Dieser Ordner enthält kein Projekt",
+  "pl": "Ten folder nie zawiera projektu"
+ },
  "This generator needs a polygon": {
   "de": "Dieser Generator braucht ein Polygon",
   "pl": "Ten generator wymaga wielokąta"
@@ -5478,6 +5750,10 @@
  "This preset has no models yet": {
   "de": "Dieses Preset hat noch keine Modelle",
   "pl": "Ten preset nie ma jeszcze modeli"
+ },
+ "This project is not shared yet. Starting remembers its current state as the version everyone starts from.": {
+  "de": "Dieses Projekt wird noch nicht geteilt. Beim Start wird sein aktueller Stand als die Version gemerkt, von der alle ausgehen.",
+  "pl": "Ten projekt nie jest jeszcze współdzielony. Rozpoczęcie zapamiętuje jego obecny stan jako wersję, od której wszyscy zaczynają."
  },
  "This route keeps no pieces to go on from. Fit it again with points first.": {
   "de": "Diese Route hat keine gespeicherten Teile. Passe sie zuerst mit Punkten neu ein.",
@@ -5847,6 +6123,10 @@
   "de": "Ganzes Bild",
   "pl": "Cały obraz"
  },
+ "Whose work the outliner shows: layers by their owner, modifiers, roads and generators by who made them.": {
+  "de": "Wessen Arbeit die Hierarchie zeigt: Ebenen nach Besitzer, Modifikatoren, Straßen und Generatoren nach Ersteller.",
+  "pl": "Czyją pracę pokazuje hierarchia: warstwy według właściciela, modyfikatory, drogi i generatory według autora."
+ },
  "Wicket": {
   "de": "Pforte",
   "pl": "Furtka"
@@ -5935,6 +6215,10 @@
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",
   "pl": "Zapisuj nowszy format WRP z flagą podziemia"
  },
+ "Writes what you changed since the last shared version to the team folder.": {
+  "de": "Schreibt, was du seit der letzten gemeinsamen Version geändert hast, in den Teamordner.",
+  "pl": "Zapisuje do folderu zespołu to, co zmieniono od ostatniej wspólnej wersji."
+ },
  "Written as they are; locations come from the key points.": {
   "de": "So geschrieben, wie sie sind; Orte kommen aus den Keypoints.",
   "pl": "Zapisywane tak, jak są; lokacje biorą się z keypointów."
@@ -5951,13 +6235,29 @@
   "de": "Ja",
   "pl": "Tak"
  },
+ "You deleted it, {0} changed it": {
+  "de": "Du hast es gelöscht, {0} hat es geändert",
+  "pl": "Usunięte u ciebie, zmienione przez: {0}"
+ },
  "You have the latest version": {
   "de": "Du hast die neueste Version",
   "pl": "Masz najnowszą wersję"
  },
+ "Your copy is ready. The team folder is the one it came from.": {
+  "de": "Deine Kopie ist bereit. Der Teamordner ist der, aus dem sie stammt.",
+  "pl": "Twoja kopia jest gotowa. Folderem zespołu jest ten, z którego pochodzi."
+ },
+ "Your name": {
+  "de": "Dein Name",
+  "pl": "Twoje imię"
+ },
  "Your version: {0}": {
   "de": "Deine Version: {0}",
   "pl": "Twoja wersja: {0}"
+ },
+ "Your work is saved first and the project is copied to .team/before-merge. Undo starts anew after merging.": {
+  "de": "Deine Arbeit wird zuerst gespeichert und das Projekt nach .team/before-merge kopiert. Nach dem Zusammenführen beginnt Rückgängig neu.",
+  "pl": "Twoja praca zostanie najpierw zapisana, a projekt skopiowany do .team/before-merge. Po scaleniu historia cofania zaczyna się od nowa."
  },
  "Zone {0} is outside the map ({1}, {2})": {
   "de": "Zone {0} liegt außerhalb der Karte ({1}, {2})",
@@ -6079,21 +6379,41 @@
   "de": "keine",
   "pl": "brak"
  },
+ "nothing": {
+  "de": "nichts",
+  "pl": "nic"
+ },
  "objects": {
   "de": "Objekte",
   "pl": "obiektów"
+ },
+ "objects: +{0} ~{1} -{2}": {
+  "de": "Objekte: +{0} ~{1} -{2}",
+  "pl": "obiekty: +{0} ~{1} -{2}"
  },
  "of {0}": {
   "de": "von {0}",
   "pl": "z {0}"
  },
+ "satellite image in {0} places": {
+  "de": "Satellitenbild an {0} Stellen",
+  "pl": "zdjęcie satelitarne w {0} miejscach"
+ },
  "start": {
   "de": "Anfang",
   "pl": "początku"
  },
+ "surfaces in {0} places": {
+  "de": "Oberflächen an {0} Stellen",
+  "pl": "powierzchnie w {0} miejscach"
+ },
  "tag": {
   "de": "Tag",
   "pl": "tag"
+ },
+ "terrain in {0} places": {
+  "de": "Gelände an {0} Stellen",
+  "pl": "teren w {0} miejscach"
  },
  "usage": {
   "de": "usage",
@@ -6131,9 +6451,17 @@
   "de": "{0} Zellen geändert",
   "pl": "Zmieniono {0} komórek"
  },
+ "{0} conflicts decided": {
+  "de": "{0} Konflikte entschieden",
+  "pl": "rozstrzygnięte konflikty: {0}"
+ },
  "{0} could not be read as XML; it is copied as it is": {
   "de": "{0} konnte nicht als XML gelesen werden; es wird unverändert kopiert",
   "pl": "Nie udało się odczytać {0} jako XML; jest kopiowany bez zmian"
+ },
+ "{0} deleted it, you changed it": {
+  "de": "{0} hat es gelöscht, du hast es geändert",
+  "pl": "Usunięte przez: {0}, zmienione u ciebie"
  },
  "{0} does not look like a mission folder (no init.c, db/types.xml or cfgeconomycore.xml)": {
   "de": "{0} sieht nicht wie ein Missionsordner aus (kein init.c, db/types.xml oder cfgeconomycore.xml)",
@@ -6222,6 +6550,10 @@
  "{0} placed classes have no prototype": {
   "de": "{0} platzierte Klassen haben keinen Prototyp",
   "pl": "{0} postawionych klas nie ma prototypu"
+ },
+ "{0} places where both of you changed the same thing. Choose what stays:": {
+  "de": "{0} Stellen, an denen ihr beide dasselbe geändert habt. Wähle, was bleibt:",
+  "pl": "Miejsca, w których oboje zmieniliście to samo: {0}. Wybierz, co zostaje:"
  },
  "{0} points": {
   "de": "{0} Punkte",

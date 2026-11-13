@@ -19,6 +19,7 @@ generate forests and rivers, then build the map and start it in the game, withou
 - **Terrain Builder import**, including layers, shapes, roads, key points and terrain holes
 - **One-click build and test**: export, binarise with AddonBuilder and start a local server and client
 - **Automatic backups** and a built-in updater
+- **Team work** (experimental): several people work on their own copies and merge their changes through a shared folder, see [docs/team-work.md](docs/team-work.md)
 
 ## Screenshots
 

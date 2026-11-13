@@ -20,6 +20,7 @@ mod settings;
 mod theme;
 mod proxies;
 mod road_draw;
+mod team_ui;
 mod updater;
 mod viewport;
 

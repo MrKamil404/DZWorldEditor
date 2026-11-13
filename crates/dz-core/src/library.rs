@@ -1058,7 +1058,11 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 /// An id unlikely to meet another one, also across sessions.
 pub fn new_id() -> u64 {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
-    (now << 12) | (COUNTER.fetch_add(1, Ordering::Relaxed) & 0xfff)
+    // Each run starts the counter somewhere else, so two people working at the same moment
+    // do not make the same ids.
+    static SALT: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    let salt = *SALT.get_or_init(rand::random::<u64>);
+    (now << 12) | (COUNTER.fetch_add(1, Ordering::Relaxed).wrapping_add(salt) & 0xfff)
 }
 
 #[cfg(test)]

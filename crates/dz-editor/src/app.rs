@@ -271,6 +271,10 @@ pub enum LayerAction {
     Select(u16),
     MoveSelection(u16),
     Rename(u16, String),
+    /// Team work: who works on the layer; empty for anyone.
+    Owner(u16, String),
+    /// Team work: edit a layer of someone else anyway, or leave it again.
+    Unlock(u16),
     Delete(u16),
     DeleteWithObjects(u16),
 }
@@ -486,6 +490,8 @@ pub struct App {
     pub perf: Option<Vec<f32>>,
     /// The mission editor.
     pub mission: crate::mission_ui::MissionState,
+    /// Team work: sending and merging the changes of several people (experimental).
+    pub team: crate::team_ui::TeamUi,
 }
 
 impl App {
@@ -524,7 +530,7 @@ impl App {
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
-            last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(),
+            last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
             settings,
         };
         app.rescan_assets();
@@ -1120,7 +1126,8 @@ impl App {
             }
         }
         let every = self.settings.autosave_minutes;
-        if every > 0 && self.last_autosave.elapsed() > Duration::from_secs(every as u64 * 60) {
+        // Not while team work reads or writes the project.
+        if every > 0 && !self.team.busy() && self.last_autosave.elapsed() > Duration::from_secs(every as u64 * 60) {
             self.last_autosave = Instant::now();
             if self.doc.as_ref().is_some_and(|d| d.history.dirty() && d.dir.is_some()) && self.stroke.is_none() {
                 self.save(None);
@@ -1288,12 +1295,13 @@ impl App {
         });
     }
 
-    pub fn save(&mut self, target: Option<PathBuf>) {
-        let Some(doc) = &mut self.doc else { return };
+    /// Saves the project; tells whether it was saved.
+    pub fn save(&mut self, target: Option<PathBuf>) -> bool {
+        let Some(doc) = &mut self.doc else { return false };
         let same = target.is_none();
         let Some(dir) = target.or_else(|| doc.dir.clone()) else {
             self.save_as();
-            return;
+            return false;
         };
         let parts = if same && doc.dir.is_some() {
             SaveParts { height: doc.dirty.height, mask: doc.dirty.mask, satellite: doc.dirty.satellite, objects: doc.dirty.objects }
@@ -1308,8 +1316,12 @@ impl App {
                 self.settings.remember(dir.clone());
                 self.settings.save();
                 self.info(tf("Saved {0}", &[&dir.display().to_string()]));
+                true
             }
-            Err(e) => self.error(format!("{e:#}")),
+            Err(e) => {
+                self.error(format!("{e:#}"));
+                false
+            }
         }
     }
 
@@ -1599,8 +1611,9 @@ impl App {
     pub fn place_layout(&mut self, prefab: &dz_core::library::Prefab, x: f32, z: f32, label: String) -> Vec<u32> {
         let Some(doc) = self.doc.as_mut() else { return Vec::new() };
         let layer = doc.world.target_layer();
-        if !doc.world.object_layers[layer as usize].interactive() {
-            self.warn(t("The active layer is hidden or locked"));
+        if !doc.world.layer_interactive(layer) {
+            let w = layer_warning(&doc.world, layer);
+            self.warn(w);
             return Vec::new();
         }
         let mut change = Vec::new();
@@ -2278,6 +2291,19 @@ impl App {
                     doc.dirty.objects = true;
                 }
             }
+            LayerAction::Owner(l, owner) => {
+                if layers[l as usize].owner != owner {
+                    let previous = layers.clone();
+                    layers[l as usize].owner = owner;
+                    doc.history.push(t("Owner of the layer"), Change::ObjectLayers(previous));
+                }
+            }
+            LayerAction::Unlock(l) => {
+                let name = layers[l as usize].name.clone();
+                if !doc.world.team_unlocked.remove(&name) {
+                    doc.world.team_unlocked.insert(name);
+                }
+            }
             LayerAction::Rename(l, name) => {
                 let name = name.trim();
                 if !name.is_empty() && name != layers[l as usize].name {
@@ -2679,6 +2705,14 @@ mod extension_tests {
 
 /// An object standing on the terrain: its height counted from the ground again, with the
 /// model resting on its land contact points.
+/// Why objects cannot go to a layer: it is hidden, locked, or someone else's in team work.
+pub fn layer_warning(w: &World, layer: u16) -> String {
+    match w.object_layers.get(layer as usize) {
+        Some(l) if w.layer_foreign(layer) => tf("The active layer belongs to {0}. Unlock it in the outliner to work on it anyway.", &[&l.owner]),
+        _ => t("The active layer is hidden or locked"),
+    }
+}
+
 pub fn on_ground(db: &dz_core::model_info::ModelDb, path: &str, o: dz_core::objects::Obj) -> dz_core::objects::Obj {
     let info = db.get(path);
     let elevation = if info.contact_count > 0 { -info.contact_y * o.scale } else { 0.0 };
