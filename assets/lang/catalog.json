@@ -1855,6 +1855,10 @@
   "de": "Formgröße",
   "pl": "Rozmiar form"
  },
+ "Features still being worked on, which may change or not work fully yet. For now: the mission editor.": {
+  "de": "Funktionen, an denen noch gearbeitet wird; sie können sich ändern oder noch nicht ganz funktionieren. Vorerst: der Missionseditor.",
+  "pl": "Funkcje, nad którymi trwają prace; mogą się zmieniać lub nie działać jeszcze w pełni. Na razie: edytor misji."
+ },
  "Fence": {
   "de": "Zaun",
   "pl": "Płot"
@@ -4686,6 +4690,10 @@
  "Show all": {
   "de": "Alle anzeigen",
   "pl": "Pokaż wszystkie"
+ },
+ "Show experimental features": {
+  "de": "Experimentelle Funktionen anzeigen",
+  "pl": "Pokazuj funkcje eksperymentalne"
  },
  "Show grass": {
   "de": "Gras zeigen",

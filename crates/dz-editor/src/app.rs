@@ -1548,6 +1548,11 @@ impl App {
         (!objects.is_empty()).then(|| dz_core::library::Prefab::from_objects(0, String::new(), &objects, &doc.world.height))
     }
 
+    /// Whether a mode is offered: those of experimental features only when they are turned on.
+    pub fn mode_enabled(&self, m: Mode) -> bool {
+        m != Mode::Mission || self.settings.experimental
+    }
+
     /// A pick in the view or the outliner takes the details over from the asset browser.
     pub fn leave_browser(&mut self) {
         self.browser.selected.clear();

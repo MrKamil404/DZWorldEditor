@@ -360,6 +360,7 @@ fn toolbar_contents(app: &mut App, ui: &mut egui::Ui) {
             // The modes show their names while there is room for them.
             let named = ui.available_width() > 1100.0;
             for (m, icon, name, action) in MODES {
+                if !app.mode_enabled(m) { continue; }
                 if icon_tool(ui, app.mode == m, icon, named.then(|| t(name)).as_deref(), keys.tip(action)).clicked() { app.mode = m; }
             }
             ui.separator();
@@ -1929,6 +1930,7 @@ fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
         section(ui, &icons::with(icons::GEAR, &t("General")), true, |ui| {
             row(ui, &t("Autosave every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
             ui.checkbox(&mut app.settings.check_updates, t("Check for updates at start"));
+            ui.checkbox(&mut app.settings.experimental, t("Show experimental features")).on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor."));
         });
         section(ui, &icons::with(icons::CLOCK, &t("Backups")), true, |ui| {
             ui.checkbox(&mut app.settings.backup_enabled, t("Make backups automatically"));
