@@ -1019,8 +1019,9 @@ pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Optio
     let info = app.db.get(model);
     let doc = app.doc.as_mut()?;
     let layer = doc.world.target_layer();
-    if !doc.world.object_layers[layer as usize].interactive() {
-        app.warn(t("The active layer is hidden or locked"));
+    if !doc.world.layer_interactive(layer) {
+        let w = crate::app::layer_warning(&doc.world, layer);
+        app.warn(w);
         return None;
     }
     let model_id = doc.world.objects.intern(model);
@@ -1495,6 +1496,10 @@ fn focus_selection(app: &mut App) {
 }
 
 fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View) {
+    // The merge of team work is writing the project; it is opened again afterwards.
+    if app.team.merging() {
+        return;
+    }
     // While something is dragged onto the view egui does not count it as hovered, so the drop
     // takes the pointer as it is.
     let Some(mouse) = resp.hover_pos().or_else(|| resp.interact_pointer_pos()).or_else(|| resp.contains_pointer().then(|| ctx.pointer_latest_pos()).flatten()) else { return };
@@ -3139,7 +3144,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     if !app.mode_enabled(app.mode) { app.mode = Mode::Select; }
     if !app.settings.experimental { app.mission.open = false; }
     crate::panels::HINTS.store(app.settings.show_hints, std::sync::atomic::Ordering::Relaxed);
-    if ctx.wants_keyboard_input() || app.key_capture.is_some() {
+    if ctx.wants_keyboard_input() || app.key_capture.is_some() || app.team.merging() {
         return;
     }
     let looking = ctx.input(|i| i.pointer.secondary_down());
@@ -3959,7 +3964,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 eprintln!("PERF {arg}: frames={} avg={:.2}ms p50={:.2} p95={:.2} p99={:.2} max={:.2}", v.len(), v.iter().sum::<f32>() / n as f32, v[n / 2], v[n * 95 / 100], v[n * 99 / 100], v[n - 1]);
             }
         }
-        "save" => app.save(Some(arg.into())),
+        "save" => { app.save(Some(arg.into())); }
         "build" => app.build(false),
         "browse" => app.filter = arg,
         // Satellite colours across a line of the map, "satpx x z0 z1".
@@ -4081,6 +4086,22 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "routetool" => app.line.action = LineAction::Edit,
         "proxies" => app.show_proxies = arg == "1",
         "experimental" => app.settings.experimental = arg == "1",
+        // Team work: `team` opens its window, `teamname n`, `teamstart folder`, `teamsend`,
+        // `teammerge` reads the oldest waiting changes and `teammergego` merges them.
+        "team" => {
+            app.team.open = true;
+            crate::team_ui::refresh(app);
+        }
+        "teamname" => app.settings.team_name = arg,
+        "teamstart" => crate::team_ui::start(app, arg),
+        "teamsend" => crate::team_ui::send(app),
+        "teammerge" => {
+            crate::team_ui::refresh(app);
+            if let Some((f, _)) = crate::team_ui::first_waiting(app) {
+                crate::team_ui::begin_merge(app, f);
+            }
+        }
+        "teammergego" => crate::team_ui::finish_merge(app),
         // `camproxy n`: the camera 2.5 m from proxy n of the first object, a little above it,
         // looking at it.
         "camproxy" => {
@@ -4177,7 +4198,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "keypointadd" if nums.len() >= 2 => app.add_keypoint(nums[0], nums[1]),
-        "saveto" => app.save(Some(std::path::PathBuf::from(arg.trim()))),
+        "saveto" => { app.save(Some(std::path::PathBuf::from(arg.trim()))); }
         "backupnow" => app.start_backup(true),
         "showset" if arg.starts_with("shapes") => app.show_shapes = nums.first().is_some_and(|v| *v > 0.0),
         "showset" if arg.starts_with("lines") => app.show_lines = nums.first().is_some_and(|v| *v > 0.0),

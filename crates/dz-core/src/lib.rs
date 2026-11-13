@@ -24,6 +24,7 @@ pub mod mission;
 pub mod project;
 pub mod satmod;
 pub mod shapes;
+pub mod team;
 pub mod terrain;
 pub mod tv4l;
 pub mod world;

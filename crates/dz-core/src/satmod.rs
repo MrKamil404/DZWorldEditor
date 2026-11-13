@@ -29,7 +29,7 @@ pub enum SatKind {
     Clone,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SatModifier {
     pub id: u32,
     pub name: String,
@@ -62,6 +62,21 @@ impl PixelRect {
     }
 }
 
+/// The colour of pixel `t` of a tile with the modifier tiles `layers` (RGBA, with their opacity)
+/// laid over the original colour `base`.
+pub fn compose_pixel(base: [u8; 3], layers: &[(&Tile, u32)], t: usize) -> [u8; 3] {
+    let mut c = [base[0] as u32, base[1] as u32, base[2] as u32];
+    for (l, opacity) in layers {
+        let a = (l[t * 4 + 3] as u32 * opacity + 127) / 255;
+        if a > 0 {
+            for k in 0..3 {
+                c[k] = (c[k] * (255 - a) + l[t * 4 + k] as u32 * a + 127) / 255;
+            }
+        }
+    }
+    [c[0] as u8, c[1] as u8, c[2] as u8]
+}
+
 fn tile_rect(key: Key, img: &RgbImage) -> Option<PixelRect> {
     let (x0, y0) = (key.0 as usize * TILE, key.1 as usize * TILE);
     (x0 < img.width && y0 < img.height).then(|| PixelRect { x0, y0, x1: (x0 + TILE).min(img.width) - 1, y1: (y0 + TILE).min(img.height) - 1 })
@@ -78,11 +93,20 @@ impl SatLayers {
     pub fn keys_of(list: &[SatModifier]) -> BTreeSet<Key> {
         list.iter().flat_map(|m| m.tiles.keys().copied()).collect()
     }
+    /// Layers made of `modifiers` with the original pixels `base` under their tiles.
+    pub fn from_parts(modifiers: Vec<SatModifier>, base: HashMap<Key, Tile>) -> Self {
+        let next_id = modifiers.iter().map(|m| m.id.saturating_add(1)).max().unwrap_or(1);
+        SatLayers { modifiers, base, next_id }
+    }
+    /// The original pixels kept under a tile a modifier touches.
+    pub fn base_tile(&self, key: Key) -> Option<&Tile> {
+        self.base.get(&key)
+    }
     /// Adds an empty modifier and returns its id.
     pub fn add(&mut self, kind: SatKind, name: String) -> u32 {
-        self.next_id = self.next_id.max(self.modifiers.iter().map(|m| m.id + 1).max().unwrap_or(1)).max(1);
-        let id = self.next_id;
-        self.next_id += 1;
+        // Random, so that two people working on copies of one map do not make the same id.
+        let id = crate::maskmod::free_id(|id| self.modifiers.iter().any(|m| m.id == id));
+        self.next_id = self.next_id.max(id.saturating_add(1));
         self.modifiers.push(SatModifier { id, name, kind, enabled: true, opacity: 255, tiles: HashMap::new() });
         id
     }
@@ -215,17 +239,9 @@ impl World {
             for y in r.y0..=r.y1 {
                 for x in r.x0..=r.x1 {
                     let t = (y - r.y0) * TILE + (x - r.x0);
-                    let mut c = [base[t * 3] as u32, base[t * 3 + 1] as u32, base[t * 3 + 2] as u32];
-                    for (l, opacity) in &layers {
-                        let a = (l[t * 4 + 3] as u32 * opacity + 127) / 255;
-                        if a > 0 {
-                            for k in 0..3 {
-                                c[k] = (c[k] * (255 - a) + l[t * 4 + k] as u32 * a + 127) / 255;
-                            }
-                        }
-                    }
+                    let c = compose_pixel([base[t * 3], base[t * 3 + 1], base[t * 3 + 2]], &layers, t);
                     let o = (y * img.width + x) * 3;
-                    img.data[o..o + 3].copy_from_slice(&[c[0] as u8, c[1] as u8, c[2] as u8]);
+                    img.data[o..o + 3].copy_from_slice(&c);
                 }
             }
             touched = Some(touched.map_or(r, |t| t.union(r)));
