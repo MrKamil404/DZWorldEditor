@@ -23,6 +23,10 @@
   "de": "0 ergibt einen gleichmäßigen Streifen.",
   "pl": "0 oznacza równy pas."
  },
+ "0 turns autosave off.": {
+  "de": "0 schaltet das automatische Speichern aus.",
+  "pl": "0 wyłącza autozapis."
+ },
  "1 lets food go bad.": {
   "de": "1 lässt Essen verderben.",
   "pl": "1 pozwala jedzeniu się psuć."
@@ -147,6 +151,10 @@
   "de": "Ein Projekt kann höchstens 255 Oberflächen haben",
   "pl": "Projekt może mieć najwyżej 255 powierzchni"
  },
+ "A quality sets everything below; changing any of it makes it Custom.": {
+  "de": "Eine Qualitätsstufe stellt alles darunter ein; jede Änderung macht daraus Benutzerdefiniert.",
+  "pl": "Jakość ustawia wszystko poniżej; zmiana czegokolwiek przełącza na Własne."
+ },
  "A road begun or ended by a free arm of a crossroad starts from that arm.": {
   "de": "Eine Straße, die an einem freien Arm einer Kreuzung beginnt oder endet, geht von diesem Arm aus.",
   "pl": "Droga zaczęta lub zakończona przy wolnym ramieniu skrzyżowania wychodzi z tego ramienia."
@@ -174,6 +182,10 @@
  "A spawn of event {0} places group {1} but has no height (y)": {
   "de": "Ein Spawn des Events {0} setzt Gruppe {1}, hat aber keine Höhe (y)",
   "pl": "Spawn eventu {0} stawia grupę {1}, ale nie ma wysokości (y)"
+ },
+ "A surface of the mask and the preset planted where it is.": {
+  "de": "Eine Oberfläche der Maske und die Vorlage, die dort gepflanzt wird.",
+  "pl": "Powierzchnia maski i preset sadzony tam, gdzie ona jest."
  },
  "A window of its own, which can go outside the program and onto another screen": {
   "de": "Ein eigenes Fenster, das außerhalb des Programms und auf einem anderen Bildschirm stehen kann",
@@ -351,6 +363,10 @@
   "de": "Zusätzliche Mods",
   "pl": "Dodatkowe mody"
  },
+ "Additional mods ({0})": {
+  "de": "Zusätzliche Mods ({0})",
+  "pl": "Dodatkowe mody ({0})"
+ },
  "Addons and extra lines": {
   "de": "Addons und zusätzliche Zeilen",
   "pl": "Addony i dodatkowe linie"
@@ -382,6 +398,10 @@
  "All models": {
   "de": "Alle Modelle",
   "pl": "Wszystkie modele"
+ },
+ "All paths found.": {
+  "de": "Alle Pfade gefunden.",
+  "pl": "Wszystkie ścieżki znalezione."
  },
  "All theirs": {
   "de": "Alle fremden",
@@ -799,6 +819,10 @@
   "de": "Gebäude: im Inhaltsbrowser wählen und Hinzufügen drücken.",
   "pl": "Budynki: wybierz w bibliotece i naciśnij Dodaj."
  },
+ "Builds, then starts a server with the map, and the game if chosen below.": {
+  "de": "Baut und startet dann einen Server mit der Karte, und das Spiel, wenn unten gewählt.",
+  "pl": "Buduje, a potem uruchamia serwer z mapą i grę, jeśli wybrano poniżej."
+ },
  "Built in: it cannot be changed, only duplicated.": {
   "de": "Eingebaut: kann nicht geändert, nur dupliziert werden.",
   "pl": "Wbudowane: nie można zmienić, tylko powielić."
@@ -1055,6 +1079,10 @@
   "de": "Lichtungen",
   "pl": "Polany"
  },
+ "Clears every setting of this window, so the values of the base world apply again.": {
+  "de": "Leert jede Einstellung dieses Fensters, sodass wieder die Werte der Basiswelt gelten.",
+  "pl": "Czyści wszystkie ustawienia tego okna, więc znów obowiązują wartości świata bazowego."
+ },
  "Click a route on the map to edit it.": {
   "de": "Klicke eine Route auf der Karte an, um sie zu bearbeiten.",
   "pl": "Kliknij trasę na mapie, aby ją edytować."
@@ -1078,6 +1106,10 @@
  "Click a type in the table.": {
   "de": "Klicke einen Typ in der Tabelle.",
   "pl": "Kliknij typ w tabeli."
+ },
+ "Click an object, a route, a generator or a modifier to see and change it here.": {
+  "de": "Klicke ein Objekt, eine Route, einen Generator oder einen Modifikator an, um ihn hier zu sehen und zu ändern.",
+  "pl": "Kliknij obiekt, trasę, generator lub modyfikator, aby zobaczyć i zmienić go tutaj."
  },
  "Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it.": {
   "de": "In die Vorschau klicken, um die Quelle zu wählen, dann auf der Karte malen. Das Mausrad zoomt die Vorschau, Ziehen verschiebt sie.",
@@ -1443,6 +1475,10 @@
   "de": "DayZ-Karteneditor",
   "pl": "Edytor map do DayZ"
  },
+ "DayZForests project": {
+  "de": "DayZForests-Projekt",
+  "pl": "Projekt DayZForests"
+ },
  "DayZForests project...": {
   "de": "DayZForests-Projekt...",
   "pl": "Projekt DayZForests..."
@@ -1651,6 +1687,10 @@
   "de": "Entfernung in Metern vom Spieler, in der nichts aufgeräumt wird.",
   "pl": "Odległość w metrach od gracza, w której nic nie jest sprzątane."
  },
+ "Distances": {
+  "de": "Entfernungen",
+  "pl": "Odległości"
+ },
  "Ditch depth": {
   "de": "Grabentiefe",
   "pl": "Głębokość rowu"
@@ -1715,6 +1755,10 @@
   "de": "Straße zeichnen",
   "pl": "Rysuj drogę"
  },
+ "Drawing the view: {0} ms a frame, {1} thousand triangles, {2} draw calls, {3} models drawn in full and {4} as distant pictures.": {
+  "de": "Zeichnen der Ansicht: {0} ms pro Bild, {1} Tausend Dreiecke, {2} Zeichenaufrufe, {3} Modelle voll und {4} als ferne Bilder gezeichnet.",
+  "pl": "Rysowanie widoku: {0} ms na klatkę, {1} tys. trójkątów, {2} wywołań rysowania, {3} modeli w pełni i {4} jako dalekie obrazki."
+ },
  "Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted.": {
   "de": "Zeichnet die Objekte von oben in das Satellitenbild, als Modifikator, der ausgeblendet oder gelöscht werden kann.",
   "pl": "Rysuje obiekty widziane z góry na satce jako modyfikator, który można ukryć albo usunąć."
@@ -1766,6 +1810,10 @@
  "Each one fills the whole shape as well, for example undergrowth under the trees.": {
   "de": "Jedes füllt ebenfalls die ganze Form, z. B. Unterholz unter den Bäumen.",
   "pl": "Każdy z nich też wypełnia cały kształt, np. ściółka pod drzewami."
+ },
+ "Each rule paints its surface where the height and slope fit; later rules paint over earlier ones.": {
+  "de": "Jede Regel malt ihre Oberfläche, wo Höhe und Neigung passen; spätere Regeln übermalen frühere.",
+  "pl": "Każda reguła maluje swoją powierzchnię tam, gdzie pasują wysokość i nachylenie; późniejsze reguły malują na wcześniejszych."
  },
  "Each shape layer as a shapefile.": {
   "de": "Jede Shape-Ebene als Shapefile.",
@@ -2079,6 +2127,10 @@
   "de": "Karte wird exportiert",
   "pl": "Eksport mapy"
  },
+ "Exports, then packs the map with DayZ Tools.": {
+  "de": "Exportiert und packt die Karte dann mit DayZ Tools.",
+  "pl": "Eksportuje, a potem pakuje mapę narzędziami DayZ Tools."
+ },
  "Exposure": {
   "de": "Belichtung",
   "pl": "Ekspozycja"
@@ -2170,6 +2222,10 @@
  "Finish the road": {
   "de": "Straße abschließen",
   "pl": "Zakończ drogę"
+ },
+ "First and last object": {
+  "de": "Erstes und letztes Objekt",
+  "pl": "Pierwszy i ostatni obiekt"
  },
  "First object": {
   "de": "Erstes Objekt",
@@ -2287,6 +2343,10 @@
   "de": "Zum Beispiel aus einer Vanilla-Mission, für Gebäude des Spiels.",
   "pl": "Na przykład z misji vanilla, dla budynków z gry."
  },
+ "For now: the mission editor and team work.": {
+  "de": "Derzeit: der Missionseditor und die Teamarbeit.",
+  "pl": "Na razie: edytor misji i praca zespołowa."
+ },
  "Forbidden areas": {
   "de": "Sperrgebiete",
   "pl": "Obszary zakazane"
@@ -2358,6 +2418,10 @@
  "Full detail distance": {
   "de": "Distanz volle Details",
   "pl": "Odległość pełnych detali"
+ },
+ "Full log": {
+  "de": "Ganzes Protokoll",
+  "pl": "Cały dziennik"
  },
  "Full screen": {
   "de": "Vollbild",
@@ -2507,6 +2571,10 @@
   "de": "Boden folgt dem Objekt",
   "pl": "Teren podąża za obiektem"
  },
+ "Ground under the trees": {
+  "de": "Boden unter den Bäumen",
+  "pl": "Grunt pod drzewami"
+ },
  "Group": {
   "de": "Gruppe",
   "pl": "Grupa"
@@ -2562,6 +2630,10 @@
  "Height": {
   "de": "Höhe",
   "pl": "Wysokość"
+ },
+ "Height m": {
+  "de": "Höhe m",
+  "pl": "Wysokość m"
  },
  "Height offset": {
   "de": "Höhenversatz",
@@ -2878,6 +2950,10 @@
  "Later": {
   "de": "Später",
   "pl": "Później"
+ },
+ "Latest output": {
+  "de": "Letzte Ausgabe",
+  "pl": "Ostatnie komunikaty"
  },
  "Latitude": {
   "de": "Breitengrad",
@@ -3783,6 +3859,10 @@
   "de": "Es wurde noch nichts ausgewählt",
   "pl": "Nic jeszcze nie było zaznaczone"
  },
+ "Now": {
+  "de": "Jetzt",
+  "pl": "Teraz"
+ },
  "Object": {
   "de": "Objekt",
   "pl": "Obiekt"
@@ -4395,6 +4475,10 @@
   "de": "Spieler",
   "pl": "Gracze"
  },
+ "Playing": {
+  "de": "Spielen",
+  "pl": "Granie"
+ },
  "Plot size": {
   "de": "Grundstücksgröße",
   "pl": "Rozmiar działki"
@@ -4855,6 +4939,10 @@
   "de": "Routeneinstellungen",
   "pl": "Ustawienia trasy"
  },
+ "Routes": {
+  "de": "Routen",
+  "pl": "Trasy"
+ },
  "Routes ({0})": {
   "de": "Routen ({0})",
   "pl": "Trasy ({0})"
@@ -5219,6 +5307,10 @@
   "de": "Schatten",
   "pl": "Cienie"
  },
+ "Shadows and effects": {
+  "de": "Schatten und Effekte",
+  "pl": "Cienie i efekty"
+ },
  "Shape layers ({0})": {
   "de": "Formebenen ({0})",
   "pl": "Warstwy kształtów ({0})"
@@ -5346,6 +5438,10 @@
  "Slope weight": {
   "de": "Steigungsgewicht",
   "pl": "Waga nachylenia"
+ },
+ "Slope °": {
+  "de": "Neigung °",
+  "pl": "Nachylenie °"
  },
  "Smaller brush": {
   "de": "Kleinerer Pinsel",
@@ -5599,6 +5695,10 @@
   "de": "Oberfläche {0} {1} Modellen zugewiesen",
   "pl": "Powierzchnię {0} przypisano do {1} modeli"
  },
+ "Surfaces": {
+  "de": "Oberflächen",
+  "pl": "Powierzchnie"
+ },
  "Surfaces (layers.cfg)": {
   "de": "Oberflächen (layers.cfg)",
   "pl": "Powierzchnie (layers.cfg)"
@@ -5826,6 +5926,14 @@
  "Texture tiles": {
   "de": "Texturkacheln",
   "pl": "Kafle tekstur"
+ },
+ "Textures": {
+  "de": "Texturen",
+  "pl": "Tekstury"
+ },
+ "The Output Log tab, with errors and warnings marked.": {
+  "de": "Der Reiter Ausgabeprotokoll, mit markierten Fehlern und Warnungen.",
+  "pl": "Zakładka Dziennik, z zaznaczonymi błędami i ostrzeżeniami."
  },
  "The Terrain Builder template libraries read into the project.": {
   "de": "Die in das Projekt geladenen Terrain-Builder-Vorlagenbibliotheken.",
@@ -6527,6 +6635,10 @@
   "de": "Wo sich die Spielkarte öffnet; ohne dies die Mitte des Geländes.",
   "pl": "Gdzie otwiera się mapa w grze; bez tego środek terenu."
  },
+ "Where the work drive, DayZ Tools and the game are; the editor reads models and builds the map with them.": {
+  "de": "Wo das Arbeitslaufwerk, DayZ Tools und das Spiel liegen; damit liest der Editor Modelle und baut die Karte.",
+  "pl": "Gdzie są dysk roboczy, DayZ Tools i gra; edytor czyta z nich modele i buduje mapę."
+ },
  "Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper.": {
   "de": "Wo zwei Oberflächen der Maske aufeinandertreffen, zeigen sich zuerst die höheren Teile ihres Reliefs; höher macht die Grenze schärfer.",
   "pl": "Tam, gdzie stykają się dwie powierzchnie maski, najpierw przebijają wyższe części ich reliefu; wyżej daje ostrzejszą granicę."
@@ -6642,6 +6754,10 @@
  "Write the newer WRP format with underground flag": {
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",
   "pl": "Zapisuj nowszy format WRP z flagą podziemia"
+ },
+ "Writes the terrain, surfaces, objects and config the PBO is made of.": {
+  "de": "Schreibt Gelände, Oberflächen, Objekte und Konfiguration, aus denen die PBO besteht.",
+  "pl": "Zapisuje teren, powierzchnie, obiekty i config, z których powstaje PBO."
  },
  "Writes what you changed since the last shared version to the team folder.": {
   "de": "Schreibt, was du seit der letzten gemeinsamen Version geändert hast, in den Teamordner.",

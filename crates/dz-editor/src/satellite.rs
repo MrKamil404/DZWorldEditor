@@ -233,7 +233,7 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
         .filter(|m| crate::team_ui::shown(app, d.world.sat_mod_author(m.id)))
         .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.sat_mod_author(m.id)), m.enabled, m.kind)).collect()).unwrap_or_default();
     let (mut toggle, mut delete) = (None, None);
-    crate::panels::outliner_section(fold, "Satellite modifiers", crate::icons::with(crate::icons::IMAGE, &tf("Satellite modifiers ({0})", &[&rows.len().to_string()]))).show(ui, |ui| {
+    crate::panels::outliner_section(fold, "Satellite modifiers", crate::icons::with(crate::icons::IMAGE, &tf("Satellite modifiers ({0})", &[&rows.len().to_string()])), rows.len() == 0).show(ui, |ui| {
         for (id, name, enabled, kind) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;

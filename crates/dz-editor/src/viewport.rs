@@ -4149,6 +4149,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             if let Some(g) = app.doc.as_ref().and_then(|d| d.world.generators.get(nums.first().map(|v| *v as usize).unwrap_or(0))) {
                 app.selection = g.objects.iter().copied().collect();
                 app.whole = Some(SelectedWhole::Generator(g.id));
+                app.selected_generator = Some(g.id);
                 app.selection_rev += 1;
             }
         }
@@ -4503,6 +4504,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "about" => app.dialog = crate::app::Dialog::About,
+        "settings" => crate::panels::open_settings(app, ctx, &arg),
         "reveal" => app.show_in_browser(&arg),
         "padstat" => {
             if let Some(d) = &app.doc {

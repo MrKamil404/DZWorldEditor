@@ -419,7 +419,8 @@ fn status_bar(app: &mut App, ctx: &egui::Context) {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let stats = app.renderer.lock().unwrap().stats;
-                ui.label(RichText::new(format!("{:.1} ms  |  {} kT  |  {} DC  |  {} / {}", app.frame_ms, stats.triangles / 1000, stats.draw_calls, stats.mesh_instances, stats.impostors)).small().color(theme::TEXT_DIM));
+                ui.label(RichText::new(format!("{:.1} ms  |  {} kT  |  {} DC  |  {} / {}", app.frame_ms, stats.triangles / 1000, stats.draw_calls, stats.mesh_instances, stats.impostors)).small().color(theme::TEXT_DIM))
+                    .on_hover_text(tf("Drawing the view: {0} ms a frame, {1} thousand triangles, {2} draw calls, {3} models drawn in full and {4} as distant pictures.", &[&format!("{:.1}", app.frame_ms), &(stats.triangles / 1000).to_string(), &stats.draw_calls.to_string(), &stats.mesh_instances.to_string(), &stats.impostors.to_string()]));
                 if let Some(d) = &app.doc {
                     let mark = if d.history.dirty() { "*" } else { "" };
                     ui.label(RichText::new(format!("{}{}  |  {} km  |  {} {}", d.world.meta.name, mark, d.world.meta.size_m() / 1000.0, d.world.objects.len(), t("objects"))).small());
@@ -1378,8 +1379,11 @@ fn panel_title(ui: &mut egui::Ui, title: &str) -> egui::Rect {
 }
 
 /// A section of the outliner; the fold button in its title opens or closes all of them.
-pub(crate) fn outliner_section(fold: Option<bool>, salt: &str, title: String) -> egui::CollapsingHeader {
-    egui::CollapsingHeader::new(title).id_salt(("outliner", salt)).default_open(true).open(fold)
+/// An empty one is folded and dimmed; it keeps its own open state, so it opens again by itself
+/// once something is in it.
+pub(crate) fn outliner_section(fold: Option<bool>, salt: &str, title: String, empty: bool) -> egui::CollapsingHeader {
+    let text = if empty { RichText::new(title).color(theme::TEXT_DIM) } else { RichText::new(title) };
+    egui::CollapsingHeader::new(text).id_salt(("outliner", salt, empty)).default_open(!empty).open(fold)
 }
 
 fn outliner(app: &mut App, ui: &mut egui::Ui) {
@@ -1445,7 +1449,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut select_modifier = None;
     crate::team_ui::filter_ui(app, ui);
     egui::ScrollArea::vertical().id_salt("outl").auto_shrink([false, false]).show(ui, |ui| {
-        outliner_section(fold, "Terrain modifiers", icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()]))).show(ui, |ui| {
+        outliner_section(fold, "Terrain modifiers", icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()])), mods.len() == 0).show(ui, |ui| {
             for (id, name) in mods.iter().filter(|(_, n)| n.to_ascii_lowercase().contains(&filter)) {
                 let row = ui.selectable_label(app.selected_modifier == Some(*id), name);
                 if row.clicked() { select_modifier = Some(*id); }
@@ -1454,10 +1458,10 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
         });
         crate::maskmods::outliner(app, ui, &filter, fold);
         crate::satellite::outliner(app, ui, &filter, fold);
-        outliner_section(fold, "Generators", icons::with(icons::MAGIC_WAND, &tf("Generators ({0})", &[&generators.len().to_string()]))).show(ui, |ui| {
+        outliner_section(fold, "Generators", icons::with(icons::MAGIC_WAND, &tf("Generators ({0})", &[&generators.len().to_string()])), generators.len() == 0).show(ui, |ui| {
             crate::library_ui::outliner_rows(app, ui, &generators, &filter);
         });
-        outliner_section(fold, "Routes", icons::with(icons::ROAD_HORIZON, &tf("Routes ({0})", &[&routes.len().to_string()]))).show(ui, |ui| {
+        outliner_section(fold, "Routes", icons::with(icons::ROAD_HORIZON, &tf("Routes ({0})", &[&routes.len().to_string()])), routes.len() == 0).show(ui, |ui| {
             for (i, name, family) in routes.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
                 let row = ui.selectable_label(app.line.selected_route == Some(*i), format!("{name}  ({family})"));
                 if row.clicked() { select_route = Some(*i); }
@@ -1468,7 +1472,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
         });
-        outliner_section(fold, "Shape layers", icons::with(icons::POLYGON, &tf("Shape layers ({0})", &[&shape_rows.len().to_string()]))).show(ui, |ui| {
+        outliner_section(fold, "Shape layers", icons::with(icons::POLYGON, &tf("Shape layers ({0})", &[&shape_rows.len().to_string()])), false).show(ui, |ui| {
             if ui.small_button(format!("+ {}", t("New layer"))).clicked() { shape_action = Some(ShapeAction::New); }
             for (i, name, visible, count) in shape_rows.iter().filter(|(_, n, _, _)| n.to_ascii_lowercase().contains(&filter)) {
                 ui.horizontal(|ui| {
@@ -1508,7 +1512,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         let live = layers.iter().filter(|l| !l.deleted).count();
-        outliner_section(fold, "Object layers", icons::with(icons::STACK, &tf("Object layers ({0})", &[&live.to_string()]))).show(ui, |ui| {
+        outliner_section(fold, "Object layers", icons::with(icons::STACK, &tf("Object layers ({0})", &[&live.to_string()])), false).show(ui, |ui| {
             ui.horizontal(|ui| {
                 if ui.small_button(format!("+ {}", t("New layer"))).clicked() { layer_action = Some(LayerAction::New); }
                 if ui.small_button(t("Edit all")).clicked() { layer_action = Some(LayerAction::EditAll); }
@@ -1567,7 +1571,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
         });
-        outliner_section(fold, "Objects", icons::with(icons::CUBE, &tf("Objects ({0})", &[&total_objects.to_string()]))).show(ui, |ui| {
+        outliner_section(fold, "Objects", icons::with(icons::CUBE, &tf("Objects ({0})", &[&total_objects.to_string()])), total_objects == 0).show(ui, |ui| {
             let mut scrolled = false;
             for (k, (m, count)) in hist.iter().enumerate() {
                 let name = paths[k].rsplit('\\').next().unwrap_or(&paths[k]);
@@ -1656,8 +1660,27 @@ fn details(app: &mut App, ui: &mut egui::Ui) {
             ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
             ground_fit(app, ui);
         } else {
-            ui.weak(t("Nothing selected"));
+            map_summary(app, ui);
         }
+    });
+}
+
+/// What the Details show with nothing selected: the map in a few lines, and where to click.
+fn map_summary(app: &App, ui: &mut egui::Ui) {
+    about(ui, &t("Click an object, a route, a generator or a modifier to see and change it here."));
+    let Some(doc) = &app.doc else { return };
+    let w = &doc.world;
+    ui.add_space(6.0);
+    ui.label(RichText::new(&w.meta.name).strong().color(Color32::WHITE));
+    let km = w.meta.size_m() / 1000.0;
+    egui::Grid::new("map_summary").num_columns(2).spacing(vec2(12.0, 3.0)).show(ui, |ui| {
+        let mut line = |label: String, value: String| { ui.label(RichText::new(label).color(theme::TEXT_DIM)); ui.label(value); ui.end_row(); };
+        line(t("Size"), format!("{km:.2} × {km:.2} km"));
+        line(t("Objects"), w.objects.len().to_string());
+        line(t("Routes"), w.routes.len().to_string());
+        line(t("Generators"), w.generators.len().to_string());
+        line(t("Surfaces"), w.layers.len().to_string());
+        line(t("Terrain modifiers"), w.modifiers.len().to_string());
     });
 }
 
@@ -1855,46 +1878,71 @@ fn output_log(app: &mut App, ui: &mut egui::Ui) {
 fn build_tab(app: &mut App, ui: &mut egui::Ui) {
     ui.columns(2, |c| {
         let ui = &mut c[0];
-        ui.heading(t("Package the map"));
-        let problems = app.settings.tools.check();
-        if problems.is_empty() {
-            ui.colored_label(theme::OK, t("DayZ Tools, game and work drive found"));
-        }
-        for p in problems { ui.colored_label(theme::WARN, p); }
-        ui.horizontal_wrapped(|ui| {
+        egui::ScrollArea::vertical().id_salt("build_steps").auto_shrink([false, false]).show(ui, |ui| {
+            let problems = app.settings.tools.check();
+            if problems.is_empty() {
+                ui.colored_label(theme::OK, icons::with(icons::CHECK_CIRCLE, &t("DayZ Tools, game and work drive found")));
+            }
+            for p in problems { ui.colored_label(theme::WARN, p); }
+            ui.add_space(4.0);
             let free = app.doc.is_some() && app.task.is_none();
-            if ui.add_enabled(free, egui::Button::new(t("1. Export files"))).clicked() { app.export_map(false); }
-            if ui.add_enabled(free, egui::Button::new(t("2. Build PBO"))).clicked() { app.build(false); }
-            if ui.add_enabled(free, egui::Button::new(t("3. Build and play"))).clicked() { app.build(true); }
-            if ui.add_enabled(free, egui::Button::new(t("Generate navmesh..."))).clicked() { app.generate_navmesh(); }
-            if let Some(d) = &app.doc {
-                let folder = app.settings.tools.work_drive.join(&d.world.meta.map_id);
-                if ui.button(t("Open map folder")).clicked() { app.open_folder(&folder); }
+            // The steps in order, each with what it does; a later step does the earlier ones too.
+            egui::Grid::new("build_steps_grid").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
+                let steps: [(&str, &str, u8); 3] = [
+                    ("1. Export files", "Writes the terrain, surfaces, objects and config the PBO is made of.", 0),
+                    ("2. Build PBO", "Exports, then packs the map with DayZ Tools.", 1),
+                    ("3. Build and play", "Builds, then starts a server with the map, and the game if chosen below.", 2),
+                ];
+                for (name, what, k) in steps {
+                    let text = if k == 2 { RichText::new(icons::with(icons::PLAY, &t(name))).color(Color32::WHITE) } else { RichText::new(t(name)) };
+                    let button = if k == 2 { egui::Button::new(text).fill(theme::ACCENT) } else { egui::Button::new(text) };
+                    if ui.add_enabled(free, button.min_size(vec2(150.0, 0.0))).clicked() {
+                        match k { 0 => app.export_map(false), 1 => app.build(false), _ => app.build(true) }
+                    }
+                    ui.label(RichText::new(t(what)).small().color(theme::TEXT_DIM));
+                    ui.end_row();
+                }
+            });
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                if ui.add_enabled(free, egui::Button::new(t("Generate navmesh..."))).clicked() { app.generate_navmesh(); }
+                if let Some(d) = &app.doc {
+                    let folder = app.settings.tools.work_drive.join(&d.world.meta.map_id);
+                    if ui.button(icons::with(icons::FOLDER_OPEN, &t("Open map folder"))).clicked() { app.open_folder(&folder); }
+                }
+            });
+            ui.separator();
+            ui.label(RichText::new(t("Playing")).strong());
+            ui.checkbox(&mut app.settings.with_client, t("Start the game client too"));
+            let mut mods: Vec<String> = app.settings.extra_mods.split(';').map(str::trim).filter(|m| !m.is_empty()).map(String::from).collect();
+            ui.label(tf("Additional mods ({0})", &[&mods.len().to_string()]));
+            let mut remove = None;
+            for (i, m) in mods.iter().enumerate() {
+                ui.push_id(("mod", i), |ui| ui.horizontal(|ui| {
+                    if ui.small_button("✖").clicked() { remove = Some(i); }
+                    ui.add(egui::Label::new(m).truncate());
+                }));
             }
+            let mut changed = false;
+            if let Some(i) = remove { mods.remove(i); changed = true; }
+            if ui.button(format!("+ {}", t("Add mod folder"))).clicked() {
+                for dir in rfd::FileDialog::new().set_title(t("Add mod folder")).pick_folders().unwrap_or_default() {
+                    let path = dir.display().to_string();
+                    if !mods.contains(&path) { mods.push(path); changed = true; }
+                }
+            }
+            if changed { app.settings.extra_mods = mods.join(";"); }
         });
-        ui.checkbox(&mut app.settings.with_client, t("Start the game client too"));
-        ui.label(t("Additional mods"));
-        let mut mods: Vec<String> = app.settings.extra_mods.split(';').map(str::trim).filter(|m| !m.is_empty()).map(String::from).collect();
-        let mut remove = None;
-        for (i, m) in mods.iter().enumerate() {
-            ui.push_id(("mod", i), |ui| ui.horizontal(|ui| {
-                if ui.small_button("✖").clicked() { remove = Some(i); }
-                ui.label(m);
-            }));
-        }
-        let mut changed = false;
-        if let Some(i) = remove { mods.remove(i); changed = true; }
-        if ui.button(format!("+ {}", t("Add mod folder"))).clicked() {
-            for dir in rfd::FileDialog::new().set_title(t("Add mod folder")).pick_folders().unwrap_or_default() {
-                let path = dir.display().to_string();
-                if !mods.contains(&path) { mods.push(path); changed = true; }
-            }
-        }
-        if changed { app.settings.extra_mods = mods.join(";"); }
         let ui = &mut c[1];
-        ui.label(t("Log"));
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(t("Latest output")).strong());
+            if ui.small_button(t("Full log")).on_hover_text(t("The Output Log tab, with errors and warnings marked.")).clicked() { app.bottom = BottomTab::Output; }
+        });
         egui::ScrollArea::vertical().id_salt("b").stick_to_bottom(true).auto_shrink([false, false]).show_rows(ui, 14.0, app.log.len(), |ui, range| {
-            for l in &app.log[range] { ui.label(RichText::new(&l.text).small().monospace()); }
+            for l in &app.log[range] {
+                let c = match l.level { 2 => theme::ERROR, 1 => theme::WARN, _ => theme::TEXT };
+                ui.label(RichText::new(&l.text).small().monospace().color(c));
+            }
         });
     });
 }
@@ -2079,110 +2127,196 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
     }
 }
 
+/// The pages of the settings window.
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum SettingsPage {
+    Paths,
+    Display,
+    Graphics,
+    General,
+    Backups,
+}
+
+impl SettingsPage {
+    const ALL: [SettingsPage; 5] = [SettingsPage::Paths, SettingsPage::Display, SettingsPage::Graphics, SettingsPage::General, SettingsPage::Backups];
+    fn title(self) -> (&'static str, &'static str) {
+        match self {
+            SettingsPage::Paths => (icons::FOLDER_OPEN, "Paths"),
+            SettingsPage::Display => (icons::EYE, "Display"),
+            SettingsPage::Graphics => (icons::SUN, "Graphics"),
+            SettingsPage::General => (icons::GEAR, "General"),
+            SettingsPage::Backups => (icons::CLOCK, "Backups"),
+        }
+    }
+}
+
+/// Opens the settings at a page by its name, for scripted checks.
+pub(crate) fn open_settings(app: &mut App, ctx: &egui::Context, page: &str) {
+    let p = match page { "display" => SettingsPage::Display, "graphics" => SettingsPage::Graphics, "general" => SettingsPage::General, "backups" => SettingsPage::Backups, _ => SettingsPage::Paths };
+    ctx.data_mut(|d| d.insert_persisted(egui::Id::new("settings_page"), p));
+    app.dialog = Dialog::Settings;
+}
+
+/// A heading inside a settings page.
+fn settings_heading(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(6.0);
+    ui.label(RichText::new(text).strong().color(Color32::WHITE));
+    ui.add_space(2.0);
+}
+
+/// Settings as a window of pages: the pages on the left, the chosen one on the right.
 fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
-    egui::Window::new(t("Settings")).collapsible(false).default_width(520.0).open(open).show(ctx, |ui| {
-        section(ui, &icons::with(icons::FOLDER_OPEN, &t("Paths")), true, |ui| {
-            let mut changed = false;
-            let mut path_row = |ui: &mut egui::Ui, label: String, p: &mut std::path::PathBuf| {
-                row(ui, &label, |ui| {
-                    let mut s = p.display().to_string();
-                    if ui.add(egui::TextEdit::singleline(&mut s).desired_width(300.0)).changed() { *p = s.into(); changed = true; }
-                    if ui.button("…").clicked() {
-                        if let Some(d) = rfd::FileDialog::new().pick_folder() { *p = d; changed = true; }
-                    }
-                });
-            };
-            path_row(ui, t("Work drive"), &mut app.settings.tools.work_drive);
-            path_row(ui, t("DayZ Tools"), &mut app.settings.tools.dayz_tools);
-            path_row(ui, t("DayZ"), &mut app.settings.tools.dayz);
-            if ui.button(t("Detect automatically")).clicked() { app.settings.tools = dz_core::build::detect(); changed = true; }
-            if changed { app.db = dz_core::model_info::ModelDb::new(app.settings.tools.work_drive.clone()); }
-            for p in app.settings.tools.check() { ui.colored_label(theme::WARN, p); }
-        });
-        section(ui, &icons::with(icons::EYE, &t("Display")), true, |ui| {
-            row(ui, &t("Language"), |ui| {
-                let cur = crate::i18n::current();
-                let names = crate::i18n::languages();
-                let label = names.iter().find(|(c, _)| *c == cur).map(|(_, n)| n.clone()).unwrap_or_default();
-                let mut pick = None;
-                egui::ComboBox::from_id_salt("lang").selected_text(label).show_ui(ui, |ui| {
-                    for (c, n) in names { if ui.selectable_label(c == cur, n).clicked() { pick = Some(c); } }
-                });
-                if let Some(c) = pick { app.sync_language(&c); }
-            });
-            let before = app.settings.ui_scale;
-            row(ui, &t("Interface scale"), |ui| { ui.add(egui::Slider::new(&mut app.settings.ui_scale, 0.75..=2.0)); });
-            if before != app.settings.ui_scale { theme::apply(ctx, app.settings.ui_scale); }
-            let hints = format!("{} ({})", t("Show key help"), app.settings.keys.text(crate::keys::Action::ToggleHints));
-            if ui.checkbox(&mut app.settings.show_hints, hints).on_hover_text(t("The key tables and the lines telling what clicks and keys do, in all panels.")).changed() { app.settings.save(); }
-        });
-        section(ui, &icons::with(icons::SUN, &t("Graphics")), true, |ui| {
-            row(ui, &t("Quality"), |ui| {
-                let current = app.settings.graphics_preset();
-                let mut pick = None;
-                egui::ComboBox::from_id_salt("graphics_preset").selected_text(current.map_or(t("Custom"), |p| t(p.name()))).show_ui(ui, |ui| {
-                    for p in crate::settings::GraphicsPreset::ALL { if ui.selectable_label(current == Some(p), t(p.name())).clicked() { pick = Some(p); } }
-                });
-                if let Some(p) = pick { app.settings.apply_graphics(p); }
-            });
-            slider(ui, &t("Terrain detail"), &mut app.settings.terrain_quality, 0.6..=3.0, false);
-            slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
-            slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
-            slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
-            slider(ui, &t("Surface parallax cm"), &mut app.settings.surface_parallax, 0.0..=15.0, false);
-            slider(ui, &t("Surface blend by relief"), &mut app.settings.surface_blend, 0.0..=1.0, false);
-            let choice = |ui: &mut egui::Ui, label: &str, id: &str, value: &mut u32, options: &[(u32, String)]| {
-                row(ui, label, |ui| {
-                    let shown = options.iter().find(|o| o.0 == *value).map_or_else(|| value.to_string(), |o| o.1.clone());
-                    egui::ComboBox::from_id_salt(id).selected_text(shown).show_ui(ui, |ui| {
-                        for (v, name) in options { ui.selectable_value(value, *v, name.as_str()); }
-                    });
-                });
-            };
-            choice(ui, &t("Texture detail"), "texture_size", &mut app.settings.texture_size, &[(512, "512".into()), (1024, "1024".into()), (2048, "2048".into()), (4096, t("Full"))]);
-            choice(ui, &t("Texture filtering"), "anisotropy", &mut app.settings.anisotropy, &[(1, t("Off")), (2, "2x".into()), (4, "4x".into()), (8, "8x".into()), (16, "16x".into())]);
-            choice(ui, &t("Shadow detail"), "shadow_map", &mut app.settings.shadow_map, &[(2048, "2048".into()), (4096, "4096".into()), (8192, "8192".into())]);
-            slider(ui, &t("Shadow range"), &mut app.settings.lighting.shadow_range, 60.0..=2000.0, true);
-            choice(ui, &t("Antialiasing"), "edge_smoothing", &mut app.settings.edge_smoothing, &[(0, t("Off")), (1, "FXAA".into()), (2, "FXAA + 1.5x".into()), (3, "FXAA + 2x".into())]);
-            choice(ui, &t("Ambient occlusion"), "ambient_occlusion", &mut app.settings.ambient_occlusion, &[(0, t("Off")), (8, t("Low")), (12, t("Medium")), (20, t("High"))]);
-            slider(ui, &t("Ground colour on grass"), &mut app.settings.grass_ground_color, 0.0..=1.0, false);
-        });
-        section(ui, &icons::with(icons::GEAR, &t("General")), true, |ui| {
-            row(ui, &t("Autosave every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
-            ui.checkbox(&mut app.settings.check_updates, t("Check for updates at start"));
-            ui.checkbox(&mut app.settings.experimental, t("Show experimental features")).on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor and team work."));
-        });
-        section(ui, &icons::with(icons::CLOCK, &t("Backups")), true, |ui| {
-            ui.checkbox(&mut app.settings.backup_enabled, t("Make backups automatically"));
-            ui.add_enabled_ui(app.settings.backup_enabled, |ui| {
-                row(ui, &t("Back up every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.backup_minutes, 5..=240).suffix(" min")); });
-                row(ui, &t("Backups to keep"), |ui| { ui.add(egui::Slider::new(&mut app.settings.backup_keep, 1..=100)); });
-            });
-            ui.weak(t("A backup is only made when the project has changed. Files that did not change are shared between backups, so they take no extra space."));
-            row(ui, &t("Folder"), |ui| {
-                let shown = if app.settings.backup_folder.is_empty() { t("backups in the project folder") } else { app.settings.backup_folder.clone() };
-                ui.add(egui::Label::new(shown).truncate());
-            });
-            ui.horizontal(|ui| {
-                if ui.button(t("Choose...")).clicked() {
-                    if let Some(d) = rfd::FileDialog::new().pick_folder() { app.settings.backup_folder = d.display().to_string(); }
-                }
-                if ui.add_enabled(!app.settings.backup_folder.is_empty(), egui::Button::new(t("Use the project folder"))).clicked() { app.settings.backup_folder.clear(); }
-            });
-            ui.horizontal(|ui| {
-                let saved = app.doc.as_ref().is_some_and(|d| d.dir.is_some());
-                if ui.add_enabled(saved && app.backup_job.is_none(), egui::Button::new(t("Back up now"))).clicked() { app.start_backup(true); }
-                if ui.add_enabled(saved, egui::Button::new(t("Open backups folder"))).clicked() {
-                    if let Some(root) = app.backup_root() {
-                        let _ = std::fs::create_dir_all(&root);
-                        app.open_folder(&root);
-                    }
+    egui::Window::new(t("Settings")).collapsible(false).resizable(false).fixed_size([700.0, 440.0]).open(open).show(ctx, |ui| {
+        let id = egui::Id::new("settings_page");
+        let mut page: SettingsPage = ui.ctx().data_mut(|d| d.get_persisted(id)).unwrap_or(SettingsPage::Paths);
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui_with_layout(vec2(150.0, 0.0), egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                for p in SettingsPage::ALL {
+                    let (icon, name) = p.title();
+                    let warn = p == SettingsPage::Paths && !app.settings.tools.check().is_empty();
+                    let text = RichText::new(icons::with(icon, &t(name))).color(if warn { theme::WARN } else if page == p { Color32::WHITE } else { theme::TEXT });
+                    if ui.add(egui::SelectableLabel::new(page == p, text)).clicked() { page = p; }
+                    ui.add_space(2.0);
                 }
             });
-            ui.weak(t("To restore a backup, open the project.dzwe inside it and use Save as."));
+            ui.separator();
+            ui.vertical(|ui| {
+                egui::ScrollArea::vertical().id_salt("settings_page_body").auto_shrink([false, false]).show(ui, |ui| {
+                    ui.set_min_width(340.0);
+                    match page {
+                        SettingsPage::Paths => settings_paths(app, ui),
+                        SettingsPage::Display => settings_display(app, ui, ctx),
+                        SettingsPage::Graphics => settings_graphics(app, ui),
+                        SettingsPage::General => settings_general(app, ui),
+                        SettingsPage::Backups => settings_backups(app, ui),
+                    }
+                });
+            });
         });
+        ui.ctx().data_mut(|d| d.insert_persisted(id, page));
     });
     if !*open { app.settings.save(); }
+}
+
+fn settings_paths(app: &mut App, ui: &mut egui::Ui) {
+    about(ui, &t("Where the work drive, DayZ Tools and the game are; the editor reads models and builds the map with them."));
+    let mut changed = false;
+    let mut path_row = |ui: &mut egui::Ui, label: String, p: &mut std::path::PathBuf| {
+        settings_heading(ui, &label);
+        ui.horizontal(|ui| {
+            let mut s = p.display().to_string();
+            if ui.add(egui::TextEdit::singleline(&mut s).desired_width((ui.available_width() - 34.0).max(80.0))).changed() { *p = s.into(); changed = true; }
+            if ui.button(icons::FOLDER_OPEN).on_hover_text(t("Choose...")).clicked() {
+                if let Some(d) = rfd::FileDialog::new().pick_folder() { *p = d; changed = true; }
+            }
+        });
+    };
+    path_row(ui, t("Work drive"), &mut app.settings.tools.work_drive);
+    path_row(ui, t("DayZ Tools"), &mut app.settings.tools.dayz_tools);
+    path_row(ui, t("DayZ"), &mut app.settings.tools.dayz);
+    ui.add_space(6.0);
+    if ui.button(icons::with(icons::MAGNIFYING_GLASS, &t("Detect automatically"))).clicked() { app.settings.tools = dz_core::build::detect(); changed = true; }
+    if changed { app.db = dz_core::model_info::ModelDb::new(app.settings.tools.work_drive.clone()); }
+    let problems = app.settings.tools.check();
+    if problems.is_empty() {
+        ui.colored_label(Color32::from_rgb(110, 200, 120), t("All paths found."));
+    }
+    for p in problems { ui.colored_label(theme::WARN, p); }
+}
+
+fn settings_display(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
+    row(ui, &t("Language"), |ui| {
+        let cur = crate::i18n::current();
+        let names = crate::i18n::languages();
+        let label = names.iter().find(|(c, _)| *c == cur).map(|(_, n)| n.clone()).unwrap_or_default();
+        let mut pick = None;
+        egui::ComboBox::from_id_salt("lang").selected_text(label).show_ui(ui, |ui| {
+            for (c, n) in names { if ui.selectable_label(c == cur, n).clicked() { pick = Some(c); } }
+        });
+        if let Some(c) = pick { app.sync_language(&c); }
+    });
+    let before = app.settings.ui_scale;
+    row(ui, &t("Interface scale"), |ui| { ui.add(egui::Slider::new(&mut app.settings.ui_scale, 0.75..=2.0)); });
+    if before != app.settings.ui_scale { theme::apply(ctx, app.settings.ui_scale); }
+    let hints = format!("{} ({})", t("Show key help"), app.settings.keys.text(crate::keys::Action::ToggleHints));
+    if ui.checkbox(&mut app.settings.show_hints, hints).on_hover_text(t("The key tables and the lines telling what clicks and keys do, in all panels.")).changed() { app.settings.save(); }
+    ui.add_space(6.0);
+    if ui.button(icons::with(icons::LAYOUT, &t("Default layout"))).on_hover_text(t("Puts every panel back where it was at first, at its first size.")).clicked() { crate::layout::reset(app); }
+}
+
+fn settings_graphics(app: &mut App, ui: &mut egui::Ui) {
+    row(ui, &t("Quality"), |ui| {
+        let current = app.settings.graphics_preset();
+        let mut pick = None;
+        egui::ComboBox::from_id_salt("graphics_preset").selected_text(current.map_or(t("Custom"), |p| t(p.name()))).show_ui(ui, |ui| {
+            for p in crate::settings::GraphicsPreset::ALL { if ui.selectable_label(current == Some(p), t(p.name())).clicked() { pick = Some(p); } }
+        });
+        if let Some(p) = pick { app.settings.apply_graphics(p); }
+    });
+    about(ui, &t("A quality sets everything below; changing any of it makes it Custom."));
+    let choice = |ui: &mut egui::Ui, label: &str, id: &str, value: &mut u32, options: &[(u32, String)]| {
+        row(ui, label, |ui| {
+            let shown = options.iter().find(|o| o.0 == *value).map_or_else(|| value.to_string(), |o| o.1.clone());
+            egui::ComboBox::from_id_salt(id).selected_text(shown).show_ui(ui, |ui| {
+                for (v, name) in options { ui.selectable_value(value, *v, name.as_str()); }
+            });
+        });
+    };
+    settings_heading(ui, &t("Distances"));
+    slider(ui, &t("Terrain detail"), &mut app.settings.terrain_quality, 0.6..=3.0, false);
+    slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
+    slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
+    slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
+    settings_heading(ui, &t("Textures"));
+    choice(ui, &t("Texture detail"), "texture_size", &mut app.settings.texture_size, &[(512, "512".into()), (1024, "1024".into()), (2048, "2048".into()), (4096, t("Full"))]);
+    choice(ui, &t("Texture filtering"), "anisotropy", &mut app.settings.anisotropy, &[(1, t("Off")), (2, "2x".into()), (4, "4x".into()), (8, "8x".into()), (16, "16x".into())]);
+    slider(ui, &t("Surface parallax cm"), &mut app.settings.surface_parallax, 0.0..=15.0, false);
+    slider(ui, &t("Surface blend by relief"), &mut app.settings.surface_blend, 0.0..=1.0, false);
+    slider(ui, &t("Ground colour on grass"), &mut app.settings.grass_ground_color, 0.0..=1.0, false);
+    settings_heading(ui, &t("Shadows and effects"));
+    choice(ui, &t("Shadow detail"), "shadow_map", &mut app.settings.shadow_map, &[(2048, "2048".into()), (4096, "4096".into()), (8192, "8192".into())]);
+    slider(ui, &t("Shadow range"), &mut app.settings.lighting.shadow_range, 60.0..=2000.0, true);
+    choice(ui, &t("Antialiasing"), "edge_smoothing", &mut app.settings.edge_smoothing, &[(0, t("Off")), (1, "FXAA".into()), (2, "FXAA + 1.5x".into()), (3, "FXAA + 2x".into())]);
+    choice(ui, &t("Ambient occlusion"), "ambient_occlusion", &mut app.settings.ambient_occlusion, &[(0, t("Off")), (8, t("Low")), (12, t("Medium")), (20, t("High"))]);
+}
+
+fn settings_general(app: &mut App, ui: &mut egui::Ui) {
+    row(ui, &t("Autosave every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
+    about(ui, &t("0 turns autosave off."));
+    ui.add_space(4.0);
+    ui.checkbox(&mut app.settings.check_updates, t("Check for updates at start"));
+    ui.checkbox(&mut app.settings.experimental, t("Show experimental features")).on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor and team work."));
+    about(ui, &t("For now: the mission editor and team work."));
+}
+
+fn settings_backups(app: &mut App, ui: &mut egui::Ui) {
+    ui.checkbox(&mut app.settings.backup_enabled, t("Make backups automatically"));
+    ui.add_enabled_ui(app.settings.backup_enabled, |ui| {
+        row(ui, &t("Back up every"), |ui| { ui.add(egui::Slider::new(&mut app.settings.backup_minutes, 5..=240).suffix(" min")); });
+        row(ui, &t("Backups to keep"), |ui| { ui.add(egui::Slider::new(&mut app.settings.backup_keep, 1..=100)); });
+    });
+    about(ui, &t("A backup is only made when the project has changed. Files that did not change are shared between backups, so they take no extra space."));
+    settings_heading(ui, &t("Folder"));
+    let shown = if app.settings.backup_folder.is_empty() { t("backups in the project folder") } else { app.settings.backup_folder.clone() };
+    ui.add(egui::Label::new(shown).truncate());
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(t("Choose...")).clicked() {
+            if let Some(d) = rfd::FileDialog::new().pick_folder() { app.settings.backup_folder = d.display().to_string(); }
+        }
+        if ui.add_enabled(!app.settings.backup_folder.is_empty(), egui::Button::new(t("Use the project folder"))).clicked() { app.settings.backup_folder.clear(); }
+    });
+    settings_heading(ui, &t("Now"));
+    ui.horizontal_wrapped(|ui| {
+        let saved = app.doc.as_ref().is_some_and(|d| d.dir.is_some());
+        if ui.add_enabled(saved && app.backup_job.is_none(), egui::Button::new(t("Back up now"))).clicked() { app.start_backup(true); }
+        if ui.add_enabled(saved, egui::Button::new(t("Open backups folder"))).clicked() {
+            if let Some(root) = app.backup_root() {
+                let _ = std::fs::create_dir_all(&root);
+                app.open_folder(&root);
+            }
+        }
+    });
+    about(ui, &t("To restore a backup, open the project.dzwe inside it and use Save as."));
 }
 
 /// The settings of the world config of the map, beside the config.cpp they make.
@@ -2421,7 +2555,9 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                     ui.add(egui::TextEdit::multiline(&mut m.config.extra_file).code_editor().desired_rows(4).desired_width(f32::INFINITY));
                     ui.weak(t("Written as they are; locations come from the key points."));
                 });
-                if ui.button(t("Back to the defaults")).clicked() { m.config = Default::default(); }
+                ui.add_space(6.0);
+                ui.separator();
+                if ui.button(icons::with(icons::ARROW_COUNTER_CLOCKWISE, &t("Back to the defaults"))).on_hover_text(t("Clears every setting of this window, so the values of the base world apply again.")).clicked() { m.config = Default::default(); }
             });
             let ui = &mut cols[1];
             ui.horizontal(|ui| {

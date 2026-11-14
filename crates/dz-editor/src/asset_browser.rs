@@ -1251,11 +1251,12 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         *t = text;
     }
 
-    egui::SidePanel::right("asset_details").resizable(true).default_width(290.0).width_range(180.0..=520.0).frame(egui::Frame::new().inner_margin(egui::Margin { left: 6, ..Default::default() })).show_inside(ui, |ui| {
+    // The details column only takes room while something is chosen to show in it.
+    if !app.browser.selected.is_empty() { egui::SidePanel::right("asset_details").resizable(true).default_width(290.0).width_range(180.0..=520.0).frame(egui::Frame::new().inner_margin(egui::Margin { left: 6, ..Default::default() })).show_inside(ui, |ui| {
         // Long names wrap, so that they never push the panel wider than it is.
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         egui::ScrollArea::vertical().id_salt("asset_details_scroll").auto_shrink([false, false]).show(ui, |ui| details(app, ui, &layers, &mut acts));
-    });
+    }); }
 
     // The bar with the way back, the path and the search.
     let source = app.browser.source.clone();

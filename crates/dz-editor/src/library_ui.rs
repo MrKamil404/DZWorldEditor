@@ -192,213 +192,240 @@ fn preset_combo(ui: &mut egui::Ui, id: impl std::hash::Hash, value: &mut String,
 }
 
 /// Fields of a generator. Returns true when the colour eyedropper should start.
+/// A part of a generator's settings that folds away.
+fn group(ui: &mut egui::Ui, title: String, open: bool, add: impl FnOnce(&mut egui::Ui)) {
+    egui::CollapsingHeader::new(egui::RichText::new(&title).strong()).id_salt(("gen_group", title)).default_open(open).show(ui, add);
+}
+
+/// A lower and an upper bound in one row.
+fn range_row(ui: &mut egui::Ui, label: String, lo: &mut f32, hi: &mut f32, range: std::ops::RangeInclusive<f32>, speed: f64) {
+    row(ui, &label, |ui| {
+        ui.add(egui::DragValue::new(lo).range(range.clone()).speed(speed).prefix(format!("{} ", t("from"))));
+        ui.add(egui::DragValue::new(hi).range(range).speed(speed).prefix(format!("{} ", t("to"))));
+    });
+    if *hi < *lo { *hi = *lo; }
+}
+
 fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> bool {
     let mut sample = false;
     match kind {
         GeneratorKind::Forest(g) => {
-            ui.horizontal_wrapped(|ui| {
-                if ui.button(t("Load DayZForests project...")).clicked() {
-                    if let Some(f) = rfd::FileDialog::new().add_filter("DayZForests", &["json"]).pick_file() {
-                        if let Some(p) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<forest_core::preset::ForestProject>(&b).ok()) {
-                            // The project's settings for its tree layer become those of the ground.
-                            let png = &p.png_settings;
-                            g.ground.stamp.size_m = png.dot_size_m as f32;
-                            g.ground.stamp.randomize_size = png.randomize_size as f32;
-                            g.ground.stamp.randomize_rotation = png.randomize_rotation;
-                            g.ground.stamp.shape = match png.shape {
-                                forest_core::preset::PngShape::Circle => dz_core::maskmod::StampShape::Circle,
-                                forest_core::preset::PngShape::Square => dz_core::maskmod::StampShape::Square,
-                                forest_core::preset::PngShape::Diamond => dz_core::maskmod::StampShape::Diamond,
-                                forest_core::preset::PngShape::Blob => dz_core::maskmod::StampShape::Blob,
-                            };
-                            g.project = p;
-                        }
-                    }
-                }
-                if ui.button(t("Load zone presets...")).on_hover_text("zones.json, presets_user.json").clicked() {
-                    if let Some(f) = rfd::FileDialog::new().add_filter("DayZForests", &["json"]).pick_file() {
-                        if let Ok(l) = forest_core::user_presets::UserPresetLibrary::load(&f) { cx.loaded.borrow_mut().extend(l.presets.iter().cloned()); g.user_presets = l.presets; }
-                    }
-                }
+            let p = &mut g.project;
+            group(ui, t("Trees"), true, |ui| {
+                row(ui, &t("Preset in shapes"), |ui| preset_combo(ui, "area", &mut g.preset, &cx.presets));
+                number64(ui, t("Spacing"), &mut p.spacing_multiplier, 0.3..=4.0);
+                range_row(ui, t("Scale"), &mut p.scale_min, &mut p.scale_max, 0.1..=3.0, 0.01);
+                number64(ui, t("Clearings"), &mut p.clearing_strength, 0.0..=0.95);
+                number64(ui, t("Clearing size m"), &mut p.clearing_scale_m, 0.0..=1500.0);
+                let mut slope = p.max_slope_deg.unwrap_or(90.0);
+                number64(ui, t("Max slope"), &mut slope, 5.0..=90.0);
+                p.max_slope_deg = (slope < 90.0).then_some(slope);
+                number64(ui, t("Edge padding m"), &mut p.edge_padding_m, 0.0..=200.0);
+                row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut p.seed)); });
             });
             // The ground under the trees, with the settings DayZ Forests has for its tree layer.
-            ui.checkbox(&mut g.ground.enabled, t("Paint the ground under the trees")).on_hover_text(t("Kept as a mask modifier of this generator: running it again repaints it, deleting it brings the mask back."));
-            if g.ground.enabled {
-                row(ui, &t("Surface"), |ui| {
-                    let shown = if g.ground.surface.is_empty() { t("(none)") } else { g.ground.surface.clone() };
-                    egui::ComboBox::from_id_salt("ground_surface").selected_text(shown).show_ui(ui, |ui| {
-                        for n in &cx.layers { ui.selectable_value(&mut g.ground.surface, n.clone(), n); }
+            let ground = if g.ground.enabled { t("Ground under the trees") + " ✔" } else { t("Ground under the trees") };
+            group(ui, ground, false, |ui| {
+                ui.checkbox(&mut g.ground.enabled, t("Paint the ground under the trees")).on_hover_text(t("Kept as a mask modifier of this generator: running it again repaints it, deleting it brings the mask back."));
+                ui.add_enabled_ui(g.ground.enabled, |ui| {
+                    row(ui, &t("Surface"), |ui| {
+                        let shown = if g.ground.surface.is_empty() { t("(none)") } else { g.ground.surface.clone() };
+                        egui::ComboBox::from_id_salt("ground_surface").selected_text(shown).show_ui(ui, |ui| {
+                            for n in &cx.layers { ui.selectable_value(&mut g.ground.surface, n.clone(), n); }
+                        });
                     });
+                    let own = g.project.species_layers.len();
+                    if own > 0 { ui.weak(tf("{0} species have a surface of their own in the forest project and keep it", &[&own.to_string()])); }
+                    ui.weak(t("Models with a surface assigned in the asset browser get that one."));
+                    crate::maskmods::stamp_ui(ui, &mut g.ground.stamp, "ground_shape", false);
                 });
-                let own = g.project.species_layers.len();
-                if own > 0 { ui.weak(tf("{0} species have a surface of their own in the forest project and keep it", &[&own.to_string()])); }
-                ui.weak(t("Models with a surface assigned in the asset browser get that one."));
-                crate::maskmods::stamp_ui(ui, &mut g.ground.stamp, "ground_shape", false);
-                ui.separator();
-            }
-            let p = &mut g.project;
-            ui.weak(tf("{0} species, {1} areas, {2} zones in the project", &[&p.species.len().to_string(), &p.areas.len().to_string(), &p.zones.len().to_string()]));
-            row(ui, &t("Preset in shapes"), |ui| preset_combo(ui, "area", &mut g.preset, &cx.presets));
-            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut p.seed)); });
-            number64(ui, t("Spacing"), &mut p.spacing_multiplier, 0.3..=4.0);
-            number(ui, t("Min scale"), &mut p.scale_min, 0.1..=3.0);
-            number(ui, t("Max scale"), &mut p.scale_max, 0.1..=3.0);
-            number64(ui, t("Clearings"), &mut p.clearing_strength, 0.0..=0.95);
-            number64(ui, t("Clearing size m"), &mut p.clearing_scale_m, 0.0..=1500.0);
-            let mut slope = p.max_slope_deg.unwrap_or(90.0);
-            number64(ui, t("Max slope"), &mut slope, 5.0..=90.0);
-            p.max_slope_deg = (slope < 90.0).then_some(slope);
-            number64(ui, t("Edge padding m"), &mut p.edge_padding_m, 0.0..=200.0);
-            ui.separator();
-            ui.strong(t("More presets in shapes"));
-            ui.weak(t("Each one fills the whole shape as well, for example undergrowth under the trees."));
-            let mut remove = None;
-            for (i, l) in g.layers.iter_mut().enumerate() {
-                ui.push_id(("layer", i), |ui| {
-                    ui.horizontal(|ui| {
-                        preset_combo(ui, "preset", &mut l.preset, &cx.presets);
-                        if ui.small_button("✖").clicked() { remove = Some(i); }
-                    });
-                    number(ui, t("Density per ha (0 = from the preset)"), &mut l.density_per_ha, 0.0..=5000.0);
-                    row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut l.seed)); });
-                    number64(ui, t("Spacing"), &mut l.spacing, 0.3..=4.0);
-                    number(ui, t("Min scale"), &mut l.scale_min, 0.1..=3.0);
-                    number(ui, t("Max scale"), &mut l.scale_max, 0.1..=3.0);
-                    number64(ui, t("Clearings"), &mut l.clearing_strength, 0.0..=0.95);
-                    number64(ui, t("Clearing size m"), &mut l.clearing_scale_m, 0.0..=1500.0);
-                    number64(ui, t("Max slope"), &mut l.max_slope_deg, 5.0..=90.0);
-                    number64(ui, t("Edge padding m"), &mut l.edge_padding_m, 0.0..=200.0);
-                    number(ui, t("Distance from earlier presets m"), &mut l.gap, 0.0..=20.0);
-                    ui.add_space(4.0);
-                });
-            }
-            if let Some(i) = remove { g.layers.remove(i); }
-            if ui.button(format!("+ {}", t("Add preset"))).clicked() {
-                g.layers.push(dz_core::library::ForestLayer { preset: cx.presets.first().cloned().unwrap_or_default(), ..Default::default() });
-            }
-            ui.separator();
-            ui.strong(t("Zones from the mask"));
-            let mut remove = None;
-            for (i, z) in g.zones.iter_mut().enumerate() {
-                ui.push_id(i, |ui| ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt("layer").width(100.0).selected_text(z.0.clone()).show_ui(ui, |ui| {
-                        for n in &cx.layers { ui.selectable_value(&mut z.0, n.clone(), n); }
-                    });
-                    preset_combo(ui, "preset", &mut z.1, &cx.presets);
-                    if ui.small_button("✖").clicked() { remove = Some(i); }
-                }));
-            }
-            if let Some(i) = remove { g.zones.remove(i); }
-            if ui.button(format!("+ {}", t("Add zone"))).clicked() {
-                g.zones.push((cx.layers.first().cloned().unwrap_or_default(), cx.presets.first().cloned().unwrap_or_default()));
-            }
-            ui.separator();
-            ui.checkbox(&mut g.project.edges.enabled, t("Forest edge"));
-            if g.project.edges.enabled {
-                number64(ui, t("Edge width m"), &mut g.project.edges.band_width_m, 1.0..=80.0);
-                number(ui, t("Edge density"), &mut g.project.edges.density_per_ha, 0.0..=600.0);
-                number64(ui, t("Jagged edge m"), &mut g.project.edges.jagged_m, 0.0..=120.0);
-                number64(ui, t("Blend inward m"), &mut g.project.edges.blend_inside_m, 0.0..=150.0);
-                let mut outside = g.project.edges.outside_m.unwrap_or(0.0);
-                number64(ui, t("Beyond the outline m"), &mut outside, 0.0..=80.0);
-                g.project.edges.outside_m = Some(outside);
-                number64(ui, t("Edge patch size m"), &mut g.project.edges.patch_size_m, 0.0..=200.0);
-                if g.project.edges.patch_size_m > 0.0 {
-                    number64(ui, t("Patch coverage"), &mut g.project.edges.patch_cover, 0.05..=1.0);
-                } else {
-                    ui.weak(t("0 makes the edge an even band."));
-                }
-                let from_project = t("From the project species");
-                let mut main = g.edge_presets.first().map(|e| e.0.clone()).unwrap_or_default();
-                let chosen = main.clone();
-                row(ui, &t("Edge preset"), |ui| {
-                    egui::ComboBox::from_id_salt("edge main").width(170.0).selected_text(if main.is_empty() { from_project.clone() } else { main.clone() }).show_ui(ui, |ui| {
-                        ui.selectable_value(&mut main, String::new(), from_project.as_str());
-                        for p in &cx.presets { ui.selectable_value(&mut main, p.clone(), p); }
-                    });
-                });
-                if main != chosen {
-                    match (main.is_empty(), g.edge_presets.first_mut()) {
-                        (true, _) => g.edge_presets.clear(),
-                        (false, Some(e)) => e.0 = main,
-                        (false, None) => g.edge_presets.push((main, 1.0)),
-                    }
-                }
-                if g.edge_presets.len() > 1 { ui.weak(t("Further edge presets, with their share")); }
+            });
+            group(ui, format!("{} ({})", t("More presets in shapes"), g.layers.len()), false, |ui| {
+                ui.weak(t("Each one fills the whole shape as well, for example undergrowth under the trees."));
                 let mut remove = None;
-                for (i, e) in g.edge_presets.iter_mut().enumerate().skip(1) {
-                    ui.push_id(("edge", i), |ui| ui.horizontal(|ui| {
-                        preset_combo(ui, "preset", &mut e.0, &cx.presets);
-                        ui.add(egui::DragValue::new(&mut e.1).speed(0.01).range(0.01..=1.0));
+                for (i, l) in g.layers.iter_mut().enumerate() {
+                    ui.push_id(("layer", i), |ui| {
+                        egui::Frame::group(ui.style()).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                preset_combo(ui, "preset", &mut l.preset, &cx.presets);
+                                if ui.small_button(crate::icons::TRASH).on_hover_text(t("Delete")).clicked() { remove = Some(i); }
+                            });
+                            number(ui, t("Density per ha (0 = from the preset)"), &mut l.density_per_ha, 0.0..=5000.0);
+                            number64(ui, t("Spacing"), &mut l.spacing, 0.3..=4.0);
+                            range_row(ui, t("Scale"), &mut l.scale_min, &mut l.scale_max, 0.1..=3.0, 0.01);
+                            number(ui, t("Distance from earlier presets m"), &mut l.gap, 0.0..=20.0);
+                            ui.collapsing(t("More"), |ui| {
+                                number64(ui, t("Clearings"), &mut l.clearing_strength, 0.0..=0.95);
+                                number64(ui, t("Clearing size m"), &mut l.clearing_scale_m, 0.0..=1500.0);
+                                number64(ui, t("Max slope"), &mut l.max_slope_deg, 5.0..=90.0);
+                                number64(ui, t("Edge padding m"), &mut l.edge_padding_m, 0.0..=200.0);
+                                row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut l.seed)); });
+                            });
+                        });
+                    });
+                }
+                if let Some(i) = remove { g.layers.remove(i); }
+                if ui.button(format!("+ {}", t("Add preset"))).clicked() {
+                    g.layers.push(dz_core::library::ForestLayer { preset: cx.presets.first().cloned().unwrap_or_default(), ..Default::default() });
+                }
+            });
+            group(ui, format!("{} ({})", t("Zones from the mask"), g.zones.len()), false, |ui| {
+                ui.weak(t("A surface of the mask and the preset planted where it is."));
+                let mut remove = None;
+                for (i, z) in g.zones.iter_mut().enumerate() {
+                    ui.push_id(i, |ui| ui.horizontal(|ui| {
+                        egui::ComboBox::from_id_salt("layer").width(100.0).selected_text(z.0.clone()).show_ui(ui, |ui| {
+                            for n in &cx.layers { ui.selectable_value(&mut z.0, n.clone(), n); }
+                        });
+                        preset_combo(ui, "preset", &mut z.1, &cx.presets);
                         if ui.small_button("✖").clicked() { remove = Some(i); }
                     }));
                 }
-                if let Some(i) = remove { g.edge_presets.remove(i); }
-                if !g.edge_presets.is_empty() && ui.button(format!("+ {}", t("Add edge preset"))).clicked() {
-                    g.edge_presets.push((cx.presets.first().cloned().unwrap_or_default(), 0.5));
+                if let Some(i) = remove { g.zones.remove(i); }
+                if ui.button(format!("+ {}", t("Add zone"))).clicked() {
+                    g.zones.push((cx.layers.first().cloned().unwrap_or_default(), cx.presets.first().cloned().unwrap_or_default()));
                 }
-            }
-            ui.separator();
-            ui.strong(t("Keep free of trees"));
-            let mut remove = None;
-            for (i, s) in g.skip_surfaces.iter_mut().enumerate() {
-                ui.push_id(("skip", i), |ui| ui.horizontal(|ui| {
-                    egui::ComboBox::from_id_salt("layer").width(120.0).selected_text(s.0.clone()).show_ui(ui, |ui| {
-                        for n in &cx.layers { ui.selectable_value(&mut s.0, n.clone(), n); }
-                    });
-                    ui.add(egui::DragValue::new(&mut s.1).speed(0.5).range(0.0..=200.0).suffix(" m"));
-                    if ui.small_button("✖").clicked() { remove = Some(i); }
-                }));
-            }
-            if let Some(i) = remove { g.skip_surfaces.remove(i); }
-            if ui.button(format!("+ {}", t("Add surface"))).clicked() {
-                g.skip_surfaces.push((cx.layers.first().cloned().unwrap_or_default(), 10.0));
-            }
-            margin_field(ui, t("Roads"), &mut g.avoid_roads);
-            margin_field(ui, t("Buildings"), &mut g.avoid_buildings);
-            ui.separator();
-            let mut filtered = g.color_filter.is_some();
-            if ui.checkbox(&mut filtered, t("Only on satellite colours")).changed() {
-                g.color_filter = filtered.then(|| forest_core::preset::ColorFilter { samples: Vec::new(), tolerance: 60, invert: false });
-            }
-            if let Some(f) = &mut g.color_filter {
-                ui.horizontal_wrapped(|ui| {
-                    let mut remove = None;
-                    for (i, s) in f.samples.iter_mut().enumerate() {
-                        let color = Color32::from_rgb(s.0[0], s.0[1], s.0[2]);
-                        let (rect, r) = ui.allocate_exact_size(vec2(20.0, 20.0), egui::Sense::click());
-                        ui.painter().rect_filled(rect, 2.0, color);
-                        if r.on_hover_text(t("Click removes this sample")).clicked() { remove = Some(i); }
+            });
+            let edge = if g.project.edges.enabled { t("Forest edge") + " ✔" } else { t("Forest edge") };
+            group(ui, edge, false, |ui| {
+                ui.checkbox(&mut g.project.edges.enabled, t("Forest edge"));
+                ui.add_enabled_ui(g.project.edges.enabled, |ui| {
+                    number64(ui, t("Edge width m"), &mut g.project.edges.band_width_m, 1.0..=80.0);
+                    number(ui, t("Edge density"), &mut g.project.edges.density_per_ha, 0.0..=600.0);
+                    number64(ui, t("Jagged edge m"), &mut g.project.edges.jagged_m, 0.0..=120.0);
+                    number64(ui, t("Blend inward m"), &mut g.project.edges.blend_inside_m, 0.0..=150.0);
+                    let mut outside = g.project.edges.outside_m.unwrap_or(0.0);
+                    number64(ui, t("Beyond the outline m"), &mut outside, 0.0..=80.0);
+                    g.project.edges.outside_m = Some(outside);
+                    number64(ui, t("Edge patch size m"), &mut g.project.edges.patch_size_m, 0.0..=200.0);
+                    if g.project.edges.patch_size_m > 0.0 {
+                        number64(ui, t("Patch coverage"), &mut g.project.edges.patch_cover, 0.05..=1.0);
+                    } else {
+                        ui.weak(t("0 makes the edge an even band."));
                     }
-                    if let Some(i) = remove { f.samples.remove(i); }
+                    let from_project = t("From the project species");
+                    let mut main = g.edge_presets.first().map(|e| e.0.clone()).unwrap_or_default();
+                    let chosen = main.clone();
+                    row(ui, &t("Edge preset"), |ui| {
+                        egui::ComboBox::from_id_salt("edge main").width(170.0).selected_text(if main.is_empty() { from_project.clone() } else { main.clone() }).show_ui(ui, |ui| {
+                            ui.selectable_value(&mut main, String::new(), from_project.as_str());
+                            for p in &cx.presets { ui.selectable_value(&mut main, p.clone(), p); }
+                        });
+                    });
+                    if main != chosen {
+                        match (main.is_empty(), g.edge_presets.first_mut()) {
+                            (true, _) => g.edge_presets.clear(),
+                            (false, Some(e)) => e.0 = main,
+                            (false, None) => g.edge_presets.push((main, 1.0)),
+                        }
+                    }
+                    if g.edge_presets.len() > 1 { ui.weak(t("Further edge presets, with their share")); }
+                    let mut remove = None;
+                    for (i, e) in g.edge_presets.iter_mut().enumerate().skip(1) {
+                        ui.push_id(("edge", i), |ui| ui.horizontal(|ui| {
+                            preset_combo(ui, "preset", &mut e.0, &cx.presets);
+                            ui.add(egui::DragValue::new(&mut e.1).speed(0.01).range(0.01..=1.0));
+                            if ui.small_button("✖").clicked() { remove = Some(i); }
+                        }));
+                    }
+                    if let Some(i) = remove { g.edge_presets.remove(i); }
+                    if !g.edge_presets.is_empty() && ui.button(format!("+ {}", t("Add edge preset"))).clicked() {
+                        g.edge_presets.push((cx.presets.first().cloned().unwrap_or_default(), 0.5));
+                    }
                 });
-                ui.add_enabled_ui(cx.has_satellite, |ui| {
-                    if ui.button(t("Pick from the map")).on_hover_text(t("The next click in a view takes the satellite colour there.")).clicked() { sample = true; }
+            });
+            group(ui, t("Keep free of trees"), false, |ui| {
+                let mut remove = None;
+                for (i, s) in g.skip_surfaces.iter_mut().enumerate() {
+                    ui.push_id(("skip", i), |ui| ui.horizontal(|ui| {
+                        egui::ComboBox::from_id_salt("layer").width(120.0).selected_text(s.0.clone()).show_ui(ui, |ui| {
+                            for n in &cx.layers { ui.selectable_value(&mut s.0, n.clone(), n); }
+                        });
+                        ui.add(egui::DragValue::new(&mut s.1).speed(0.5).range(0.0..=200.0).suffix(" m"));
+                        if ui.small_button("✖").clicked() { remove = Some(i); }
+                    }));
+                }
+                if let Some(i) = remove { g.skip_surfaces.remove(i); }
+                if ui.button(format!("+ {}", t("Add surface"))).clicked() {
+                    g.skip_surfaces.push((cx.layers.first().cloned().unwrap_or_default(), 10.0));
+                }
+                margin_field(ui, t("Roads"), &mut g.avoid_roads);
+                margin_field(ui, t("Buildings"), &mut g.avoid_buildings);
+            });
+            let colours = if g.color_filter.is_some() { t("Only on satellite colours") + " ✔" } else { t("Only on satellite colours") };
+            group(ui, colours, false, |ui| {
+                let mut filtered = g.color_filter.is_some();
+                if ui.checkbox(&mut filtered, t("Only on satellite colours")).changed() {
+                    g.color_filter = filtered.then(|| forest_core::preset::ColorFilter { samples: Vec::new(), tolerance: 60, invert: false });
+                }
+                if let Some(f) = &mut g.color_filter {
+                    ui.horizontal_wrapped(|ui| {
+                        let mut remove = None;
+                        for (i, s) in f.samples.iter_mut().enumerate() {
+                            let color = Color32::from_rgb(s.0[0], s.0[1], s.0[2]);
+                            let (rect, r) = ui.allocate_exact_size(vec2(20.0, 20.0), egui::Sense::click());
+                            ui.painter().rect_filled(rect, 2.0, color);
+                            if r.on_hover_text(t("Click removes this sample")).clicked() { remove = Some(i); }
+                        }
+                        if let Some(i) = remove { f.samples.remove(i); }
+                    });
+                    ui.add_enabled_ui(cx.has_satellite, |ui| {
+                        if ui.button(t("Pick from the map")).on_hover_text(t("The next click in a view takes the satellite colour there.")).clicked() { sample = true; }
+                    });
+                    let mut tolerance = f.tolerance as f32;
+                    number(ui, t("Tolerance"), &mut tolerance, 0.0..=255.0);
+                    f.tolerance = tolerance as u32;
+                    ui.checkbox(&mut f.invert, t("Everywhere except these colours"));
+                }
+            });
+            group(ui, t("DayZForests project"), false, |ui| {
+                let p = &g.project;
+                ui.weak(tf("{0} species, {1} areas, {2} zones in the project", &[&p.species.len().to_string(), &p.areas.len().to_string(), &p.zones.len().to_string()]));
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(t("Load DayZForests project...")).clicked() {
+                        if let Some(f) = rfd::FileDialog::new().add_filter("DayZForests", &["json"]).pick_file() {
+                            if let Some(p) = std::fs::read(&f).ok().and_then(|b| serde_json::from_slice::<forest_core::preset::ForestProject>(&b).ok()) {
+                                // The project's settings for its tree layer become those of the ground.
+                                let png = &p.png_settings;
+                                g.ground.stamp.size_m = png.dot_size_m as f32;
+                                g.ground.stamp.randomize_size = png.randomize_size as f32;
+                                g.ground.stamp.randomize_rotation = png.randomize_rotation;
+                                g.ground.stamp.shape = match png.shape {
+                                    forest_core::preset::PngShape::Circle => dz_core::maskmod::StampShape::Circle,
+                                    forest_core::preset::PngShape::Square => dz_core::maskmod::StampShape::Square,
+                                    forest_core::preset::PngShape::Diamond => dz_core::maskmod::StampShape::Diamond,
+                                    forest_core::preset::PngShape::Blob => dz_core::maskmod::StampShape::Blob,
+                                };
+                                g.project = p;
+                            }
+                        }
+                    }
+                    if ui.button(t("Load zone presets...")).on_hover_text("zones.json, presets_user.json").clicked() {
+                        if let Some(f) = rfd::FileDialog::new().add_filter("DayZForests", &["json"]).pick_file() {
+                            if let Ok(l) = forest_core::user_presets::UserPresetLibrary::load(&f) { cx.loaded.borrow_mut().extend(l.presets.iter().cloned()); g.user_presets = l.presets; }
+                        }
+                    }
                 });
-                let mut tolerance = f.tolerance as f32;
-                number(ui, t("Tolerance"), &mut tolerance, 0.0..=255.0);
-                f.tolerance = tolerance as u32;
-                ui.checkbox(&mut f.invert, t("Everywhere except these colours"));
-            }
+            });
         }
         GeneratorKind::SurfacePaint { rules, seed } => {
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(seed)); });
             let mut remove = None;
+            ui.weak(t("Each rule paints its surface where the height and slope fit; later rules paint over earlier ones."));
             for (i, r) in rules.iter_mut().enumerate() {
                 ui.push_id(i, |ui| {
-                    ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_salt("layer").width(120.0).selected_text(cx.layers.get(r.layer).cloned().unwrap_or_default()).show_ui(ui, |ui| {
-                            for (k, n) in cx.layers.iter().enumerate() { ui.selectable_value(&mut r.layer, k, n); }
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            egui::ComboBox::from_id_salt("layer").width(140.0).selected_text(cx.layers.get(r.layer).cloned().unwrap_or_default()).show_ui(ui, |ui| {
+                                for (k, n) in cx.layers.iter().enumerate() { ui.selectable_value(&mut r.layer, k, n); }
+                            });
+                            if ui.small_button(crate::icons::TRASH).on_hover_text(t("Delete")).clicked() { remove = Some(i); }
                         });
-                        if ui.small_button("✖").clicked() { remove = Some(i); }
+                        range_row(ui, t("Height m"), &mut r.min_height, &mut r.max_height, -200.0..=9000.0, 1.0);
+                        range_row(ui, t("Slope °"), &mut r.min_slope, &mut r.max_slope, 0.0..=90.0, 0.5);
+                        number(ui, t("Blotch size m"), &mut r.noise_scale, 0.0..=2000.0);
+                        number(ui, t("Coverage"), &mut r.coverage, 0.0..=1.0);
                     });
-                    number(ui, t("Min height"), &mut r.min_height, -200.0..=1500.0);
-                    number(ui, t("Max height"), &mut r.max_height, -200.0..=9000.0);
-                    number(ui, t("Min slope"), &mut r.min_slope, 0.0..=90.0);
-                    number(ui, t("Max slope"), &mut r.max_slope, 0.0..=90.0);
-                    number(ui, t("Blotch size m"), &mut r.noise_scale, 0.0..=2000.0);
-                    number(ui, t("Coverage"), &mut r.coverage, 0.0..=1.0);
-                    ui.separator();
                 });
             }
             if let Some(i) = remove { rules.remove(i); }
@@ -440,12 +467,14 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             ui.checkbox(&mut g.random_rotation, t("Random rotation"));
             ui.checkbox(&mut g.follow_slope, t("Follow the slope"));
             ui.checkbox(&mut g.join_corners, t("Join the pieces at corners"));
-            model_field(ui, t("First object"), &mut g.start_model, &cx.model);
-            if !g.start_model.is_empty() { ui.checkbox(&mut g.flip_start, t("Rotate the first object by 180°")); }
-            model_field(ui, t("Last object"), &mut g.end_model, &cx.model);
-            if !g.end_model.is_empty() { ui.checkbox(&mut g.flip_end, t("Rotate the last object by 180°")); }
-            ui.separator();
-            ui.strong(t("Wickets and gates"));
+            group(ui, t("First and last object"), false, |ui| {
+                model_field(ui, t("First object"), &mut g.start_model, &cx.model);
+                if !g.start_model.is_empty() { ui.checkbox(&mut g.flip_start, t("Rotate the first object by 180°")); }
+                model_field(ui, t("Last object"), &mut g.end_model, &cx.model);
+                if !g.end_model.is_empty() { ui.checkbox(&mut g.flip_end, t("Rotate the last object by 180°")); }
+            });
+            let openings = g.openings.len() + usize::from(g.road_gate.is_some());
+            group(ui, format!("{} ({openings})", t("Wickets and gates")), false, |ui| {
             ui.weak(t("Each leaves a gap in the fence with its own object, or two leaves of a gate."));
             let mut drop = None;
             for (k, o) in g.openings.iter_mut().enumerate() {
@@ -480,6 +509,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     });
                 });
             }
+            });
             line_ui(ui, &mut g.line);
         }
         GeneratorKind::Area(g) => {
@@ -563,13 +593,9 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             if s.preset.is_none() { models_list(ui, &mut s.models, cx); }
             number(ui, t("Per hectare"), &mut s.density, 0.1..=600.0);
             number(ui, t("Minimum distance"), &mut s.min_distance, 0.5..=100.0);
-            number(ui, t("Min slope"), &mut s.min_slope, 0.0..=90.0);
-            number(ui, t("Max slope"), &mut s.max_slope, 0.0..=90.0);
-            number(ui, t("Min height"), &mut s.min_height, -200.0..=1500.0);
-            number(ui, t("Max height"), &mut s.max_height, -200.0..=9000.0);
-            number(ui, t("Min scale"), &mut s.scale_min, 0.1..=4.0);
-            number(ui, t("Max scale"), &mut s.scale_max, 0.1..=4.0);
-            if s.scale_max < s.scale_min { s.scale_max = s.scale_min; }
+            range_row(ui, t("Scale"), &mut s.scale_min, &mut s.scale_max, 0.1..=4.0, 0.01);
+            range_row(ui, t("Slope °"), &mut s.min_slope, &mut s.max_slope, 0.0..=90.0, 0.5);
+            range_row(ui, t("Height m"), &mut s.min_height, &mut s.max_height, -200.0..=9000.0, 1.0);
             ui.checkbox(&mut s.align_to_slope, t("Align to slope"));
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut s.seed)); });
             ui.collapsing(t("Only on surfaces"), |ui| {
@@ -1069,10 +1095,13 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     let selected_route = app.line.selected_route.and_then(|i| doc.world.routes.get(i)).map(|r| r.id);
     let doc = app.doc.as_mut().unwrap();
     let g = &mut doc.world.generators[index];
-    row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut g.name); });
-    ui.weak(t(g.kind.type_name()));
-    ui.label(tf("{0} objects", &[&g.objects.len().to_string()]));
-    if !g.removed.is_empty() { ui.label(tf("{0} objects removed", &[&g.removed.len().to_string()])); }
+    row(ui, &t("Name"), |ui| { ui.add(egui::TextEdit::singleline(&mut g.name).desired_width(f32::INFINITY)); });
+    let mut made = format!("{} · {}", t(g.kind.type_name()), tf("{0} objects", &[&g.objects.len().to_string()]));
+    if !g.removed.is_empty() { made = format!("{made} · {}", tf("{0} objects removed", &[&g.removed.len().to_string()])); }
+    ui.weak(made);
+    let mut generate = false;
+    // The main action first, where it is found without scrolling.
+    if ui.add(egui::Button::new(egui::RichText::new(crate::icons::with(crate::icons::PLAY, &t("Generate"))).color(Color32::WHITE)).fill(crate::theme::ACCENT)).on_hover_text(t("Replaces what this generator made before.")).clicked() { generate = true; }
     match g.kind.target_kind() {
         TargetKind::Point => {
             if let GenTarget::Point(p) = &mut g.target {
@@ -1119,17 +1148,15 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     keep_forest_presets(&mut app.library, &mut app.lib_dirty, cx.loaded.take());
     if let Some(d) = &mut app.doc { d.history.revision += ui.ctx().input(|i| u64::from(i.pointer.any_released())); }
     ui.separator();
-    ui.horizontal_wrapped(|ui| {
-        if ui.button(t("Generate")).on_hover_text(t("Replaces what this generator made before.")).clicked() { run_generator(app, id); }
-        instance_buttons(app, ui, id);
-    });
+    ui.horizontal_wrapped(|ui| instance_buttons(app, ui, id));
+    if generate { run_generator(app, id); }
 }
 
 fn instance_buttons(app: &mut App, ui: &mut egui::Ui, id: u64) {
     if ui.button(t("Select objects")).clicked() { select_objects(app, id); }
     if ui.button(t("Save as preset")).clicked() { save_as_preset(app, id); }
     if ui.button(t("Duplicate")).clicked() { duplicate_instance(app, id); }
-    if ui.button(t("Delete generator...")).on_hover_text(t("Removes the generator and what it made; asks what of it to keep.")).clicked() { crate::deleting::request(app, crate::deleting::Target::Generator(id)); }
+    if ui.button(egui::RichText::new(crate::icons::with(crate::icons::TRASH, &t("Delete generator..."))).color(Color32::from_rgb(235, 110, 100))).on_hover_text(t("Removes the generator and what it made; asks what of it to keep.")).clicked() { crate::deleting::request(app, crate::deleting::Target::Generator(id)); }
 }
 
 /// Rows of the generators in the outliner.
