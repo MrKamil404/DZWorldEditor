@@ -75,6 +75,10 @@
   "de": "Ein eingebautes Preset. Dupliziere es für eine eigene Version.",
   "pl": "Preset wbudowany. Zduplikuj go, aby zrobić własną wersję."
  },
+ "A colour texture (_ca or _co) of the map's own surface on the work drive": {
+  "de": "Eine Farbtextur (_ca oder _co) einer eigenen Oberfläche der Karte auf dem Arbeitslaufwerk",
+  "pl": "Tekstura koloru (_ca lub _co) własnej powierzchni mapy na dysku roboczym"
+ },
  "A contaminated area around each selected shape of the Shapes mode.": {
   "de": "Ein verseuchtes Gebiet um jede in Formen ausgewählte Form.",
   "pl": "Strefa skażenia wokół każdego kształtu zaznaczonego w trybie Kształty."
@@ -118,6 +122,10 @@
  "A new mission was made for the map.": {
   "de": "Eine neue Mission für die Karte wurde erstellt.",
   "pl": "Utworzono nową misję dla mapy."
+ },
+ "A project holds at most 255 surfaces": {
+  "de": "Ein Projekt kann höchstens 255 Oberflächen haben",
+  "pl": "Projekt może mieć najwyżej 255 powierzchni"
  },
  "A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route.": {
   "de": "Eine am Anfang oder Ende verlängerte Route behält ihre Modelle; Neu einpassen legt Modelle nur vom alten Ende zu den neuen Punkten. Das Verschieben anderer Punkte passt weiterhin die ganze Route ein.",
@@ -2171,6 +2179,10 @@
   "de": "Auswahl einpassen",
   "pl": "Pokaż zaznaczenie"
  },
+ "From a file...": {
+  "de": "Aus einer Datei...",
+  "pl": "Z pliku..."
+ },
  "From the camera": {
   "de": "Von der Kamera",
   "pl": "Z kamery"
@@ -3011,6 +3023,10 @@
   "de": "Maske",
   "pl": "Maska"
  },
+ "Mask colour": {
+  "de": "Maskenfarbe",
+  "pl": "Kolor maski"
+ },
  "Mask image...": {
   "de": "Maskenbild...",
   "pl": "Obraz maski..."
@@ -3490,6 +3506,10 @@
  "No source point yet": {
   "de": "Noch kein Quellpunkt",
   "pl": "Nie wybrano punktu źródłowego"
+ },
+ "No surfaces of the game were found on the work drive": {
+  "de": "Auf dem Arbeitslaufwerk wurden keine Oberflächen des Spiels gefunden",
+  "pl": "Na dysku roboczym nie znaleziono powierzchni gry"
  },
  "No template libraries (.tml) in that folder": {
   "de": "In diesem Ordner sind keine Vorlagenbibliotheken (.tml)",
@@ -4375,6 +4395,10 @@
   "de": "Rechts",
   "pl": "W prawo"
  },
+ "Right click: colour of the surface": {
+  "de": "Rechtsklick: Farbe der Oberfläche",
+  "pl": "Prawy przycisk: kolor powierzchni"
+ },
  "Right leaf": {
   "de": "Rechter Flügel",
   "pl": "Prawe skrzydło"
@@ -4446,6 +4470,10 @@
  "Roads and lines ({0})": {
   "de": "Straßen und Linien ({0})",
   "pl": "Drogi i linie ({0})"
+ },
+ "Roads and tracks": {
+  "de": "Straßen und Gleise",
+  "pl": "Drogi i tory"
  },
  "Roads from TV4P...": {
   "de": "Straßen aus TV4P...",
@@ -5699,6 +5727,10 @@
   "de": "Das unter ihr geebnete Gelände",
   "pl": "Teren wyrównany pod nią"
  },
+ "The texture has to be on the work drive": {
+  "de": "Die Textur muss auf dem Arbeitslaufwerk liegen",
+  "pl": "Tekstura musi leżeć na dysku roboczym"
+ },
  "The textures of the base world show its own terrain; a map of its own needs its own.": {
   "de": "Die Texturen der Basiswelt zeigen deren Gelände; eine eigene Karte braucht eigene.",
   "pl": "Tekstury świata bazowego pokazują jego teren; własna mapa potrzebuje własnych."
@@ -6031,6 +6063,10 @@
   "de": "WRP-Welt...",
   "pl": "Świat WRP..."
  },
+ "Walls and fences": {
+  "de": "Mauern und Zäune",
+  "pl": "Mury i płoty"
+ },
  "Warp": {
   "de": "Verzerrung",
   "pl": "Zniekształcenie"
@@ -6214,6 +6250,10 @@
  "Worn slopes": {
   "de": "Abgetragene Hänge",
   "pl": "Wygładzenie zboczy (erozja)"
+ },
+ "Wrecks": {
+  "de": "Wracks",
+  "pl": "Wraki"
  },
  "Write the newer WRP format with underground flag": {
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",

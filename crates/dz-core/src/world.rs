@@ -694,6 +694,32 @@ impl ObjectLayer {
 pub const MASK_MOD_AUTHOR: u64 = 1 << 62;
 pub const SAT_MOD_AUTHOR: u64 = 1 << 61;
 
+/// Layers the objects of a built world are put into, by what they are.
+pub const OBJECT_GROUPS: [&str; 7] = ["Trees and bushes", "Buildings", "Walls and fences", "Roads and tracks", "Rocks", "Wrecks", "Water"];
+
+/// Which of [`OBJECT_GROUPS`] the model at `path` belongs to.
+pub fn object_group(path: &str) -> Option<usize> {
+    let p = path.to_ascii_lowercase().replace('/', "\\");
+    let has = |s: &str| p.contains(s);
+    Some(if has(r"\tree\") || has(r"\t_") || has("plants") || has(r"\bush") || has(r"\b_") {
+        0
+    } else if has(r"\wrecks\") {
+        5
+    } else if has(r"\water") {
+        6
+    } else if has(r"\roads\") || has(r"\rail\") {
+        3
+    } else if has(r"\walls\") || has("fence") {
+        2
+    } else if has(r"\rocks\") || has(r"\rock") || has(r"\stone") {
+        4
+    } else if has(r"\structures") && !has(r"\furniture\") && !has(r"\signs\") {
+        1
+    } else {
+        return None;
+    })
+}
+
 pub fn default_object_layers() -> Vec<ObjectLayer> {
     vec![ObjectLayer::new("Default")]
 }
@@ -893,6 +919,21 @@ impl World {
             _ => 0,
         }
     }
+    /// Puts the objects of the first layer into layers by what they are: trees and bushes,
+    /// buildings, walls, roads, rocks, wrecks, water. What fits none stays where it was; groups with
+    /// no objects get no layer.
+    pub fn group_objects(&mut self) {
+        let kinds: Vec<Option<usize>> = self.objects.models.iter().map(|m| object_group(&m.path)).collect();
+        let mut layers: [Option<u16>; OBJECT_GROUPS.len()] = [None; OBJECT_GROUPS.len()];
+        let moves: Vec<(u32, usize)> = self.objects.iter().filter(|(_, o)| o.layer() == 0).filter_map(|(id, o)| Some((id, kinds.get(o.model as usize).copied().flatten()?))).collect();
+        for (id, group) in moves {
+            let layer = *layers[group].get_or_insert_with(|| self.add_object_layer(OBJECT_GROUPS[group]));
+            if let Some(mut o) = self.objects.get(id).copied() {
+                o.set_layer(layer);
+                self.objects.update(id, o);
+            }
+        }
+    }
     /// Appends a layer with a name not used yet and returns its index.
     pub fn add_object_layer(&mut self, name: &str) -> u16 {
         let taken = |n: &str, ls: &[ObjectLayer]| ls.iter().any(|l| !l.deleted && l.name.eq_ignore_ascii_case(n));
@@ -1014,6 +1055,27 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn objects_of_a_built_world_go_to_layers_by_kind() {
+        assert_eq!(object_group(r"dz\plants\tree\t_piceaabies_3f.p3d"), Some(0));
+        assert_eq!(object_group(r"DZ\plants_bliss\bush\b_corylus_1s.p3d"), Some(0));
+        assert_eq!(object_group(r"dz\structures\residential\police\city_policestation.p3d"), Some(1));
+        assert_eq!(object_group(r"dz\structures\walls\wall_tin_4.p3d"), Some(2));
+        assert_eq!(object_group(r"dz\structures\roads\parts\asf2_25.p3d"), Some(3));
+        assert_eq!(object_group(r"dz\rocks\stone1.p3d"), Some(4));
+        assert_eq!(object_group(r"dz\structures\wrecks\cars\wreck_volha.p3d"), Some(5));
+        assert_eq!(object_group(r"dz\structures\furniture\chairs\chair.p3d"), None);
+        let mut w = world();
+        let (tree, house, chair) = (w.objects.intern(r"dz\plants\tree\t_betula.p3d"), w.objects.intern(r"dz\structures\residential\house.p3d"), w.objects.intern(r"dz\structures\furniture\chair.p3d"));
+        for m in [tree, house, chair, tree] {
+            w.objects.insert(crate::objects::Obj { x: 10.0, z: 10.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 });
+        }
+        w.group_objects();
+        let names: Vec<&str> = w.object_layers.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(&names[1..], &["Trees and bushes", "Buildings"]);
+        let layer_of = |m: u32| w.objects.iter().filter(|(_, o)| o.model == m).map(|(_, o)| o.layer()).collect::<Vec<_>>();
+        assert_eq!((layer_of(tree), layer_of(house), layer_of(chair)), (vec![1, 1], vec![2], vec![0]));
+    }
     fn world() -> World {
         let mut w = World::new(WorldMeta::new("Test", 128, 8.0), 100.0);
         for i in 0..128 {
@@ -1111,3 +1173,4 @@ mod tests {
         assert!(m.weight(490.0, 400.0, s, c) == 0.0);
     }
 }
+

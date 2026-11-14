@@ -583,7 +583,9 @@ pub fn import_wrp(path: &Path, tile_dir: Option<&Path>, db: &ModelDb, job: &Job)
     };
     job.stage(format!("Placing {} objects", wrp.objects.len()));
     let objects = objects_from_wrp(&wrp, &height, 0.0, db);
-    Ok(World::from_parts(meta, height, mask, layers, satellite, objects, Vec::new()))
+    let mut w = World::from_parts(meta, height, mask, layers, satellite, objects, Vec::new());
+    w.group_objects();
+    Ok(w)
 }
 
 fn world_from_asc(asc: &Path, plan: &ImportPlan, job: &Job) -> Result<World> {
@@ -734,6 +736,7 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
             // as in the game also when the heightmap chosen here is a different one.
             let own = Heightmap { cols: wrp.terrain_x as usize, rows: wrp.terrain_y as usize, cell: wrp.cell(), data: wrp.elevations.clone() };
             w.objects = objects_from_wrp(&wrp, &own, 0.0, db);
+            w.group_objects();
             job.log(format!("{}: {} objects", path.display(), w.objects.len()));
             let size = w.meta.size_m();
             let off = (1..8).flat_map(|i| (1..8).map(move |j| (i as f32 * size / 8.0, j as f32 * size / 8.0))).map(|(x, z)| (w.height.sample(x, z) - own.sample(x, z)).abs()).fold(0.0f32, f32::max);
