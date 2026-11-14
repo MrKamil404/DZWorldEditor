@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/forest-core", "crates/road-core", "crates/dz-core", "crates/dz-editor"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 authors = ["MrKamil404"]
 repository = "https://github.com/MrKamil404/DZWorldEditor"
