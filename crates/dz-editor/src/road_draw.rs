@@ -19,6 +19,44 @@ pub struct LiveFit {
     rx: Option<mpsc::Receiver<Fitted>>,
     /// The last fit made and the points it was made for.
     pub shown: Option<Fitted>,
+    /// Pieces kept as they were laid up to a clicked point, when new points must not change
+    /// them: the pieces, and for every clicked point how many were kept when it was set.
+    pub kept: Vec<PlacedPart>,
+    pub marks: Vec<usize>,
+}
+
+impl LiveFit {
+    /// How many clicked points the kept pieces reach: up to the point they were kept at.
+    fn covered(&self) -> usize {
+        if self.kept.is_empty() { return 0; }
+        self.marks.iter().position(|m| *m == self.kept.len()).map_or(0, |i| i + 1)
+    }
+    /// Lets go of what belonged to points taken away since.
+    fn sync(&mut self, points: usize) {
+        if self.marks.len() > points {
+            self.marks.truncate(points);
+            self.kept.truncate(self.marks.last().copied().unwrap_or(0));
+        }
+    }
+}
+
+/// The road along `want` that goes on from `kept`, the pieces laid up to its first `covered`
+/// points, and closes with an end piece: only the new stretch is fitted.
+pub fn fit_kept(kept: &[PlacedPart], covered: usize, want: &[[f32; 2]], family: &str, catalog: &[CatalogPart], settings: &dayz_road_tool::document::RoutingSettings) -> anyhow::Result<Vec<PlacedPart>> {
+    let start = roads::endpoint(kept, catalog)?;
+    let rest: Vec<[f32; 2]> = want.iter().skip(covered).copied().filter(|p| (p[0] as f64 - start.p[0]).hypot(p[1] as f64 - start.p[1]) > 1.0).collect();
+    let mut parts = kept.to_vec();
+    if rest.is_empty() {
+        // Nothing beyond the kept pieces: the road just closes there.
+        let cap = end_cap(catalog, family).ok_or_else(|| anyhow::anyhow!("No end piece for this road type"))?;
+        parts.push(roads::place(cap, start, false)?);
+        return Ok(parts);
+    }
+    let mut points = crate::crossroads::lead_in(start, rest.first().copied(), settings.min_radius);
+    points.extend(rest);
+    let line: Vec<Point> = points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
+    parts.extend(roads::fit_from(start, &line, family, catalog, settings, |_, _| true)?);
+    Ok(parts)
 }
 
 /// A road being laid piece by piece.
@@ -65,8 +103,11 @@ pub fn live_update(app: &mut App, cursor: Option<[f32; 2]>, ctx: &egui::Context)
     if app.line.points.is_empty() {
         receive(app);
         app.live.shown = None;
+        app.live.kept.clear();
+        app.live.marks.clear();
         return;
     }
+    app.live.sync(app.line.points.len());
     let mut want = app.line.points.clone();
     if let Some(c) = cursor {
         if want.last().is_none_or(|l| (l[0] - c[0]).hypot(l[1] - c[1]) > 1.0) {
@@ -74,7 +115,20 @@ pub fn live_update(app: &mut App, cursor: Option<[f32; 2]>, ctx: &egui::Context)
         }
     }
     let (family, settings) = (app.line.family.clone(), fit_settings(app));
-    live_fit(app, want, family, settings, ctx);
+    let kept = kept_now(app);
+    live_fit(app, want, family, settings, kept, ctx);
+}
+
+/// The pieces kept so far and how many clicked points they reach, when pieces are kept.
+fn kept_now(app: &App) -> Option<(Vec<PlacedPart>, usize)> {
+    (app.line.live_keep && !app.live.kept.is_empty()).then(|| (app.live.kept.clone(), app.live.covered()))
+}
+
+/// The road along the clicked `points` as the live tool shows it, with the pieces kept so
+/// far left as they are. None when no pieces are kept, and the road is fitted as a whole.
+pub fn kept_road(app: &App, points: &[[f32; 2]]) -> Option<anyhow::Result<Vec<PlacedPart>>> {
+    let (kept, covered) = kept_now(app)?;
+    Some(fit_kept(&kept, covered, points, &app.line.family, &app.road_catalog, &fit_settings(app)))
 }
 
 /// The waypoints of route `i` fitted live while one of them is dragged.
@@ -87,7 +141,34 @@ pub fn live_route(app: &mut App, i: usize, ctx: &egui::Context) {
 pub fn live_route_with(app: &mut App, i: usize, points: Vec<[f32; 2]>, ctx: &egui::Context) {
     let Some(r) = app.doc.as_ref().and_then(|d| d.world.routes.get(i)) else { return };
     let (family, settings) = (r.family.clone(), r.settings.clone());
-    live_fit(app, points, family, settings, ctx);
+    // The pieces before the point that changed stay, as the route will be built.
+    let kept = if app.line.live_keep { route_kept(r, &r.fitted, &points, &app.road_catalog) } else { None };
+    live_fit(app, points, family, settings, kept, ctx);
+}
+
+/// The pieces of route `r` that stay when its waypoints `old` become `points`: those up to
+/// the joint nearest the last waypoint before the first one that changed, and how many
+/// waypoints they reach. None when the change starts at the first waypoint, or the route
+/// keeps no pieces, and the whole route is fitted again.
+pub fn route_kept(r: &dz_core::world::RoadRoute, old: &[[f32; 2]], points: &[[f32; 2]], catalog: &[CatalogPart]) -> Option<(Vec<PlacedPart>, usize)> {
+    if r.parts.is_empty() || r.terrain_route || r.method == RoadDraw::Parts {
+        return None;
+    }
+    let common = old.len().min(points.len());
+    let changed = (0..common).find(|&k| (old[k][0] - points[k][0]).hypot(old[k][1] - points[k][1]) > 0.01).unwrap_or(common);
+    if changed < 2 {
+        return None;
+    }
+    let anchor = old[changed - 1];
+    // The joint after each piece but the end piece, nearest the last waypoint kept.
+    let (mut best, mut at) = (f64::MAX, 0);
+    for k in 1..r.parts.len() {
+        let Ok(e) = roads::endpoint(&r.parts[..k], catalog) else { continue };
+        let d = (e.p[0] - anchor[0] as f64).hypot(e.p[1] - anchor[1] as f64);
+        if d < best { (best, at) = (d, k); }
+    }
+    // A joint far from the waypoint means the pieces do not follow the points any more.
+    (at > 0 && best < 15.0).then(|| (r.parts[..at].to_vec(), changed))
 }
 
 /// False when the live fit shown for exactly `points` failed.
@@ -112,7 +193,7 @@ fn receive(app: &mut App) {
 }
 
 /// Fits `want` off the interface thread, unless that fit is shown or one is on its way.
-fn live_fit(app: &mut App, want: Vec<[f32; 2]>, family: String, settings: dayz_road_tool::document::RoutingSettings, ctx: &egui::Context) {
+fn live_fit(app: &mut App, want: Vec<[f32; 2]>, family: String, settings: dayz_road_tool::document::RoutingSettings, kept: Option<(Vec<PlacedPart>, usize)>, ctx: &egui::Context) {
     receive(app);
     if want.len() < 2 || app.live.rx.is_some() || app.live.shown.as_ref().is_some_and(|(k, _)| same(k, &want)) {
         return;
@@ -121,8 +202,14 @@ fn live_fit(app: &mut App, want: Vec<[f32; 2]>, family: String, settings: dayz_r
     let catalog = app.road_catalog.clone();
     let ctx = ctx.clone();
     std::thread::spawn(move || {
-        let line: Vec<Point> = want.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
-        let fitted = roads::fit(&line, &family, &catalog, &settings, |_, _| true).map_err(|e| format!("{e:#}"));
+        let fitted = match &kept {
+            // Only the stretch past the kept pieces is fitted again.
+            Some((kept, covered)) => fit_kept(kept, *covered, &want, &family, &catalog, &settings),
+            None => {
+                let line: Vec<Point> = want.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
+                roads::fit(&line, &family, &catalog, &settings, |_, _| true)
+            }
+        }.map_err(|e| format!("{e:#}"));
         let _ = tx.send((want, fitted));
         ctx.request_repaint();
     });
@@ -131,8 +218,11 @@ fn live_fit(app: &mut App, want: Vec<[f32; 2]>, family: String, settings: dayz_r
 
 /// A click while drawing live keeps the point only where the models reach it.
 pub fn live_click(app: &mut App, p: [f32; 2]) {
+    app.live.sync(app.line.points.len());
     if app.line.points.is_empty() {
         app.line.points.push(p);
+        app.live.kept.clear();
+        app.live.marks = vec![0];
         return;
     }
     let mut want = app.line.points.clone();
@@ -142,7 +232,19 @@ pub fn live_click(app: &mut App, p: [f32; 2]) {
             let e = e.clone();
             app.warn(format!("{}: {e}", t("The road cannot reach this point")));
         }
-        _ => app.line.points.push(p),
+        shown => {
+            // The pieces laid up to this point stay as they are while the road goes on.
+            if app.line.live_keep {
+                if let Some((_, Ok(parts))) = shown.as_ref().filter(|(k, _)| same(k, &want)) {
+                    let catalog = app.road_catalog.clone();
+                    let mut parts = parts.clone();
+                    while parts.len() > 1 && parts.last().is_some_and(|q| roads::is_cap(q, &catalog)) { parts.pop(); }
+                    app.live.kept = parts;
+                }
+            }
+            app.line.points.push(p);
+            app.live.marks.push(app.live.kept.len());
+        }
     }
 }
 
@@ -398,5 +500,64 @@ pub fn draw(app: &App, painter: &egui::Painter, v: &View, world: &dz_core::world
             }
         }
         RoadDraw::Points => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn catalog() -> Vec<CatalogPart> {
+        let names = [("asf2_6.p3d", 3), ("asf2_12.p3d", 3), ("asf2_25.p3d", 3), ("asf2_10 50.p3d", 4), ("asf2_10 25.p3d", 4), ("asf2_30 25.p3d", 4), ("asf2_6konec.p3d", 6)];
+        names.iter().enumerate().map(|(i, (n, c))| CatalogPart { path: n.to_string(), family: "asf2".into(), category: *c, index: i as u32, road_type_index: 0, model: dayz_road_tool::geometry::filename_model(n).unwrap() }).collect()
+    }
+
+    /// New points fit only the stretch past the pieces kept: those stay exactly as laid.
+    #[test]
+    fn kept_pieces_stay_as_laid() {
+        let cat = catalog();
+        let s = dayz_road_tool::document::RoutingSettings::default();
+        let first = roads::fit(&[[0.0, 0.0], [0.0, 120.0]], "asf2", &cat, &s, |_, _| true).unwrap();
+        let mut kept = first.clone();
+        kept.pop();
+        let want = [[0.0f32, 0.0], [0.0, 120.0], [60.0, 200.0]];
+        let parts = fit_kept(&kept, 2, &want, "asf2", &cat, &s).unwrap();
+        for (a, b) in kept.iter().zip(&parts) {
+            assert_eq!(a.model, b.model);
+            assert!((a.position[0] - b.position[0]).abs() < 1e-9 && (a.position[1] - b.position[1]).abs() < 1e-9 && (a.rotation - b.rotation).abs() < 1e-9);
+        }
+        assert!(parts.len() > kept.len() + 1 && roads::is_cap(parts.last().unwrap(), &cat));
+        let end = roads::endpoint(&parts, &cat).unwrap();
+        assert!((end.p[0] - 60.0).hypot(end.p[1] - 200.0) < 10.0, "{:?}", end.p);
+        // With nothing past them, the kept pieces are just closed.
+        let closed = fit_kept(&kept, 2, &want[..2], "asf2", &cat, &s).unwrap();
+        assert_eq!(closed.len(), kept.len() + 1);
+    }
+
+    /// Moving a waypoint keeps the pieces before the one before it, and fits only from there.
+    #[test]
+    fn editing_a_point_keeps_the_pieces_before_it() {
+        let cat = catalog();
+        let s = dayz_road_tool::document::RoutingSettings::default();
+        let old = vec![[0.0f32, 0.0], [0.0, 100.0], [0.0, 200.0], [40.0, 300.0]];
+        let line: Vec<[f64; 2]> = old.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
+        let parts = roads::fit(&line, "asf2", &cat, &s, |_, _| true).unwrap();
+        let mut r = dz_core::world::RoadRoute { name: String::new(), family: "asf2".into(), points: old.clone(), centerline: vec![], objects: vec![], id: 1, decks: vec![], terrain_route: false, settings: s.clone(), grade: false, grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), profile: vec![], modifier: None, parts: parts.clone(), fitted: old.clone(), method: RoadDraw::Live };
+        let mut moved = old.clone();
+        moved[3] = [-40.0, 300.0];
+        let (kept, covered) = route_kept(&r, &old, &moved, &cat).unwrap();
+        assert_eq!(covered, 3);
+        let end = roads::endpoint(&kept, &cat).unwrap();
+        assert!((end.p[0] - 0.0).hypot(end.p[1] - 200.0) < 15.0, "{:?}", end.p);
+        assert!(kept.iter().zip(&parts).all(|(a, b)| a.model == b.model && a.position == b.position));
+        let refit = fit_kept(&kept, covered, &moved, "asf2", &cat, &s).unwrap();
+        let tail = roads::endpoint(&refit, &cat).unwrap();
+        assert!((tail.p[0] + 40.0).hypot(tail.p[1] - 300.0) < 10.0, "{:?}", tail.p);
+        // A change at the first or second point fits the whole route again.
+        moved = old.clone();
+        moved[1] = [10.0, 100.0];
+        assert!(route_kept(&r, &old, &moved, &cat).is_none());
+        r.method = RoadDraw::Parts;
+        assert!(route_kept(&r, &old, &old, &cat).is_none());
     }
 }

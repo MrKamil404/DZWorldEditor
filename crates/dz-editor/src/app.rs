@@ -209,6 +209,9 @@ pub struct LineSettings {
     pub roundabout_diameter: f32,
     /// Clicks place roundabouts instead of drawing roads.
     pub roundabout_armed: bool,
+    /// Drawing live, the pieces laid up to the clicked points stay as they are while the road
+    /// goes on; otherwise the whole road is fitted again with every new point.
+    pub live_keep: bool,
     /// The ring last worked out, round the origin: (road type, diameter, ring or why none).
     pub roundabout: Option<(String, f32, Result<dayz_road_tool::roundabout::Ring, String>)>,
 }
@@ -535,7 +538,7 @@ impl App {
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
-            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None }, live: Default::default(), road_parts: Default::default(),
+            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None, live_keep: true }, live: Default::default(), road_parts: Default::default(),
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(),
@@ -743,7 +746,10 @@ impl App {
             None => {
                 let n = doc.world.routes.len() + 1;
                 let kind = if dayz_road_tool::rails::is_track_family(&req.family) { "Track" } else { "Road" };
-                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, id: dz_core::library::new_id(), grading: self.line.grading, profile: road.profile, decks: road.decks.clone(), terrain_route: req.terrain_route, settings: req.settings, grade: grade || !road.decks.is_empty(), grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None, parts: road.parts.clone(), fitted: Vec::new(), method: if req.laid.is_empty() { self.line.draw } else { crate::road_draw::RoadDraw::Parts } });
+                // Pieces kept while drawing live stay a live road; laid by hand or a ring, they
+                // are changed piece by piece.
+                let method = if req.laid.is_empty() || (self.line.draw == crate::road_draw::RoadDraw::Live && !self.line.roundabout_armed) { self.line.draw } else { crate::road_draw::RoadDraw::Parts };
+                doc.world.routes.push(dz_core::world::RoadRoute { name: format!("{kind} {n}"), family: req.family, points: req.points, centerline: center.clone(), objects: ids, id: dz_core::library::new_id(), grading: self.line.grading, profile: road.profile, decks: road.decks.clone(), terrain_route: req.terrain_route, settings: req.settings, grade: grade || !road.decks.is_empty(), grade_width: self.line.grade_width, grade_falloff: self.line.grade_falloff, modifier: None, parts: road.parts.clone(), fitted: Vec::new(), method });
                 doc.world.routes.len() - 1
             }
         };
@@ -781,6 +787,17 @@ impl App {
             if let Some((at_end, from)) = extension(&r) {
                 self.extend_route(i, at_end, from, before);
                 return;
+            }
+        }
+        // With pieces kept, only the stretch from the first changed point is fitted again.
+        if self.line.live_keep {
+            if let Some((kept, covered)) = crate::road_draw::route_kept(&r, &before, &r.points, &self.road_catalog) {
+                if let Ok(parts) = crate::road_draw::fit_kept(&kept, covered, &r.points, &r.family, &self.road_catalog, &r.settings) {
+                    let mut req = self.route_request(r.family, r.points, false, r.settings);
+                    req.laid = parts;
+                    self.start_route(req, Some(i), Some(before), false);
+                    return;
+                }
             }
         }
         let req = self.route_request(r.family, r.points, r.terrain_route, r.settings);

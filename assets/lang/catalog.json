@@ -1827,6 +1827,10 @@
   "de": "Aktiviert",
   "pl": "Włączony"
  },
+ "End": {
+  "de": "Ende",
+  "pl": "Koniec"
+ },
  "Erase": {
   "de": "Radieren",
   "pl": "Wymazuj"
@@ -2706,6 +2710,10 @@
  "Keep mine": {
   "de": "Meine behalten",
   "pl": "Zostaw moje"
+ },
+ "Keep the pieces already laid": {
+  "de": "Gelegte Stücke behalten",
+  "pl": "Zachowuj ułożone części"
  },
  "Keeps the economy of the mission and drops what was placed on the other map: spawns, zones, areas, map groups and area flags.": {
   "de": "Behält die Wirtschaft der Mission und verwirft, was auf der anderen Karte platziert war: Spawns, Zonen, Gebiete, Kartengruppen und Gebietsflags.",
@@ -3750,6 +3758,14 @@
  "On the ground": {
   "de": "Am Boden",
   "pl": "Na ziemi"
+ },
+ "On: changing a point fits the route again only from that point on; the pieces before it stay as they are. Off: the whole route is fitted again.": {
+  "de": "An: Wird ein Punkt geändert, wird die Route erst ab diesem Punkt neu eingepasst; die Stücke davor bleiben. Aus: Die ganze Route wird neu eingepasst.",
+  "pl": "Włączone: zmiana punktu dopasowuje trasę od nowa dopiero od tego punktu; części przed nim zostają bez zmian. Wyłączone: cała trasa jest dopasowywana od nowa."
+ },
+ "On: the pieces up to the points already clicked stay as they are, and only the stretch to the new point is fitted. Off: every new point fits the whole road again, so earlier pieces may shift.": {
+  "de": "An: Die Stücke bis zu den gesetzten Punkten bleiben, nur der Abschnitt zum neuen Punkt wird eingepasst. Aus: Jeder neue Punkt passt die ganze Straße neu ein, frühere Stücke können sich verschieben.",
+  "pl": "Włączone: części do już postawionych punktów zostają bez zmian, dopasowuje się tylko odcinek do nowego punktu. Wyłączone: każdy nowy punkt dopasowuje całą drogę od nowa, więc wcześniejsze części mogą się przesunąć."
  },
  "One above the other": {
   "de": "Übereinander",
@@ -5187,6 +5203,10 @@
   "de": "Aufrecht stehen",
   "pl": "Stoi prosto"
  },
+ "Start": {
+  "de": "Anfang",
+  "pl": "Początek"
+ },
  "Start and intro": {
   "de": "Start und Intro",
   "pl": "Start i intro"
@@ -6566,6 +6586,10 @@
  "start": {
   "de": "Anfang",
   "pl": "początku"
+ },
+ "step {0}° (wheel)": {
+  "de": "Schritt {0}° (Mausrad)",
+  "pl": "skok {0}° (kółko)"
  },
  "surfaces in {0} places": {
   "de": "Oberflächen an {0} Stellen",

@@ -1114,6 +1114,7 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         if tool_button(ui, app.line.extend == Some(true), &t("Extend start")).clicked() { app.line.extend = if app.line.extend == Some(true) { None } else { Some(true) }; }
         if tool_button(ui, app.line.extend == Some(false), &t("Extend end")).clicked() { app.line.extend = if app.line.extend == Some(false) { None } else { Some(false) }; }
     });
+    ui.checkbox(&mut app.line.live_keep, t("Keep the pieces already laid")).on_hover_text(t("On: changing a point fits the route again only from that point on; the pieces before it stay as they are. Off: the whole route is fitted again."));
     crossroad_fields(app, ui, index);
     ui.checkbox(&mut app.line.extend_only, t("Fit only the new stretch when extending")).on_hover_text(t("A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route."));
     if ui.button(t("Delete route")).clicked() { action = 4; }
@@ -1254,6 +1255,9 @@ fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
                         for f in families { ui.selectable_value(&mut app.line.family, f.clone(), f); }
                     });
                 });
+                if app.line.draw == RoadDraw::Live {
+                    ui.checkbox(&mut app.line.live_keep, t("Keep the pieces already laid")).on_hover_text(t("On: the pieces up to the points already clicked stay as they are, and only the stretch to the new point is fitted. Off: every new point fits the whole road again, so earlier pieces may shift."));
+                }
                 if app.line.draw != RoadDraw::Parts {
                     ui.weak(t("A road begun or ended by a free arm of a crossroad starts from that arm."));
                 }

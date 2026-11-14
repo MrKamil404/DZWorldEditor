@@ -1099,10 +1099,23 @@ fn finish_line(app: &mut App) {
             let settings = if dayz_road_tool::rails::is_track_family(&family) { app.line.rail_routing.clone() } else { app.line.routing.clone() };
             // A live road is built as it was shown, along the clicked line.
             let terrain_route = app.line.route && app.line.draw == RoadDraw::Points;
+            // Drawn live with pieces kept, it is built as shown: kept pieces and the new stretch.
+            let kept = if app.line.draw == RoadDraw::Live { crate::road_draw::kept_road(app, &points) } else { None };
             app.live.shown = None;
+            app.live.kept.clear();
+            app.live.marks.clear();
             let mut req = app.route_request(family, points, terrain_route, settings);
+            match kept {
+                Some(Ok(parts)) => req.laid = parts,
+                Some(Err(e)) => {
+                    app.warn(format!("{}: {e:#}", t("The road cannot reach this point")));
+                    app.line.points = req.points;
+                    return;
+                }
+                None => {}
+            }
             // Drawn from next to a free arm of a crossroad, the road starts there.
-            crate::crossroads::snap(app, &mut req);
+            if req.laid.is_empty() { crate::crossroads::snap(app, &mut req); }
             // The route remembers this; its modifier is made when the models are in place.
             app.start_route(req, None, None, grade);
         }
@@ -1234,8 +1247,53 @@ fn line_point(app: &App, points: &[[f32; 2]], p: [f32; 2], modifiers: egui::Modi
     }
 }
 
-/// The angle and length of the segment being drawn, next to the cursor.
-fn segment_label(painter: &egui::Painter, v: &View, world: &dz_core::world::World, from: [f32; 2], to: [f32; 2]) {
+/// True while the wheel turns the angle step of the line being drawn: the snap key is held
+/// over a road or line with a point already set, as the wheel does while turning objects.
+pub fn line_angle_wheel(app: &App, m: egui::Modifiers) -> bool {
+    let drawing = match app.mode {
+        Mode::Lines => match app.line.action {
+            LineAction::Road | LineAction::Fence | LineAction::Plain => !app.line.points.is_empty() && !app.line.roundabout_armed,
+            // A route being edited snaps its dragged and added points.
+            LineAction::Edit => app.line.selected_route.is_some(),
+        },
+        Mode::Shapes => !app.shape.points.is_empty(),
+        _ => false,
+    };
+    drawing && app.settings.keys.held(Hold::AngleSnap, m)
+}
+
+/// Clicks of the mouse wheel this frame, up positive: one per wheel event, so a click is one
+/// step however egui scales or smooths it (it turns Ctrl+wheel into zoom).
+fn wheel_clicks(ctx: &egui::Context) -> i32 {
+    ctx.input(|i| i.events.iter().map(|e| match e {
+        egui::Event::MouseWheel { delta, .. } => { let d = delta.y + delta.x; if d > 0.0 { 1 } else if d < 0.0 { -1 } else { 0 } }
+        _ => 0,
+    }).sum())
+}
+
+/// With the snap key held over a line, shape or route being drawn or edited, each click of
+/// the wheel turns the angle step by one degree.
+fn line_angle_step_input(app: &mut App, ctx: &egui::Context) {
+    if !app.view_hovered_last || !line_angle_wheel(app, app.modifiers_now) {
+        return;
+    }
+    let clicks = wheel_clicks(ctx);
+    if clicks != 0 {
+        app.settings.angle_step = (app.settings.angle_step.round() + clicks as f32).clamp(1.0, 90.0);
+        app.settings.save();
+    }
+}
+
+/// The next angle step up or down, of the steps the wheel goes through.
+pub fn step_angle(step: f32, up: bool) -> f32 {
+    const STEPS: [f32; 9] = [1.0, 2.5, 5.0, 10.0, 15.0, 22.5, 30.0, 45.0, 90.0];
+    let now = STEPS.iter().position(|s| *s >= step - 0.01).unwrap_or(4);
+    STEPS[if up { (now + 1).min(STEPS.len() - 1) } else { now.saturating_sub(1) }]
+}
+
+/// The angle and length of the segment being drawn, next to the cursor, with the angle step
+/// while it snaps.
+fn segment_label(painter: &egui::Painter, v: &View, world: &dz_core::world::World, from: [f32; 2], to: [f32; 2], step: Option<f32>) {
     let (dx, dz) = (to[0] - from[0], to[1] - from[1]);
     let len = dx.hypot(dz);
     if len < 0.5 {
@@ -1243,7 +1301,11 @@ fn segment_label(painter: &egui::Painter, v: &View, world: &dz_core::world::Worl
     }
     let angle = dx.atan2(dz).to_degrees().rem_euclid(360.0);
     if let Some(s) = v.project([to[0], world.height.sample(to[0], to[1]), to[1]]) {
-        painter.text(s + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, format!("{angle:.0}°  {len:.1} m"), egui::FontId::proportional(12.0), Color32::WHITE);
+        let text = match step {
+            Some(st) => format!("{angle:.1}°  {len:.1} m   {}", crate::i18n::tf("step {0}° (wheel)", &[&format!("{st}")])),
+            None => format!("{angle:.0}°  {len:.1} m"),
+        };
+        painter.text(s + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, text, egui::FontId::proportional(12.0), Color32::WHITE);
     }
 }
 
@@ -1424,7 +1486,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         let drag = if resp.dragged_by(PointerButton::Middle) || resp.dragged_by(PointerButton::Secondary) { resp.drag_delta() } else { vec2(0.0, 0.0) };
         app.top_center[0] -= drag.x * app.top_mpp;
         app.top_center[1] += drag.y * app.top_mpp;
-        if hover && scroll != 0.0 && !brush_wheel(app, modifiers) && !app.minimap_hover {
+        if hover && scroll != 0.0 && !brush_wheel(app, modifiers) && !line_angle_wheel(app, modifiers) && !app.minimap_hover {
             if let Some(m) = resp.hover_pos() {
                 let (ox, oz) = ((m.x - v.rect.center().x) * app.top_mpp, (v.rect.center().y - m.y) * app.top_mpp);
                 let before = [app.top_center[0] + ox, app.top_center[1] + oz];
@@ -1444,7 +1506,7 @@ fn camera_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
             app.camera.speed = (app.camera.speed * (scroll * 0.002).exp()).clamp(1.0, 4000.0);
             app.settings.camera_speed = app.camera.speed;
         }
-    } else if hover && scroll != 0.0 && !brush_wheel(app, modifiers) && !app.minimap_hover && !app.drag.as_ref().is_some_and(|d| d.stepped) {
+    } else if hover && scroll != 0.0 && !brush_wheel(app, modifiers) && !line_angle_wheel(app, modifiers) && !app.minimap_hover && !app.drag.as_ref().is_some_and(|d| d.stepped) {
         let f = app.camera.forward();
         let clearance = app.doc.as_ref().map(|d| (app.camera.pos[1] - d.world.height.sample(app.camera.pos[0], app.camera.pos[2])).abs()).unwrap_or(50.0);
         app.camera.pos = add(app.camera.pos, mul(f, scroll * (clearance * 0.0035).max(0.15)));
@@ -1781,10 +1843,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
             if app.drag.as_ref().is_some_and(|d| d.stepped) {
                 let wheel = ctx.input(|i| i.raw_scroll_delta.y + i.raw_scroll_delta.x);
                 if wheel != 0.0 {
-                    const STEPS: [f32; 9] = [1.0, 2.5, 5.0, 10.0, 15.0, 22.5, 30.0, 45.0, 90.0];
-                    let now = STEPS.iter().position(|s| *s >= app.settings.angle_step - 0.01).unwrap_or(4);
-                    let next = if wheel > 0.0 { (now + 1).min(STEPS.len() - 1) } else { now.saturating_sub(1) };
-                    app.settings.angle_step = STEPS[next];
+                    app.settings.angle_step = step_angle(app.settings.angle_step, wheel > 0.0);
                 }
             }
             if app.drag.is_some() {
@@ -2069,8 +2128,14 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         let (route, point) = (app.line.selected_route, app.line.selected_point);
         if primary_down {
             if let (Some(h), Some(r), Some(p)) = (hit, route, point) {
-                if let Some(q) = app.doc.as_mut().unwrap().world.routes.get_mut(r).and_then(|x| x.points.get_mut(p)) {
-                    *q = [h[0], h[2]];
+                // With the snap key held the point keeps a whole angle step from the one before.
+                let snap = app.settings.keys.held(Hold::AngleSnap, app.modifiers_now).then_some(app.settings.angle_step);
+                if let Some(x) = app.doc.as_mut().unwrap().world.routes.get_mut(r) {
+                    let at = match (snap, p.checked_sub(1).and_then(|k| x.points.get(k).copied())) {
+                        (Some(step), Some(prev)) => snap_direction(prev, [h[0], h[2]], step),
+                        _ => [h[0], h[2]],
+                    };
+                    if let Some(q) = x.points.get_mut(p) { *q = at; }
                 }
                 if app.doc.as_ref().and_then(|d| d.world.routes.get(r)).is_some_and(|x| x.method == RoadDraw::Live) {
                     crate::road_draw::live_route(app, r, ctx);
@@ -2138,6 +2203,10 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         let points = &world.routes.get(selected?)?.points;
         let distance = |p: [f32; 2]| (p[0] - at[0]).powi(2) + (p[1] - at[1]).powi(2);
         let start = app.line.extend.unwrap_or_else(|| distance(points[0]) < distance(*points.last().unwrap()));
+        // With the snap key held the new point keeps a whole angle step from the end it extends
+        // (the key also extends, without the Extend buttons).
+        let snap = app.settings.keys.held(Hold::AngleSnap, app.modifiers_now);
+        let at = if snap { snap_direction(if start { points[0] } else { *points.last().unwrap() }, at, app.settings.angle_step) } else { at };
         let mut list = points.clone();
         if start { list.insert(0, at) } else { list.push(at) }
         Some((list, start))
@@ -2516,6 +2585,19 @@ pub(crate) fn draw_polyline(painter: &egui::Painter, v: &View, world: &dz_core::
     }
 }
 
+/// The start (green) or end (red) of a road, with its name, so the way it runs shows.
+fn end_marker(painter: &egui::Painter, v: &View, world: &dz_core::world::World, p: [f32; 2], start: bool) {
+    let Some(s) = v.project([p[0], world.height.sample(p[0], p[1]), p[1]]) else { return };
+    let (col, text) = if start { (Color32::from_rgb(70, 210, 90), t("Start")) } else { (Color32::from_rgb(230, 70, 60), t("End")) };
+    painter.circle_stroke(s, 10.0, Stroke::new(2.5_f32, col));
+    painter.circle_filled(s, 3.0, col);
+    let at = s + vec2(13.0, 13.0);
+    let font = egui::FontId::proportional(12.0);
+    let galley = painter.layout_no_wrap(text.clone(), font.clone(), Color32::WHITE);
+    painter.rect_filled(Rect::from_min_size(at - vec2(3.0, 1.0), galley.size() + vec2(6.0, 2.0)), 3.0, col.gamma_multiply(0.85));
+    painter.text(at, egui::Align2::LEFT_TOP, text, font, Color32::WHITE);
+}
+
 fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     let painter = ui.painter_at(v.rect);
     let Some(doc) = &app.doc else { return };
@@ -2528,6 +2610,14 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
         }
     }
     if app.mode == Mode::Lines && app.line.action == LineAction::Edit {
+        // Where the selected route begins and ends, whichever way it is edited.
+        if let Some(r) = app.line.selected_route.and_then(|i| world.routes.get(i)) {
+            let line = if r.centerline.len() >= 2 { &r.centerline } else { &r.points };
+            if let (Some(a), Some(b)) = (line.first(), line.last()) {
+                end_marker(&painter, v, world, *a, true);
+                if (a[0] - b[0]).hypot(a[1] - b[1]) > 0.5 { end_marker(&painter, v, world, *b, false); }
+            }
+        }
         if let Some(r) = app.line.selected_route.and_then(|i| world.routes.get(i)).filter(|r| r.method != RoadDraw::Parts) {
             let col = Color32::from_rgb(255, 170, 40);
             draw_polyline(&painter, v, world, &r.points, Stroke::new(1.0_f32, col));
@@ -2593,7 +2683,7 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
         let mods = painter.ctx().input(|i| i.modifiers);
         if let Some(h) = resp.hover_pos().and_then(|m| { let (o, d) = v.ray(m); pick_terrain(&world.height, o, d, v.ortho) }) {
             let p = line_point(app, &app.shape.points, [h[0], h[2]], mods);
-            if let Some(last) = app.shape.points.last() { segment_label(&painter, v, world, *last, p); }
+            if let Some(last) = app.shape.points.last() { segment_label(&painter, v, world, *last, p, None); }
             pts.push(p);
         }
         if app.shape.tool == ShapeTool::Polygon && pts.len() > 2 {
@@ -2673,7 +2763,8 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
             let (o, d) = v.ray(m);
             if let Some(h) = pick_terrain(&world.height, o, d, v.ortho) {
                 let p = line_point(app, &app.line.points, [h[0], h[2]], mods);
-                if let Some(last) = app.line.points.last() { segment_label(&painter, v, world, *last, p); }
+                let step = app.settings.keys.held(Hold::AngleSnap, mods).then_some(app.settings.angle_step);
+                if let Some(last) = app.line.points.last() { segment_label(&painter, v, world, *last, p, step); }
                 pts.push(p);
             }
         }
@@ -2683,6 +2774,7 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
                 painter.circle_filled(s, 4.0, Color32::from_rgb(255, 120, 40));
             }
         }
+        end_marker(&painter, v, world, app.line.points[0], true);
     }
     if app.mode == Mode::Lines && matches!(app.line.action, LineAction::Road | LineAction::Edit) {
         let cursor = resp.hover_pos().and_then(|m| { let (o, d) = v.ray(m); pick_terrain(&world.height, o, d, v.ortho) }).map(|h| [h[0], h[2]]);
@@ -3199,6 +3291,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     let k = |a: Action| keys.pressed(ctx, a);
     // These work everywhere, also while flying. While a road or line is being drawn, Undo
     // takes back its last point instead of a change of the map.
+    line_angle_step_input(app, ctx);
     if k(Action::Undo) {
         if !undo_drawn_point(app) { app.undo(); }
     }
