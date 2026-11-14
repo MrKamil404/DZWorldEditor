@@ -132,6 +132,7 @@ pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
     ui.checkbox(&mut app.show_shapes, t("Shapes")).on_hover_text(keys.tip(Action::ToggleShapes));
     ui.checkbox(&mut app.show_keypoints, t("Key points"));
     if ui.checkbox(&mut app.settings.minimap, t("Minimap")).changed() { app.settings.save(); }
+    if ui.checkbox(&mut app.settings.show_fps, t("Frames per second")).changed() { app.settings.save(); }
     ui.checkbox(&mut app.show_contours, t("Contour lines"));
     if app.show_contours {
         row(ui, &t("Interval"), |ui| { ui.add(egui::DragValue::new(&mut app.contour_interval).speed(0.5).range(1.0..=200.0).suffix(" m")); });
@@ -418,7 +419,9 @@ fn status_bar(app: &mut App, ctx: &egui::Context) {
                 if let Some(task) = &app.task { task.job.cancel(); }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let stats = app.renderer.lock().unwrap().stats;
+                // The figures of the main view: the 3D one, or the top view when it is alone; the
+                // minimap is drawn last and would otherwise stand in for them.
+                let stats = app.renderer.lock().unwrap().view_stats[usize::from(app.view_mode == crate::app::ViewMode::Top)];
                 ui.label(RichText::new(format!("{:.1} ms  |  {} kT  |  {} DC  |  {} / {}", app.frame_ms, stats.triangles / 1000, stats.draw_calls, stats.mesh_instances, stats.impostors)).small().color(theme::TEXT_DIM))
                     .on_hover_text(tf("Drawing the view: {0} ms a frame, {1} thousand triangles, {2} draw calls, {3} models drawn in full and {4} as distant pictures.", &[&format!("{:.1}", app.frame_ms), &(stats.triangles / 1000).to_string(), &stats.draw_calls.to_string(), &stats.mesh_instances.to_string(), &stats.impostors.to_string()]));
                 if let Some(d) = &app.doc {
@@ -2267,6 +2270,7 @@ fn settings_graphics(app: &mut App, ui: &mut egui::Ui) {
     slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
     slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
     slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
+    ui.checkbox(&mut app.settings.occlusion, t("Leave out objects hidden behind the terrain or buildings")).on_hover_text(t("Objects behind a hill, or behind the solid walls of a building or rock, are not drawn. Glass, fences and leaves never hide anything."));
     settings_heading(ui, &t("Textures"));
     choice(ui, &t("Texture detail"), "texture_size", &mut app.settings.texture_size, &[(512, "512".into()), (1024, "1024".into()), (2048, "2048".into()), (4096, t("Full"))]);
     choice(ui, &t("Texture filtering"), "anisotropy", &mut app.settings.anisotropy, &[(1, t("Off")), (2, "2x".into()), (4, "4x".into()), (8, "8x".into()), (16, "16x".into())]);

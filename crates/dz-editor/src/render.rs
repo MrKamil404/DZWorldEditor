@@ -1237,6 +1237,9 @@ pub struct Renderer {
     next_impostor: i32,
     pub error: Option<String>,
     pub stats: Stats,
+    /// What each view drew in its last frame, by its key: 0 the 3D view, 1 the top view,
+    /// 2 the minimap. `stats` is whichever was drawn last.
+    pub view_stats: [Stats; 3],
     max_tex: i32,
     instances_uploaded: HashMap<u8, *const Vec<f32>>,
     shadow_fbo: Option<glow::Framebuffer>,
@@ -1249,6 +1252,9 @@ pub struct Renderer {
     shared: HashMap<String, (glow::Texture, [f32; 4])>,
     /// Visual LODs of each model, known once one of them has loaded.
     lod_counts: HashMap<u32, u8>,
+    /// The opaque triangles of models that hide what is behind them, from the coarsest LOD
+    /// loaded: (LOD, corners of the triangles in model space).
+    occluders: HashMap<u32, (u8, Arc<Vec<[f32; 3]>>)>,
     /// Anisotropic filtering of object and surface textures; below 2 is off.
     pub anisotropy: f32,
     /// Side of the shadow map in pixels; 0 takes the default.
@@ -1417,6 +1423,49 @@ impl Renderer {
         self.uploads.push(Upload::Mesh(Box::new(m)));
     }
     /// Number of visual LODs of a model, once any of them has loaded.
+    /// The triangles of `model` that hide what is behind them, when it has any loaded.
+    pub fn occluder(&self, model: u32) -> Option<&Arc<Vec<[f32; 3]>>> {
+        self.occluders.get(&model).map(|o| &o.1)
+    }
+
+    /// Keeps the opaque triangles of a model as it is loaded, from its coarsest LOD loaded
+    /// so far: only surfaces drawn solid hide anything; glass, alpha-tested and blended ones,
+    /// leaves and water never do.
+    fn keep_occluder(&mut self, m: &MeshData) {
+        /// More than this is not worth drawing on the CPU every time the view changes.
+        const MAX_TRIANGLES: usize = 40_000;
+        if m.water || m.decal || m.conform || m.key.0 >= crate::viewport::MISSION_BASE {
+            return;
+        }
+        if self.occluders.get(&m.key.0).is_some_and(|o| o.0 >= m.key.1) {
+            return;
+        }
+        // Walls are drawn by the plain and the multi-layer shaders. A colour texture with alpha
+        // (`_ca`), a window or glass may let the view through even when drawn opaque.
+        let solid = |shading: Option<usize>, texture: Option<usize>| {
+            let name = texture.and_then(|t| m.textures.get(t)).map(|t| t.0.to_ascii_lowercase()).unwrap_or_default();
+            let see_through = name.contains("_ca.") || name.ends_with(",ca)") || name.contains("window") || name.contains("glass");
+            !see_through && shading.and_then(|s| m.shadings.get(s)).is_some_and(|s| {
+                matches!(s.kind, forest_core::model3d::ShadingKind::Super | forest_core::model3d::ShadingKind::Multi) && s.alpha_test == 0.0 && s.blend == forest_core::model3d::Blend::Opaque && !s.hidden
+            })
+        };
+        let mut tris = Vec::new();
+        for &(first, count, texture, shading) in &m.batches {
+            if !solid(shading, texture) {
+                continue;
+            }
+            for &i in &m.indices[first as usize..(first + count) as usize] {
+                let v = i as usize * 10;
+                if let Some(p) = m.vertices.get(v..v + 3) {
+                    tris.push([p[0], p[1], p[2]]);
+                }
+            }
+        }
+        if tris.len() >= 3 && tris.len() / 3 <= MAX_TRIANGLES {
+            self.occluders.insert(m.key.0, (m.key.1, Arc::new(tris)));
+        }
+    }
+
     pub fn lod_count(&self, model: u32) -> Option<u8> {
         self.lod_counts.get(&model).copied()
     }
@@ -1724,6 +1773,7 @@ impl Renderer {
                         gl.delete_texture(t);
                     }
                     self.lod_counts.clear();
+                    self.occluders.clear();
                     self.impostor_layers.clear();
                     self.next_impostor = 0;
                 }
@@ -1755,6 +1805,7 @@ impl Renderer {
             }
         }
         self.lod_counts.insert(m.key.0, m.lod_count.max(1));
+        self.keep_occluder(&m);
         // Two requests can end at the same LOD of a model with few of them.
         if m.indices.is_empty() || self.models.contains_key(&m.key) {
             return Ok(());
@@ -2387,6 +2438,9 @@ impl Renderer {
         gl.bind_vertex_array(None);
         gl.use_program(None);
         self.stats = stats;
+        if let Some(slot) = self.view_stats.get_mut(f.viewport_key as usize) {
+            *slot = stats;
+        }
     }
 }
 

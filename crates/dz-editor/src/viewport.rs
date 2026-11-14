@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 #[derive(Default)]
 pub struct ViewCache {
-    draw: ObjectDraw,
+    pub draw: ObjectDraw,
     eye: V3,
     forward: V3,
     rev: u64,
@@ -30,7 +30,11 @@ pub struct ViewCache {
     infos: Vec<ModelInfo>,
     tints: Vec<[f32; 4]>,
     frames_since: u32,
-    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32, usize, u64, bool, u64)>,
+    toggles: Option<(bool, bool, Shading, i32, bool, u32, i32, usize, u64, bool, u64, bool)>,
+    /// Objects left out of the last view because terrain or other objects hide them.
+    pub occluded: usize,
+    /// Objects whose geometry hid others in the last view.
+    pub occluders: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -431,10 +435,10 @@ fn write_box(out: &mut Vec<f32>, o: &Obj, y: f32, info: &ModelInfo, tint: [f32; 
 const CLUTTER_BASE: u32 = 0x8000_0000;
 /// Model ids at and above this (and below the clutter) are objects of the event groups of the
 /// mission, drawn where the events would place them.
-const MISSION_BASE: u32 = 0x7000_0000;
+pub(crate) const MISSION_BASE: u32 = 0x7000_0000;
 /// Model ids at and above this (and below the clutter) are models buildings place through
 /// proxies: `crate::proxies::Proxies::models`.
-const PROXY_BASE: u32 = 0x7800_0000;
+pub(crate) const PROXY_BASE: u32 = 0x7800_0000;
 /// How far away the proxies of buildings are drawn, m.
 const PROXY_RANGE: f32 = 150.0;
 
@@ -460,7 +464,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     let shift = dot(sub(cache.eye, v.eye), sub(cache.eye, v.eye)).sqrt();
     let shadow_range = app.settings.lighting.shadow_range;
     let ghost_version = crate::mission_ui::ghosts_of(&app.mission, app.mode).map_or(0, |g| g.version() | 1);
-    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32, app.pick_meshes.len(), ghost_version, app.show_proxies, app.proxies.rev);
+    let toggles = (app.show_grass, app.show_shadows, if top { app.shading2 } else { app.shading3 }, shadow_range as i32, app.grass_under_objects, world.holes_rev, (app.settings.grass_ground_color * 100.0) as i32, app.pick_meshes.len(), ghost_version, app.show_proxies, app.proxies.rev, app.settings.occlusion && !app.camera_under);
     let toggled = cache.toggles != Some(toggles);
     let moved = toggled || if v.ortho {
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
@@ -502,6 +506,8 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     let mut shadow: HashMap<(u32, u8), Vec<f32>> = HashMap::new();
     // Objects drawn as impostors can still cast shadows, within this many triangles.
     let mut shadow_triangles: i64 = 6_000_000;
+    let mut occluded = 0usize;
+    let mut occluders = 0usize;
     if v.ortho && app.settings.top_models && v.mpp < 1.5 {
         // Close up the top view shows the models themselves from above, as a drone would.
         let half = (v.rect.width().max(v.rect.height()) * v.mpp * 0.75).max(10.0);
@@ -568,6 +574,11 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         // Only plants turn into billboards; buildings go down their own LODs instead.
         let plants: Vec<bool> = world.objects.models.iter().map(|m| is_plant(&m.path)).collect();
         // Nearest cells first: the triangle budget has to go to what is close to the camera.
+        // What hides what: the terrain by its horizon, and the solid geometry of the objects
+        // drawn so far, nearest first. Not under the terrain, where it hides nothing.
+        let occlusion = app.settings.occlusion && !app.camera_under && eye[1] > world.height.sample(eye[0], eye[2]);
+        let horizon = occlusion.then(|| crate::occlusion::Horizon::new(&world.height, eye, range));
+        let mut depth = occlusion.then(|| crate::occlusion::DepthBuffer::new(v, 256));
         let mut order: Vec<(i32, i32, i32)> = Vec::with_capacity(((2 * cells + 1) * (2 * cells + 1)) as usize);
         for gz in kz - cells..=kz + cells {
             for gx in kx - cells..=kx + cells {
@@ -602,6 +613,32 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                     let tint = if sel { SELECT_TINT } else { [1.0, 1.0, 1.0, 0.0] };
                     let (placed_m, y) = placed_matrix(o, &infos[o.model as usize], &world.height, y);
                     let (m0, m1) = (o.model, renderer.impostor_layers.get(&o.model));
+                    // Hidden behind the terrain or the objects before it: left out, though it
+                    // may still cast a shadow onto what is seen. Selected objects always show.
+                    if !sel && info.known {
+                        let top = y + info.max[1] * o.scale;
+                        let radius = (info.max[0] - info.min[0]).hypot(info.max[2] - info.min[2]) * 0.5 * o.scale;
+                        let behind_terrain = horizon.as_ref().is_some_and(|h| h.hides(o.x, o.z, top, radius));
+                        let behind_objects = !behind_terrain && depth.as_ref().is_some_and(|b| b.hides(&crate::occlusion::box_corners(info.min, info.max, &placed_m, [o.x, y, o.z])));
+                        if behind_terrain || behind_objects {
+                            occluded += 1;
+                            if d < shadow_range && app.show_shadows {
+                                let last = renderer.lod_count(m0).map_or(u8::MAX, |c| c.saturating_sub(1));
+                                if let Some((lod, n)) = renderer.best_lod(m0, last).filter(|_| shadow_triangles > 0) {
+                                    shadow_triangles -= n as i64;
+                                    write_instance(shadow.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                    // A seen building or rock hides what is behind it by its own solid shape.
+                    if let (Some(buf), Some(tris)) = (depth.as_mut(), renderer.occluder(m0)) {
+                        if d < 600.0 && size >= 4.0 && !plants.get(m0 as usize).copied().unwrap_or(false) {
+                            buf.draw(tris, &placed_m, [o.x, y, o.z]);
+                            occluders += 1;
+                        }
+                    }
                     let last = renderer.lod_count(m0).map_or(u8::MAX, |c| c.saturating_sub(1));
                     // Each LOD of the model takes over at twice the distance of the one before it;
                     // large models keep theirs for longer.
@@ -854,6 +891,8 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         shadow_groups.push((k, (shadow_flat.len() / 16) as u32, (list.len() / 16) as u32));
         shadow_flat.extend_from_slice(&list);
     }
+    cache.occluded = occluded;
+    cache.occluders = occluders;
     let draw = ObjectDraw { instances: Arc::new(flat), groups: Arc::new(groups), boxes: Arc::new(boxes), impostors: Arc::new(impostors), shadow_instances: Arc::new(shadow_flat), shadow_groups: Arc::new(shadow_groups) };
     cache.draw = draw.clone();
     drop(renderer);
@@ -2802,6 +2841,15 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
         }
     }
     crate::mission_ui::draw_map(app, &painter, v, resp);
+    // Frames per second, small in the top right corner.
+    if app.settings.show_fps && app.frame_ms > 0.0 {
+        let text = format!("{:.0} FPS  {:.1} ms", 1000.0 / app.frame_ms, app.frame_ms);
+        let font = egui::FontId::monospace(11.0);
+        let galley = painter.layout_no_wrap(text, font, Color32::from_gray(225));
+        let at = pos2(v.rect.right() - galley.size().x - 10.0, v.rect.top() + 8.0);
+        painter.rect_filled(Rect::from_min_size(at - vec2(5.0, 3.0), galley.size() + vec2(10.0, 6.0)), 4.0, Color32::from_black_alpha(130));
+        painter.galley(at, galley, Color32::from_gray(225));
+    }
     // Compass.
     let c = pos2(v.rect.right() - 34.0, v.rect.bottom() - 34.0);
     let (nx, nz) = if v.ortho { (0.0, -1.0) } else { (-v.right[2], -(v.forward[2] * 0.5 + 0.5).max(0.3)) };
@@ -4505,6 +4553,24 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         "about" => app.dialog = crate::app::Dialog::About,
         "settings" => crate::panels::open_settings(app, ctx, &arg),
+        "occlusion" => app.settings.occlusion = arg != "0",
+        "viewstats" => {
+            let d = &app.view3.draw;
+            eprintln!("VIEWSTATS {arg} occlusion={} frame_ms={:.1} models={} impostors={} shadow={} occluded={} occluders={}", app.settings.occlusion, app.frame_ms, d.instances.len() / 16, d.impostors.len() / 8, d.shadow_instances.len() / 16, app.view3.occluded, app.view3.occluders);
+        }
+        // The camera `arg2` metres from the first object whose model path holds `arg1`.
+        "gotomodel" => {
+            let mut words = arg.split_whitespace();
+            let (part, dist) = (words.next().unwrap_or("").to_ascii_lowercase(), words.next().and_then(|v| v.parse::<f32>().ok()).unwrap_or(40.0));
+            if let Some(d) = &app.doc {
+                if let Some(o) = d.world.objects.iter().map(|(_, o)| *o).find(|o| d.world.objects.model_path(o).to_ascii_lowercase().contains(&part)) {
+                    let g = d.world.height.sample(o.x, o.z);
+                    app.camera.pos = [o.x - dist, g + 2.0, o.z - dist];
+                    app.camera.look_at([o.x, g + 3.0, o.z]);
+                    eprintln!("GOTO {}", d.world.objects.model_path(&o));
+                }
+            }
+        }
         "reveal" => app.show_in_browser(&arg),
         "padstat" => {
             if let Some(d) = &app.doc {

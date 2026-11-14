@@ -15,6 +15,7 @@ mod library_ui;
 mod maskmods;
 mod mission_ui;
 mod models;
+mod occlusion;
 mod panels;
 mod render;
 mod satellite;

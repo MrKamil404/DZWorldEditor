@@ -2391,6 +2391,10 @@
   "de": "Auswahl einpassen",
   "pl": "Pokaż zaznaczenie"
  },
+ "Frames per second": {
+  "de": "Bilder pro Sekunde",
+  "pl": "Klatki na sekundę"
+ },
  "From a file...": {
   "de": "Aus einer Datei...",
   "pl": "Z pliku..."
@@ -3002,6 +3006,10 @@
  "Least damage of spawned loot, 0..1.": {
   "de": "Geringster Schaden gespawnter Beute, 0..1.",
   "pl": "Najmniejsze uszkodzenie lootu, 0..1."
+ },
+ "Leave out objects hidden behind the terrain or buildings": {
+  "de": "Objekte hinter Gelände oder Gebäuden weglassen",
+  "pl": "Pomijaj obiekty zasłonięte terenem lub budynkami"
  },
  "Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it.": {
   "de": "Lässt die im Gelände versunkenen Teile eines Objekts weg, sodass ein halb eingegrabener Pier nur seinen Teil darüber zeigt.",
@@ -3910,6 +3918,10 @@
  "Objects along lines": {
   "de": "Objekte entlang Linien",
   "pl": "Obiekty wzdłuż linii"
+ },
+ "Objects behind a hill, or behind the solid walls of a building or rock, are not drawn. Glass, fences and leaves never hide anything.": {
+  "de": "Objekte hinter einem Hügel oder hinter den festen Wänden eines Gebäudes oder Felsens werden nicht gezeichnet. Glas, Zäune und Blätter verdecken nie etwas.",
+  "pl": "Obiekty za wzgórzem albo za pełnymi ścianami budynku lub skały nie są rysowane. Szyby, płoty i liście nigdy niczego nie zasłaniają."
  },
  "Objects from the WRP": {
   "de": "Objekte aus der WRP",
