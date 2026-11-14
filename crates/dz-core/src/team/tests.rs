@@ -484,3 +484,29 @@ fn modifiers_of_the_mask_carry_their_author() {
     assert_eq!((r.conflicts[0].key, r.conflicts[0].default), (ConflictKey::ModTile("mask_modifiers", id as u64, 0, 0), Choice::Theirs));
     assert_eq!(b2.mask.data[0], 6);
 }
+
+#[test]
+fn giving_things_to_someone_else_travels_and_undoes() {
+    let mut start = world();
+    let mid = start.new_modifier_id();
+    start.modifiers.push(crate::world::TerrainModifier { id: mid, name: "pad".into(), enabled: true, x: 400.0, z: 400.0, yaw: 0.0, shape: crate::world::ModShape::Circle { radius: 16.0 }, mode: crate::world::ModMode::Offset, target: None, amount: 3.0, falloff: 8.0, attached: None, follow: false });
+    let sid = start.mask_mods.add(crate::maskmod::MaskKind::Paint, "fields".into());
+    let base = as_person(&start, "Ania");
+    let mut ania = base.clone();
+    // Only the authors change.
+    let key = crate::world::MASK_MOD_AUTHOR | sid as u64;
+    let before = ania.set_author(mid, "Bartek");
+    ania.set_author(key, "Bartek");
+    let mut bartek = as_person(&base, "Bartek");
+    // Bartek meanwhile edits the modifier: the new author does not clash with that.
+    bartek.modifiers[0].amount = 9.0;
+    let r = merge_from(&base, &ania, "Ania", &mut bartek, &HashMap::new());
+    assert!(r.conflicts.is_empty(), "{:?}", r.conflicts);
+    assert_eq!((bartek.author(mid), bartek.mask_mod_author(sid), bartek.modifiers[0].amount), ("Bartek", "Bartek", 9.0));
+    assert!(r.taken.other.contains(&"authors".to_string()));
+    // Undo puts the authors back.
+    let mut h = crate::edit::History::default();
+    h.push("give", crate::edit::Change::Authors(before));
+    h.undo(&mut ania);
+    assert_eq!(ania.author(mid), "");
+}

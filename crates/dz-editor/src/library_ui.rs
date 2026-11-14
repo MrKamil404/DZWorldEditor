@@ -1142,6 +1142,7 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
             for (code, label) in [(1u8, "Generate"), (2, "Select objects"), (3, "Duplicate"), (4, "Save as preset"), (5, "Delete generator...")] {
                 if ui.button(t(label)).clicked() { action = Some((*id, code)); ui.close_menu(); }
             }
+            crate::team_ui::author_menu(app, ui, *id);
         });
     }
     if let Some((id, code)) = action {

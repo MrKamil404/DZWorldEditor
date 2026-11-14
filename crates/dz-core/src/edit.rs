@@ -177,6 +177,8 @@ pub enum Change {
     /// A whole-raster change produced by a generator.
     WholeHeight(Vec<f32>),
     WholeMask(Vec<u8>),
+    /// Who made what in team work, as it was.
+    Authors(Option<std::collections::BTreeMap<u64, String>>),
     Group(Vec<Change>),
 }
 
@@ -283,6 +285,7 @@ impl Change {
                 std::mem::swap(v, &mut w.mask.data);
                 t.mask = Some(Rect { x0: 0, y0: 0, x1: w.mask.width - 1, y1: w.mask.height - 1 });
             }
+            Change::Authors(prev) => std::mem::swap(prev, &mut w.authors),
             Change::Group(list) => {
                 // Stored oldest first on the undo side; each toggle reverses the order.
                 list.reverse();
@@ -300,6 +303,7 @@ impl Change {
             Change::Objects(l) => l.len() * 80,
             Change::Modifiers(l) => l.len() * 96,
             Change::ObjectLayers(l) => l.len() * 64,
+            Change::Authors(a) => a.as_ref().map_or(0, |a| a.len() * 48),
             Change::Routes(r) => r.iter().map(|x| x.points.len() * 8 + x.centerline.len() * 8 + x.objects.len() * 4).sum(),
             Change::Holes(h) => h.len() * 8,
             Change::KeyPoints(k) => k.len() * 96,

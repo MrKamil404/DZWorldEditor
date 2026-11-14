@@ -33,14 +33,21 @@ changes they send settle any difference.
 ## Who works on what
 
 Everyone can keep their own layers of objects. A layer made during team work belongs to the one
-who made it, and the right-click menu of a layer makes it yours or a layer of no one. The layers
-of others show their owner and a lock: their objects cannot be picked, moved or added to until
-you click the lock, which unlocks the layer for you until you lock it again or close the editor.
-Layers of no one, like *Default*, stay open to everyone.
+who made it; *Owner* in the right-click menu of a layer gives it to anyone in the team, to no
+one, or to someone new whose name you type. The layers of others show their owner and a lock:
+their objects cannot be picked, moved or added to until you click the lock, which unlocks the
+layer for you until you lock it again or close the editor. Layers of no one, like *Default*, stay
+open to everyone.
 
-Terrain, mask and satellite modifiers, roads and generators remember who made them. The outliner shows the name next
-to them, and the choice above it shows only the work of one person: layers by their owner, the
-rest by who made it.
+Terrain, mask and satellite modifiers, roads and generators remember who made them; *Author* in
+their right-click menu in the outliner gives them to someone else. The outliner shows the name
+next to them, and the choice above it shows only the work of one person: layers by their owner,
+the rest by who made it.
+
+To split a map, for example one just imported from Terrain Builder, select an area of it and use
+*Team > Give the selected objects*: the objects move to a layer of the one you choose, made when
+they have none. Every change of owner or author can be undone and travels with the next patch,
+also when nothing else of the thing changed.
 
 When both changed something that belongs to one of you, the merge suggests that person's
 version: Ania's tree on Ania's layer keeps her position unless you choose otherwise. Without an
