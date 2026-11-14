@@ -3634,13 +3634,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 _ => eprintln!("unknown layer command {what}"),
             }
         }
-        "wrp" => {
-            let db = app.db.clone();
-            app.spawn("wrp", move |job| {
-                let w = dz_core::import::import_wrp(std::path::Path::new(&arg), None, &db, job)?;
-                Ok(Box::new(move |a: &mut App| a.open_world(w, None)) as Finish)
-            });
-        }
+        "wrp" => app.import_wrp_file(std::path::PathBuf::from(arg)),
         "demo" => {
             let mut w = dz_core::world::World::new(dz_core::world::WorldMeta::new("Demo", 2048, 5.0), 60.0);
             let params = gen::TerrainParams { kind: gen::TerrainKind::Island, ..Default::default() };
@@ -4086,6 +4080,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "routetool" => app.line.action = LineAction::Edit,
         "proxies" => app.show_proxies = arg == "1",
         "experimental" => app.settings.experimental = arg == "1",
+        // Text typed into the focused field.
+        "type" => app.synthetic.push(egui::Event::Text(arg)),
         // Team work: `team` opens its window, `teamname n`, `teamstart folder`, `teamsend`,
         // `teammerge` reads the oldest waiting changes and `teammergego` merges them.
         "team" => {

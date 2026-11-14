@@ -625,19 +625,118 @@ fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
+/// The surface layers as tiles: the texture of the surface, its mask colour in the corner and
+/// its name, as the Content Browser shows assets with a surface.
 fn layer_list(app: &mut App, ui: &mut egui::Ui) {
     let Some(doc) = &mut app.doc else { return };
+    let side = 64.0;
     let mut changed = false;
-    for (i, l) in doc.world.layers.iter_mut().enumerate() {
-        ui.horizontal(|ui| {
-            if ui.color_edit_button_srgb(&mut l.color).changed() { changed = true; }
-            if ui.selectable_label(app.paint.layer == i, format!("L{i:02}  {}", l.name)).on_hover_text(&l.texture).clicked() { app.paint.layer = i; }
+    let mut chosen = None;
+    egui::ScrollArea::vertical().id_salt("surface_tiles").max_height(330.0).auto_shrink([false, true]).show(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+            for (i, l) in doc.world.layers.iter_mut().enumerate() {
+                let (rect, resp) = ui.allocate_exact_size(vec2(side + 8.0, side + 22.0), egui::Sense::click());
+                let selected = app.paint.layer == i;
+                let p = ui.painter();
+                p.rect_filled(rect, 3.0, if selected { theme::ACCENT_SOFT } else if resp.hovered() { theme::HOVER } else { Color32::from_rgb(42, 42, 44) });
+                if selected {
+                    p.rect_stroke(rect, 3.0, egui::Stroke::new(1.0f32, theme::ACCENT), egui::StrokeKind::Inside);
+                }
+                let art = Rect::from_min_size(rect.min + vec2(4.0, 4.0), vec2(side, side));
+                match app.layer_thumbs.get(i).and_then(|t| t.as_ref()) {
+                    Some(tex) => { p.image(tex.id(), art, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE); }
+                    None => {
+                        let a = app.layer_averages.get(i).copied().unwrap_or([70, 70, 70]);
+                        p.rect_filled(art, 2.0, Color32::from_rgb(a[0], a[1], a[2]));
+                    }
+                }
+                // The mask colour of the surface, as the browser marks models with one.
+                let mark = Rect::from_min_size(pos2(art.right() - 15.0, art.top() + 2.0), vec2(13.0, 13.0));
+                p.rect_filled(mark, 2.0, Color32::from_rgb(l.color[0], l.color[1], l.color[2]));
+                p.rect_stroke(mark, 2.0, egui::Stroke::new(1.0f32, Color32::BLACK), egui::StrokeKind::Outside);
+                let badge = Rect::from_min_size(pos2(art.left() + 2.0, art.bottom() - 15.0), vec2(26.0, 13.0));
+                p.rect_filled(badge, 3.0, Color32::from_black_alpha(170));
+                p.text(badge.center(), egui::Align2::CENTER_CENTER, format!("L{i:02}"), egui::FontId::proportional(10.0), Color32::WHITE);
+                let short: String = if l.name.chars().count() > 11 { l.name.chars().take(10).chain(['…']).collect() } else { l.name.clone() };
+                p.text(pos2(rect.center().x, rect.bottom() - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::TEXT);
+                let resp = resp.on_hover_text(format!("{}\n{}\n{}", l.name, l.texture, t("Right click: colour of the surface")));
+                if resp.clicked() {
+                    chosen = Some(i);
+                }
+                resp.context_menu(|ui| {
+                    ui.label(RichText::new(&l.name).strong());
+                    ui.horizontal(|ui| {
+                        ui.label(t("Mask colour"));
+                        if ui.color_edit_button_srgb(&mut l.color).changed() { changed = true; }
+                    });
+                });
+            }
         });
-    }
+    });
+    if let Some(i) = chosen { app.paint.layer = i; }
     if changed {
         doc.history.revision += 1;
         app.push_palette();
     }
+}
+
+/// Menu of the surfaces of the game, with a search, that adds one as a layer.
+fn add_layer_menu(app: &mut App, ui: &mut egui::Ui) {
+    let surfaces = app.surfaces.clone();
+    ui.menu_button(format!("+ {}", t("Add layer")), |ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        let id = ui.make_persistent_id("surface_search");
+        let mut search: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_default());
+        ui.add(egui::TextEdit::singleline(&mut search).hint_text(t("Search...")).desired_width(240.0));
+        ui.data_mut(|d| d.insert_temp(id, search.clone()));
+        let needle = search.to_ascii_lowercase();
+        if surfaces.is_empty() {
+            ui.weak(t("No surfaces of the game were found on the work drive"));
+        }
+        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+            for s in surfaces.iter().filter(|s| needle.is_empty() || s.contains(&needle)) {
+                let name = s.rsplit('\\').next().unwrap_or(s).trim_end_matches("_ca.paa").to_string();
+                let folder = s.split('\\').nth(1).unwrap_or("");
+                if ui.button(format!("{name}   ({folder})")).on_hover_text(s).clicked() {
+                    add_surface_layer(app, name, s.clone(), s.replace("_ca.paa", ".rvmat"));
+                    ui.close_menu();
+                }
+            }
+        });
+        ui.separator();
+        if ui.button(t("From a file...")).on_hover_text(t("A colour texture (_ca or _co) of the map's own surface on the work drive")).clicked() {
+            ui.close_menu();
+            let root = app.settings.tools.work_drive.clone();
+            if let Some(f) = rfd::FileDialog::new().add_filter("PAA", &["paa"]).set_directory(&root).pick_file() {
+                match f.strip_prefix(&root) {
+                    Ok(rel) => {
+                        let texture = rel.to_string_lossy().replace('/', "\\").to_ascii_lowercase();
+                        let file = texture.rsplit('\\').next().unwrap_or(&texture).to_string();
+                        let name = file.trim_end_matches(".paa").trim_end_matches("_ca").trim_end_matches("_co").to_string();
+                        let material = texture.trim_end_matches(".paa").trim_end_matches("_ca").trim_end_matches("_co").to_string() + ".rvmat";
+                        add_surface_layer(app, name, texture, material);
+                    }
+                    Err(_) => app.warn(t("The texture has to be on the work drive")),
+                }
+            }
+        }
+    });
+}
+
+fn add_surface_layer(app: &mut App, name: String, texture: String, material: String) {
+    let Some(d) = &mut app.doc else { return };
+    let n = d.world.layers.len();
+    if n >= 255 {
+        app.warn(t("A project holds at most 255 surfaces"));
+        return;
+    }
+    let color = forest_core::species::hsv_to_rgb(n as f64 * 67.0 % 360.0, 0.5, 0.75);
+    d.world.layers.push(SurfaceLayer { name, texture, material, color });
+    d.history.revision += 1;
+    app.paint.layer = n;
+    app.push_palette();
+    app.reload_layer_textures();
 }
 
 fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
@@ -662,29 +761,7 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::STACK, &t("Surface layers")), true, |ui| {
         layer_list(app, ui);
         ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            let surfaces = app.surfaces.clone();
-            ui.menu_button(format!("+ {}", t("Add layer")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-                egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                    for s in surfaces {
-                        let name = s.rsplit('\\').next().unwrap_or(&s).trim_end_matches("_ca.paa").to_string();
-                        if ui.button(&name).clicked() {
-                            if let Some(d) = &mut app.doc {
-                                let n = d.world.layers.len();
-                                if n < 255 {
-                                    let color = forest_core::species::hsv_to_rgb(n as f64 * 67.0 % 360.0, 0.5, 0.75);
-                                    d.world.layers.push(SurfaceLayer { name, texture: s.clone(), material: s.replace("_ca.paa", ".rvmat"), color });
-                                    d.history.revision += 1;
-                                }
-                            }
-                            app.push_palette();
-                            app.reload_layer_textures();
-                            ui.close_menu();
-                        }
-                    }
-                });
-            });
-        });
+        add_layer_menu(app, ui);
     });
     ui.weak(t("The brush will not add a surface to a tile that already has as many as the project allows."));
 }

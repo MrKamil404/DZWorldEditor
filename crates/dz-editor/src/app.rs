@@ -313,6 +313,8 @@ pub struct App {
     pub surfaces: Vec<String>,
     layer_rx: Option<Receiver<models::LayerTexture>>,
     pub layer_averages: Vec<[u8; 3]>,
+    /// Small pictures of the surface textures, for the layer tiles of the Paint panel.
+    pub layer_thumbs: Vec<Option<egui::TextureHandle>>,
     pub road_catalog: Arc<Vec<dayz_road_tool::roads::CatalogPart>>,
     pub road_families: Vec<String>,
     road_rx: Option<Receiver<Vec<dayz_road_tool::roads::CatalogPart>>>,
@@ -515,7 +517,7 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
@@ -1086,6 +1088,10 @@ impl App {
                     self.layer_averages.resize(l.index + 1, [128, 128, 128]);
                 }
                 self.layer_averages[l.index] = l.average;
+                if self.layer_thumbs.len() <= l.index {
+                    self.layer_thumbs.resize(l.index + 1, None);
+                }
+                self.layer_thumbs[l.index] = Some(self.ctx.load_texture(format!("surface_thumb_{}", l.index), layer_thumb(&l.rgba, 512, 64), egui::TextureOptions::LINEAR));
                 r.set_layer(l.index, 512, l.rgba, l.normal);
             }
             drop(r);
@@ -1989,7 +1995,8 @@ impl App {
     pub fn run_import(&mut self, plan: dz_core::import::ImportPlan) {
         let (assets, db) = (self.assets.clone(), self.db.clone());
         self.spawn(t("Importing map"), move |job| {
-            let w = dz_core::import::import_plan(&plan, &assets, &db, job)?;
+            let mut w = dz_core::import::import_plan(&plan, &assets, &db, job)?;
+            translate_object_groups(&mut w);
             Ok(Box::new(move |app: &mut App| {
                 // Tiles over the surface limit are marked in the top view straight away.
                 let over = dz_core::mask_limit::scan(&w);
@@ -2353,7 +2360,8 @@ impl App {
     pub fn import_wrp_file(&mut self, f: PathBuf) {
         let db = self.db.clone();
         self.spawn(t("Importing WRP"), move |job| {
-            let w = dz_core::import::import_wrp(&f, None, &db, job)?;
+            let mut w = dz_core::import::import_wrp(&f, None, &db, job)?;
+            translate_object_groups(&mut w);
             Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
         });
     }
@@ -2362,7 +2370,8 @@ impl App {
         let Some(f) = rfd::FileDialog::new().add_filter("WRP", &["wrp"]).pick_file() else { return };
         let db = self.db.clone();
         self.spawn(t("Importing WRP"), move |job| {
-            let w = dz_core::import::import_wrp(&f, None, &db, job)?;
+            let mut w = dz_core::import::import_wrp(&f, None, &db, job)?;
+            translate_object_groups(&mut w);
             Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
         });
     }
@@ -2641,6 +2650,38 @@ fn route_decks(world: &dz_core::world::World, i: usize) -> Vec<dz_core::world::B
 
 /// When a route was only lengthened at one end since its last fit: whether at its end, and
 /// its new waypoints beyond the old end, nearest first.
+/// A `side` x `side` picture of a square RGBA texture `size` pixels wide, each pixel the
+/// average of the block it stands for.
+fn layer_thumb(rgba: &[u8], size: usize, side: usize) -> egui::ColorImage {
+    let step = (size / side).max(1);
+    let mut out = Vec::with_capacity(side * side * 4);
+    for y in 0..side {
+        for x in 0..side {
+            let mut sum = [0u32; 3];
+            for dy in 0..step {
+                for dx in 0..step {
+                    let k = ((y * step + dy).min(size - 1) * size + (x * step + dx).min(size - 1)) * 4;
+                    for c in 0..3 {
+                        sum[c] += rgba.get(k + c).copied().unwrap_or(0) as u32;
+                    }
+                }
+            }
+            let n = (step * step) as u32;
+            out.extend_from_slice(&[(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8, 255]);
+        }
+    }
+    egui::ColorImage::from_rgba_unmultiplied([side, side], &out)
+}
+
+/// The layers an import sorts objects into, named in the language of the interface.
+fn translate_object_groups(w: &mut dz_core::world::World) {
+    for l in &mut w.object_layers {
+        if dz_core::world::OBJECT_GROUPS.contains(&l.name.as_str()) {
+            l.name = t(&l.name);
+        }
+    }
+}
+
 fn extension(r: &dz_core::world::RoadRoute) -> Option<(bool, Vec<[f32; 2]>)> {
     let (old, now) = (&r.fitted, &r.points);
     // The waypoints of the last fit tell it best; without them it is guessed from the line.
