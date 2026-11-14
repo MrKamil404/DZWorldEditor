@@ -295,6 +295,12 @@ fn role_by_name(texture: &str) -> Role {
     }
 }
 
+/// How much the `forcedDiffuse` of a bark material lightens it: the grey all three colour
+/// channels share, never a tint.
+fn bark_lift(forced: [f32; 4]) -> f32 {
+    forced[0].min(forced[1]).min(forced[2]).max(0.0)
+}
+
 fn rgb(c: [f32; 4]) -> [f32; 3] {
     [c[0], c[1], c[2]]
 }
@@ -363,9 +369,12 @@ fn build_shading(m: &odol::Material, loader: &mut MapLoader, mesh: &mut ModelMes
         out.diffuse = [level; 3];
     }
     // Bark takes its colour from what the material lets through: the brown of a spruce is in
-    // `diffuse`, the white of a birch in `forcedDiffuse`.
+    // `diffuse`, the white of a birch in `forcedDiffuse`. The tree shaders keep other values in
+    // `forcedDiffuse` too (a pine's is 0, 0, 0.3), so only the part all three channels share
+    // lightens the bark; taken as a colour it would turn the pine purple.
     if kind == ShadingKind::Tree && trunk {
-        let tint: [f32; 3] = std::array::from_fn(|k| (m.diffuse[k] + m.forced_diffuse[k]).clamp(0.15, 1.2));
+        let lift = bark_lift(m.forced_diffuse);
+        let tint: [f32; 3] = std::array::from_fn(|k| (m.diffuse[k] + lift).clamp(0.15, 1.2));
         out.ambient = tint;
         out.diffuse = tint;
     }
@@ -879,6 +888,16 @@ fn render_view(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32) -> (Vec<u8>, V
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Values of the game's bark materials: a birch is lightened to white, a beech a little,
+    /// and a pine, whose `forcedDiffuse` holds other values, not tinted at all.
+    #[test]
+    fn bark_is_lightened_but_never_tinted() {
+        assert_eq!(bark_lift([1.0, 1.0, 1.0, 0.0]), 1.0);
+        assert!((bark_lift([0.129, 0.129, 0.129, 1.0]) - 0.129).abs() < 1e-6);
+        assert!(bark_lift([1.74e-7, 6.79e-8, 0.3, 0.4]) < 1e-6);
+        assert_eq!(bark_lift([0.0, 0.0, 0.0, 0.0]), 0.0);
+    }
 
     fn quad_mesh() -> ModelMesh {
         let vertex = |x: f32, y: f32| Vertex {
