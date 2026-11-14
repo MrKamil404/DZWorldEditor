@@ -42,8 +42,11 @@ impl LiveFit {
 
 /// The road along `want` that goes on from `kept`, the pieces laid up to its first `covered`
 /// points, and closes with an end piece: only the new stretch is fitted.
-pub fn fit_kept(kept: &[PlacedPart], covered: usize, want: &[[f32; 2]], family: &str, catalog: &[CatalogPart], settings: &dayz_road_tool::document::RoutingSettings) -> anyhow::Result<Vec<PlacedPart>> {
+pub fn fit_kept(kept: &[PlacedPart], covered: usize, want: &[[f32; 2]], family: &str, catalog: &[CatalogPart], settings: &dayz_road_tool::document::RoutingSettings, tail: f64) -> anyhow::Result<Vec<PlacedPart>> {
     let start = roads::endpoint(kept, catalog)?;
+    // The road that can be seen ends at the last point, its end piece's bare end past it.
+    let mut want = want.to_vec();
+    dz_core::gen::reach_past_caps(&mut want, false, tail);
     let rest: Vec<[f32; 2]> = want.iter().skip(covered).copied().filter(|p| (p[0] as f64 - start.p[0]).hypot(p[1] as f64 - start.p[1]) > 1.0).collect();
     let mut parts = kept.to_vec();
     if rest.is_empty() {
@@ -126,9 +129,14 @@ fn kept_now(app: &App) -> Option<(Vec<PlacedPart>, usize)> {
 
 /// The road along the clicked `points` as the live tool shows it, with the pieces kept so
 /// far left as they are. None when no pieces are kept, and the road is fitted as a whole.
+/// The bare end of the end piece of road type `family`, laid past the last point of a road.
+pub fn cap_tail(app: &App, family: &str) -> f64 {
+    dz_core::gen::cap_tail(&app.db, &app.road_catalog, family, r"dz\structures\roads\parts")
+}
+
 pub fn kept_road(app: &App, points: &[[f32; 2]]) -> Option<anyhow::Result<Vec<PlacedPart>>> {
     let (kept, covered) = kept_now(app)?;
-    Some(fit_kept(&kept, covered, points, &app.line.family, &app.road_catalog, &fit_settings(app)))
+    Some(fit_kept(&kept, covered, points, &app.line.family, &app.road_catalog, &fit_settings(app), cap_tail(app, &app.line.family)))
 }
 
 /// The waypoints of route `i` fitted live while one of them is dragged.
@@ -200,13 +208,16 @@ fn live_fit(app: &mut App, want: Vec<[f32; 2]>, family: String, settings: dayz_r
     }
     let (tx, rx) = mpsc::channel();
     let catalog = app.road_catalog.clone();
+    let tail = cap_tail(app, &family);
     let ctx = ctx.clone();
     std::thread::spawn(move || {
         let fitted = match &kept {
             // Only the stretch past the kept pieces is fitted again.
-            Some((kept, covered)) => fit_kept(kept, *covered, &want, &family, &catalog, &settings),
+            Some((kept, covered)) => fit_kept(kept, *covered, &want, &family, &catalog, &settings, tail),
             None => {
-                let line: Vec<Point> = want.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
+                let mut reach = want.clone();
+                dz_core::gen::reach_past_caps(&mut reach, true, tail);
+                let line: Vec<Point> = reach.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
                 roads::fit(&line, &family, &catalog, &settings, |_, _| true)
             }
         }.map_err(|e| format!("{e:#}"));
@@ -521,7 +532,7 @@ mod tests {
         let mut kept = first.clone();
         kept.pop();
         let want = [[0.0f32, 0.0], [0.0, 120.0], [60.0, 200.0]];
-        let parts = fit_kept(&kept, 2, &want, "asf2", &cat, &s).unwrap();
+        let parts = fit_kept(&kept, 2, &want, "asf2", &cat, &s, 0.0).unwrap();
         for (a, b) in kept.iter().zip(&parts) {
             assert_eq!(a.model, b.model);
             assert!((a.position[0] - b.position[0]).abs() < 1e-9 && (a.position[1] - b.position[1]).abs() < 1e-9 && (a.rotation - b.rotation).abs() < 1e-9);
@@ -530,7 +541,7 @@ mod tests {
         let end = roads::endpoint(&parts, &cat).unwrap();
         assert!((end.p[0] - 60.0).hypot(end.p[1] - 200.0) < 10.0, "{:?}", end.p);
         // With nothing past them, the kept pieces are just closed.
-        let closed = fit_kept(&kept, 2, &want[..2], "asf2", &cat, &s).unwrap();
+        let closed = fit_kept(&kept, 2, &want[..2], "asf2", &cat, &s, 0.0).unwrap();
         assert_eq!(closed.len(), kept.len() + 1);
     }
 
@@ -550,7 +561,7 @@ mod tests {
         let end = roads::endpoint(&kept, &cat).unwrap();
         assert!((end.p[0] - 0.0).hypot(end.p[1] - 200.0) < 15.0, "{:?}", end.p);
         assert!(kept.iter().zip(&parts).all(|(a, b)| a.model == b.model && a.position == b.position));
-        let refit = fit_kept(&kept, covered, &moved, "asf2", &cat, &s).unwrap();
+        let refit = fit_kept(&kept, covered, &moved, "asf2", &cat, &s, 0.0).unwrap();
         let tail = roads::endpoint(&refit, &cat).unwrap();
         assert!((tail.p[0] + 40.0).hypot(tail.p[1] - 300.0) < 10.0, "{:?}", tail.p);
         // A change at the first or second point fits the whole route again.

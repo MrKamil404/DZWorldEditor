@@ -824,7 +824,7 @@ impl App {
         // With pieces kept, only the stretch from the first changed point is fitted again.
         if self.line.live_keep {
             if let Some((kept, covered)) = crate::road_draw::route_kept(&r, &before, &r.points, &self.road_catalog) {
-                if let Ok(parts) = crate::road_draw::fit_kept(&kept, covered, &r.points, &r.family, &self.road_catalog, &r.settings) {
+                if let Ok(parts) = crate::road_draw::fit_kept(&kept, covered, &r.points, &r.family, &self.road_catalog, &r.settings, crate::road_draw::cap_tail(self, &r.family)) {
                     let mut req = self.route_request(r.family, r.points, false, r.settings);
                     req.laid = parts;
                     self.start_route(req, Some(i), Some(before), false);
@@ -923,11 +923,21 @@ impl App {
     /// The object of an end piece the route keeps among its pieces.
     fn cap_object(&self, r: &dz_core::world::RoadRoute, cap: &dayz_road_tool::roads::PlacedPart) -> Option<u32> {
         let w = &self.doc.as_ref()?.world;
-        let closing = gen::closing_cap(cap.position, cap.rotation).0;
+        // Where the piece stands as an object, opening or closing the road, set as the editor
+        // sets it or as road tools do.
+        let mut spots = vec![cap.position, gen::closing_cap(cap.position, cap.rotation).0];
+        if let Some((layout, length)) = self.cap_layout(&cap.model) {
+            spots.extend([false, true].map(|closing| gen::cap_pose(cap.position, cap.rotation, closing, layout, length).0));
+        }
         r.objects.iter().copied().filter(|id| w.objects.get(*id).is_some_and(|o| w.objects.model_path(o).to_ascii_lowercase().ends_with(&cap.model.to_ascii_lowercase()))).min_by(|a, b| {
-            let d = |id: &u32| { let o = w.objects.get(*id).unwrap(); [cap.position, closing].iter().map(|p| (o.x as f64 - p[0]).hypot(o.z as f64 - p[1])).fold(f64::MAX, f64::min) };
+            let d = |id: &u32| { let o = w.objects.get(*id).unwrap(); spots.iter().map(|p| (o.x as f64 - p[0]).hypot(o.z as f64 - p[1])).fold(f64::MAX, f64::min) };
             d(a).total_cmp(&d(b))
         })
+    }
+
+    /// How the road of end piece `model` of the road catalog lies along it, and the span of its ports.
+    pub fn cap_layout(&self, model: &str) -> Option<(dz_core::model_info::CapLayout, f64)> {
+        gen::cap_layout(&self.db, &self.road_catalog, model, r"dz\structures\roads\parts")
     }
 
     /// The open end of a route that keeps no pieces, from the model at that end of its centre
@@ -957,9 +967,16 @@ impl App {
             let m = dz_core::objects::rotation(o.yaw, o.pitch, o.roll, 1.0);
             let origins = [[o.x as f64, o.z as f64], [(o.x + m[0][0] * c[0] + m[2][0] * c[2]) as f64, (o.z + m[0][2] * c[0] + m[2][2] * c[2]) as f64]];
             for origin in origins {
-                for closing in [false, true] {
-                    if closing && !cap { continue; }
-                    let (position, rotation) = if closing { gen::closing_cap_placement(origin, o.yaw as f64) } else { (origin, o.yaw as f64) };
+                // An end piece may stand as the editor sets it or as road tools do.
+                let laid = if cap { self.cap_layout(&item.path) } else { None };
+                for (closing, editor) in [(false, false), (true, false), (false, true), (true, true)] {
+                    if (closing || editor) && !cap { continue; }
+                    let (position, rotation) = match (editor, laid) {
+                        (true, Some((layout, length))) => gen::cap_placement(origin, o.yaw as f64, closing, layout, length),
+                        (true, None) => continue,
+                        (false, _) if closing => gen::closing_cap_placement(origin, o.yaw as f64),
+                        (false, _) => (origin, o.yaw as f64),
+                    };
                     let part = [PlacedPart { model: item.path.clone(), reverse: false, position, rotation }];
                     let (Ok(entry), Ok(exit)) = (startpoint(&part, &self.road_catalog), endpoint(&part, &self.road_catalog)) else { continue };
                     for (open, inner) in [(exit, entry), (entry, exit)] {

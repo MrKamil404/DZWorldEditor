@@ -1170,7 +1170,89 @@ pub fn closing_cap_placement(at: [f64; 2], yaw: f64) -> ([f64; 2], f64) {
     ([at[0] - s * CAP_LENGTH, at[1] - c * CAP_LENGTH], yaw)
 }
 
-/// Position and yaw of a piece of a road as an object.
+/// How far along and how turned an end piece stands from where it was fitted: its object
+/// stands `along` metres on along the yaw of the fitted piece and is turned by `turn` degrees.
+/// The opening piece was fitted from the road's open end inwards, the closing one from the
+/// road outwards; either way the piece is set so that its road meets the rest at its hard
+/// edge and fades out away from it. `span` is the sum of the z of its two ports: turned
+/// round about the middle between them, its origin moves that far.
+fn cap_shift(closing: bool, layout: crate::model_info::CapLayout, span: f64) -> (f64, f64) {
+    let inset = layout.inset;
+    match (closing, layout.joint_at_end) {
+        (false, true) => (inset, 0.0),
+        (false, false) => (span + inset, 180.0),
+        (true, true) => (span - inset, 180.0),
+        (true, false) => (-inset, 0.0),
+    }
+}
+
+/// Where an end piece fitted at `position` with `yaw` stands as an object.
+pub fn cap_pose(position: [f64; 2], yaw: f64, closing: bool, layout: crate::model_info::CapLayout, span: f64) -> ([f64; 2], f64) {
+    let (along, turn) = cap_shift(closing, layout, span);
+    let (s, c) = yaw.to_radians().sin_cos();
+    ([position[0] + s * along, position[1] + c * along], yaw + turn)
+}
+
+/// The pose an end piece was fitted with, from the pose of its object: the reverse of [`cap_pose`].
+pub fn cap_placement(at: [f64; 2], yaw: f64, closing: bool, layout: crate::model_info::CapLayout, span: f64) -> ([f64; 2], f64) {
+    let (along, turn) = cap_shift(closing, layout, span);
+    let yaw = yaw - turn;
+    let (s, c) = yaw.to_radians().sin_cos();
+    ([at[0] - s * along, at[1] - c * along], yaw)
+}
+
+/// How the road of end piece `model` of `catalog` lies along it, and the span of its ports.
+pub fn cap_layout(db: &crate::model_info::ModelDb, catalog: &[dayz_road_tool::roads::CatalogPart], model: &str, prefix: &str) -> Option<(crate::model_info::CapLayout, f64)> {
+    let m = &catalog.iter().find(|c| c.path == model)?.model;
+    let (a, b) = (m.ports[0]?.p[1], m.ports[1]?.p[1]);
+    Some((db.cap_layout(&road_model_path(model, prefix), a, b - a), a + b))
+}
+
+/// Makes the drawn line of a road longer at its capped ends by the stretch of the end piece
+/// that nothing of the road shows on, so the road that can be seen ends where it was drawn
+/// to. A road drawn up to the edge of another one meets it without a strip of grass between
+/// them, the bare end of its end piece lying unseen over the other road.
+/// The end of the drawn line always closes with an end piece; `start` says the start does too.
+pub fn reach_past_caps(line: &mut [[f32; 2]], start: bool, tail: f64) {
+    let n = line.len();
+    if n < 2 || tail <= 0.0 {
+        return;
+    }
+    let reach = |end: [f32; 2], before: [f32; 2]| {
+        let (dx, dz) = (end[0] - before[0], end[1] - before[1]);
+        let d = dx.hypot(dz).max(1e-6);
+        [end[0] + dx / d * tail as f32, end[1] + dz / d * tail as f32]
+    };
+    line[n - 1] = reach(line[n - 1], line[n - 2]);
+    if start {
+        line[0] = reach(line[0], line[1]);
+    }
+}
+
+/// How long the stretch at the far end of the end piece of road type `family` is, that nothing
+/// of the road shows on; 0 for types without end pieces.
+pub fn cap_tail(db: &crate::model_info::ModelDb, catalog: &[dayz_road_tool::roads::CatalogPart], family: &str, prefix: &str) -> f64 {
+    catalog.iter().find(|c| c.family == family && c.category == 6 && c.path.to_ascii_lowercase().contains("konec")).and_then(|cap| cap_layout(db, catalog, &cap.path, prefix)).map_or(0.0, |(l, _)| l.tail)
+}
+
+/// Position and yaw of a piece of a road laid by the editor as an object. End pieces are set
+/// by how their own road lies along them, `cap(model)` giving that and the span of their ports
+/// (see [`cap_shift`]).
+pub fn road_part_pose_laid(parts: &[dayz_road_tool::roads::PlacedPart], k: usize, cap: impl Fn(&str) -> Option<(crate::model_info::CapLayout, f64)>) -> ([f64; 2], f32) {
+    let is_cap = |i: usize| parts[i].model.to_ascii_lowercase().contains("konec");
+    let p = &parts[k];
+    let (position, yaw) = match is_cap(k).then(|| cap(&p.model)).flatten() {
+        Some((layout, length)) => cap_pose(p.position, p.rotation, k > 0 && !is_cap(k - 1), layout, length),
+        None => {
+            let (at, yaw) = road_part_pose(parts, k);
+            (at, yaw as f64)
+        }
+    };
+    (position, yaw.rem_euclid(360.0) as f32)
+}
+
+/// Position and yaw of a piece of a road as an object, with end pieces set as road tools set
+/// them.
 pub fn road_part_pose(parts: &[dayz_road_tool::roads::PlacedPart], k: usize) -> ([f64; 2], f32) {
     let is_cap = |i: usize| parts[i].model.to_ascii_lowercase().contains("konec");
     let (position, yaw) = if k > 0 && is_cap(k) && !is_cap(k - 1) { closing_cap(parts[k].position, parts[k].rotation) } else { (parts[k].position, parts[k].rotation) };
@@ -1346,7 +1428,11 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
     use std::sync::atomic::AtomicBool;
     let rail = rails::is_track_family(&req.family);
     let prefix = if rail { r"dz\structures\rail\Tracks" } else { r"dz\structures\roads\parts" };
-    let line: Vec<[f64; 2]> = req.points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
+    let mut drawn = req.points.clone();
+    if !rail && req.laid.is_empty() {
+        reach_past_caps(&mut drawn, req.start.is_none(), cap_tail(db, catalog, &req.family, prefix));
+    }
+    let line: Vec<[f64; 2]> = drawn.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
     let tracks = Path::new(rails::DEFAULT_FOLDER);
     let road_folder = Path::new("P:\\").join(r"dz\structures\roads\parts");
     let cancel = AtomicBool::new(false);
@@ -1496,7 +1582,10 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
                 Obj { x: pose.origin[0] as f32 - off(0), z: pose.origin[1] as f32 - off(2), elevation: elevation - off(1), yaw, pitch, roll, scale: 1.0, model, flags }
             }
             None => {
-                let (at, yaw) = if i < route.parts.len() { road_part_pose(&route.parts, i) } else { (p.position, p.rotation.rem_euclid(360.0) as f32) };
+                let cap = |model: &str| {
+                    cap_layout(db, catalog, model, prefix)
+                };
+                let (at, yaw) = if i < route.parts.len() { road_part_pose_laid(&route.parts, i, cap) } else { (p.position, p.rotation.rem_euclid(360.0) as f32) };
                 Obj { x: at[0] as f32, z: at[1] as f32, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 }
             }
         };
@@ -3040,8 +3129,10 @@ mod tests {
         let req = RouteRequest { family, points: vec![[200.0, 500.0], [800.0, 500.0]], terrain_route: false, settings: Default::default(), forbidden: vec![], roads: vec![], start: None, laid: vec![] };
         let r = build_route(&mut w, &db, &req, &catalog, &Job::default()).unwrap();
         assert!(!r.decks.is_empty(), "no bridge over the river");
+        // The deck runs between the road on either bank, which meets it to within the fitting
+        // tolerance of where the bridge sets off and lands.
         let d = r.decks[0];
-        assert!(d.from[0] < 489.0 && d.to[0] > 511.0, "{d:?}");
+        assert!(d.from[0] < 489.0 && d.to[0] > 509.0 && d.to[0] - d.from[0] >= 24.0, "{d:?}");
     }
 
     /// A road goes on from either open end: the new pieces join the old ones in one chain,
@@ -3238,6 +3329,35 @@ mod tests {
 #[cfg(test)]
 mod vanilla_roads {
     use super::*;
+
+    /// The end pieces of every vanilla map are read for where their road meets the rest:
+    /// vanilla ones at their end port, those of Takistan's asphalt at their start. Needs the
+    /// work drive; skipped without it.
+    #[test]
+    fn end_pieces_meet_the_road_at_their_hard_edge() {
+        let drive = Path::new("P:\\");
+        if !drive.join(VANILLA_ROAD_FOLDERS[0]).exists() { return; }
+        let catalog = vanilla_road_catalog(drive);
+        let db = crate::model_info::ModelDb::new(drive);
+        const PARTS: &str = r"dz\structures\roads\parts";
+        let layout = |name: &str| {
+            let c = catalog.iter().find(|c| c.category == 6 && c.path.to_ascii_lowercase().ends_with(name)).unwrap();
+            let l = cap_layout(&db, &catalog, &c.path, PARTS).unwrap().0;
+            println!("{name}: {l:?}");
+            l
+        };
+        for name in ["asf1_6konec.p3d", "asf2_6konec.p3d", "asf3_6konec.p3d", "city_6konec.p3d", "dirt1takistan_6konec.p3d"] {
+            let l = layout(name);
+            assert!(l.joint_at_end && l.inset < 0.5, "{name} {l:?}");
+        }
+        for name in ["asf2takistan_6konec.p3d", "asf3takistan_6konec.p3d"] {
+            let l = layout(name);
+            assert!(!l.joint_at_end && l.inset < 0.5, "{name} {l:?}");
+        }
+        for c in catalog.iter().filter(|c| c.category == 6) {
+            println!("CAP {} {:?}", c.path, cap_layout(&db, &catalog, &c.path, PARTS));
+        }
+    }
 
     /// Every road family of the four vanilla maps loads with straights, curves and an end,
     /// and every crossroad with its side arms. Needs the work drive; skipped without it.

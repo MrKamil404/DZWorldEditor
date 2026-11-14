@@ -121,6 +121,30 @@ pub fn drop_zone(resp: &egui::Response, takes: bool) {
     }
 }
 
+/// A box that takes models dropped on it, drawn alike everywhere: a frame with a line of text,
+/// lit while models are dragged, `active` then said in place of `idle`. Returns the models
+/// dropped on it this frame.
+pub fn model_drop_box(ui: &mut egui::Ui, size: egui::Vec2, idle: &str, active: &str) -> (egui::Response, Vec<std::sync::Arc<String>>) {
+    let dragging = dragging_models(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
+        p.rect_stroke(rect, 4.0, Stroke::new(1.0_f32, if dragging { ACCENT } else { Color32::from_gray(80) }), egui::StrokeKind::Inside);
+        let (text, color) = if dragging { (active, Color32::WHITE) } else { (idle, TEXT_DIM) };
+        let galley = p.layout(text.to_string(), FontId::proportional(12.0), color, (rect.width() - 12.0).max(10.0));
+        let at = rect.center() - galley.size() * 0.5;
+        p.galley(at, galley, color);
+    }
+    drop_zone(&resp, dragging);
+    let dropped = dropped_models(&resp);
+    (resp, dropped)
+}
+
+/// The box under a list of models that adds the models dropped on it.
+pub fn add_models_box(ui: &mut egui::Ui) -> Vec<std::sync::Arc<String>> {
+    model_drop_box(ui, egui::vec2(ui.available_width(), 32.0), &crate::i18n::t("Drop models here to add them"), &crate::i18n::t("Drop to add")).1
+}
+
 /// True while a model (or several things) is being dragged.
 pub fn dragging_models(ctx: &egui::Context) -> bool {
     egui::DragAndDrop::has_payload_of_type::<String>(ctx) || egui::DragAndDrop::has_payload_of_type::<crate::asset_browser::Dragged>(ctx)

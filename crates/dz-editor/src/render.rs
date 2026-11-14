@@ -697,8 +697,10 @@ void main(){
     }
   }
   if (v_tint.a >= 0.99) lit = mix(lit, lin(v_tint.rgb), 0.55);
-  lit = mix(lit, lin(vec3(0.73,0.79,0.86)), 1.0 - exp(-dist * u_fog));
-  o = vec4(tone(pow(lit, vec3(1.0 / 2.2)) * u_exposure), v_tint.a >= 0.99 ? 1.0 : alpha);
+  // Fog is laid over the colour as it is shown, as on the ground, so things in the distance
+  // fade at the same rate as the ground they stand on and do not turn white first.
+  vec3 shown = mix(pow(lit, vec3(1.0 / 2.2)), vec3(0.73,0.79,0.86), 1.0 - exp(-dist * u_fog));
+  o = vec4(tone(shown * u_exposure), v_tint.a >= 0.99 ? 1.0 : alpha);
 }"#;
 
 const SKY_VS: &str = r#"#version 330 core
@@ -740,19 +742,68 @@ void main(){
   o = vec4(c * u_exposure, 1.0);
 }"#;
 
-/// Ambient occlusion from the depth buffer and edge smoothing, drawn over the finished view.
-const POST_FS: &str = r#"#version 330 core
+/// Ambient occlusion from the depth buffer, worked out per pixel of the view into a texture of
+/// its own: red is the shade, green the distance from the eye, for the blur that follows.
+const AO_FS: &str = r#"#version 330 core
 in vec2 v; out vec4 o;
-uniform sampler2D u_color, u_depth;
+uniform sampler2D u_depth;
 // Clip space to positions relative to the eye, and back.
 uniform mat4 u_inv, u_proj;
 uniform vec2 u_texel;
-uniform int u_ao, u_fxaa;
-uniform float u_ao_strength;
+uniform int u_ao;
 vec3 posAt(vec2 uv){
   vec4 p = u_inv * vec4(uv * 2.0 - 1.0, texture(u_depth, uv).r * 2.0 - 1.0, 1.0);
   return p.xyz / p.w;
 }
+// The samples of each pixel are turned by one of 16 steps in a 4 x 4 tile, which the blur
+// over 4 x 4 pixels evens out, so no pattern of noise is left on the screen.
+const float TURN[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+void main(){
+  vec2 uv = v * 0.5 + 0.5;
+  if (texture(u_depth, uv).r >= 1.0) { o = vec4(0.0, 1.0e4, 0.0, 1.0); return; }
+  vec3 p = posAt(uv);
+  float dist = length(p);
+  float fade = 1.0 - smoothstep(110.0, 200.0, dist);
+  if (fade <= 0.0) { o = vec4(0.0, dist, 0.0, 1.0); return; }
+  // The surface normal from the nearer neighbour on each axis, to stay off edges.
+  vec3 px = posAt(uv + vec2(u_texel.x, 0.0)) - p, nx = p - posAt(uv - vec2(u_texel.x, 0.0));
+  vec3 py = posAt(uv + vec2(0.0, u_texel.y)) - p, ny = p - posAt(uv - vec2(0.0, u_texel.y));
+  vec3 n = normalize(cross(dot(px, px) < dot(nx, nx) ? px : nx, dot(py, py) < dot(ny, ny) ? py : ny));
+  if (dot(n, p) > 0.0) n = -n;
+  vec3 t = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+  vec3 b = cross(n, t);
+  float radius = clamp(dist * 0.06, 0.25, 1.5);
+  ivec2 cell = ivec2(gl_FragCoord.xy) & 3;
+  float step16 = TURN[cell.y * 4 + cell.x];
+  float turn = (step16 + 0.5) * (6.2832 / 16.0);
+  float shift = fract(step16 * 0.618034);
+  float occ = 0.0;
+  for (int i = 0; i < u_ao; i++) {
+    float k = (float(i) + shift) / float(u_ao);
+    float a = turn + float(i) * 2.39996;
+    vec3 dir = (t * cos(a) + b * sin(a)) * sqrt(k) + n * sqrt(1.0 - k * 0.85);
+    vec3 s = p + dir * radius * mix(0.25, 1.0, k);
+    vec4 q = u_proj * vec4(s, 1.0);
+    vec2 suv = q.xy / q.w * 0.5 + 0.5;
+    if (q.w <= 0.0 || suv.x < 0.0 || suv.y < 0.0 || suv.x > 1.0 || suv.y > 1.0) continue;
+    // What is seen there shades the pixel as far as it rises above the surface. A point of
+    // the same flat surface lies in its plane, wherever the depth is read, so a wall seen at
+    // a slant does not shade itself.
+    vec3 w = posAt(suv) - p;
+    float l = length(w);
+    if (l < 1e-3) continue;
+    occ += clamp((dot(w, n) / l - 0.15) / 0.85, 0.0, 1.0) * (1.0 - smoothstep(radius, radius * 2.0, l));
+  }
+  o = vec4(min(fade * 1.4 * occ / float(u_ao), 1.0), dist, 0.0, 1.0);
+}"#;
+
+/// Blurred ambient occlusion and edge smoothing, drawn over the finished view.
+const POST_FS: &str = r#"#version 330 core
+in vec2 v; out vec4 o;
+uniform sampler2D u_color, u_occl;
+uniform vec2 u_texel, u_otexel;
+uniform int u_ao, u_fxaa;
+uniform float u_ao_strength;
 float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 vec3 fxaa(vec2 uv){
   vec3 m = texture(u_color, uv).rgb;
@@ -769,38 +820,24 @@ vec3 fxaa(vec2 uv){
   float lb = luma(b);
   return (lb < lo || lb > hi) ? a : b;
 }
-float hash(vec2 p){ return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 void main(){
   vec2 uv = v * 0.5 + 0.5;
   vec3 col = u_fxaa != 0 ? fxaa(uv) : texture(u_color, uv).rgb;
-  if (u_ao > 0 && texture(u_depth, uv).r < 1.0) {
-    vec3 p = posAt(uv);
-    float dist = length(p);
-    float fade = 1.0 - smoothstep(110.0, 200.0, dist);
-    if (fade > 0.0) {
-      // The surface normal from the nearer neighbour on each axis, to stay off edges.
-      vec3 px = posAt(uv + vec2(u_texel.x, 0.0)) - p, nx = p - posAt(uv - vec2(u_texel.x, 0.0));
-      vec3 py = posAt(uv + vec2(0.0, u_texel.y)) - p, ny = p - posAt(uv - vec2(0.0, u_texel.y));
-      vec3 n = normalize(cross(dot(px, px) < dot(nx, nx) ? px : nx, dot(py, py) < dot(ny, ny) ? py : ny));
-      if (dot(n, p) > 0.0) n = -n;
-      vec3 t = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
-      vec3 b = cross(n, t);
-      float radius = clamp(dist * 0.06, 0.25, 1.5);
-      float turn = hash(gl_FragCoord.xy) * 6.2832;
-      float occ = 0.0;
-      for (int i = 0; i < u_ao; i++) {
-        float k = (float(i) + 0.5) / float(u_ao);
-        float a = turn + float(i) * 2.39996;
-        vec3 dir = (t * cos(a) + b * sin(a)) * sqrt(k) + n * sqrt(1.0 - k * 0.85);
-        vec3 s = p + dir * radius * mix(0.25, 1.0, k);
-        vec4 q = u_proj * vec4(s, 1.0);
-        vec2 suv = q.xy / q.w * 0.5 + 0.5;
-        if (q.w <= 0.0 || suv.x < 0.0 || suv.y < 0.0 || suv.x > 1.0 || suv.y > 1.0) continue;
-        float seen = length(posAt(suv)), mine = length(s);
-        // Only what lies close in front of the sample shades it.
-        occ += step(seen, mine - 0.02 - dist * 0.002) * smoothstep(0.0, 1.0, radius / max(mine - seen, 1e-3));
+  if (u_ao > 0) {
+    vec2 c = texture(u_occl, uv).rg;
+    if (c.g < 1.0e3) {
+      // The shade of the 4 x 4 pixels around, those at about the same distance only, so it
+      // does not run over the edges of things.
+      float tol = 0.04 * c.g + 0.05, sum = 0.0, weight = 0.0;
+      for (int y = -2; y < 2; y++) {
+        for (int x = -2; x < 2; x++) {
+          vec2 s = texture(u_occl, uv + vec2(float(x), float(y)) * u_otexel).rg;
+          float w = max(1.0 - abs(s.g - c.g) / tol, 0.0);
+          sum += s.r * w;
+          weight += w;
+        }
       }
-      col *= 1.0 - u_ao_strength * fade * occ / float(u_ao);
+      col *= 1.0 - u_ao_strength * sum / max(weight, 1e-3);
     }
   }
   o = vec4(col, 1.0);
@@ -833,8 +870,7 @@ void main(){
   vec3 S = lin(u_amb * 0.75 + u_sun_col * 0.92) - A;
   vec3 lit = lin(c.rgb) * (A * 0.85 + S * 0.42);
   float dist = distance(v_world, u_eye);
-  lit = mix(lit, lin(vec3(0.73,0.79,0.86)), 1.0 - exp(-dist * u_fog));
-  vec3 e = pow(lit, vec3(1.0 / 2.2)) * u_exposure;
+  vec3 e = mix(pow(lit, vec3(1.0 / 2.2)), vec3(0.73,0.79,0.86), 1.0 - exp(-dist * u_fog)) * u_exposure;
   vec3 over = max(e - vec3(0.7), vec3(0.0));
   o = vec4(min(e, vec3(0.7)) + 0.3 * (vec3(1.0) - exp(-over / 0.3)), 1.0);
 }"#;
@@ -1157,6 +1193,7 @@ struct Programs {
     impostor: glow::Program,
     sky: glow::Program,
     post: glow::Program,
+    occlusion: glow::Program,
 }
 
 /// Off-screen image of a view, with its depth, for the passes drawn over it.
@@ -1165,6 +1202,14 @@ struct Target {
     fbo: glow::Framebuffer,
     color: glow::Texture,
     depth: glow::Texture,
+    size: [i32; 2],
+}
+
+/// Ambient occlusion of a view at the size it is shown, before it is blurred.
+#[derive(Clone, Copy)]
+struct OcclusionTarget {
+    fbo: glow::Framebuffer,
+    texture: glow::Texture,
     size: [i32; 2],
 }
 
@@ -1262,6 +1307,7 @@ pub struct Renderer {
     shadow_alloc: i32,
     /// Off-screen image of each view.
     targets: HashMap<u8, Target>,
+    occlusion_targets: HashMap<u8, OcclusionTarget>,
     fallback: Option<[glow::Texture; 5]>,
 }
 
@@ -1492,6 +1538,7 @@ impl Renderer {
             impostor: compile(gl, IMPOSTOR_VS, IMPOSTOR_FS)?,
             sky: compile(gl, SKY_VS, SKY_FS)?,
             post: compile(gl, SKY_VS, POST_FS)?,
+            occlusion: compile(gl, SKY_VS, AO_FS)?,
         });
         // Patch grid.
         let n = PATCH as u32;
@@ -1986,6 +2033,32 @@ impl Renderer {
         Ok(t)
     }
 
+    /// The texture ambient occlusion of a view is worked out in, made anew when the view changes size.
+    unsafe fn occlusion_target(&mut self, gl: &glow::Context, key: u8, w: i32, h: i32) -> Result<OcclusionTarget, String> {
+        if let Some(t) = self.occlusion_targets.get(&key).filter(|t| t.size == [w, h]) {
+            return Ok(*t);
+        }
+        if let Some(old) = self.occlusion_targets.remove(&key) {
+            gl.delete_framebuffer(old.fbo);
+            gl.delete_texture(old.texture);
+        }
+        let texture = gl.create_texture()?;
+        gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+        gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RG16F as i32, w, h, 0, glow::RG, glow::FLOAT, glow::PixelUnpackData::Slice(None));
+        set_filter(gl, glow::TEXTURE_2D, glow::NEAREST, glow::NEAREST, glow::CLAMP_TO_EDGE);
+        let fbo = gl.create_framebuffer()?;
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
+        gl.framebuffer_texture_2d(glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(texture), 0);
+        if gl.check_framebuffer_status(glow::FRAMEBUFFER) != glow::FRAMEBUFFER_COMPLETE {
+            gl.delete_framebuffer(fbo);
+            gl.delete_texture(texture);
+            return Err("framebuffer incomplete".into());
+        }
+        let t = OcclusionTarget { fbo, texture, size: [w, h] };
+        self.occlusion_targets.insert(key, t);
+        Ok(t)
+    }
+
     /// Renders what casts shadows from the sun into the depth map.
     unsafe fn draw_shadows(&mut self, gl: &glow::Context, f: &Frame, light: &[f32; 16], program: glow::Program, back: Option<glow::Framebuffer>) -> Result<(), String> {
         let size = if self.shadow_size >= 512 { self.shadow_size.min(self.max_tex.max(512)) } else { 4096 };
@@ -2078,7 +2151,7 @@ impl Renderer {
         }
         let Some(p) = &self.programs else { return };
         let (Some(height), Some(mask)) = (self.height, self.mask) else { return };
-        let (terrain, water, mesh_prog, impostor_prog, sky, post) = (p.terrain, p.water, p.mesh, p.impostor, p.sky, p.post);
+        let (terrain, water, mesh_prog, impostor_prog, sky, post, ao_prog) = (p.terrain, p.water, p.mesh, p.impostor, p.sky, p.post, p.occlusion);
         // Where the interface is being drawn; the view goes back there when it is finished.
         let screen = gl.get_parameter_framebuffer(glow::DRAW_FRAMEBUFFER_BINDING);
         let mut stats = Stats { models: self.models.len() as u32, ..Default::default() };
@@ -2407,30 +2480,48 @@ impl Renderer {
             gl.depth_mask(true);
         }
         if let Some(t) = target {
+            gl.disable(glow::DEPTH_TEST);
+            gl.disable(glow::BLEND);
+            gl.bind_vertex_array(self.quad_vao);
+            // Ambient occlusion first, at the size of the view, then blurred as it is laid over.
+            let matrices = eye_relative(&f.view.vp, f.view.eye).filter(|_| !f.view.ortho && f.ao > 0);
+            let occlusion = match matrices {
+                Some(m) => self.occlusion_target(gl, f.viewport_key, area[2].max(1), area[3].max(1)).ok().map(|o| (o, m)),
+                None => None,
+            };
+            if let Some((o, (proj, inv))) = occlusion {
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(o.fbo));
+                gl.viewport(0, 0, o.size[0], o.size[1]);
+                gl.disable(glow::SCISSOR_TEST);
+                gl.use_program(Some(ao_prog));
+                gl.active_texture(glow::TEXTURE0);
+                gl.bind_texture(glow::TEXTURE_2D, Some(t.depth));
+                gl.uniform_1_i32(u(ao_prog, "u_depth").as_ref(), 0);
+                gl.uniform_2_f32(u(ao_prog, "u_texel").as_ref(), 1.0 / t.size[0] as f32, 1.0 / t.size[1] as f32);
+                gl.uniform_1_i32(u(ao_prog, "u_ao").as_ref(), f.ao.min(32) as i32);
+                gl.uniform_matrix_4_f32_slice(u(ao_prog, "u_proj").as_ref(), false, &proj);
+                gl.uniform_matrix_4_f32_slice(u(ao_prog, "u_inv").as_ref(), false, &inv);
+                gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+            }
             gl.bind_framebuffer(glow::FRAMEBUFFER, screen);
             gl.viewport(area[0], area[1], area[2], area[3]);
             if clipped {
                 gl.enable(glow::SCISSOR_TEST);
             }
-            gl.disable(glow::DEPTH_TEST);
-            gl.disable(glow::BLEND);
             gl.use_program(Some(post));
-            gl.active_texture(glow::TEXTURE1);
-            gl.bind_texture(glow::TEXTURE_2D, Some(t.depth));
+            if let Some((o, _)) = occlusion {
+                gl.active_texture(glow::TEXTURE1);
+                gl.bind_texture(glow::TEXTURE_2D, Some(o.texture));
+                gl.uniform_2_f32(u(post, "u_otexel").as_ref(), 1.0 / o.size[0] as f32, 1.0 / o.size[1] as f32);
+            }
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(glow::TEXTURE_2D, Some(t.color));
             gl.uniform_1_i32(u(post, "u_color").as_ref(), 0);
-            gl.uniform_1_i32(u(post, "u_depth").as_ref(), 1);
+            gl.uniform_1_i32(u(post, "u_occl").as_ref(), 1);
             gl.uniform_2_f32(u(post, "u_texel").as_ref(), 1.0 / t.size[0] as f32, 1.0 / t.size[1] as f32);
             gl.uniform_1_i32(u(post, "u_fxaa").as_ref(), (f.smoothing > 0) as i32);
-            let matrices = eye_relative(&f.view.vp, f.view.eye).filter(|_| !f.view.ortho);
-            gl.uniform_1_i32(u(post, "u_ao").as_ref(), if matrices.is_some() { f.ao.min(32) as i32 } else { 0 });
+            gl.uniform_1_i32(u(post, "u_ao").as_ref(), occlusion.is_some() as i32);
             gl.uniform_1_f32(u(post, "u_ao_strength").as_ref(), 0.75);
-            if let Some((proj, inv)) = matrices {
-                gl.uniform_matrix_4_f32_slice(u(post, "u_proj").as_ref(), false, &proj);
-                gl.uniform_matrix_4_f32_slice(u(post, "u_inv").as_ref(), false, &inv);
-            }
-            gl.bind_vertex_array(self.quad_vao);
             gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
         }
         gl.disable(glow::DEPTH_TEST);

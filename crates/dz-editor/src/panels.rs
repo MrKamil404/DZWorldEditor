@@ -1707,15 +1707,8 @@ fn replace_section(app: &mut App, ui: &mut egui::Ui) {
     let n = app.selection.len();
     section(ui, &icons::with(icons::SWAP, &t("Replace model")), false, |ui| {
         about(ui, &t("Puts another model in place of the selected objects; where they stand, how they are turned and their size stay."));
-        let ctx = ui.ctx().clone();
-        let dragging = crate::theme::dragging_models(&ctx);
-        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), egui::Sense::hover());
-        let p = ui.painter();
-        p.rect_stroke(rect, 4.0, egui::Stroke::new(1.0f32, if dragging { theme::ACCENT } else { Color32::from_gray(80) }), egui::StrokeKind::Inside);
-        let hint = if dragging { t("Drop to replace") } else { tf("Drop a model here to replace {0} objects", &[&n.to_string()]) };
-        p.text(rect.center(), egui::Align2::CENTER_CENTER, hint, egui::FontId::proportional(12.0), if dragging { Color32::WHITE } else { theme::TEXT_DIM });
-        crate::theme::drop_zone(&resp, dragging);
-        let dropped: Vec<String> = crate::theme::dropped_models(&resp).iter().map(|m| (**m).clone()).collect();
+        let (_, dropped) = theme::model_drop_box(ui, vec2(ui.available_width(), 44.0), &tf("Drop a model here to replace {0} objects", &[&n.to_string()]), &t("Drop to replace"));
+        let dropped: Vec<String> = dropped.iter().map(|m| (**m).clone()).collect();
         // The model or models chosen in the Content Browser.
         let mut chosen: Vec<String> = app.browser.selected.iter().filter_map(|p| if let crate::asset_browser::Pick::Model(m) = p { Some(m.clone()) } else { None }).collect();
         if chosen.is_empty() { chosen.extend(app.place.model.clone()); }

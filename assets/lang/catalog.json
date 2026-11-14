@@ -1767,6 +1767,10 @@
   "de": "Zeichnet die Objekte von oben in das Satellitenbild, als Modifikator, der ausgeblendet oder gelöscht werden kann.",
   "pl": "Rysuje obiekty widziane z góry na satce jako modyfikator, który można ukryć albo usunąć."
  },
+ "Drop a model here": {
+  "de": "Ein Modell hier ablegen",
+  "pl": "Upuść tu model"
+ },
  "Drop a model here to replace {0} objects": {
   "de": "Ein Modell hier ablegen, um {0} Objekte zu ersetzen",
   "pl": "Upuść tu model, aby podmienić obiekty: {0}"
@@ -1779,6 +1783,10 @@
   "de": "Auf die Karte ziehen, um dort einen Geländemodifikator hinzuzufügen.",
   "pl": "Upuść na mapę, aby dodać tam modyfikator terenu."
  },
+ "Drop models here to add them": {
+  "de": "Modelle hier ablegen, um sie hinzuzufügen",
+  "pl": "Upuść tu modele, aby je dodać"
+ },
  "Drop this generator on a line or a road, or select one first": {
   "de": "Lege diesen Generator auf einer Linie oder Straße ab oder wähle zuerst eine aus",
   "pl": "Upuść ten generator na linię lub drogę albo najpierw ją zaznacz"
@@ -1787,9 +1795,17 @@
   "de": "Lege diesen Generator auf einer Polylinie ab oder wähle zuerst eine aus",
   "pl": "Upuść ten generator na polilinię albo najpierw ją zaznacz"
  },
+ "Drop to add": {
+  "de": "Zum Hinzufügen loslassen",
+  "pl": "Upuść, aby dodać"
+ },
  "Drop to replace": {
   "de": "Zum Ersetzen loslassen",
   "pl": "Upuść, aby podmienić"
+ },
+ "Drop to use": {
+  "de": "Zum Übernehmen loslassen",
+  "pl": "Upuść, aby użyć"
  },
  "Droplets": {
   "de": "Tropfen",

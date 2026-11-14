@@ -78,11 +78,13 @@ fn number64(ui: &mut egui::Ui, label: String, v: &mut f64, range: std::ops::Rang
 /// A model field: takes the model chosen in the browser, or one dropped on it.
 fn model_field(ui: &mut egui::Ui, label: String, value: &mut String, selected: &Option<String>) {
     row(ui, &label, |ui| {
-        let name = value.rsplit('\\').next().unwrap_or("").to_string();
-        let shown = ui.add(egui::Label::new(if name.is_empty() { t("none") } else { name }).sense(egui::Sense::hover())).on_hover_text(value.as_str());
-        crate::theme::drop_zone(&shown, crate::theme::dragging_models(&shown.ctx));
-        for p in crate::theme::dropped_models(&shown) {
-            *value = (*p).clone();
+        let name = value.rsplit('\\').next().unwrap_or("").trim_end_matches(".p3d").to_string();
+        let width = (ui.available_width() - if value.is_empty() { 90.0 } else { 116.0 }).max(80.0);
+        let idle = if name.is_empty() { t("Drop a model here") } else { name };
+        let (shown, dropped) = crate::theme::model_drop_box(ui, egui::vec2(width, 22.0), &idle, &t("Drop to use"));
+        if !value.is_empty() { shown.on_hover_text(value.as_str()); }
+        if let Some(p) = dropped.last() {
+            *value = (**p).clone();
         }
         if ui.small_button(t("Use selected")).clicked() {
             if let Some(m) = selected { *value = m.clone(); }
@@ -114,9 +116,11 @@ fn models_list(ui: &mut egui::Ui, models: &mut Vec<(String, f32)>, cx: &KindCont
         }
     }).response;
     crate::theme::drop_zone(&list, crate::theme::dragging_models(&list.ctx));
-    for p in crate::theme::dropped_models(&list) { if !models.iter().any(|m| m.0 == *p) { models.push(((*p).clone(), 1.0)); } }
+    let mut dropped = crate::theme::dropped_models(&list);
+    dropped.extend(crate::theme::add_models_box(ui));
+    for p in dropped { if !models.iter().any(|m| m.0 == *p) { models.push(((*p).clone(), 1.0)); } }
     if let Some(i) = remove { models.remove(i); }
-    if ui.button(format!("+ {}", t("Add selected model"))).on_hover_text(t("Models can also be dropped here.")).clicked() {
+    if ui.button(format!("+ {}", t("Add selected model"))).clicked() {
         if let Some(m) = &cx.model { if !models.iter().any(|x| x.0 == *m) { models.push((m.clone(), 1.0)); } }
     }
 }
@@ -434,7 +438,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             }
         }
         GeneratorKind::Settlement(s) => {
-            ui.weak(t("Buildings: pick in the Content Browser and press Add, or drop them here."));
+            ui.weak(t("Buildings"));
             let mut remove = None;
             let list = ui.vertical(|ui| {
                 for (i, m) in s.buildings.iter().enumerate() {
@@ -445,7 +449,9 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 }
             }).response;
             crate::theme::drop_zone(&list, crate::theme::dragging_models(&list.ctx));
-            for p in crate::theme::dropped_models(&list) { if !s.buildings.contains(&p) { s.buildings.push((*p).clone()); } }
+            let mut dropped = crate::theme::dropped_models(&list);
+            dropped.extend(crate::theme::add_models_box(ui));
+            for p in dropped { if !s.buildings.contains(&p) { s.buildings.push((*p).clone()); } }
             if let Some(i) = remove { s.buildings.remove(i); }
             if ui.button(format!("+ {}", t("Add selected model"))).clicked() {
                 if let Some(m) = &cx.model { if !s.buildings.contains(m) { s.buildings.push(m.clone()); } }
@@ -1016,9 +1022,11 @@ fn forest_preset_details(app: &mut App, ui: &mut egui::Ui, name: &str) {
     }).response;
     let stem = |m: &str| m.rsplit('\\').next().unwrap_or(m).trim_end_matches(".p3d").to_string();
     crate::theme::drop_zone(&list, crate::theme::dragging_models(&list.ctx));
-    for m in crate::theme::dropped_models(&list) { let s = stem(&m); if !p.weights.iter().any(|w| w.0 == s) { p.weights.push((s, 1.0)); } }
+    let mut dropped = crate::theme::dropped_models(&list);
+    dropped.extend(crate::theme::add_models_box(ui));
+    for m in dropped { let s = stem(&m); if !p.weights.iter().any(|w| w.0 == s) { p.weights.push((s, 1.0)); } }
     if let Some(i) = remove { p.weights.remove(i); }
-    if ui.button(format!("+ {}", t("Add selected model"))).on_hover_text(t("Models can also be dropped here.")).clicked() {
+    if ui.button(format!("+ {}", t("Add selected model"))).clicked() {
         if let Some(m) = &model { let s = stem(m); if !p.weights.iter().any(|w| w.0 == s) { p.weights.push((s, 1.0)); } }
     }
     let changed = *p != before;
@@ -1049,9 +1057,11 @@ fn object_preset_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
         }
     }).response;
     crate::theme::drop_zone(&list, crate::theme::dragging_models(&list.ctx));
-    for m in crate::theme::dropped_models(&list) { if !p.items.iter().any(|i| i.0 == *m) { p.items.push(((*m).clone(), 1.0)); } }
+    let mut dropped = crate::theme::dropped_models(&list);
+    dropped.extend(crate::theme::add_models_box(ui));
+    for m in dropped { if !p.items.iter().any(|i| i.0 == *m) { p.items.push(((*m).clone(), 1.0)); } }
     if let Some(i) = remove { p.items.remove(i); }
-    if ui.button(format!("+ {}", t("Add selected model"))).on_hover_text(t("Models can also be dropped here.")).clicked() {
+    if ui.button(format!("+ {}", t("Add selected model"))).clicked() {
         if let Some(m) = selected { if !p.items.iter().any(|i| i.0 == m) { p.items.push((m, 1.0)); } }
     }
     number(ui, t("Min scale"), &mut p.scale_min, 0.1..=4.0);

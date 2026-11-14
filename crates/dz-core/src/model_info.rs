@@ -294,11 +294,134 @@ pub fn skew(o: &crate::objects::Obj, info: &ModelInfo, height: &crate::terrain::
 pub struct ModelDb {
     root: PathBuf,
     cache: Arc<Mutex<HashMap<String, ModelInfo>>>,
+    caps: Arc<Mutex<HashMap<String, CapLayout>>>,
+}
+
+/// How the road of an end piece lies along it. The piece runs from its start port (local
+/// z = 0) to its end port (z = length); its road meets the rest of the road at a hard edge
+/// and fades out away from it. Vanilla pieces fade towards their start and meet the road at
+/// their end; some pieces of other maps are the other way round, or have their road a way
+/// inside the model.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CapLayout {
+    /// The hard edge is at the end port's side.
+    pub joint_at_end: bool,
+    /// How far inside the piece the hard edge lies from that port.
+    pub inset: f64,
+    /// How long the stretch at the far end is where nothing of the road shows any more.
+    pub tail: f64,
+}
+
+impl Default for CapLayout {
+    fn default() -> Self {
+        Self { joint_at_end: true, inset: 0.0, tail: 0.0 }
+    }
+}
+
+/// Triangles of a model with their UVs, and the texture of each, as `width`, `height` and RGBA.
+pub type Textured<'a> = (&'a [[f32; 3]], &'a [[f32; 2]], Option<(u32, u32, &'a [u8])>);
+
+/// [`CapLayout`] of a model whose start port is at z = `start`, from how opaque its textures
+/// are along it, read through its UVs.
+pub fn cap_layout_of(surfaces: &[Textured], start: f64, length: f64) -> CapLayout {
+    const BINS: usize = 50;
+    if length <= 0.0 {
+        return CapLayout::default();
+    }
+    // How much road is drawn across each stretch of the piece: alpha times area, and area.
+    let (mut cover, mut area_of) = ([0.0f64; BINS], [0.0f64; BINS]);
+    let bin = |z: f32| (((z as f64 - start) / length * BINS as f64).floor() as isize).clamp(0, BINS as isize - 1) as usize;
+    for (positions, uvs, tex) in surfaces {
+        let tex = tex.filter(|t| t.0 > 0 && t.1 > 0 && t.2.len() >= (t.0 * t.1 * 4) as usize);
+        let alpha = |uv: [f32; 2]| -> f64 {
+            let Some((w, h, rgba)) = tex else { return 1.0 };
+            let x = ((uv[0].rem_euclid(1.0) * w as f32) as u32).min(w - 1);
+            let y = ((uv[1].rem_euclid(1.0) * h as f32) as u32).min(h - 1);
+            rgba[((y * w + x) * 4 + 3) as usize] as f64 / 255.0
+        };
+        for (v, t) in positions.chunks_exact(3).zip(uvs.chunks_exact(3)) {
+            let (e1, e2) = ([v[1][0] - v[0][0], v[1][2] - v[0][2]], [v[2][0] - v[0][0], v[2][2] - v[0][2]]);
+            let area = (e1[0] * e2[1] - e1[1] * e2[0]).abs() as f64 * 0.5;
+            if area < 1e-6 {
+                continue;
+            }
+            const K: usize = 48;
+            for i in 0..K {
+                for j in 0..K {
+                    let (mut a, mut c) = ((i as f32 + 0.5) / K as f32, (j as f32 + 0.5) / K as f32);
+                    if a + c > 1.0 {
+                        (a, c) = (1.0 - a, 1.0 - c);
+                    }
+                    let w0 = 1.0 - a - c;
+                    let z = v[0][2] * w0 + v[1][2] * a + v[2][2] * c;
+                    let uv = [t[0][0] * w0 + t[1][0] * a + t[2][0] * c, t[0][1] * w0 + t[1][1] * a + t[2][1] * c];
+                    cover[bin(z)] += area / (K * K) as f64 * alpha(uv);
+                    area_of[bin(z)] += area / (K * K) as f64;
+                }
+            }
+        }
+    }
+    // Where the piece is drawn at all, the share of it that is road; nothing drawn counts as none.
+    let widest = area_of.iter().cloned().fold(0.0, f64::max);
+    for k in 0..BINS {
+        cover[k] = if area_of[k] > widest * 0.05 { cover[k] / area_of[k] } else { 0.0 };
+    }
+    let top = cover.iter().cloned().fold(0.0, f64::max);
+    if top <= 0.0 {
+        return CapLayout::default();
+    }
+    let solid: Vec<usize> = (0..BINS).filter(|&k| cover[k] > top * 0.5).collect();
+    let (first, last) = (solid[0], *solid.last().unwrap());
+    let step = length / BINS as f64;
+    // The road fades out on one side of its solid stretch; it meets the road on the other.
+    let (below, above): (f64, f64) = (cover[..first].iter().sum(), cover[last + 1..].iter().sum());
+    // The road sits inside the piece only where nothing at all is drawn between it and the port.
+    let empty = |k: &usize| cover[*k] <= top * 0.05;
+    let snap = |bins: usize| if (bins as f64 * step) < 0.3 { 0.0 } else { bins as f64 * step };
+    let (from_start, from_end) = (snap((0..BINS).take_while(empty).count()), snap((0..BINS).rev().take_while(empty).count()));
+    if above > below * 1.2 + top * 0.05 {
+        CapLayout { joint_at_end: false, inset: from_start, tail: from_end }
+    } else {
+        CapLayout { joint_at_end: true, inset: from_end, tail: from_start }
+    }
+}
+
+/// [`CapLayout`] of the model in `file`, a source (MLOD) or a binarized one.
+fn read_cap_layout(file: &Path, root: &Path, start: f64, length: f64) -> CapLayout {
+    if let Ok(m) = forest_core::model3d::load_model(file, root, 64) {
+        let mut surfaces = Vec::new();
+        let (mut positions, mut uvs) = (Vec::new(), Vec::new());
+        for b in &m.batches {
+            let start = positions.len();
+            for &k in &m.indices[b.first_index as usize..(b.first_index + b.index_count) as usize] {
+                positions.push(m.vertices[k as usize].pos);
+                uvs.push(m.vertices[k as usize].uv);
+            }
+            surfaces.push((start, positions.len(), b.texture.and_then(|t| m.textures.get(t))));
+        }
+        let list: Vec<Textured> = surfaces.iter().map(|(a, b, t)| (&positions[*a..*b], &uvs[*a..*b], t.map(|t| (t.width, t.height, t.rgba.as_slice())))).collect();
+        return cap_layout_of(&list, start, length);
+    }
+    let cache = dayz_road_tool::mesh3d::Cache::default();
+    let Some(m) = cache.mesh(file) else { return CapLayout::default() };
+    let textures: Vec<_> = m.surfaces.iter().map(|s| cache.texture(&s.texture, file)).collect();
+    let list: Vec<Textured> = m.surfaces.iter().zip(&textures).map(|(s, t)| (s.positions.as_slice(), s.uvs.as_slice(), t.as_ref().map(|t| (t.width, t.height, t.rgba.as_slice())))).collect();
+    cap_layout_of(&list, start, length)
 }
 
 impl ModelDb {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into(), cache: Default::default() }
+        Self { root: root.into(), cache: Default::default(), caps: Default::default() }
+    }
+    /// How the road of end piece `model` lies along it, from its start port at z = `start` to its
+    /// end port `length` further on; read once per model.
+    pub fn cap_layout(&self, model: &str, start: f64, length: f64) -> CapLayout {
+        if let Some(c) = self.caps.lock().unwrap().get(model) {
+            return *c;
+        }
+        let layout = read_cap_layout(&self.file(model), &self.root, start, length);
+        self.caps.lock().unwrap().insert(model.to_string(), layout);
+        layout
     }
     pub fn root(&self) -> &Path {
         &self.root
