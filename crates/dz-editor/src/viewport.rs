@@ -4098,6 +4098,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "teammergego" => crate::team_ui::finish_merge(app),
+        // `teamgive name` gives the selected objects to a layer of `name`.
+        "teamgive" => crate::team_ui::give_selection(app, arg),
         // `camproxy n`: the camera 2.5 m from proxy n of the first object, a little above it,
         // looking at it.
         "camproxy" => {

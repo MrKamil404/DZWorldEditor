@@ -27,6 +27,10 @@ pub struct TeamUi {
     busy: bool,
     /// The outliner shows only what this person made or owns; `None` shows everything.
     pub filter: Option<String>,
+    /// People named in this session who have nothing of their own yet.
+    extra_people: Vec<String>,
+    /// A name being typed in a menu of people.
+    new_person: String,
     /// The merge itself runs: the project is about to be replaced, so editing waits.
     merging: bool,
 }
@@ -135,13 +139,106 @@ pub fn shown(app: &App, who: &str) -> bool {
 pub fn people(app: &App) -> Vec<String> {
     let Some(doc) = &app.doc else { return Vec::new() };
     let mut out = vec![doc.world.team_me.clone()];
-    let others = doc.world.object_layers.iter().filter(|l| !l.deleted).map(|l| l.owner.clone()).chain(doc.world.authors.iter().flat_map(|a| a.values().cloned()));
+    let others = doc.world.object_layers.iter().filter(|l| !l.deleted).map(|l| l.owner.clone())
+        .chain(doc.world.authors.iter().flat_map(|a| a.values().cloned()))
+        .chain(app.team.incoming.iter().map(|(_, h)| h.author.clone()))
+        .chain(app.team.extra_people.iter().cloned());
     for n in others {
         if !n.is_empty() && !out.contains(&n) {
             out.push(n);
         }
     }
     out
+}
+
+/// A menu of the people of the team, with no one and a field for someone new. Gives the one
+/// clicked: a name, or empty for no one.
+pub fn person_menu(app: &mut App, ui: &mut egui::Ui, current: &str) -> Option<String> {
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    let people = people(app);
+    let me = people.first().cloned().unwrap_or_default();
+    let mut pick = None;
+    for p in &people {
+        let label = if *p == me { tf("Me ({0})", &[p]) } else { p.clone() };
+        if ui.add(egui::Button::new(icons::with(icons::USER, &label)).selected(current == p)).clicked() {
+            pick = Some(p.clone());
+        }
+    }
+    if ui.add(egui::Button::new(t("No one")).selected(current.is_empty())).on_hover_text(t("Anyone may work on it without unlocking it.")).clicked() {
+        pick = Some(String::new());
+    }
+    ui.separator();
+    ui.horizontal(|ui| {
+        let edit = ui.add(egui::TextEdit::singleline(&mut app.team.new_person).hint_text(t("Someone else...")).desired_width(130.0));
+        let name = app.team.new_person.trim().to_string();
+        let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if (ui.add_enabled(!name.is_empty(), egui::Button::new(t("Choose"))).clicked() || enter) && !name.is_empty() {
+            if !app.team.extra_people.contains(&name) {
+                app.team.extra_people.push(name.clone());
+            }
+            app.team.new_person.clear();
+            pick = Some(name);
+        }
+    });
+    if pick.is_some() {
+        ui.close_menu();
+    }
+    pick
+}
+
+/// Makes `name` the author of the thing under `key`, so it can be undone.
+pub fn set_author(app: &mut App, key: u64, name: String) {
+    let Some(doc) = &mut app.doc else { return };
+    if doc.world.author(key) == name {
+        return;
+    }
+    let before = doc.world.set_author(key, &name);
+    doc.history.push(t("Author"), dz_core::edit::Change::Authors(before));
+}
+
+/// The Author submenu of a modifier, road or generator in the outliner, in team work.
+pub fn author_menu(app: &mut App, ui: &mut egui::Ui, key: u64) {
+    if !active(app) {
+        return;
+    }
+    let current = app.doc.as_ref().map(|d| d.world.author(key).to_string()).unwrap_or_default();
+    let mut pick = None;
+    ui.menu_button(icons::with(icons::USER, &t("Author")), |ui| pick = person_menu(app, ui, &current));
+    if let Some(p) = pick {
+        set_author(app, key, p);
+    }
+}
+
+/// Moves the selected objects to a layer of `person`, made when they have none; empty gives
+/// them to a layer of no one.
+pub fn give_selection(app: &mut App, person: String) {
+    let Some(doc) = &mut app.doc else { return };
+    if app.selection.is_empty() {
+        app.warn(t("Select objects first"));
+        return;
+    }
+    let count = app.selection.len();
+    let layers = &doc.world.object_layers;
+    let found = layers.iter().enumerate().position(|(i, l)| !l.deleted && l.owner == person && (i > 0 || person.is_empty()));
+    let (layer, made) = match found {
+        Some(i) => (i as u16, false),
+        None => {
+            let before = doc.world.object_layers.clone();
+            let name = if person.is_empty() { t("Shared") } else { person.clone() };
+            let n = doc.world.add_object_layer(&name);
+            doc.world.object_layers[n as usize].owner = person.clone();
+            doc.history.push(t("New layer"), dz_core::edit::Change::ObjectLayers(before));
+            (n, true)
+        }
+    };
+    app.layer_action(crate::app::LayerAction::MoveSelection(layer));
+    if let Some(doc) = &mut app.doc {
+        if made {
+            doc.history.group_last(2, t("Give objects"));
+        }
+        let to = doc.world.object_layers[layer as usize].name.clone();
+        app.info(tf("{0} objects moved to the layer {1}", &[&count.to_string(), &to]));
+    }
 }
 
 /// The choice of whose work the outliner shows.
@@ -323,6 +420,7 @@ fn part_name(name: &str) -> String {
         "satellite_size" => "Satellite image of another size (send a full copy)",
         "mission" => "Mission",
         "layer_owners" => "Owners of layers",
+        "authors" => "Authors",
         "map_settings" => "Map settings",
         "map_id" => "Map class name or terrain size (send a full copy)",
         other => other,
@@ -375,6 +473,13 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
             ui.close_menu();
             send(app);
         }
+        ui.add_enabled_ui(active(app) && !app.selection.is_empty(), |ui| {
+            ui.menu_button(icons::with(icons::HAND_ARROW_UP, &t("Give the selected objects")), |ui| {
+                if let Some(p) = person_menu(app, ui, "") {
+                    give_selection(app, p);
+                }
+            }).response.on_hover_text(t("Moves them to a layer of the one you choose, made when they have none. Select an area of the map to give it."));
+        });
         let label = if n > 0 { tf("Merge changes of others ({0})", &[&n.to_string()]) } else { t("Merge changes of others") };
         if ui.add_enabled(ready && n > 0, egui::Button::new(icons::with(icons::GIT_MERGE, &label))).clicked() {
             ui.close_menu();

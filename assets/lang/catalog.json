@@ -507,6 +507,10 @@
   "de": "Autor",
   "pl": "Autor"
  },
+ "Authors": {
+  "de": "Ersteller",
+  "pl": "Autorzy"
+ },
  "Autosave every": {
   "de": "Automatisch speichern alle",
   "pl": "Autozapis co"
@@ -866,6 +870,10 @@
  "Children": {
   "de": "Kinder",
   "pl": "Dzieci"
+ },
+ "Choose": {
+  "de": "Wählen",
+  "pl": "Wybierz"
  },
  "Choose a Terrain Builder or built map folder": {
   "de": "Terrain-Builder- oder Kartenordner wählen",
@@ -2299,6 +2307,14 @@
   "de": "Eine Höhe über dem Spawn geben",
   "pl": "Nadaj wysokość nad spawnem"
  },
+ "Give objects": {
+  "de": "Objekte übergeben",
+  "pl": "Oddaj obiekty"
+ },
+ "Give the selected objects": {
+  "de": "Ausgewählte Objekte übergeben",
+  "pl": "Oddaj zaznaczone obiekty"
+ },
  "Global numbers of the economy: counts, cleanup times, login and logout times.": {
   "de": "Globale Werte der Wirtschaft: Anzahlen, Aufräumzeiten, Ein- und Ausloggzeiten.",
   "pl": "Globalne liczby ekonomii: limity, czasy sprzątania, logowania i wylogowania."
@@ -3083,6 +3099,10 @@
   "de": "Max. Steigung %",
   "pl": "Maks. nachylenie %"
  },
+ "Me ({0})": {
+  "de": "Ich ({0})",
+  "pl": "Ja ({0})"
+ },
  "Medium": {
   "de": "Mittel",
   "pl": "Średnie"
@@ -3311,6 +3331,10 @@
   "de": "Bewegungstempo",
   "pl": "Prędkość ruchu"
  },
+ "Moves them to a layer of the one you choose, made when they have none. Select an area of the map to give it.": {
+  "de": "Verschiebt sie auf eine Ebene der gewählten Person, die angelegt wird, wenn sie keine hat. Wähle einen Bereich der Karte aus, um ihn zu übergeben.",
+  "pl": "Przenosi je na warstwę wybranej osoby, tworząc ją, jeśli osoba żadnej nie ma. Zaznacz obszar mapy, aby go oddać."
+ },
  "My folders": {
   "de": "Meine Ordner",
   "pl": "Moje foldery"
@@ -3486,6 +3510,10 @@
  "No objects to paint under": {
   "de": "Keine Objekte zum Untermalen",
   "pl": "Brak obiektów do podmalowania"
+ },
+ "No one": {
+  "de": "Niemand",
+  "pl": "Nikt"
  },
  "No picture": {
   "de": "Kein Bild",
@@ -3842,6 +3870,10 @@
  "Own map centre": {
   "de": "Eigene Kartenmitte",
   "pl": "Własny środek mapy"
+ },
+ "Owner": {
+  "de": "Besitzer",
+  "pl": "Właściciel"
  },
  "Owner of the layer": {
   "de": "Besitzer der Ebene",
@@ -4915,6 +4947,10 @@
   "de": "Platz gleich aufteilen",
   "pl": "Podziel miejsce po równo"
  },
+ "Shared": {
+  "de": "Gemeinsam",
+  "pl": "Wspólne"
+ },
  "Sharpness": {
   "de": "Schärfe",
   "pl": "Ostrość"
@@ -5030,6 +5066,10 @@
  "Some actions share a key; only the first of them will work.": {
   "de": "Einige Aktionen teilen eine Taste; nur die erste davon wirkt.",
   "pl": "Niektóre akcje mają ten sam klawisz; zadziała tylko pierwsza z nich."
+ },
+ "Someone else...": {
+  "de": "Jemand anderes...",
+  "pl": "Ktoś inny..."
  },
  "Source code on GitHub": {
   "de": "Quellcode auf GitHub",
@@ -6562,6 +6602,10 @@
  "{0} objects in the group": {
   "de": "{0} Objekte in der Gruppe",
   "pl": "{0} obiektów w grupie"
+ },
+ "{0} objects moved to the layer {1}": {
+  "de": "{0} Objekte auf die Ebene {1} verschoben",
+  "pl": "Przeniesiono obiekty ({0}) na warstwę {1}"
  },
  "{0} objects removed": {
   "de": "{0} Objekte entfernt",

@@ -243,6 +243,9 @@ struct Body {
     mission: Option<MissionBody>,
     /// Owners of the object layers by layer name, when they changed.
     layer_owners: Option<BTreeMap<String, String>>,
+    /// Who made what, where it is not as in the shared version: what is new, and what was given
+    /// to someone else.
+    authors: BTreeMap<u64, String>,
     /// The map settings, when they changed.
     meta: Option<Value>,
 }
@@ -326,11 +329,6 @@ fn list_values(w: &World, name: &str) -> Vec<Value> {
         Ok(Value::Array(mut a)) => {
             for e in &mut a {
                 refs_to_uids(e, field, &w.objects);
-                // Who made it travels with it.
-                let author = w.author(id_of(e));
-                if !author.is_empty() {
-                    e["author"] = Value::from(author);
-                }
             }
             a
         }
@@ -341,11 +339,6 @@ fn list_values(w: &World, name: &str) -> Vec<Value> {
 fn set_list(w: &mut World, name: &str, values: Vec<Value>, ids: &HashMap<u64, u32>) -> Result<()> {
     let field = LISTS.iter().find(|l| l.0 == name).map(|l| l.1).unwrap_or("");
     let values: Vec<Value> = values.into_iter().map(|mut v| { refs_from_uids(&mut v, field, ids); v }).collect();
-    for v in &values {
-        if let Some(a) = v.get("author").and_then(Value::as_str) {
-            w.authors.get_or_insert_with(Default::default).insert(id_of(v), a.to_string());
-        }
-    }
     let v = Value::Array(values);
     match name {
         "modifiers" => w.modifiers = serde_json::from_value(v).context("modifiers")?,
@@ -690,6 +683,12 @@ pub fn diff(base: &World, base_dir: Option<&Path>, now: &World, now_dir: Option<
         summary.other.push("mission".into());
         body.mission = Some(mb);
     }
+    if let Some(a) = &now.authors {
+        body.authors = a.iter().filter(|(k, v)| base.author(**k) != v.as_str()).map(|(k, v)| (*k, v.clone())).collect();
+        if body.authors.keys().any(|k| base.authors.as_ref().is_some_and(|b| b.contains_key(k))) {
+            summary.other.push("authors".into());
+        }
+    }
     let (bo, no) = (owners(base), owners(now));
     if bo != no {
         summary.other.push("layer_owners".into());
@@ -982,7 +981,7 @@ pub fn merge(base: &World, patch: &Patch, mine: &mut World, dirs: Dirs, choices:
     merge_mask(base, patch, mine, choices, &mut out)?;
     let author = patch.header.author.as_str();
     // What was there before anyone was its author stays so, also in a copy that has no authors yet.
-    if mine.authors.is_none() && !b.lists.is_empty() {
+    if mine.authors.is_none() && (!b.lists.is_empty() || !b.authors.is_empty()) {
         mine.authors = Some(mine.modifiers.iter().map(|m| m.id).chain(mine.routes.iter().map(|r| r.id)).chain(mine.generators.iter().map(|g| g.id)).map(|id| (id, String::new())).collect());
     }
     // Owners of layers, before the objects that go to them.
@@ -1005,6 +1004,10 @@ pub fn merge(base: &World, patch: &Patch, mine: &mut World, dirs: Dirs, choices:
         }
         out.taken.other.push("layer_owners".into());
     }
+    // Who made a thing: as this copy knows it, else as the patch says.
+    let author_of = |w: &World, key: u64| -> String {
+        Some(w.author(key)).filter(|a| !a.is_empty()).map(str::to_string).or_else(|| b.authors.get(&key).cloned()).unwrap_or_default()
+    };
     let owner_of = |w: &World, layer: &str| -> String {
         w.object_layers.iter().find(|l| !l.deleted && l.name == layer).map(|l| l.owner.clone()).filter(|o| !o.is_empty()).or_else(|| their_owners.get(layer).cloned()).unwrap_or_default()
     };
@@ -1104,7 +1107,7 @@ pub fn merge(base: &World, patch: &Patch, mine: &mut World, dirs: Dirs, choices:
     for (name, _) in LISTS {
         let Some(d) = b.lists.get(name) else { continue };
         let mut list = list_values(mine, name);
-        let by_author = |v: &Value| owner_default(v.get("author").and_then(Value::as_str).unwrap_or(""), author);
+        let by_author = |v: &Value| owner_default(&author_of(mine, id_of(v)), author);
         if merge_list(name, &list_values(base, name), &mut list, &d.set, &d.removed, id_of, name_of, place_of, by_author, choices, &mut out) {
             set_list(mine, name, list, &mine_ids)?;
             out.taken.other.push(name.to_string());
@@ -1147,6 +1150,18 @@ pub fn merge(base: &World, patch: &Patch, mine: &mut World, dirs: Dirs, choices:
             mine.meta = serde_json::from_value(mv).context("map settings")?;
             out.taken.other.push("map_settings".into());
         }
+    }
+    // Authors given or noted by the other person, where this copy left them as they were.
+    let mut given = false;
+    for (k, a) in &b.authors {
+        let (was, now) = (base.author(*k).to_string(), mine.author(*k).to_string());
+        if now != *a && (now == was || now.is_empty()) {
+            mine.authors.get_or_insert_with(Default::default).insert(*k, a.clone());
+            given |= !was.is_empty() || base.authors.as_ref().is_some_and(|m| m.contains_key(k));
+        }
+    }
+    if given {
+        out.taken.other.push("authors".into());
     }
     mine.recompose(None);
     out.conflicts.sort_by_key(|c| c.key);

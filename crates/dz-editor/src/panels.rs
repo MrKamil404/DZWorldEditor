@@ -1307,7 +1307,6 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut layer_action = None;
     // In team work: whose things are shown, and who made each.
     let team = crate::team_ui::active(app);
-    let me = doc.world.team_me.clone();
     let by = |who: &str| if team && !who.is_empty() { format!("  · {who}") } else { String::new() };
     let mods: Vec<(u64, String)> = doc.world.modifiers.iter().filter(|m| crate::team_ui::shown(app, doc.world.author(m.id))).map(|m| (m.id, format!("{}{}", m.name, by(doc.world.author(m.id))))).collect();
     let foreign: Vec<bool> = (0..doc.world.object_layers.len()).map(|i| doc.world.layer_foreign(i as u16)).collect();
@@ -1326,6 +1325,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut shape_pick: Option<(usize, usize, bool)> = None;
     let mut shape_move: Option<(usize, usize, usize)> = None;
     let mut toggle_open: Option<usize> = None;
+    let route_ids: Vec<u64> = doc.world.routes.iter().map(|r| r.id).collect();
     let routes: Vec<(usize, String, String)> = doc.world.routes.iter().enumerate().filter(|(_, r)| crate::team_ui::shown(app, doc.world.author(r.id))).map(|(i, r)| (i, r.name.clone(), format!("{}{}", r.family, by(doc.world.author(r.id))))).collect();
     let mut select_route = None;
     let mut delete_route = None;
@@ -1338,7 +1338,9 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().id_salt("outl").auto_shrink([false, false]).show(ui, |ui| {
         outliner_section(fold, "Terrain modifiers", icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()]))).show(ui, |ui| {
             for (id, name) in mods.iter().filter(|(_, n)| n.to_ascii_lowercase().contains(&filter)) {
-                if ui.selectable_label(app.selected_modifier == Some(*id), name).clicked() { select_modifier = Some(*id); }
+                let row = ui.selectable_label(app.selected_modifier == Some(*id), name);
+                if row.clicked() { select_modifier = Some(*id); }
+                if team { row.context_menu(|ui| crate::team_ui::author_menu(app, ui, *id)); }
             }
         });
         crate::maskmods::outliner(app, ui, &filter, fold);
@@ -1350,7 +1352,11 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
             for (i, name, family) in routes.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
                 let row = ui.selectable_label(app.line.selected_route == Some(*i), format!("{name}  ({family})"));
                 if row.clicked() { select_route = Some(*i); }
-                row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); } });
+                row.context_menu(|ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); }
+                    crate::team_ui::author_menu(app, ui, route_ids[*i]);
+                });
             }
         });
         outliner_section(fold, "Shape layers", icons::with(icons::POLYGON, &tf("Shape layers ({0})", &[&shape_rows.len().to_string()]))).show(ui, |ui| {
@@ -1440,8 +1446,9 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                         if ui.checkbox(&mut export, t("Include in export")).clicked() { layer_action = Some(LayerAction::Export(id)); ui.close_menu(); }
                         if team {
                             ui.separator();
-                            if ui.add_enabled(l.owner != me, egui::Button::new(icons::with(icons::USER, &t("Make it my layer")))).clicked() { layer_action = Some(LayerAction::Owner(id, me.clone())); ui.close_menu(); }
-                            if ui.add_enabled(!l.owner.is_empty(), egui::Button::new(t("Layer of no one"))).on_hover_text(t("Anyone may work on it without unlocking it.")).clicked() { layer_action = Some(LayerAction::Owner(id, String::new())); ui.close_menu(); }
+                            ui.menu_button(icons::with(icons::USER, &t("Owner")), |ui| {
+                                if let Some(p) = crate::team_ui::person_menu(app, ui, &l.owner) { layer_action = Some(LayerAction::Owner(id, p)); }
+                            });
                         }
                         ui.separator();
                         if ui.button(t("Rename")).clicked() { start_rename = Some((id, l.name.clone())); ui.close_menu(); }

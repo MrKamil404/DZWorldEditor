@@ -276,6 +276,7 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                         delete = Some(*id);
                         ui.close_menu();
                     }
+                    crate::team_ui::author_menu(app, ui, dz_core::world::MASK_MOD_AUTHOR | *id as u64);
                 });
             });
         }

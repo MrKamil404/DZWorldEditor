@@ -870,6 +870,13 @@ impl World {
     pub fn author(&self, id: u64) -> &str {
         self.authors.as_ref().and_then(|a| a.get(&id)).map(String::as_str).unwrap_or("")
     }
+    /// Makes `name` the author of the thing under `key` (an id, or a mask or satellite modifier
+    /// with its kind); empty for no one. Gives the authors as they were, for undo.
+    pub fn set_author(&mut self, key: u64, name: &str) -> Option<std::collections::BTreeMap<u64, String>> {
+        let before = self.authors.clone();
+        self.authors.get_or_insert_with(Default::default).insert(key, name.to_string());
+        before
+    }
     /// Who made a mask modifier; empty when no one is known.
     pub fn mask_mod_author(&self, id: u32) -> &str {
         self.author(MASK_MOD_AUTHOR | id as u64)
