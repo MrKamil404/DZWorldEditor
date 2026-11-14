@@ -3527,8 +3527,8 @@ fn camera_marker(app: &App, painter: &egui::Painter, v: &View) {
 }
 
 /// A small map of the terrain in the corner of the 3D view, drawn as the top view draws, with
-/// the camera on it. A click or drag takes the camera there; the wheel zooms about the
-/// pointer, the right or middle button drags the map, the buttons zoom or show the whole map,
+/// the camera in its middle wherever the edge of the map allows. A click or drag takes the
+/// camera there; the wheel zooms about the camera, the right or middle button drags the map, the buttons zoom or show the whole map,
 /// and the grip in the top right corner makes it bigger or smaller.
 fn minimap(app: &mut App, ui: &mut egui::Ui, view: Rect) {
     let most = (view.width() - 80.0).min(view.height() - 60.0);
@@ -3557,28 +3557,45 @@ fn minimap(app: &mut App, ui: &mut egui::Ui, view: Rect) {
     if app.minimap_center[0].is_nan() {
         app.minimap_center = [size * 0.5, size * 0.5];
     }
+    // The wheel zooms about the camera, which the map keeps in its middle.
     if r.hovered() {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y + i.smooth_scroll_delta.x);
         if scroll != 0.0 {
-            zoom_at(app, (scroll * 0.004).exp(), r.hover_pos());
+            let at = if app.minimap_panned { r.hover_pos() } else { None };
+            zoom_at(app, (scroll * 0.004).exp(), at);
         }
     }
     let span = size / app.minimap_zoom;
+    let half = span * 0.5;
+    let inside = |c: [f32; 2]| [c[0].clamp(half, size - half), c[1].clamp(half, size - half)];
     if r.dragged_by(egui::PointerButton::Secondary) || r.dragged_by(egui::PointerButton::Middle) {
+        // Moved by hand, the map stays where it is put until the camera moves again.
         let d = r.drag_delta();
         app.minimap_center[0] -= d.x / rect.width() * span;
         app.minimap_center[1] += d.y / rect.height() * span;
-    } else if app.minimap_zoom > 1.01 && !r.dragged() && app.minimap_camera != cam {
-        // Zoomed in, the map follows a moving camera once it would leave the map; one moved
-        // away by hand stays where it was put while the camera stands still.
-        let (dx, dz) = (cam[0] - app.minimap_center[0], cam[2] - app.minimap_center[1]);
-        if dx.abs() > span * 0.45 || dz.abs() > span * 0.45 {
-            app.minimap_center = [cam[0], cam[2]];
+        app.minimap_panned = true;
+    } else {
+        if app.minimap_camera != cam {
+            app.minimap_panned = false;
+        }
+        if !app.minimap_panned {
+            // The camera in the middle, or as near it as the edge of the map allows; the map
+            // glides there rather than jumping, the faster the further it is.
+            let target = inside([cam[0], cam[2]]);
+            let c = inside(app.minimap_center);
+            let dt = ui.input(|i| i.stable_dt).clamp(0.0, 0.1);
+            let k = 1.0 - (-dt * 9.0).exp();
+            let next = [c[0] + (target[0] - c[0]) * k, c[1] + (target[1] - c[1]) * k];
+            let left = (target[0] - next[0]).hypot(target[1] - next[1]);
+            // Close enough to be on the spot: settle, so the map stops asking for frames.
+            app.minimap_center = if left < span * 0.0005 { target } else { next };
+            if left >= span * 0.0005 {
+                ui.ctx().request_repaint();
+            }
         }
     }
     app.minimap_camera = cam;
-    let half = span * 0.5;
-    app.minimap_center = [app.minimap_center[0].clamp(half, size - half), app.minimap_center[1].clamp(half, size - half)];
+    app.minimap_center = inside(app.minimap_center);
     let (x0, z1) = (app.minimap_center[0] - half, app.minimap_center[1] + half);
 
     // The terrain, its surfaces and the objects, as the top view shows them.
@@ -3682,6 +3699,7 @@ fn minimap(app: &mut App, ui: &mut egui::Ui, view: Rect) {
     if reset {
         app.minimap_zoom = 1.0;
         app.minimap_center = [size * 0.5, size * 0.5];
+        app.minimap_panned = false;
         return;
     }
     if gr.dragged() || gr.hovered() {
@@ -4554,6 +4572,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "about" => app.dialog = crate::app::Dialog::About,
         "settings" => crate::panels::open_settings(app, ctx, &arg),
         "occlusion" => app.settings.occlusion = arg != "0",
+        "minizoom" => { app.minimap_zoom = nums.first().copied().unwrap_or(1.0).max(1.0); app.minimap_panned = false; }
         "viewstats" => {
             let d = &app.view3.draw;
             eprintln!("VIEWSTATS {arg} occlusion={} frame_ms={:.1} models={} impostors={} shadow={} occluded={} occluders={}", app.settings.occlusion, app.frame_ms, d.instances.len() / 16, d.impostors.len() / 8, d.shadow_instances.len() / 16, app.view3.occluded, app.view3.occluders);
