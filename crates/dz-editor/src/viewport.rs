@@ -1194,6 +1194,41 @@ fn ring_points(p: V3, axes: &[V3; 3], axis: usize, radius: f32) -> Vec<V3> {
 }
 
 /// Turns `v` about the unit `axis` by `angle` radians, by the right hand.
+/// The orientation of `o` turned by `angle` radians about `axis`: (yaw, pitch, roll).
+fn turned(o: &Obj, axis: V3, angle: f32) -> (f32, f32, f32) {
+    let m = rotation(o.yaw, o.pitch, o.roll, 1.0);
+    let rows = [turn(m[0], axis, angle), turn(m[1], axis, angle), turn(m[2], axis, angle)];
+    let (yaw, pitch, roll, _) = dz_core::objects::angles(&rows);
+    (yaw, pitch, roll)
+}
+
+/// The orientation of object `b`, as it was before a drag, moved to `at` and turned by
+/// `dyaw` degrees while stuck to the ground. One lying level or as the ground slopes takes
+/// the slope where it now stands; one turned by hand keeps its own tilt, changed only as
+/// much as the ground's slope changes between the two places, so a rock rolled onto its side
+/// stays on its side.
+fn stick_to_ground(height: &dz_core::terrain::Heightmap, b: &Obj, at: [f32; 2], dyaw: f32) -> (f32, f32, f32) {
+    let yaw = b.yaw + dyaw;
+    let (sp, sr) = gen::slope_angles(height, b.x, b.z, b.yaw);
+    let follows = |p: f32, r: f32| (b.pitch - p).abs() < 1.0 && (b.roll - r).abs() < 1.0;
+    if follows(0.0, 0.0) || follows(sp, sr) {
+        let (p, r) = gen::slope_angles(height, at[0], at[1], yaw);
+        return (yaw, p, r);
+    }
+    let (n0, n1) = (height.normal(b.x, b.z), height.normal(at[0], at[1]));
+    let mut o = *b;
+    // A turn goes about the ground's own up, so the tilt turns with the object.
+    if dyaw != 0.0 {
+        (o.yaw, o.pitch, o.roll) = turned(&o, n0, dyaw.to_radians());
+    }
+    let axis = crate::camera::cross(n0, n1);
+    let (sin, cos) = (dot(axis, axis).sqrt(), dot(n0, n1));
+    if sin > 1e-5 {
+        (o.yaw, o.pitch, o.roll) = turned(&o, mul(axis, 1.0 / sin), sin.atan2(cos));
+    }
+    (o.yaw, o.pitch, o.roll)
+}
+
 fn turn(v: V3, axis: V3, angle: f32) -> V3 {
     let (s, c) = angle.sin_cos();
     let cr = crate::camera::cross(axis, v);
@@ -1458,10 +1493,12 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
     // Stuck to the ground, moved and turned objects take its tilt; a whole road or
     // generator keeps its own, and models the game fits to the ground stay level.
     if app.settings.align_to_ground && app.whole.is_none() && matches!(drag.handle, Handle::Plane | Handle::X | Handle::Z | Handle::Spin) {
-        for (_, o) in &mut updates {
-            if !app.db.get(world.objects.model_path(o)).placement.skews() {
-                (o.pitch, o.roll) = gen::slope_angles(&world.height, o.x, o.z, o.yaw);
+        for (id, o) in &mut updates {
+            if app.db.get(world.objects.model_path(o)).placement.skews() {
+                continue;
             }
+            let Some(b) = drag.before.iter().find(|(i, _)| i == id).map(|(_, b)| *b) else { continue };
+            (o.yaw, o.pitch, o.roll) = stick_to_ground(&world.height, &b, [o.x, o.z], dyaw);
         }
     }
     for (id, o) in updates {
@@ -4131,6 +4168,24 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 app.selection_rev += 1;
             }
         }
+        "settilt" if nums.len() >= 4 => {
+            if let (Some(id), Some(d)) = (app.selection.iter().next().copied(), app.doc.as_mut()) {
+                if let Some(mut o) = d.world.objects.get(id).copied() {
+                    (o.yaw, o.pitch, o.roll, o.scale) = (nums[0], nums[1], nums[2], nums[3]);
+                    d.world.objects.update(id, o);
+                }
+            }
+        }
+        "replacesel" => app.replace_selection(&arg.split_whitespace().map(str::to_string).collect::<Vec<_>>()),
+        "objinfo" => {
+            if let Some(d) = &app.doc {
+                for id in &app.selection {
+                    if let Some(o) = d.world.objects.get(*id) {
+                        eprintln!("OBJINFO {} x={:.2} z={:.2} elev={:.3} yaw={:.2} pitch={:.2} roll={:.2} scale={:.2} layer={} undo={:?}", d.world.objects.model_path(o), o.x, o.z, o.elevation, o.yaw, o.pitch, o.roll, o.scale, o.layer(), d.history.undo_label());
+                    }
+                }
+            }
+        }
         "selinfo" => {
             if let Some(d) = &app.doc {
                 let first = app.selection.iter().next().and_then(|i| d.world.objects.get(*i));
@@ -4643,6 +4698,9 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "camunder" => app.camera_under = true,
         "gradecfg" if nums.len() >= 4 => {
             if let Some(i) = app.doc.as_ref().map(|d| d.world.routes.len() - 1) {
+                // As the panel does: the routes before the change, for one undo step.
+                let before = app.doc.as_ref().map(|d| d.world.routes.clone()).unwrap_or_default();
+                app.begin_grading_edit(before);
                 if let Some(r) = app.doc.as_mut().map(|d| &mut d.world.routes[i]) {
                     r.grading.embankment = nums[0] != 0.0;
                     r.grading.raise = nums[1];
@@ -4650,6 +4708,14 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     r.grading.max_grade = nums[3];
                 }
                 app.route_grading_changed(i);
+            }
+        }
+        "gradeinfo" => {
+            if let Some(d) = &app.doc {
+                if let Some(r) = d.world.routes.last() {
+                    let p = r.centerline.get(r.centerline.len() / 2).copied().unwrap_or([0.0, 0.0]);
+                    eprintln!("GRADEINFO raise={} embankment={} height_mid={:.2} modifiers={} undo={:?}", r.grading.raise, r.grading.embankment, d.world.height.sample(p[0], p[1]), d.world.modifiers.len(), d.history.undo_label());
+                }
             }
         }
         "profile" if nums.len() >= 2 => {
@@ -4763,6 +4829,56 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
 #[cfg(test)]
 mod picking_tests {
     use super::*;
+
+    fn obj(x: f32, z: f32, yaw: f32, pitch: f32, roll: f32) -> Obj {
+        Obj { x, z, elevation: 0.0, yaw, pitch, roll, scale: 1.0, model: 0, flags: 0 }
+    }
+
+    /// A ramp rising 1 m in 4 m eastwards from x = 200, flat before it.
+    fn ramp() -> dz_core::terrain::Heightmap {
+        let mut h = dz_core::terrain::Heightmap::new(128, 128, 4.0, 0.0);
+        for j in 0..128 { for i in 50..128 { h.set(i, j, (i - 50) as f32); } }
+        h
+    }
+
+    /// A rock turned by hand keeps its rotation when moved over flat ground, while sticking
+    /// to the ground.
+    #[test]
+    fn a_rock_turned_by_hand_keeps_its_rotation_on_flat_ground() {
+        let h = dz_core::terrain::Heightmap::new(64, 64, 4.0, 10.0);
+        let b = obj(50.0, 50.0, 30.0, 40.0, -70.0);
+        let (yaw, pitch, roll) = stick_to_ground(&h, &b, [80.0, 90.0], 0.0);
+        assert!((yaw - 30.0).abs() < 0.01 && (pitch - 40.0).abs() < 0.01 && (roll + 70.0).abs() < 0.01, "{yaw} {pitch} {roll}");
+    }
+
+    /// Moved onto a slope, a level object takes the slope, and one turned by hand turns only
+    /// by as much as the ground does.
+    #[test]
+    fn sticking_follows_the_slope_without_losing_a_turn() {
+        let h = ramp();
+        let level = obj(100.0, 100.0, 0.0, 0.0, 0.0);
+        let (_, p, r) = stick_to_ground(&h, &level, [300.0, 100.0], 0.0);
+        let (sp, sr) = gen::slope_angles(&h, 300.0, 100.0, 0.0);
+        assert!((p - sp).abs() < 0.01 && (r - sr).abs() < 0.01 && r.abs() > 5.0, "{p} {r}");
+        let rock = obj(100.0, 100.0, 0.0, 60.0, 0.0);
+        let (yaw, pitch, roll) = stick_to_ground(&h, &rock, [300.0, 100.0], 0.0);
+        // The whole orientation turned by just the change of the ground's slope (0 to 26.6°),
+        // whatever angles it is written with.
+        let (m, m0) = (rotation(yaw, pitch, roll, 1.0), rotation(0.0, 60.0, 0.0, 1.0));
+        let trace: f32 = (0..3).map(|i| m[i][0] * m0[i][0] + m[i][1] * m0[i][1] + m[i][2] * m0[i][2]).sum();
+        let turned = ((trace - 1.0) * 0.5).clamp(-1.0, 1.0).acos().to_degrees();
+        let slope = 0.25f32.atan().to_degrees();
+        assert!((turned - slope).abs() < 1.0, "turned by {turned}, slope {slope} ({yaw} {pitch} {roll})");
+    }
+
+    /// A turn of a tilted rock while stuck to the ground keeps it tilted.
+    #[test]
+    fn turning_a_tilted_rock_keeps_its_tilt() {
+        let h = dz_core::terrain::Heightmap::new(64, 64, 4.0, 10.0);
+        let b = obj(50.0, 50.0, 0.0, 35.0, 0.0);
+        let (yaw, pitch, _) = stick_to_ground(&h, &b, [50.0, 50.0], 90.0);
+        assert!((yaw.rem_euclid(360.0) - 90.0).abs() < 0.5 && (pitch - 35.0).abs() < 0.5, "{yaw} {pitch}");
+    }
 
     #[test]
     fn points_snap_to_whole_angle_steps() {

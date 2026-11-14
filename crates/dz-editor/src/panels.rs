@@ -18,6 +18,7 @@ pub fn new_project_dialog() -> Dialog {
 
 pub fn ui(app: &mut App, ctx: &egui::Context) {
     guard_close(app, ctx);
+    app.finish_grading_edit(ctx);
     crate::library_ui::handle_file_drop(app, ctx);
     if app.lib_dirty && !ctx.input(|i| i.pointer.any_down()) {
         app.lib_dirty = false;
@@ -1151,6 +1152,13 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
             grading_ui(ui, &mut route.grading, &mut route.grade_width, &mut route.grade_falloff, !route.profile.is_empty());
         });
         regrade = grading != (route.grade, route.grade_width, route.grade_falloff, route.grading);
+        if regrade {
+            // The route as it was before this change, for one undo step of the whole drag.
+            let mut previous = app.doc.as_ref().unwrap().world.routes.clone();
+            let r = &mut previous[index];
+            (r.grade, r.grade_width, r.grade_falloff, r.grading) = grading;
+            app.begin_grading_edit(previous);
+        }
     });
     // Typed values wait for "Fit again", which fits from the points before the typing.
     let typed_before = if action == 1 || action == 2 { app.line.typed.take().filter(|t| t.0 == index).map(|t| t.1) } else { None };
@@ -1659,9 +1667,11 @@ fn details(app: &mut App, ui: &mut egui::Ui) {
         if app.selection.len() == 1 {
             object_details(app, ui);
             ground_fit(app, ui);
+            replace_section(app, ui);
         } else if app.selection.len() > 1 {
             ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
             ground_fit(app, ui);
+            replace_section(app, ui);
         } else {
             map_summary(app, ui);
         }
@@ -1684,6 +1694,43 @@ fn map_summary(app: &App, ui: &mut egui::Ui) {
         line(t("Generators"), w.generators.len().to_string());
         line(t("Surfaces"), w.layers.len().to_string());
         line(t("Terrain modifiers"), w.modifiers.len().to_string());
+    });
+}
+
+/// Putting another model in place of the selected objects: dropped here from the Content
+/// Browser, or the one chosen there. Where they stand, how they turn and their size stay.
+fn replace_section(app: &mut App, ui: &mut egui::Ui) {
+    // A whole road or generator is changed through its own settings, not model by model.
+    if app.whole.is_some() {
+        return;
+    }
+    let n = app.selection.len();
+    section(ui, &icons::with(icons::SWAP, &t("Replace model")), false, |ui| {
+        about(ui, &t("Puts another model in place of the selected objects; where they stand, how they are turned and their size stay."));
+        let ctx = ui.ctx().clone();
+        let dragging = crate::theme::dragging_models(&ctx);
+        let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), egui::Sense::hover());
+        let p = ui.painter();
+        p.rect_stroke(rect, 4.0, egui::Stroke::new(1.0f32, if dragging { theme::ACCENT } else { Color32::from_gray(80) }), egui::StrokeKind::Inside);
+        let hint = if dragging { t("Drop to replace") } else { tf("Drop a model here to replace {0} objects", &[&n.to_string()]) };
+        p.text(rect.center(), egui::Align2::CENTER_CENTER, hint, egui::FontId::proportional(12.0), if dragging { Color32::WHITE } else { theme::TEXT_DIM });
+        crate::theme::drop_zone(&resp, dragging);
+        let dropped: Vec<String> = crate::theme::dropped_models(&resp).iter().map(|m| (**m).clone()).collect();
+        // The model or models chosen in the Content Browser.
+        let mut chosen: Vec<String> = app.browser.selected.iter().filter_map(|p| if let crate::asset_browser::Pick::Model(m) = p { Some(m.clone()) } else { None }).collect();
+        if chosen.is_empty() { chosen.extend(app.place.model.clone()); }
+        let label = match chosen.len() {
+            0 => t("Choose a model in the Content Browser"),
+            1 => tf("Use {0}", &[chosen[0].rsplit('\\').next().unwrap_or(&chosen[0]).trim_end_matches(".p3d")]),
+            k => tf("Use the {0} models chosen, at random", &[&k.to_string()]),
+        };
+        let use_chosen = ui.add_enabled(!chosen.is_empty(), egui::Button::new(icons::with(icons::SWAP, &label))).on_hover_text(t("The models selected in the Content Browser; with several, each object takes one of them.")).clicked();
+        ui.checkbox(&mut app.replace_keep_ground, t("Rest on the ground as the old model did")).on_hover_text(t("A model whose bottom lies higher or lower than the old one's is raised or lowered so that it stands on the ground the same way. Objects at a fixed height keep it."));
+        if !dropped.is_empty() {
+            app.replace_selection(&dropped);
+        } else if use_chosen {
+            app.replace_selection(&chosen);
+        }
     });
 }
 

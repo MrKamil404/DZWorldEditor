@@ -806,6 +806,8 @@ enum Act {
     SelectAll,
     Clear,
     Surface(Vec<String>, Option<String>),
+    /// Put these models in place of the objects selected on the map.
+    Replace(Vec<String>),
     AddTo(String, Vec<String>, Vec<u64>),
     RemoveFrom(String, Vec<String>, Vec<u64>),
     NewFolder(String),
@@ -1440,6 +1442,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 resp.context_menu(|ui| {
                                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                                     if group.len() > 1 { ui.weak(tf("{0} selected", &[&group.len().to_string()])); }
+                                    // Swapping the objects selected on the map for these models.
+                                    let on_map = app.selection.len();
+                                    if !models.is_empty() && has_doc && on_map > 0 && app.whole.is_none() {
+                                        let text = if models.len() == 1 { tf("Replace the {0} selected objects with this model", &[&on_map.to_string()]) } else { tf("Replace the {0} selected objects with these models", &[&on_map.to_string()]) };
+                                        if ui.button(crate::icons::with(crate::icons::SWAP, &text)).on_hover_text(t("Where they stand, how they are turned and their size stay.")).clicked() { acts.push(Act::Replace(models.clone())); ui.close_menu(); }
+                                        ui.separator();
+                                    }
                                     if !models.is_empty() {
                                         ui.menu_button(t("Surface under the models"), |ui| {
                                             let current = if models.len() == 1 { app.library.surface_of(&models[0]).map(str::to_string) } else { None };
@@ -1545,6 +1554,7 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
             Act::Open(pick) => open(app, &pick),
             Act::SelectAll => app.browser.selected = picks.to_vec(),
             Act::Clear => app.browser.selected.clear(),
+            Act::Replace(models) => app.replace_selection(&models),
             Act::Surface(models, s) => {
                 for m in &models { app.library.set_surface(m, s.as_deref()); }
                 app.lib_dirty = true;

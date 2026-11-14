@@ -139,6 +139,10 @@
   "de": "Eine Mission enthält Wirtschaft, Spawns, Territorien und Einstellungen, die der Server aus mpmissions liest.",
   "pl": "Misja zawiera ekonomię, spawny, terytoria i ustawienia, które serwer czyta z mpmissions."
  },
+ "A model whose bottom lies higher or lower than the old one's is raised or lowered so that it stands on the ground the same way. Objects at a fixed height keep it.": {
+  "de": "Ein Modell, dessen Unterseite höher oder tiefer liegt als die des alten, wird angehoben oder abgesenkt, damit es genauso auf dem Boden steht. Objekte in fester Höhe behalten sie.",
+  "pl": "Model, którego spód leży wyżej lub niżej niż w starym, zostaje podniesiony lub obniżony, by stał na ziemi tak samo. Obiekty o stałej wysokości ją zachowują."
+ },
  "A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched.": {
   "de": "Ein Modifikator ebnet das Gelände unter dem Objekt und folgt ihm. Das modellierte Gelände bleibt unverändert.",
   "pl": "Modyfikator wyrównuje teren pod obiektem i podąża za nim. Rzeźbiony teren pozostaje nienaruszony."
@@ -1763,6 +1767,10 @@
   "de": "Zeichnet die Objekte von oben in das Satellitenbild, als Modifikator, der ausgeblendet oder gelöscht werden kann.",
   "pl": "Rysuje obiekty widziane z góry na satce jako modyfikator, który można ukryć albo usunąć."
  },
+ "Drop a model here to replace {0} objects": {
+  "de": "Ein Modell hier ablegen, um {0} Objekte zu ersetzen",
+  "pl": "Upuść tu model, aby podmienić obiekty: {0}"
+ },
  "Drop it on the map or on a shape to add it to the project.": {
   "de": "Auf die Karte oder eine Form ziehen, um ihn dem Projekt hinzuzufügen.",
   "pl": "Upuść na mapę lub kształt, aby dodać do projektu."
@@ -1778,6 +1786,10 @@
  "Drop this generator on a polyline, or select one first": {
   "de": "Lege diesen Generator auf einer Polylinie ab oder wähle zuerst eine aus",
   "pl": "Upuść ten generator na polilinię albo najpierw ją zaznacz"
+ },
+ "Drop to replace": {
+  "de": "Zum Ersetzen loslassen",
+  "pl": "Upuść, aby podmienić"
  },
  "Droplets": {
   "de": "Tropfen",
@@ -4603,6 +4615,10 @@
   "de": "Kreuzung einsetzen",
   "pl": "Wstaw skrzyżowanie"
  },
+ "Puts another model in place of the selected objects; where they stand, how they are turned and their size stay.": {
+  "de": "Setzt ein anderes Modell an die Stelle der ausgewählten Objekte; Standort, Drehung und Größe bleiben.",
+  "pl": "Wstawia inny model w miejsce zaznaczonych obiektów; położenie, obrót i rozmiar zostają."
+ },
  "Puts every panel back where it was at first, at its first size.": {
   "de": "Setzt jedes Feld an seinen ursprünglichen Platz und in seine ursprüngliche Größe zurück.",
   "pl": "Przywraca każdy panel na jego pierwotne miejsce i w pierwotnym rozmiarze."
@@ -4743,13 +4759,33 @@
   "de": "Umbenennen",
   "pl": "Zmień nazwę"
  },
+ "Replace model": {
+  "de": "Modell ersetzen",
+  "pl": "Podmień model"
+ },
+ "Replace objects": {
+  "de": "Objekte ersetzen",
+  "pl": "Podmiana obiektów"
+ },
  "Replace the group": {
   "de": "Gruppe ersetzen",
   "pl": "Zastąp grupę"
  },
+ "Replace the {0} selected objects with these models": {
+  "de": "Die {0} ausgewählten Objekte durch diese Modelle ersetzen",
+  "pl": "Podmień zaznaczone obiekty ({0}) na te modele"
+ },
+ "Replace the {0} selected objects with this model": {
+  "de": "Die {0} ausgewählten Objekte durch dieses Modell ersetzen",
+  "pl": "Podmień zaznaczone obiekty ({0}) na ten model"
+ },
  "Replace with the selection": {
   "de": "Durch die Auswahl ersetzen",
   "pl": "Zastąp zaznaczeniem"
+ },
+ "Replaced {0} objects with {1}": {
+  "de": "{0} Objekte durch {1} ersetzt",
+  "pl": "Podmieniono obiekty ({0}) na {1}"
  },
  "Replaces the rarest surfaces of a tile with its main surface.": {
   "de": "Ersetzt die seltensten Oberflächen einer Kachel durch ihre Hauptoberfläche.",
@@ -4770,6 +4806,10 @@
  "Reset all to defaults": {
   "de": "Alles zurücksetzen",
   "pl": "Przywróć wszystkie domyślne"
+ },
+ "Rest on the ground as the old model did": {
+  "de": "Wie das alte Modell auf dem Boden stehen",
+  "pl": "Stawiaj na ziemi tak jak stary model"
  },
  "Restart": {
   "de": "Neu starten",
@@ -6083,6 +6123,10 @@
   "de": "Die Modelle folgen der Maus: grün, wo sie passen, rot, wo nicht. Ein Klick behält die Straße bis dorthin.",
   "pl": "Modele podążają za myszą: zielone tam, gdzie pasują, czerwone, gdzie nie. Kliknięcie zatwierdza drogę do tego miejsca."
  },
+ "The models selected in the Content Browser; with several, each object takes one of them.": {
+  "de": "Die im Inhaltsbrowser gewählten Modelle; bei mehreren erhält jedes Objekt eines davon.",
+  "pl": "Modele zaznaczone w przeglądarce zasobów; przy kilku każdy obiekt dostaje jeden z nich."
+ },
  "The name the game shows; empty takes the name of the project.": {
   "de": "Der Name im Spiel; leer nimmt den Projektnamen.",
   "pl": "Nazwa pokazywana w grze; puste bierze nazwę projektu."
@@ -6519,6 +6563,14 @@
   "de": "Jedem Modell zugewiesene Oberfläche verwenden",
   "pl": "Użyj powierzchni przypisanej do modelu"
  },
+ "Use the {0} models chosen, at random": {
+  "de": "Die {0} gewählten Modelle zufällig verwenden",
+  "pl": "Użyj wybranych modeli ({0}) losowo"
+ },
+ "Use {0}": {
+  "de": "{0} verwenden",
+  "pl": "Użyj {0}"
+ },
  "User map folder": {
   "de": "Ordner der Benutzerkarte",
   "pl": "Folder mapy użytkownika"
@@ -6650,6 +6702,10 @@
  "Where the work drive, DayZ Tools and the game are; the editor reads models and builds the map with them.": {
   "de": "Wo das Arbeitslaufwerk, DayZ Tools und das Spiel liegen; damit liest der Editor Modelle und baut die Karte.",
   "pl": "Gdzie są dysk roboczy, DayZ Tools i gra; edytor czyta z nich modele i buduje mapę."
+ },
+ "Where they stand, how they are turned and their size stay.": {
+  "de": "Standort, Drehung und Größe bleiben.",
+  "pl": "Położenie, obrót i rozmiar zostają."
  },
  "Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper.": {
   "de": "Wo zwei Oberflächen der Maske aufeinandertreffen, zeigen sich zuerst die höheren Teile ihres Reliefs; höher macht die Grenze schärfer.",
@@ -7090,6 +7146,10 @@
  "{0} objects in the group": {
   "de": "{0} Objekte in der Gruppe",
   "pl": "{0} obiektów w grupie"
+ },
+ "{0} objects made by generators were left as they are; change the generator's models instead.": {
+  "de": "{0} von Generatoren erzeugte Objekte blieben unverändert; ändere stattdessen die Modelle des Generators.",
+  "pl": "Obiekty z generatorów ({0}) zostały bez zmian; zmień zamiast tego modele generatora."
  },
  "{0} objects moved to the layer {1}": {
   "de": "{0} Objekte auf die Ebene {1} verschoben",

@@ -434,6 +434,10 @@ pub struct App {
     pub minimap_camera: [f32; 3],
     /// The minimap was moved by hand; it stays put until the camera moves.
     pub minimap_panned: bool,
+    /// Routes and modifiers before the grading of a route began to change.
+    /// A replaced model rests on the ground as the one before it did.
+    pub replace_keep_ground: bool,
+    pub grading_edit: Option<(Vec<dz_core::world::RoadRoute>, Vec<dz_core::world::TerrainModifier>)>,
     /// The view takes the whole screen, with the panels sliding in at the edges.
     pub fullscreen: bool,
     /// Which edge panels of the full screen view are out: top, left, right, bottom.
@@ -547,7 +551,7 @@ impl App {
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, fullscreen: false, edge_open: [false; 4], detached: false,
+            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
             settings,
@@ -674,6 +678,30 @@ impl App {
     }
 
     /// Width, blend or on/off of a route's levelling changed.
+    /// Notes the routes and modifiers as they were before the grading of a route is changed,
+    /// once for a whole drag of its sliders or a typed value.
+    pub fn begin_grading_edit(&mut self, routes: Vec<dz_core::world::RoadRoute>) {
+        if self.grading_edit.is_none() {
+            if let Some(d) = &self.doc {
+                self.grading_edit = Some((routes, d.world.modifiers.clone()));
+            }
+        }
+    }
+
+    /// Once the sliders are let go and nothing is being typed, the grading change becomes one
+    /// step of the history, which brings back both the values and the terrain.
+    pub fn finish_grading_edit(&mut self, ctx: &egui::Context) {
+        if self.grading_edit.is_none() || ctx.input(|i| i.pointer.any_down()) || ctx.wants_keyboard_input() {
+            return;
+        }
+        let (routes, modifiers) = self.grading_edit.take().unwrap();
+        let Some(d) = &mut self.doc else { return };
+        let label = t("Terrain under the road");
+        d.history.push(label.clone(), Change::Routes(routes));
+        d.history.push(label.clone(), Change::Modifiers(modifiers));
+        d.history.group_last(2, label);
+    }
+
     pub fn route_grading_changed(&mut self, i: usize) {
         self.sync_route_and_crossings(i);
         if let Some(d) = &mut self.doc { d.history.revision += 1; }
@@ -1678,6 +1706,61 @@ impl App {
         }
         self.selection_rev += 1;
         self.road_guard = (self.selection_rev, self.selection.len());
+    }
+
+    /// Puts other models in place of the selected objects: each keeps where it stands, how
+    /// it is turned, its size, layer and flags. With several models, each object takes one
+    /// of them at random, the same one every time for the same place. Kept on the ground, the
+    /// new model rests on it as the old one did although their bottoms differ. Objects made
+    /// by a generator are left as they are, since running it again would bring them back.
+    pub fn replace_selection(&mut self, models: &[String]) {
+        if models.is_empty() || self.selection.is_empty() {
+            return;
+        }
+        let keep_ground = self.replace_keep_ground;
+        let Some(doc) = &mut self.doc else { return };
+        let w = &mut doc.world;
+        let made: std::collections::HashSet<u32> = w.generators.iter().flat_map(|g| g.objects.iter().copied()).collect();
+        let rest = |info: &dz_core::model_info::ModelInfo| if info.contact_count > 0 { info.contact_y } else { 0.0 };
+        let mut change = Vec::new();
+        let mut skipped = 0;
+        for &id in &self.selection {
+            let Some(old) = w.objects.get(id).copied() else { continue };
+            if made.contains(&id) {
+                skipped += 1;
+                continue;
+            }
+            let pick = if models.len() == 1 { 0 } else { ((old.x.to_bits() ^ old.z.to_bits().rotate_left(13)).wrapping_mul(2_654_435_761) >> 7) as usize % models.len() };
+            let path = &models[pick];
+            let mut new = old;
+            new.model = w.objects.intern(path);
+            if new.model == old.model {
+                continue;
+            }
+            if keep_ground && old.flags & dz_core::objects::FLAG_ABSOLUTE == 0 {
+                let (a, b) = (self.db.get(w.objects.models[old.model as usize].path.as_str()), self.db.get(path));
+                new.elevation += (rest(&a) - rest(&b)) * old.scale;
+            }
+            w.objects.update(id, new);
+            change.push((id, Some(old), Some(new)));
+        }
+        let mut area: Option<Rect> = None;
+        for (id, _, _) in &change {
+            if let Some(r) = w.sync_attached(*id) { area = Some(area.map_or(r, |a| a.union(r))); }
+        }
+        let n = change.len();
+        if n > 0 {
+            doc.history.push(t("Replace objects"), Change::Objects(change));
+            doc.dirty.objects = true;
+            self.selection_rev += 1;
+        }
+        if let Some(r) = area { self.height_changed(r); }
+        let name = |p: &String| p.rsplit('\\').next().unwrap_or(p).trim_end_matches(".p3d").to_string();
+        let what = if models.len() == 1 { name(&models[0]) } else { tf("{0} models", &[&models.len().to_string()]) };
+        self.status = tf("Replaced {0} objects with {1}", &[&n.to_string(), &what]);
+        if skipped > 0 {
+            self.warn(tf("{0} objects made by generators were left as they are; change the generator's models instead.", &[&skipped.to_string()]));
+        }
     }
 
     pub fn remember_selection(&mut self) {
