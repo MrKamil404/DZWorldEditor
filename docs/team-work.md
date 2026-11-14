@@ -38,7 +38,7 @@ of others show their owner and a lock: their objects cannot be picked, moved or 
 you click the lock, which unlocks the layer for you until you lock it again or close the editor.
 Layers of no one, like *Default*, stay open to everyone.
 
-Terrain modifiers, roads and generators remember who made them. The outliner shows the name next
+Terrain, mask and satellite modifiers, roads and generators remember who made them. The outliner shows the name next
 to them, and the choice above it shows only the work of one person: layers by their owner, the
 rest by who made it.
 
@@ -53,7 +53,7 @@ owner your own version is suggested, as before.
 | Terrain (as sculpted) | Cell by cell, as changes in height; changes of both in one cell are added unless chosen otherwise |
 | Surface mask (as painted) | Pixel by pixel |
 | Satellite image (under its modifiers) | Pixel by pixel, a band at a time, so a large image is never held twice in memory |
-| Mask and satellite modifiers | By id, whole; laid again over the merged pixels, so hiding one still shows what is under it |
+| Mask and satellite modifiers | By id, tile by tile (128 px): both can work in one modifier, as with strokes of the clone brush, and only a tile both changed is asked. Their name, being shown and opacity merge apart from the pixels. Laid again over the merged pixels, so hiding one still shows what is under it; a patch carries only the tiles that changed |
 | Objects | By a lasting identity, field by field: a move by one and a turn or new layer by the other both stay |
 | Object layers | By name, with their owners |
 | Terrain modifiers, roads, generators | By id, whole |

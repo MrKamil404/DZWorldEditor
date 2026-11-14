@@ -438,3 +438,49 @@ fn what_was_there_when_team_work_started_has_no_author() {
     project::save(&w, d.path(), SaveParts::ALL).unwrap();
     assert_eq!(project::load(d.path()).unwrap().authors, w.authors);
 }
+
+#[test]
+fn clone_strokes_of_both_in_one_modifier_are_kept() {
+    let mut base = world();
+    base.satellite = Some(RgbImage::new(512, 512, [10, 10, 10]));
+    let id = base.sat.add(SatKind::Clone, "clone".into());
+    let base = as_person(&base, "Ania");
+    let (mut ania, mut bartek) = (base.clone(), as_person(&base, "Bartek"));
+    // Strokes in different corners of one modifier.
+    ania.sat_add_tiles(id, HashMap::from([((0u16, 0u16), Arc::new([200u8, 0, 0, 255].repeat(SAT_TILE * SAT_TILE)))]));
+    bartek.sat_add_tiles(id, HashMap::from([((3u16, 3u16), Arc::new([0u8, 0, 200, 255].repeat(SAT_TILE * SAT_TILE)))]));
+    let mut mine = bartek.clone();
+    let r = merge_from(&base, &ania, "Ania", &mut mine, &HashMap::new());
+    assert!(r.conflicts.is_empty(), "{:?}", r.conflicts);
+    let s = &mine.satellite.as_ref().unwrap().data;
+    let last = (511 * 512 + 511) * 3;
+    assert_eq!((&s[0..3], &s[last..last + 3]), (&[200u8, 0, 0][..], &[0u8, 0, 200][..]));
+    assert_eq!(mine.sat.modifiers[0].tiles.len(), 2);
+}
+
+#[test]
+fn modifiers_of_the_mask_carry_their_author() {
+    let base = as_person(&world(), "Ania");
+    let mut ania = base.clone();
+    let id = ania.mask_mods.add(crate::maskmod::MaskKind::Paint, "fields".into());
+    let mut tile = vec![crate::maskmod::NONE; crate::maskmod::TILE * crate::maskmod::TILE];
+    tile[0] = 4;
+    ania.mask_replace_tiles(id, HashMap::from([((0u16, 0u16), Arc::new(tile.clone()))]));
+    ania.note_authors();
+    assert_eq!(ania.mask_mod_author(id), "Ania");
+    let mut bartek = as_person(&base, "Bartek");
+    merge_from(&base, &ania, "Ania", &mut bartek, &HashMap::new());
+    bartek.note_authors();
+    assert_eq!(bartek.mask_mod_author(id), "Ania");
+    // Both paint the same tile of it: Ania made it, so hers is suggested in Bartek's copy.
+    let shared = bartek.clone();
+    let (mut a2, mut b2) = (as_person(&shared, "Ania"), shared.clone());
+    tile[0] = 6;
+    a2.mask_replace_tiles(id, HashMap::from([((0u16, 0u16), Arc::new(tile.clone()))]));
+    tile[0] = 7;
+    b2.mask_replace_tiles(id, HashMap::from([((0u16, 0u16), Arc::new(tile.clone()))]));
+    let r = merge_from(&shared, &a2, "Ania", &mut b2, &HashMap::new());
+    assert_eq!(r.conflicts.len(), 1);
+    assert_eq!((r.conflicts[0].key, r.conflicts[0].default), (ConflictKey::ModTile("mask_modifiers", id as u64, 0, 0), Choice::Theirs));
+    assert_eq!(b2.mask.data[0], 6);
+}

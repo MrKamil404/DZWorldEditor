@@ -121,6 +121,11 @@ pub fn active(app: &App) -> bool {
     app.doc.as_ref().is_some_and(|d| !d.world.team_me.is_empty())
 }
 
+/// A name in the outliner, with who made it in team work.
+pub fn with_author(team: bool, name: &str, author: &str) -> String {
+    if team && !author.is_empty() { format!("{name}  · {author}") } else { name.to_string() }
+}
+
 /// Whether the outliner shows something made or owned by `who`.
 pub fn shown(app: &App, who: &str) -> bool {
     app.team.filter.as_deref().is_none_or(|f| f == who)
@@ -518,12 +523,13 @@ fn conflict_text(c: &team::Conflict, who: &str) -> String {
         ConflictKind::Surface => t("Both of you painted different surfaces here"),
         ConflictKind::Satellite => t("Both of you changed the satellite image here"),
         ConflictKind::Lines => t("Both of you changed the same lines"),
+        ConflictKind::Changed if matches!(c.key, ConflictKey::ModTile(..)) => t("Both of you changed this part of it"),
         ConflictKind::Changed => t("Both of you changed it differently"),
         ConflictKind::DeletedHere => tf("You deleted it, {0} changed it", &[who]),
         ConflictKind::DeletedThere => tf("{0} deleted it, you changed it", &[who]),
     };
     let what = match c.key {
-        ConflictKey::Element(list, _) => format!("{}: {}", part_name(list), c.what),
+        ConflictKey::Element(list, _) | ConflictKey::ModTile(list, ..) => format!("{}: {}", part_name(list), c.what),
         ConflictKey::Part(p) => part_name(p),
         ConflictKey::Mission(_) => format!("{}: {}", t("Mission"), c.what),
         ConflictKey::Setting(_) => format!("{}: {}", t("Map settings"), c.what),

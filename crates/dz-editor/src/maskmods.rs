@@ -254,7 +254,11 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
 
 /// Rows of the mask modifiers in the outliner.
 pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<bool>) {
-    let rows: Vec<(u32, String, bool)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter().map(|m| (m.id, m.name.clone(), m.enabled)).collect()).unwrap_or_default();
+    // In team work: only whose the outliner shows, with who made each.
+    let team = crate::team_ui::active(app);
+    let rows: Vec<(u32, String, bool)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter()
+        .filter(|m| crate::team_ui::shown(app, d.world.mask_mod_author(m.id)))
+        .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.mask_mod_author(m.id)), m.enabled)).collect()).unwrap_or_default();
     let (mut toggle, mut delete) = (None, None);
     crate::panels::outliner_section(fold, "Mask modifiers", crate::icons::with(crate::icons::STACK, &tf("Mask modifiers ({0})", &[&rows.len().to_string()]))).show(ui, |ui| {
         for (id, name, enabled) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {

@@ -10,6 +10,7 @@
 //! No server is involved: every patch says which version it starts from, and that version is
 //! kept by everyone who sent or merged it.
 mod lines;
+mod mods;
 
 use crate::fsutil::atomic_write;
 use crate::maskmod::MaskLayers;
@@ -17,7 +18,7 @@ use crate::mission::{FileData, Mission, MissionFile};
 use crate::objects::{new_uid, Obj, ObjectStore, LAYER_SHIFT};
 use crate::project::{self, SaveParts, MISSION_DIR};
 use crate::satmod::{SatLayers, SatModifier};
-use crate::world::World;
+use crate::world::{World, MASK_MOD_AUTHOR, SAT_MOD_AUTHOR};
 use anyhow::{bail, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,7 +34,7 @@ pub const TILE: usize = 64;
 const SAT_TILE: usize = crate::satmod::TILE;
 pub const PATCH_EXT: &str = "dzpatch";
 const MAGIC: &[u8; 8] = b"DZPATCH1";
-const FORMAT: u32 = 2;
+const FORMAT: u32 = 3;
 /// Versions kept besides the base; older ones are removed.
 const KEEP_VERSIONS: usize = 4;
 const SATELLITE: &str = "satellite.rgb";
@@ -198,8 +199,10 @@ struct SatBody {
     size: [usize; 2],
     /// Pixels of the image under the modifiers, by tile.
     tiles: Vec<TileRec>,
-    /// Changed and added modifiers, as satellite layers without original pixels.
+    /// Changed and added modifiers with only their changed tiles, as satellite layers without
+    /// original pixels.
     mods: Option<(usize, usize)>,
+    mods_delta: Vec<mods::ModDelta>,
     removed: Vec<u64>,
 }
 
@@ -230,8 +233,9 @@ struct Body {
     height: Vec<TileRec>,
     /// The mask as painted, under its modifiers.
     mask_tiles: Vec<TileRec>,
-    /// Changed and added mask modifiers, as mask layers.
+    /// Changed and added mask modifiers with only their changed tiles, as mask layers.
     mask_mods: Option<(usize, usize)>,
+    mask_mods_delta: Vec<mods::ModDelta>,
     mask_mods_removed: Vec<u64>,
     lists: BTreeMap<String, ListDiff>,
     parts: BTreeMap<String, Value>,
@@ -621,7 +625,7 @@ pub fn diff(base: &World, base_dir: Option<&Path>, now: &World, now_dir: Option<
             }
         }
     }
-    let (set, removed) = list_diff(&base.mask_mods.modifiers, &now.mask_mods.modifiers, |m| m.id as u64);
+    let (set, deltas, removed) = mods::diff(&base.mask_mods.modifiers, &now.mask_mods.modifiers, |id| now.mask_mod_author(id).to_string());
     if !set.is_empty() || !removed.is_empty() {
         summary.other.push("mask_modifiers".into());
         if !set.is_empty() {
@@ -629,6 +633,7 @@ pub fn diff(base: &World, base_dir: Option<&Path>, now: &World, now_dir: Option<
             body.mask_mods = Some((bin.len(), b.len()));
             bin.extend(b);
         }
+        body.mask_mods_delta = deltas;
         body.mask_mods_removed = removed;
     }
     summary.height_tiles = body.height.len();
@@ -726,12 +731,13 @@ fn diff_satellite(base: &World, base_dir: Option<&Path>, now: &World, now_dir: O
             }
         }
     }
-    let (set, removed) = list_diff(&base.sat.modifiers, &now.sat.modifiers, |m| m.id as u64);
+    let (set, deltas, removed) = mods::diff(&base.sat.modifiers, &now.sat.modifiers, |id| now.sat_mod_author(id).to_string());
     if !set.is_empty() {
         let bytes = SatLayers::from_parts(set, HashMap::new()).to_bytes();
         sb.mods = Some((bin.len(), bytes.len()));
         bin.extend(bytes);
     }
+    sb.mods_delta = deltas;
     sb.removed = removed;
     summary.satellite_tiles = sb.tiles.len();
     if sb.mods.is_some() || !sb.removed.is_empty() {
@@ -753,6 +759,8 @@ pub enum ConflictKey {
     Satellite(u32, u32),
     Object(u64),
     Element(&'static str, u64),
+    /// A tile of a mask or satellite modifier: the list, the modifier, the tile.
+    ModTile(&'static str, u64, u16, u16),
     Part(&'static str),
     /// A file of the mission, by the hash of its name.
     Mission(u64),
@@ -928,11 +936,12 @@ pub fn merge(base: &World, patch: &Patch, mine: &mut World, dirs: Dirs, choices:
     let cell = mine.base.cell;
     // The satellite image, before anything else changes.
     if let Some(sb) = &b.satellite {
-        if let Some((layers, pixels)) = merge_satellite(base, patch, sb, mine, dirs, choices, &mut out)? {
+        if let Some((layers, pixels, taken)) = merge_satellite(base, patch, sb, mine, dirs, choices, &mut out)? {
             mine.sat = layers;
             if let (Some(p), Some(img)) = (pixels, mine.satellite.as_mut()) {
                 img.data = p;
             }
+            note_taken(mine, SAT_MOD_AUTHOR, taken);
         }
     }
     // Terrain: the change of each cell since the base.
@@ -1144,6 +1153,15 @@ pub fn merge(base: &World, patch: &Patch, mine: &mut World, dirs: Dirs, choices:
     Ok(out)
 }
 
+/// Who made the modifiers taken from the other person, under the keys of their kind.
+fn note_taken(w: &mut World, kind: u64, taken: Vec<(u32, String)>) {
+    for (id, author) in taken {
+        if !author.is_empty() {
+            w.authors.get_or_insert_with(Default::default).insert(kind | id as u64, author);
+        }
+    }
+}
+
 /// The mask as painted pixel by pixel, then its modifiers by id laid over it again.
 fn merge_mask(base: &World, patch: &Patch, mine: &mut World, choices: &HashMap<ConflictKey, Choice>, out: &mut Merged) -> Result<()> {
     let b = &patch.body;
@@ -1191,9 +1209,17 @@ fn merge_mask(base: &World, patch: &Patch, mine: &mut World, choices: &HashMap<C
         None => Vec::new(),
     };
     let mut mods = mine.mask_mods.modifiers.clone();
-    if merge_list("mask_modifiers", &base.mask_mods.modifiers, &mut mods, &set, &b.mask_mods_removed, |m| m.id as u64, |m| m.name.clone(), |_| None, |_| Choice::Mine, choices, out) {
+    let author = patch.header.author.as_str();
+    let size = mine.meta.size_m();
+    let tile_m = crate::maskmod::TILE as f32 * px;
+    let place = |k: mods::Key| Some([(k.0 as f32 + 0.5) * tile_m, size - (k.1 as f32 + 0.5) * tile_m]);
+    let default = |id: u32, d: &mods::ModDelta| owner_default(Some(mine.mask_mod_author(id)).filter(|a| !a.is_empty()).unwrap_or(&d.author), author);
+    let before = mods.clone();
+    let taken = mods::merge("mask_modifiers", &base.mask_mods.modifiers, &mut mods, set, &b.mask_mods_delta, &b.mask_mods_removed, default, place, choices, out);
+    if mods != before {
         out.taken.other.push("mask_modifiers".into());
     }
+    note_taken(mine, MASK_MOD_AUTHOR, taken);
     // The painted mask with the modifiers over it again.
     let keys = MaskLayers::keys_of(&mods);
     mine.mask = mm;
@@ -1205,7 +1231,7 @@ fn merge_mask(base: &World, patch: &Patch, mine: &mut World, choices: &HashMap<C
 /// Merges the satellite image band by band and writes it out with the merged modifiers laid
 /// over it. Gives the new layers, and the pixels when `mine` holds the image in memory.
 #[allow(clippy::too_many_arguments)]
-fn merge_satellite(base: &World, patch: &Patch, sb: &SatBody, mine: &World, dirs: Dirs, choices: &HashMap<ConflictKey, Choice>, out: &mut Merged) -> Result<Option<(SatLayers, Option<Vec<u8>>)>> {
+fn merge_satellite(base: &World, patch: &Patch, sb: &SatBody, mine: &World, dirs: Dirs, choices: &HashMap<ConflictKey, Choice>, out: &mut Merged) -> Result<Option<(SatLayers, Option<Vec<u8>>, Vec<(u32, String)>)>> {
     let (Some(mut br), Some(mut mr)) = (SatReader::new(base, dirs.base)?, SatReader::new(mine, dirs.mine)?) else {
         out.skipped.push("satellite".into());
         return Ok(None);
@@ -1219,7 +1245,13 @@ fn merge_satellite(base: &World, patch: &Patch, sb: &SatBody, mine: &World, dirs
         None => Vec::new(),
     };
     let mut mods: Vec<SatModifier> = mine.sat.modifiers.clone();
-    if merge_list("sat_modifiers", &base.sat.modifiers, &mut mods, &set, &sb.removed, |m| m.id as u64, |m| m.name.clone(), |_| None, |_| Choice::Mine, choices, out) {
+    let author = patch.header.author.as_str();
+    let size = mine.meta.size_m();
+    let tile_m = SAT_TILE as f32 * size / mr.width.max(1) as f32;
+    let place = |k: mods::Key| Some([(k.0 as f32 + 0.5) * tile_m, size - (k.1 as f32 + 0.5) * tile_m]);
+    let default = |id: u32, d: &mods::ModDelta| owner_default(Some(mine.sat_mod_author(id)).filter(|a| !a.is_empty()).unwrap_or(&d.author), author);
+    let taken = mods::merge("sat_modifiers", &base.sat.modifiers, &mut mods, set, &sb.mods_delta, &sb.removed, default, place, choices, out);
+    if mods != mine.sat.modifiers {
         out.taken.other.push("sat_modifiers".into());
     }
     let in_memory = mine.satellite.as_ref().is_some_and(|s| s.data.len() == s.width * s.height * 3);
@@ -1298,7 +1330,7 @@ fn merge_satellite(base: &World, patch: &Patch, sb: &SatBody, mine: &World, dirs
         }
         SatOut::Nowhere => None,
     };
-    Ok(Some((SatLayers::from_parts(mods, kept), pixels)))
+    Ok(Some((SatLayers::from_parts(mods, kept), pixels, taken)))
 }
 
 /// Merges the files of the mission: text files line by line, the others whole.
