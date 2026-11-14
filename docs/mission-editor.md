@@ -2,7 +2,15 @@
 
 The **Mission** mode (key 9) edits the server mission of the map: the folder the server
 reads from `mpmissions\dayzOffline.<world>`. The mission lives in `mission\` of the project
-and is written there exactly as the server reads it.
+and is written there exactly as the server reads it. The mission editor is an experimental
+feature: turn it on with *Edit > Settings > General > Show experimental features*.
+
+![The mission editor with the loot table](screenshots/mission.jpg)
+
+The left panel of the Mission mode chooses what the map shows (event spawns, player spawns,
+territories, effect areas, safe positions, underground triggers, breadcrumbs, map groups, area flags)
+and the tool the map uses: select and move, or place one of these. **Mission editor** opens the
+window with the tabs below.
 
 * **New mission for this map** makes every file a server needs, with the game's defaults,
   a blank `areaflags.map` over the map and one player spawn at the map's spawn point.
