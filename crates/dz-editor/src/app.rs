@@ -371,6 +371,8 @@ pub struct App {
     pub select_whole: bool,
     /// The road or generator all of the selection belongs to.
     pub whole: Option<SelectedWhole>,
+    /// The selection last checked for loose road pieces: (revision, size).
+    pub road_guard: (u64, usize),
     pub hole_tool: bool,
     pub hole_radius: f32,
     /// State before the hole stroke in progress, for undo.
@@ -534,7 +536,7 @@ impl App {
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
-            show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
+            show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, road_guard: (u64::MAX, 0), hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
@@ -1642,6 +1644,40 @@ impl App {
     }
 
     /// Keeps a copy of what is selected, for V to place again once something else is.
+    /// Road pieces move only with their road: they are taken out of any selection that is not
+    /// their whole road, from a box, a click, the outliner or Select all alike. A selection of
+    /// nothing but pieces of one road becomes that whole road.
+    pub fn keep_road_parts_whole(&mut self) {
+        let key = (self.selection_rev, self.selection.len());
+        if self.road_guard == key {
+            return;
+        }
+        self.road_guard = key;
+        let Some(doc) = &self.doc else { return };
+        if doc.world.routes.is_empty() || self.selection.is_empty() {
+            return;
+        }
+        let owner: HashMap<u32, u64> = doc.world.routes.iter().flat_map(|r| r.objects.iter().map(move |id| (*id, r.id))).collect();
+        let whole = match self.whole { Some(SelectedWhole::Route(id)) => Some(id), _ => None };
+        let mut dropped = BTreeSet::new();
+        self.selection.retain(|id| match owner.get(id) {
+            Some(r) if Some(*r) != whole => { dropped.insert(*r); false }
+            _ => true,
+        });
+        if dropped.is_empty() {
+            return;
+        }
+        if self.selection.is_empty() && self.whole.is_none() && dropped.len() == 1 {
+            let id = *dropped.first().unwrap();
+            if let Some(r) = doc.world.routes.iter().find(|r| r.id == id) {
+                self.selection.extend(r.objects.iter().copied());
+                self.whole = Some(SelectedWhole::Route(id));
+            }
+        }
+        self.selection_rev += 1;
+        self.road_guard = (self.selection_rev, self.selection.len());
+    }
+
     pub fn remember_selection(&mut self) {
         let Some(doc) = &self.doc else { return };
         if self.selection.is_empty() {

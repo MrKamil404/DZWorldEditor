@@ -3,6 +3,10 @@
   "de": "#name ist der Servername, #tmin die Minuten bis zum Herunterfahren. Zeiten in Minuten.",
   "pl": "#name to nazwa serwera, #tmin minuty do wyłączenia. Czasy są w minutach."
  },
+ "(any surface)": {
+  "de": "(jede Oberfläche)",
+  "pl": "(dowolna powierzchnia)"
+ },
  "(from the base world)": {
   "de": "(aus der Basiswelt)",
   "pl": "(ze świata bazowego)"
@@ -75,6 +79,22 @@
   "de": "Ein eingebautes Preset. Dupliziere es für eine eigene Version.",
   "pl": "Preset wbudowany. Zduplikuj go, aby zrobić własną wersję."
  },
+ "A click": {
+  "de": "Ein Klick",
+  "pl": "Kliknięcie"
+ },
+ "A click on the map adds a key point.": {
+  "de": "Ein Klick auf die Karte fügt einen Schlüsselpunkt hinzu.",
+  "pl": "Kliknięcie na mapie dodaje punkt kluczowy."
+ },
+ "A clicked line becomes a polyline on the active shape layer, as the Shapes tool draws it.": {
+  "de": "Eine geklickte Linie wird zur Polylinie auf der aktiven Formebene, wie sie das Formen-Werkzeug zeichnet.",
+  "pl": "Kliknięta linia staje się polilinią na aktywnej warstwie kształtów, tak jak rysuje ją narzędzie Kształty."
+ },
+ "A closed area, for forests, fields or places to keep free.": {
+  "de": "Eine geschlossene Fläche, für Wälder, Felder oder freizuhaltende Orte.",
+  "pl": "Zamknięty obszar: lasy, pola albo miejsca do zostawienia wolnymi."
+ },
  "A colour texture (_ca or _co) of the map's own surface on the work drive": {
   "de": "Eine Farbtextur (_ca oder _co) einer eigenen Oberfläche der Karte auf dem Arbeitslaufwerk",
   "pl": "Tekstura koloru (_ca lub _co) własnej powierzchni mapy na dysku roboczym"
@@ -142,6 +162,10 @@
  "A route needs at least two points": {
   "de": "Eine Route braucht mindestens zwei Punkte",
   "pl": "Trasa potrzebuje co najmniej dwóch punktów"
+ },
+ "A single point; a click places it.": {
+  "de": "Ein einzelner Punkt; ein Klick setzt ihn.",
+  "pl": "Pojedynczy punkt; kliknięcie go stawia."
  },
  "A spawn of event {0} is outside the map ({1}, {2})": {
   "de": "Ein Spawn des Events {0} liegt außerhalb der Karte ({1}, {2})",
@@ -391,9 +415,17 @@
   "de": "Umgebungsverdeckung",
   "pl": "Okluzja otoczenia"
  },
+ "An even slope from where the stroke starts to the cursor.": {
+  "de": "Eine gleichmäßige Steigung vom Anfang des Strichs bis zum Zeiger.",
+  "pl": "Równy spadek od początku pociągnięcia do kursora."
+ },
  "An object held by its shape slides over the ground, as with the dot of the gizmo.": {
   "de": "Ein an seiner Form gehaltenes Objekt gleitet über den Boden, wie mit dem Punkt des Gizmos.",
   "pl": "Obiekt złapany za swój kształt przesuwa się po terenie, tak jak kropką gizmo."
+ },
+ "An open line, for roads, rivers, fences and power lines to follow.": {
+  "de": "Eine offene Linie, der Straßen, Flüsse, Zäune und Stromleitungen folgen.",
+  "pl": "Otwarta linia, wzdłuż której idą drogi, rzeki, płoty i linie energetyczne."
  },
  "And a spawn of {0} at the first object": {
   "de": "Und ein Spawn von {0} am ersten Objekt",
@@ -675,6 +707,10 @@
   "de": "Beide haben hier verschiedene Oberflächen gemalt",
   "pl": "Oboje pomalowaliście tu różne powierzchnie"
  },
+ "Bottom": {
+  "de": "Unten",
+  "pl": "Dół"
+ },
  "Box": {
   "de": "Rechteck",
   "pl": "Prostokąt"
@@ -790,6 +826,10 @@
  "Buy me a coffee": {
   "de": "Spendier mir einen Kaffee",
   "pl": "Postaw mi kawę"
+ },
+ "By points": {
+  "de": "Nach Punkten",
+  "pl": "Po punktach"
  },
  "Camera": {
   "de": "Kamera",
@@ -915,6 +955,10 @@
   "de": "Zuerst ein Modell für die Linie wählen",
   "pl": "Najpierw wybierz model dla linii"
  },
+ "Choose a model in the Content Browser": {
+  "de": "Ein Modell im Inhaltsbrowser wählen",
+  "pl": "Wybierz model w przeglądarce zasobów"
+ },
  "Choose a model in the Content Browser below, then click on the terrain. Models can also be dragged onto the map.": {
   "de": "Modell unten im Inhaltsbrowser wählen und auf das Gelände klicken. Modelle lassen sich auch auf die Karte ziehen.",
   "pl": "Wybierz model w bibliotece poniżej i kliknij na terenie. Modele można też przeciągać na mapę."
@@ -926,6 +970,10 @@
  "Choose a piece and click on the map (or press its key) to lay it.": {
   "de": "Wähle ein Teil und klicke auf die Karte (oder drücke seine Taste), um es zu legen.",
   "pl": "Wybierz part i kliknij na mapie (albo naciśnij jego klawisz), aby go położyć."
+ },
+ "Choose a surface below": {
+  "de": "Unten eine Oberfläche wählen",
+  "pl": "Wybierz powierzchnię poniżej"
  },
  "Choose a surface first": {
   "de": "Zuerst eine Oberfläche wählen",
@@ -1007,6 +1055,14 @@
   "de": "Lichtungen",
   "pl": "Polany"
  },
+ "Click a route on the map to edit it.": {
+  "de": "Klicke eine Route auf der Karte an, um sie zu bearbeiten.",
+  "pl": "Kliknij trasę na mapie, aby ją edytować."
+ },
+ "Click a route to edit it. Drag its points; the + between two points adds one; Ctrl+click beyond an end extends it; Delete or Backspace removes the marked point.": {
+  "de": "Klicke eine Route an, um sie zu bearbeiten. Ziehe ihre Punkte; das + zwischen zwei Punkten fügt einen hinzu; Strg+Klick hinter einem Ende verlängert sie; Entf oder Rücktaste entfernt den markierten Punkt.",
+  "pl": "Kliknij trasę, aby ją edytować. Przeciągaj jej punkty; + między punktami dodaje nowy; Ctrl+klik za końcem przedłuża trasę; Delete lub Backspace usuwa zaznaczony punkt."
+ },
  "Click a route, then drag its points. The + between two points adds one, Ctrl+click extends the route from its nearer end, Delete removes the marked point. New points wait for Fit again.": {
   "de": "Klicke eine Route an und ziehe ihre Punkte. Das + fügt einen Punkt hinzu, Strg+Klick verlängert die Route am näheren Ende, Entf löscht den markierten Punkt. Neue Punkte warten auf Neu einpassen.",
   "pl": "Kliknij trasę i przeciągaj jej punkty. Znak + dodaje punkt, Ctrl+klik wydłuża trasę od bliższego końca, Delete usuwa zaznaczony punkt. Nowe punkty czekają na Dopasuj ponownie."
@@ -1071,9 +1127,21 @@
   "de": "Klicke auf die Karte, um es zu platzieren; es lässt sich auch auf die Karte ziehen.",
   "pl": "Kliknij na mapie, aby go postawić; można go też przeciągnąć na mapę."
  },
+ "Click on the map where the line starts.": {
+  "de": "Klicke auf die Karte, wo die Linie beginnt.",
+  "pl": "Kliknij na mapie, gdzie zaczyna się linia."
+ },
  "Click on the map where the middle of the roundabout goes (Esc stops). Its ring is laid round from the road type's own pieces, as near the diameter as they allow.": {
   "de": "Klicke auf die Karte, wo die Mitte des Kreisverkehrs hin soll (Esc beendet). Sein runder Ring wird aus den Stücken des Straßentyps gelegt, so nah am Durchmesser, wie sie es erlauben.",
   "pl": "Kliknij na mapie, gdzie ma być środek ronda (Esc kończy). Okrągły pierścień zostanie ułożony z części tego typu drogi, możliwie najbliżej podanej średnicy."
+ },
+ "Click on the map where the road starts.": {
+  "de": "Klicke auf die Karte, wo die Straße beginnt.",
+  "pl": "Kliknij na mapie, gdzie zaczyna się droga."
+ },
+ "Click on the map where the shape starts.": {
+  "de": "Auf die Karte klicken, wo die Form beginnt.",
+  "pl": "Kliknij na mapie, gdzie zaczyna się kształt."
  },
  "Click on the route where the crossroad goes (Esc cancels).": {
   "de": "Klicke auf die Route, wo die Kreuzung hin soll (Esc bricht ab).",
@@ -1082,6 +1150,10 @@
  "Click on the route where the crossroad goes; its side arm faces the side you click. The route is laid again as two roads leaving the crossroad.": {
   "de": "Klicke auf die Route, wo die Kreuzung hin soll; ihr Seitenarm zeigt zur angeklickten Seite. Die Route wird als zwei Straßen neu gelegt, die von der Kreuzung ausgehen.",
   "pl": "Kliknij na trasie, gdzie ma stanąć skrzyżowanie; jego boczne ramię skieruje się na stronę kliknięcia. Trasa zostanie ułożona na nowo jako dwie drogi wychodzące ze skrzyżowania."
+ },
+ "Click on the terrain to place it; models can also be dragged onto the map.": {
+  "de": "Auf das Gelände klicken, um es zu setzen; Modelle lassen sich auch auf die Karte ziehen.",
+  "pl": "Kliknij na terenie, aby postawić; modele można też przeciągnąć na mapę."
  },
  "Click or drag to take the camera there.": {
   "de": "Klicken oder ziehen, um die Kamera dorthin zu bringen.",
@@ -1107,9 +1179,21 @@
   "de": "Klick wählt eine Form aus. Ziehe einen Punkt zum Verschieben, ein + zum Hinzufügen und das Quadrat, um die ganze Form zu bewegen. Rechtsklick oder Entf löscht einen Punkt, Esc bricht das Ziehen ab.",
   "pl": "Klik zaznacza kształt. Przeciągnij kropkę, aby przesunąć punkt, znak +, aby dodać punkt, a kwadrat, aby przesunąć cały kształt. Prawy klik lub Delete usuwa punkt, Esc anuluje przeciąganie."
  },
+ "Click selects a shape. Drag a dot to move a point, a + to add one, the square to move the whole shape; right click or Delete removes a point.": {
+  "de": "Klick wählt eine Form. Einen Punkt ziehen verschiebt ihn, ein + fügt einen hinzu, das Quadrat verschiebt die ganze Form; Rechtsklick oder Entf entfernt einen Punkt.",
+  "pl": "Kliknięcie zaznacza kształt. Przeciągnij kropkę, aby przesunąć punkt, +, aby dodać nowy, kwadrat, aby przesunąć cały kształt; prawy klik lub Delete usuwa punkt."
+ },
  "Click selects a shape. Drag a vertex to move it, Ctrl+click an edge to add one, Delete removes the vertex or the shape.": {
   "de": "Klick wählt eine Form aus. Ziehe einen Punkt zum Verschieben, Strg+Klick auf eine Kante fügt einen hinzu, Entf löscht den Punkt oder die Form.",
   "pl": "Kliknięcie zaznacza kształt. Przeciągnij wierzchołek, aby go przesunąć, Ctrl+klik na krawędzi dodaje nowy, Delete usuwa wierzchołek lub kształt."
+ },
+ "Click selects, a drag selects all inside, Shift adds to the selection.": {
+  "de": "Klick wählt aus, Ziehen wählt alles darin, Umschalt fügt hinzu.",
+  "pl": "Kliknięcie zaznacza, przeciągnięcie zaznacza wszystko w obszarze, Shift dodaje do zaznaczenia."
+ },
+ "Click the points of the road; Enter fits the models along them.": {
+  "de": "Klicke die Punkte der Straße; Enter passt die Modelle entlang ein.",
+  "pl": "Klikaj punkty drogi; Enter dopasowuje do nich modele."
  },
  "Click the points of the road; the models are fitted when Enter finishes it.": {
   "de": "Klicke die Punkte der Straße; die Modelle werden eingepasst, wenn Enter sie abschließt.",
@@ -1194,6 +1278,10 @@
  "Content Browser": {
   "de": "Inhaltsbrowser",
   "pl": "Biblioteka"
+ },
+ "Content browser and log": {
+  "de": "Inhaltsbrowser und Protokoll",
+  "pl": "Przeglądarka zasobów i dziennik"
  },
  "Contour lines": {
   "de": "Höhenlinien",
@@ -1367,6 +1455,10 @@
   "de": "Standard",
   "pl": "Domyślnie"
  },
+ "Default layout": {
+  "de": "Standardanordnung",
+  "pl": "Domyślny układ"
+ },
  "Delete": {
   "de": "Löschen",
   "pl": "Usuń"
@@ -1514,6 +1606,10 @@
  "Detect automatically": {
   "de": "Automatisch erkennen",
   "pl": "Wykryj automatycznie"
+ },
+ "Diameter": {
+  "de": "Durchmesser",
+  "pl": "Średnica"
  },
  "Diamond": {
   "de": "Raute",
@@ -1847,6 +1943,10 @@
   "de": "Abend",
   "pl": "Wieczór"
  },
+ "Evens out bumps and edges.": {
+  "de": "Glättet Unebenheiten und Kanten.",
+  "pl": "Wygładza nierówności i krawędzie."
+ },
  "Event": {
   "de": "Event",
   "pl": "Event"
@@ -1982,6 +2082,10 @@
  "Exposure": {
   "de": "Belichtung",
   "pl": "Ekspozycja"
+ },
+ "Extend": {
+  "de": "Verlängern",
+  "pl": "Przedłużanie"
  },
  "Extend end": {
   "de": "Ende verlängern",
@@ -2499,6 +2603,10 @@
   "de": "Hilfe",
   "pl": "Pomoc"
  },
+ "Hidden": {
+  "de": "Ausgeblendet",
+  "pl": "Ukryte"
+ },
  "High": {
   "de": "Hoch",
   "pl": "Wysokie"
@@ -2731,6 +2839,10 @@
   "de": "Keypoints",
   "pl": "Keypointy"
  },
+ "Key points tool": {
+  "de": "Schlüsselpunkt-Werkzeug",
+  "pl": "Narzędzie punktów kluczowych"
+ },
  "Keyboard shortcuts": {
   "de": "Tastenkürzel",
   "pl": "Skróty klawiszowe"
@@ -2782,6 +2894,10 @@
  "Lay at least one piece first": {
   "de": "Lege zuerst mindestens ein Teil",
   "pl": "Najpierw połóż przynajmniej jeden part"
+ },
+ "Lay it": {
+  "de": "Legen",
+  "pl": "Układanie"
  },
  "Lay pieces at the open end or take them away, then apply.": {
   "de": "Lege Teile am offenen Ende an oder nimm sie weg, dann übernehmen.",
@@ -2847,6 +2963,10 @@
   "de": "Einebnen",
   "pl": "Wyrównanie"
  },
+ "Levels the ground to the height where the stroke starts.": {
+  "de": "Ebnet den Boden auf die Höhe am Anfang des Strichs.",
+  "pl": "Wyrównuje teren do wysokości z początku pociągnięcia."
+ },
  "Library": {
   "de": "Eigene Bibliothek",
   "pl": "Moja biblioteka"
@@ -2866,6 +2986,10 @@
  "Line": {
   "de": "Linie",
   "pl": "Linia"
+ },
+ "Line to shapes": {
+  "de": "Linie zu Formen",
+  "pl": "Linia do kształtów"
  },
  "Line: Nodes Objects": {
   "de": "Linie: Objekte an Knoten",
@@ -2990,6 +3114,10 @@
  "Lower instead of raise": {
   "de": "Absenken statt anheben",
   "pl": "Obniżaj zamiast podnosić"
+ },
+ "Lowers the ground under the brush.": {
+  "de": "Senkt den Boden unter dem Pinsel.",
+  "pl": "Obniża teren pod pędzlem."
  },
  "Main menu scenes": {
   "de": "Hauptmenü-Szenen",
@@ -3287,6 +3415,10 @@
   "de": "Moränentiefland",
   "pl": "Nizina morenowa"
  },
+ "More": {
+  "de": "Mehr",
+  "pl": "Więcej"
+ },
  "More presets in shapes": {
   "de": "Weitere Presets in Formen",
   "pl": "Kolejne presety w kształtach"
@@ -3498,6 +3630,10 @@
  "New project...": {
   "de": "Neues Projekt...",
   "pl": "Nowy projekt..."
+ },
+ "New road": {
+  "de": "Neue Straße",
+  "pl": "Nowa droga"
  },
  "New template library": {
   "de": "Neue Vorlagenbibliothek",
@@ -3727,6 +3863,10 @@
   "de": "Objekte der Ebenen stehen auf der gewählten Höhenkarte, und Modelle, die dem Boden folgen (Wegplatten, Leitplanken), kommen bei weniger als 10° Neigung eben. Eine gebaute Welt (WRP) hat sie so, wie das Spiel sie zeigt.",
   "pl": "Obiekty z warstw stoją na wybranej mapie wysokości, a modele dopasowujące się do terenu (panele ścieżek, bariery) wchodzą poziomo, gdy ich przechył jest mniejszy niż 10°. Zbudowany świat (WRP) ma je tak, jak pokazuje je gra."
  },
+ "Objects under the terrain need the underground flag, and holes cost performance.": {
+  "de": "Objekte unter dem Gelände brauchen die Untergrund-Markierung, und Löcher kosten Leistung.",
+  "pl": "Obiekty pod terenem potrzebują flagi podziemia, a dziury obciążają wydajność."
+ },
  "Off": {
   "de": "Aus",
   "pl": "Wyłączone"
@@ -3891,6 +4031,10 @@
   "de": "Öffnet das Straßenwerkzeug mit diesen Punkten.",
   "pl": "Otwiera narzędzie Drogi z tymi punktami."
  },
+ "Options": {
+  "de": "Optionen",
+  "pl": "Opcje"
+ },
  "Other models": {
   "de": "Andere Modelle",
   "pl": "Inne modele"
@@ -3902,6 +4046,10 @@
  "Outliner": {
   "de": "Gliederung",
   "pl": "Hierarchia"
+ },
+ "Outliner and details": {
+  "de": "Gliederung und Details",
+  "pl": "Konspekt i szczegóły"
  },
  "Output Log": {
   "de": "Ausgabeprotokoll",
@@ -3995,6 +4143,10 @@
   "de": "Male unter Objekten",
   "pl": "Malowanie pod obiektami"
  },
+ "Paints": {
+  "de": "Malt",
+  "pl": "Maluje"
+ },
  "Paints a surface under objects as a mask modifier, which can be hidden or deleted in the outliner.": {
   "de": "Malt eine Oberfläche unter Objekte als Masken-Modifikator, der in der Hierarchie ausgeblendet oder gelöscht werden kann.",
   "pl": "Maluje powierzchnię pod obiektami jako modyfikator maski, który można ukryć albo usunąć w hierarchii."
@@ -4006,6 +4158,14 @@
  "Paints the asphalt and verges of the road models into the image, as they look from above.": {
   "de": "Malt Asphalt und Ränder der Straßenmodelle so ins Bild, wie sie von oben aussehen.",
   "pl": "Wypala w obrazie asfalt i pobocza modeli dróg tak, jak wyglądają z góry."
+ },
+ "Paints the cells the game does not draw, for entrances under the ground.": {
+  "de": "Malt die Zellen, die das Spiel nicht zeichnet, für Eingänge unter die Erde.",
+  "pl": "Maluje komórki, których gra nie rysuje, np. na wejścia pod ziemię."
+ },
+ "Paints {0} (L{1})": {
+  "de": "Malt {0} (L{1})",
+  "pl": "Maluje {0} (L{1})"
  },
  "Part removed": {
   "de": "Entfernter Anteil",
@@ -4099,6 +4259,18 @@
   "de": "Teil für Teil",
   "pl": "Part po parcie"
  },
+ "Pieces": {
+  "de": "Stücke",
+  "pl": "Części"
+ },
+ "Pin: keep this panel on screen.": {
+  "de": "Anheften: dieses Feld auf dem Bildschirm behalten.",
+  "pl": "Przypnij: ten panel zostaje na ekranie."
+ },
+ "Pinned: stays on screen. Click to let it slide away again.": {
+  "de": "Angeheftet: bleibt auf dem Bildschirm. Klicken, damit es wieder verschwindet.",
+  "pl": "Przypięty: zostaje na ekranie. Kliknij, aby znów się chował."
+ },
  "Pitch": {
   "de": "Neigung",
   "pl": "Pochylenie"
@@ -4167,13 +4339,33 @@
   "de": "{0} Objekte platziert",
   "pl": "Postawiono obiektów: {0}"
  },
+ "Places one": {
+  "de": "Setzt eins",
+  "pl": "Stawia jeden"
+ },
+ "Places one model at even spacing along a clicked line, once. The Line generators do the same with more options and can be run again.": {
+  "de": "Setzt ein Modell in gleichen Abständen entlang einer geklickten Linie, einmalig. Die Linien-Generatoren tun dasselbe mit mehr Optionen und lassen sich erneut ausführen.",
+  "pl": "Stawia jeden model w równych odstępach wzdłuż klikniętej linii, jednorazowo. Generatory liniowe robią to samo z większą liczbą opcji i można je uruchomić ponownie."
+ },
  "Places the main menu shows behind the character. Set one from where the 3D camera stands and looks; without any the base world's are used.": {
   "de": "Orte, die das Hauptmenü hinter der Figur zeigt. Setze einen von dort, wo die 3D-Kamera steht und hinsieht; ohne werden die der Basiswelt genutzt.",
   "pl": "Miejsca, które menu główne pokazuje za postacią. Ustaw je z miejsca, gdzie stoi i patrzy kamera 3D; bez nich używane są sceny świata bazowego."
  },
+ "Places the preset {0}": {
+  "de": "Setzt die Vorlage {0}",
+  "pl": "Stawia preset {0}"
+ },
+ "Places {0}": {
+  "de": "Setzt {0}",
+  "pl": "Stawia {0}"
+ },
  "Placing objects along the line": {
   "de": "Objekte werden entlang der Linie platziert",
   "pl": "Stawianie obiektów wzdłuż linii"
+ },
+ "Placing: click the middle (Esc stops)": {
+  "de": "Setzen: Mitte anklicken (Esc beendet)",
+  "pl": "Stawianie: kliknij środek (Esc kończy)"
  },
  "Plains": {
   "de": "Ebenen",
@@ -4315,6 +4507,10 @@
   "de": "Kreuzung einsetzen",
   "pl": "Wstaw skrzyżowanie"
  },
+ "Puts every panel back where it was at first, at its first size.": {
+  "de": "Setzt jedes Feld an seinen ursprünglichen Platz und in seine ursprüngliche Größe zurück.",
+  "pl": "Przywraca każdy panel na jego pierwotne miejsce i w pierwotnym rozmiarze."
+ },
  "Putting in a crossroad": {
   "de": "Kreuzung wird eingesetzt",
   "pl": "Wstawianie skrzyżowania"
@@ -4346,6 +4542,10 @@
  "Raise the bed": {
   "de": "Fahrbahn anheben",
   "pl": "Podniesienie podłoża"
+ },
+ "Raises the ground under the brush.": {
+  "de": "Hebt den Boden unter dem Pinsel an.",
+  "pl": "Podnosi teren pod pędzlem."
  },
  "Ramp": {
   "de": "Rampe",
@@ -4619,6 +4819,14 @@
   "de": "Letztes Objekt um 180° drehen",
   "pl": "Obróć ostatni obiekt o 180°"
  },
+ "Rotation and size": {
+  "de": "Drehung und Größe",
+  "pl": "Obrót i rozmiar"
+ },
+ "Roughens the ground with random bumps.": {
+  "de": "Raut den Boden mit zufälligen Buckeln auf.",
+  "pl": "Dodaje losowe nierówności."
+ },
  "Roughness": {
   "de": "Rauheit",
   "pl": "Chropowatość"
@@ -4626,6 +4834,10 @@
  "Round": {
   "de": "Rund",
   "pl": "Okrągły"
+ },
+ "Roundabout": {
+  "de": "Kreisverkehr",
+  "pl": "Rondo"
  },
  "Roundabout Ø": {
   "de": "Kreisverkehr Ø",
@@ -4951,6 +5163,10 @@
   "de": "{0} gesendet: {1}",
   "pl": "Wysłano {0}: {1}"
  },
+ "Separate window": {
+  "de": "Eigenes Fenster",
+  "pl": "Osobne okno"
+ },
  "Server mission": {
   "de": "Servermission",
   "pl": "Misja serwera"
@@ -5046,6 +5262,10 @@
  "Shift+wheel: size. Ctrl+wheel: edge noise. Alt+wheel: strength and falloff.": {
   "de": "Umschalt+Rad: Größe. Strg+Rad: Randrauschen. Alt+Rad: Stärke und Weichheit.",
   "pl": "Shift+kółko: rozmiar. Ctrl+kółko: szum krawędzi. Alt+kółko: siła i miękkość."
+ },
+ "Shortcuts": {
+  "de": "Tastenkürzel",
+  "pl": "Skróty"
  },
  "Shoulder": {
   "de": "Bankett",
@@ -5551,6 +5771,10 @@
   "de": "Gelände unter Objekten",
   "pl": "Teren pod obiektami"
  },
+ "Terrain under the road": {
+  "de": "Gelände unter der Straße",
+  "pl": "Teren pod drogą"
+ },
  "Terrain {0} × {0}, cell {1} m, map {2} m": {
   "de": "Gelände {0} × {0}, Zelle {1} m, Karte {2} m",
   "pl": "Teren {0} × {0}, komórka {1} m, mapa {2} m"
@@ -5715,6 +5939,10 @@
   "de": "Die Mission hat kein {0}",
   "pl": "Misja nie ma {0}"
  },
+ "The model chosen in the Content Browser.": {
+  "de": "Das im Inhaltsbrowser gewählte Modell.",
+  "pl": "Model wybrany w przeglądarce zasobów."
+ },
  "The model could not be read": {
   "de": "Das Modell konnte nicht gelesen werden",
   "pl": "Nie udało się odczytać modelu"
@@ -5730,6 +5958,10 @@
  "The models follow the mouse as it moves: green where they fit, red where they cannot. A click keeps the road up to there.": {
   "de": "Die Modelle folgen der Maus: grün, wo sie passen, rot, wo nicht. Ein Klick behält die Straße bis dorthin.",
   "pl": "Modele podążają za myszą: zielone, gdy pasują, czerwone, gdy się nie da. Kliknięcie zatwierdza drogę do tego miejsca."
+ },
+ "The models follow the mouse: green where they fit, red where they cannot. A click keeps the road up to there.": {
+  "de": "Die Modelle folgen der Maus: grün, wo sie passen, rot, wo nicht. Ein Klick behält die Straße bis dorthin.",
+  "pl": "Modele podążają za myszą: zielone tam, gdzie pasują, czerwone, gdzie nie. Kliknięcie zatwierdza drogę do tego miejsca."
  },
  "The name the game shows; empty takes the name of the project.": {
   "de": "Der Name im Spiel; leer nimmt den Projektnamen.",
@@ -5823,6 +6055,10 @@
   "de": "Die Straße kreuzt ein Gleis in einer Kurve oder zu schräg, daher wurde dort kein Bahnübergang gelegt",
   "pl": "Droga przecina tor na łuku lub pod zbyt małym kątem, więc nie położono tam przejazdu"
  },
+ "The road runs the other way: its start becomes its end.": {
+  "de": "Die Straße läuft andersherum: ihr Anfang wird ihr Ende.",
+  "pl": "Droga biegnie w drugą stronę: początek staje się końcem."
+ },
  "The roads from the crossroad could not be fitted": {
   "de": "Die Straßen von der Kreuzung ließen sich nicht einpassen",
   "pl": "Nie udało się dopasować dróg od skrzyżowania"
@@ -5902,6 +6138,10 @@
  "The world config (CfgWorlds) of the map, written to config.cpp on export.": {
   "de": "Die Weltconfig (CfgWorlds) der Karte, beim Export in config.cpp geschrieben.",
   "pl": "Config świata (CfgWorlds) mapy, zapisywany do config.cpp przy eksporcie."
+ },
+ "Then click on the map beyond that end; Ctrl+click picks the nearer end itself.": {
+  "de": "Dann hinter diesem Ende auf die Karte klicken; Strg+Klick wählt das nähere Ende selbst.",
+  "pl": "Potem kliknij na mapie za tym końcem; Ctrl+klik sam wybiera bliższy koniec."
  },
  "Thermal erosion": {
   "de": "Thermische Erosion",
@@ -6323,6 +6563,10 @@
   "de": "Breite",
   "pl": "Szerokość"
  },
+ "Window layout": {
+  "de": "Fensteranordnung",
+  "pl": "Układ okien"
+ },
  "Wipe persistence": {
   "de": "Persistenz löschen",
   "pl": "Wyczyść persistence"
@@ -6535,6 +6779,10 @@
   "de": "Ende",
   "pl": "końcu"
  },
+ "from": {
+  "de": "von",
+  "pl": "od"
+ },
  "ground": {
   "de": "Boden",
   "pl": "ziemia"
@@ -6602,6 +6850,10 @@
  "terrain in {0} places": {
   "de": "Gelände an {0} Stellen",
   "pl": "teren w {0} miejscach"
+ },
+ "to": {
+  "de": "bis",
+  "pl": "do"
  },
  "usage": {
   "de": "usage",
@@ -6691,6 +6943,10 @@
   "de": "{0} Modelle",
   "pl": "modeli: {0}"
  },
+ "{0} models · {1} points": {
+  "de": "{0} Modelle · {1} Punkte",
+  "pl": "Modele: {0} · punkty: {1}"
+ },
  "{0} models, {1} other": {
   "de": "{0} Modelle, {1} andere",
   "pl": "{0} modeli, {1} innych"
@@ -6750,6 +7006,18 @@
  "{0} points": {
   "de": "{0} Punkte",
   "pl": "Punktów: {0}"
+ },
+ "{0} points · Enter finishes · Backspace takes the last back · Esc cancels": {
+  "de": "{0} Punkte · Enter beendet · Rücktaste nimmt den letzten zurück · Esc bricht ab",
+  "pl": "Punkty: {0} · Enter kończy · Backspace cofa ostatni · Esc anuluje"
+ },
+ "{0} points · Enter or a double click finishes · Backspace takes the last back · Esc cancels": {
+  "de": "{0} Punkte · Enter oder Doppelklick beendet · Rücktaste nimmt den letzten zurück · Esc bricht ab",
+  "pl": "Punkty: {0} · Enter lub dwuklik kończy · Backspace cofa ostatni · Esc anuluje"
+ },
+ "{0} points; typed values wait for Fit again.": {
+  "de": "{0} Punkte; eingetippte Werte warten auf Neu einpassen.",
+  "pl": "Punkty: {0}; wpisane wartości czekają na Dopasuj ponownie."
  },
  "{0} pole types, {1} wire types": {
   "de": "{0} Masttypen, {1} Leitungstypen",

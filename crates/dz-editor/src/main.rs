@@ -10,6 +10,7 @@ mod exporting;
 mod i18n;
 mod icons;
 mod keys;
+mod layout;
 mod library_ui;
 mod maskmods;
 mod mission_ui;

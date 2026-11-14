@@ -61,15 +61,15 @@ pub fn draw(app: &App, painter: &egui::Painter, v: &View, world: &dz_core::world
 
 /// The tool's settings in the road panel.
 pub fn fields(app: &mut App, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.label(t("Roundabout Ø"));
+    crate::theme::row(ui, &t("Diameter"), |ui| {
         ui.add(egui::DragValue::new(&mut app.line.roundabout_diameter).range(10.0..=600.0).speed(0.5).suffix(" m"));
-        let armed = app.line.roundabout_armed;
-        if crate::theme::tool_button(ui, armed, &t("Place roundabout")).on_hover_text(t("Click on the map where the middle of the roundabout goes (Esc stops). Its ring is laid round from the road type's own pieces, as near the diameter as they allow.")).clicked() {
-            app.line.roundabout_armed = !armed;
-            app.line.points.clear();
-        }
     });
+    let armed = app.line.roundabout_armed;
+    let label = if armed { t("Placing: click the middle (Esc stops)") } else { t("Place roundabout") };
+    if crate::theme::tool_button(ui, armed, &label).on_hover_text(t("Click on the map where the middle of the roundabout goes (Esc stops). Its ring is laid round from the road type's own pieces, as near the diameter as they allow.")).clicked() {
+        app.line.roundabout_armed = !armed;
+        app.line.points.clear();
+    }
     if app.line.roundabout_armed {
         let fam = app.line.family.clone();
         let _ = ring(app);

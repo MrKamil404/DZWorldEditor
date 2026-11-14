@@ -3430,7 +3430,9 @@ pub fn central(app: &mut App, ui: &mut egui::Ui) {
             app.pending_shot(p, &ctx);
         }
     }
+    app.keep_road_parts_whole();
     shortcuts(app, &ctx);
+    app.keep_road_parts_whole();
     // The views of this frame say again whether the pointer is over one of them.
     app.view_hovered = false;
     if app.doc.is_none() {

@@ -373,56 +373,8 @@ fn preview(app: &mut App, ui: &mut egui::Ui) {
 }
 
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
-    section(ui, &crate::icons::with(crate::icons::STAMP, &t("Bake objects")), true, |ui| {
-        ui.weak(t("Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted."));
-        let selected = app.selection.len();
-        ui.checkbox(&mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
-        ui.checkbox(&mut app.sat.bake_plants, t("Trees and bushes too"));
-        ui.checkbox(&mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
-        ui.checkbox(&mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
-        ui.checkbox(&mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
-        // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.
-        let chosen = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == SatKind::Bake)).map(|m| (m.id, m.name.clone(), 1.0 - m.opacity as f32 / 255.0)));
-        if let Some((_, _, blend)) = &chosen {
-            if !ui.ctx().is_using_pointer() {
-                app.sat.bake_blend = *blend;
-            }
-        }
-        let mut changed = None;
-        row(ui, &t("Blending"), |ui| {
-            let resp = ui.add(egui::Slider::new(&mut app.sat.bake_blend, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).on_hover_text(t("How far the baked objects fade into the satellite image under them."));
-            if resp.changed() {
-                changed = Some(resp.drag_started() || !resp.dragged());
-            }
-        });
-        if let (Some(first), Some((id, _, _))) = (changed, &chosen) {
-            let opacity = ((1.0 - app.sat.bake_blend) * 255.0).round() as u8;
-            let touched = app.doc.as_mut().and_then(|d| {
-                // One undo step for a whole drag of the slider.
-                if first || !app.sat.blending {
-                    d.history.push(t("Satellite modifier"), Change::Satellite(d.world.sat.modifiers.clone()));
-                }
-                d.world.sat_set_opacity(*id, opacity)
-            });
-            app.sat.blending = true;
-            if let Some(r) = touched {
-                app.satellite_changed(r);
-            }
-        }
-        if !ui.ctx().is_using_pointer() {
-            app.sat.blending = false;
-        }
-        match &chosen {
-            Some((_, name, _)) => ui.weak(tf("Changes: {0}", &[name])),
-            None => ui.weak(t("Applies to the next bake. Choose a baked modifier in the outliner to change it.")),
-        };
-        if ui.button(t("Bake")).clicked() {
-            bake(app);
-        }
-    });
     section(ui, &crate::icons::with(crate::icons::PAINT_BRUSH, &t("Clone brush")), true, |ui| {
-        crate::panels::hint(ui, &t("Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it."));
-        crate::panels::brush_hints(app, ui, None, false, true, true);
+        crate::panels::about(ui, &t("Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it."));
         row(ui, &t("Copy from"), |ui| {
             let before = app.sat.from_file;
             ui.selectable_value(&mut app.sat.from_file, false, t("Satellite"));
@@ -488,4 +440,52 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             }
         });
     });
+    section(ui, &crate::icons::with(crate::icons::STAMP, &t("Bake objects")), false, |ui| {
+        ui.weak(t("Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted."));
+        let selected = app.selection.len();
+        ui.checkbox(&mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
+        ui.checkbox(&mut app.sat.bake_plants, t("Trees and bushes too"));
+        ui.checkbox(&mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
+        ui.checkbox(&mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
+        ui.checkbox(&mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
+        // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.
+        let chosen = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == SatKind::Bake)).map(|m| (m.id, m.name.clone(), 1.0 - m.opacity as f32 / 255.0)));
+        if let Some((_, _, blend)) = &chosen {
+            if !ui.ctx().is_using_pointer() {
+                app.sat.bake_blend = *blend;
+            }
+        }
+        let mut changed = None;
+        row(ui, &t("Blending"), |ui| {
+            let resp = ui.add(egui::Slider::new(&mut app.sat.bake_blend, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).on_hover_text(t("How far the baked objects fade into the satellite image under them."));
+            if resp.changed() {
+                changed = Some(resp.drag_started() || !resp.dragged());
+            }
+        });
+        if let (Some(first), Some((id, _, _))) = (changed, &chosen) {
+            let opacity = ((1.0 - app.sat.bake_blend) * 255.0).round() as u8;
+            let touched = app.doc.as_mut().and_then(|d| {
+                // One undo step for a whole drag of the slider.
+                if first || !app.sat.blending {
+                    d.history.push(t("Satellite modifier"), Change::Satellite(d.world.sat.modifiers.clone()));
+                }
+                d.world.sat_set_opacity(*id, opacity)
+            });
+            app.sat.blending = true;
+            if let Some(r) = touched {
+                app.satellite_changed(r);
+            }
+        }
+        if !ui.ctx().is_using_pointer() {
+            app.sat.blending = false;
+        }
+        match &chosen {
+            Some((_, name, _)) => ui.weak(tf("Changes: {0}", &[name])),
+            None => ui.weak(t("Applies to the next bake. Choose a baked modifier in the outliner to change it.")),
+        };
+        if ui.button(t("Bake")).clicked() {
+            bake(app);
+        }
+    });
+    crate::panels::shortcuts(ui, |ui| crate::panels::brush_hints(app, ui, None, false, true, true));
 }
