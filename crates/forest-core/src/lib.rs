@@ -9,6 +9,7 @@ pub mod geojson;
 pub mod heightmap;
 pub mod layers;
 pub mod mask;
+pub mod mlod;
 pub mod model3d;
 pub mod odol;
 pub mod paa;

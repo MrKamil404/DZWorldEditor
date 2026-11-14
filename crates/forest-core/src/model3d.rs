@@ -421,15 +421,17 @@ fn texture_path(root: &Path, name: &str) -> Option<std::path::PathBuf> {
 /// Models placed in the most detailed visual LOD of an ODOL model (furniture, fittings), with
 /// their matrices in the coordinates of that LOD. The other LODs (geometry, fire, memory,
 /// roadway…) keep proxies of their own that are not drawn.
-pub fn visual_proxies(path: &Path) -> Result<Vec<(String, [f32; 12])>, String> {
+/// The second value says whether the positions are less the model's centre, as binarised (ODOL)
+/// models keep them; models as Object Builder saves them (MLOD) keep their own coordinates.
+pub fn visual_proxies(path: &Path) -> Result<(Vec<(String, [f32; 12])>, bool), String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if let Some(msg) = describe_format_error(&bytes) {
-        return Err(msg);
+    if bytes.starts_with(b"MLOD") {
+        return crate::mlod::visual_proxies(&bytes).map(|p| (p, false)).map_err(|e| format!("{}: {e}", path.display()));
     }
     let resolutions = odol::resolutions(&bytes).map_err(|e| format!("{}: {e:#}", path.display()))?;
-    let Some(first) = resolutions.iter().position(|r| *r < 1000.0) else { return Ok(Vec::new()) };
+    let Some(first) = resolutions.iter().position(|r| *r < 1000.0) else { return Ok((Vec::new(), true)) };
     let mut lods = odol::read(&bytes, |i, _| i == first).map_err(|e| format!("{}: {e:#}", path.display()))?;
-    Ok(lods.pop().map(|l| l.proxies).unwrap_or_default())
+    Ok((lods.pop().map(|l| l.proxies).unwrap_or_default(), true))
 }
 
 /// Wczytuje najdokładniejszy LOD graficzny modelu ODOL. Tekstury są dekodowane

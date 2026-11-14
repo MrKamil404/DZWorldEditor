@@ -227,7 +227,11 @@ pub fn bake(app: &mut App) {
 
 /// Rows of the satellite modifiers in the outliner.
 pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<bool>) {
-    let rows: Vec<(u32, String, bool, SatKind)> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter().map(|m| (m.id, m.name.clone(), m.enabled, m.kind)).collect()).unwrap_or_default();
+    // In team work: only whose the outliner shows, with who made each.
+    let team = crate::team_ui::active(app);
+    let rows: Vec<(u32, String, bool, SatKind)> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter()
+        .filter(|m| crate::team_ui::shown(app, d.world.sat_mod_author(m.id)))
+        .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.sat_mod_author(m.id)), m.enabled, m.kind)).collect()).unwrap_or_default();
     let (mut toggle, mut delete) = (None, None);
     crate::panels::outliner_section(fold, "Satellite modifiers", crate::icons::with(crate::icons::IMAGE, &tf("Satellite modifiers ({0})", &[&rows.len().to_string()]))).show(ui, |ui| {
         for (id, name, enabled, kind) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {

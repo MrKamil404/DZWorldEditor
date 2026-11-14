@@ -52,8 +52,10 @@ impl Proxies {
         if self.pending.insert(key.clone()) {
             let (file, center, tx, ctx) = (db.file(path), db.get(path).center, self.tx.clone(), ctx.clone());
             std::thread::spawn(move || {
-                let list = forest_core::model3d::visual_proxies(&file).unwrap_or_default();
-                let _ = tx.send((key, list, center));
+                // Models saved by Object Builder (MLOD) have their proxies where the mesh is; the
+                // binarised ones less the centre the mesh is drawn with.
+                let (list, centred) = forest_core::model3d::visual_proxies(&file).unwrap_or_default();
+                let _ = tx.send((key, list, if centred { center } else { [0.0; 3] }));
                 ctx.request_repaint();
             });
         }

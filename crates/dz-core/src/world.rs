@@ -689,6 +689,11 @@ impl ObjectLayer {
     }
 }
 
+/// Keys of the authors of mask and of satellite modifiers, whose ids are numbered apart from
+/// the other ids.
+pub const MASK_MOD_AUTHOR: u64 = 1 << 62;
+pub const SAT_MOD_AUTHOR: u64 = 1 << 61;
+
 pub fn default_object_layers() -> Vec<ObjectLayer> {
     vec![ObjectLayer::new("Default")]
 }
@@ -839,18 +844,40 @@ impl World {
     pub fn author(&self, id: u64) -> &str {
         self.authors.as_ref().and_then(|a| a.get(&id)).map(String::as_str).unwrap_or("")
     }
+    /// Who made a mask modifier; empty when no one is known.
+    pub fn mask_mod_author(&self, id: u32) -> &str {
+        self.author(MASK_MOD_AUTHOR | id as u64)
+    }
+    /// Who made a satellite modifier; empty when no one is known.
+    pub fn sat_mod_author(&self, id: u32) -> &str {
+        self.author(SAT_MOD_AUTHOR | id as u64)
+    }
     /// In team work: the modifiers, roads and generators made since get `team_me` as their
     /// author. The first time, what is there is marked as made by no one.
     pub fn note_authors(&mut self) {
         if self.team_me.is_empty() {
             return;
         }
-        let ids: Vec<u64> = self.modifiers.iter().map(|m| m.id).chain(self.routes.iter().map(|r| r.id)).chain(self.generators.iter().map(|g| g.id)).collect();
-        match &mut self.authors {
-            None => self.authors = Some(ids.into_iter().map(|id| (id, String::new())).collect()),
-            Some(a) => {
-                for id in ids {
-                    a.entry(id).or_insert_with(|| self.team_me.clone());
+        let groups = [
+            (0, self.modifiers.iter().map(|m| m.id).chain(self.routes.iter().map(|r| r.id)).chain(self.generators.iter().map(|g| g.id)).collect::<Vec<u64>>()),
+            (MASK_MOD_AUTHOR, self.mask_mods.modifiers.iter().map(|m| MASK_MOD_AUTHOR | m.id as u64).collect()),
+            (SAT_MOD_AUTHOR, self.sat.modifiers.iter().map(|m| SAT_MOD_AUTHOR | m.id as u64).collect()),
+        ];
+        let me = self.team_me.clone();
+        let fresh = self.authors.is_none();
+        let a = self.authors.get_or_insert_with(Default::default);
+        for (kind, ids) in groups {
+            // The first time a kind is noted, what is there was made by no one. A mark under
+            // the bare key of the kind says it was.
+            let first = if kind == 0 { fresh } else { !a.contains_key(&kind) };
+            if kind != 0 {
+                a.entry(kind).or_default();
+            }
+            for id in ids {
+                if first {
+                    a.entry(id).or_default();
+                } else {
+                    a.entry(id).or_insert_with(|| me.clone());
                 }
             }
         }

@@ -643,6 +643,10 @@
   "de": "Beide haben hier das Gelände geändert",
   "pl": "Oboje zmieniliście tu teren"
  },
+ "Both of you changed this part of it": {
+  "de": "Beide haben diesen Teil davon geändert",
+  "pl": "Oboje zmieniliście ten jego fragment"
+ },
  "Both of you painted different surfaces here": {
   "de": "Beide haben hier verschiedene Oberflächen gemalt",
   "pl": "Oboje pomalowaliście tu różne powierzchnie"
