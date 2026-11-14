@@ -201,6 +201,16 @@ pub struct LineSettings {
     pub forbidden: Option<usize>,
     /// How clicks lay a road.
     pub draw: crate::road_draw::RoadDraw,
+    /// The crossroad put into the selected route by a click on it.
+    pub crossroad_model: String,
+    /// The next click on the selected route puts the crossroad there.
+    pub crossroad_armed: bool,
+    /// Diameter of the centre line of roundabouts, in metres.
+    pub roundabout_diameter: f32,
+    /// Clicks place roundabouts instead of drawing roads.
+    pub roundabout_armed: bool,
+    /// The ring last worked out, round the origin: (road type, diameter, ring or why none).
+    pub roundabout: Option<(String, f32, Result<dayz_road_tool::roundabout::Ring, String>)>,
 }
 
 pub struct NewProject {
@@ -525,7 +535,7 @@ impl App {
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
-            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default() }, live: Default::default(), road_parts: Default::default(),
+            line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None }, live: Default::default(), road_parts: Default::default(),
             stroke: None, mask_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(),
@@ -592,7 +602,7 @@ impl App {
     }
 
     /// Makes the terrain modifier of a route match its line and options. Returns what to undo.
-    fn sync_route_modifier(&mut self, i: usize) -> Option<Vec<dz_core::world::TerrainModifier>> {
+    pub(crate) fn sync_route_modifier(&mut self, i: usize) -> Option<Vec<dz_core::world::TerrainModifier>> {
         let doc = self.doc.as_mut()?;
         let route = doc.world.routes.get(i)?.clone();
         let before = doc.world.modifiers.clone();
@@ -775,6 +785,30 @@ impl App {
         }
         let req = self.route_request(r.family, r.points, r.terrain_route, r.settings);
         self.start_route(req, Some(i), Some(before), false);
+    }
+
+    /// Takes waypoint `p` off route `i` and fits the route again without it. A route keeps
+    /// at least two points, and one laid piece by piece is changed by its pieces instead.
+    pub fn delete_route_point(&mut self, i: usize, p: usize) {
+        let Some(r) = self.doc.as_ref().and_then(|d| d.world.routes.get(i)) else { return };
+        if r.method == crate::road_draw::RoadDraw::Parts {
+            self.warn(t("A road laid piece by piece is changed by its pieces"));
+            return;
+        }
+        if r.points.len() <= 2 || p >= r.points.len() {
+            self.warn(t("A route needs at least two points"));
+            return;
+        }
+        if self.task.is_some() {
+            self.warn(t("Another task is still running"));
+            return;
+        }
+        let before = r.points.clone();
+        crate::viewport::remember_fit(self, i);
+        if let Some(d) = &mut self.doc { d.world.routes[i].points.remove(p); }
+        self.line.selected_point = None;
+        self.live.shown = None;
+        self.refit_route(i, before);
     }
 
     /// Fits only the stretch added at one end of route `i`, from its open end, and joins it
@@ -978,9 +1012,11 @@ impl App {
 
     /// Road types defined by the map's Terrain Builder project, when it has one.
     pub fn load_road_types(&mut self, project: PathBuf) {
+        let drive = self.settings.tools.work_drive.clone();
         self.spawn(t("Reading road types"), move |_| {
-            let mut catalog = gen::road_catalog_from_project(&project, Path::new("P:\\dz\\structures\\roads\\parts"))?;
+            let mut catalog = gen::road_catalog_from_project(&project, &drive.join(gen::VANILLA_ROAD_FOLDERS[0]))?;
             anyhow::ensure!(!catalog.is_empty(), "{} defines no usable road types", project.display());
+            gen::add_vanilla_roads(&mut catalog, &drive);
             catalog.extend(gen::rail_catalog());
             Ok(Box::new(move |app: &mut App| {
                 let mut catalog = catalog;
@@ -999,10 +1035,11 @@ impl App {
 
     fn scan_roads(&mut self) {
         let (tx, rx) = channel();
-        let folder = self.settings.tools.work_drive.join("dz/structures/roads/parts");
+        let drive = self.settings.tools.work_drive.clone();
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
-            let mut catalog = gen::road_catalog(&folder).unwrap_or_default();
+            // The roads and crossroads of every map that comes with the game.
+            let mut catalog = gen::vanilla_road_catalog(&drive);
             catalog.extend(gen::rail_catalog());
             let _ = tx.send(catalog);
             ctx.request_repaint();

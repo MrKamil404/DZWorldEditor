@@ -1100,7 +1100,9 @@ fn finish_line(app: &mut App) {
             // A live road is built as it was shown, along the clicked line.
             let terrain_route = app.line.route && app.line.draw == RoadDraw::Points;
             app.live.shown = None;
-            let req = app.route_request(family, points, terrain_route, settings);
+            let mut req = app.route_request(family, points, terrain_route, settings);
+            // Drawn from next to a free arm of a crossroad, the road starts there.
+            crate::crossroads::snap(app, &mut req);
             // The route remembers this; its modifier is made when the models are in place.
             app.start_route(req, None, None, grade);
         }
@@ -1664,6 +1666,13 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                 }
             }
         }
+        Mode::Lines if app.line.action == LineAction::Road && app.line.roundabout_armed => {
+            crate::roundabouts::ring(app);
+            if resp.clicked() && app.task.is_none() {
+                if let Some(h) = hit { crate::roundabouts::place(app, [h[0], h[2]]); }
+            }
+            if ctx.input(|i| i.key_pressed(Key::Escape)) { app.line.roundabout_armed = false; }
+        }
         Mode::Lines if app.line.action == LineAction::Edit => routes_input(app, ctx, resp, v, hit, mouse),
         Mode::Lines if app.line.action == LineAction::Road && app.line.draw == RoadDraw::Parts => {
             if resp.clicked() {
@@ -2104,6 +2113,20 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         }
         return;
     }
+    // A crossroad waiting to be put in goes where the selected route is clicked.
+    if app.line.crossroad_armed {
+        if esc {
+            app.line.crossroad_armed = false;
+            return;
+        }
+        if resp.clicked() && !busy {
+            if let (Some(r), Some(h)) = (selected, hit) {
+                let model = app.line.crossroad_model.clone();
+                crate::crossroads::insert(app, r, [h[0], h[2]], &model);
+            }
+            return;
+        }
+    }
     let ctrl = ctx.input(|i| i.modifiers.command);
     // A click on a point or on a + is that, also while extending.
     let on_handle = matches!(route_hit(world, v, handles, mouse), RouteHit::Point(_) | RouteHit::Between(..));
@@ -2176,16 +2199,11 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
         }
         return;
     }
-    if del && !typing && !busy {
+    // Delete or Backspace takes the selected point off the route.
+    let back = ctx.input(|i| i.key_pressed(Key::Backspace));
+    if (del || back) && !typing && !pieces {
         if let (Some(r), Some(p)) = (selected, app.line.selected_point) {
-            let points = &world.routes[r].points;
-            if points.len() > 2 && p < points.len() && !pieces {
-                let before = points.clone();
-                remember_fit(app, r);
-                app.doc.as_mut().unwrap().world.routes[r].points.remove(p);
-                app.line.selected_point = None;
-                app.refit_route(r, before);
-            }
+            app.delete_route_point(r, p);
         }
     }
     if esc {
@@ -2199,7 +2217,7 @@ fn routes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
 /// Notes the waypoints of a route's fit before they are changed, for a route that has no
 /// record of it (made before routes kept one, or brought in): only then does a point added
 /// past an end tell apart from one added in between.
-fn remember_fit(app: &mut App, r: usize) {
+pub(crate) fn remember_fit(app: &mut App, r: usize) {
     if let Some(route) = app.doc.as_mut().and_then(|d| d.world.routes.get_mut(r)) {
         if route.fitted.len() < 2 { route.fitted = route.points.clone(); }
     }
@@ -2668,7 +2686,11 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     }
     if app.mode == Mode::Lines && matches!(app.line.action, LineAction::Road | LineAction::Edit) {
         let cursor = resp.hover_pos().and_then(|m| { let (o, d) = v.ray(m); pick_terrain(&world.height, o, d, v.ortho) }).map(|h| [h[0], h[2]]);
-        crate::road_draw::draw(app, &painter, v, world, cursor);
+        if app.line.action == LineAction::Road && app.line.roundabout_armed {
+            crate::roundabouts::draw(app, &painter, v, world, cursor);
+        } else {
+            crate::road_draw::draw(app, &painter, v, world, cursor);
+        }
     }
     if let Some((a, b, _)) = app.box_select {
         if app.lasso_points.len() >= 2 {
@@ -3139,6 +3161,24 @@ pub fn brush_wheel(app: &App, m: egui::Modifiers) -> bool {
     active_brush(app).is_some() && [Hold::WheelSize, Hold::WheelStrength, Hold::WheelNoise].iter().any(|h| k.held(*h, m))
 }
 
+/// Takes back the last point of the road or line being drawn, or the last piece laid. False
+/// when nothing is being drawn.
+fn undo_drawn_point(app: &mut App) -> bool {
+    if app.mode != Mode::Lines {
+        return false;
+    }
+    match app.line.action {
+        LineAction::Road if app.line.draw == RoadDraw::Parts => {
+            let d = &app.road_parts;
+            if d.start.is_none() && d.open.is_none() { return false; }
+            crate::road_draw::parts_back(app);
+            true
+        }
+        LineAction::Road | LineAction::Fence | LineAction::Plain => app.line.points.pop().is_some(),
+        LineAction::Edit => false,
+    }
+}
+
 fn shortcuts(app: &mut App, ctx: &egui::Context) {
     // Experimental features turned off take their tools with them.
     if !app.mode_enabled(app.mode) { app.mode = Mode::Select; }
@@ -3157,8 +3197,11 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     }
     let keys = app.settings.keys.clone();
     let k = |a: Action| keys.pressed(ctx, a);
-    // These work everywhere, also while flying.
-    if k(Action::Undo) { app.undo(); }
+    // These work everywhere, also while flying. While a road or line is being drawn, Undo
+    // takes back its last point instead of a change of the map.
+    if k(Action::Undo) {
+        if !undo_drawn_point(app) { app.undo(); }
+    }
     if k(Action::Redo) { app.redo(); }
     if k(Action::Save) { app.save(None); }
     if k(Action::SaveAs) { app.save_as(); }
@@ -3182,7 +3225,9 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         if k(Action::PasteHere) { app.paste_at_cursor(false); }
         if k(Action::PasteLast) { app.paste_at_cursor(true); }
     }
-    if k(Action::Delete) && !matches!(app.mode, Mode::Shapes | Mode::KeyPoints | Mode::Mission) { app.delete_selection(); }
+    // The road tool deletes the selected point of a route itself, and the shape tools their own.
+    let route_point = app.mode == Mode::Lines && app.line.action == LineAction::Edit && app.line.selected_point.is_some();
+    if !matches!(app.mode, Mode::Shapes | Mode::KeyPoints | Mode::Mission) && !route_point && k(Action::Delete) { app.delete_selection(); }
     if k(Action::Focus) { focus_selection(app); }
     if k(Action::ToggleHints) {
         app.settings.show_hints = !app.settings.show_hints;
@@ -3207,7 +3252,8 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         app.show_shapes = show;
         app.show_lines = show;
     }
-    if k(Action::Deselect) && app.mode == Mode::Select {
+    // Only checked in the Select tool, so Esc reaches the other tools (it cancels a line).
+    if app.mode == Mode::Select && k(Action::Deselect) {
         app.selection.clear();
         app.selection_rev += 1;
     }

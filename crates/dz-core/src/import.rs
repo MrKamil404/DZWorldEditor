@@ -914,14 +914,30 @@ pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usi
                 placed.push(w.objects.insert(o));
             }
         }
+        let mut lines = lines;
+        // A road that starts at a crossroad (its key piece) goes on from each of its arms. The
+        // crossroad stays a plain object, so the roads on its arms can be fitted again
+        // without taking it away, and each arm becomes a route of its own.
+        let crossroad = dayz_road_tool::roads::is_crossroad_name(&road.model);
+        let key_object = if crossroad && !lines.is_empty() {
+            lines.remove(0);
+            (!placed.is_empty()).then(|| placed.remove(0))
+        } else {
+            None
+        };
+        let crossroad_objects = |w: &World, ids: Vec<u32>| -> Vec<u32> {
+            ids.into_iter().filter(|id| Some(*id) != key_object && w.objects.get(*id).is_none_or(|o| !dayz_road_tool::roads::is_crossroad_name(w.objects.model_path(o)))).collect()
+        };
         let matched = lines.len() == placed.len();
         let pieces: Vec<_> = lines.into_iter().enumerate().map(|(i, l)| (l, if matched { vec![placed[i]] } else { Vec::new() })).collect();
         let chains = chain_pieces(pieces);
         let many = chains.len() > 1;
-        let family = dayz_road_tool::road_colors::family(&road.model).to_ascii_lowercase();
+        // The type of the road, not of a crossroad it starts at.
+        let family_model = road.models.iter().find(|m| !dayz_road_tool::roads::is_crossroad_name(m)).unwrap_or(&road.model);
+        let family = dayz_road_tool::road_colors::family(family_model).to_ascii_lowercase();
         for (k, (points, mut objects)) in chains.into_iter().enumerate() {
             if layer.is_none() {
-                objects = parts_along(w, &points);
+                objects = crossroad_objects(w, parts_along(w, &points));
             } else if !matched && k == 0 {
                 objects = placed.clone();
             }

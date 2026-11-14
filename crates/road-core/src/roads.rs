@@ -22,6 +22,63 @@ pub struct CatalogPart {
     pub road_type_index: u32,
     pub model: Model,
 }
+/// Category of crossroads (`kr_*` models): a begin and an end like any piece, and one
+/// (T) or two (X) side arms. They are never fitted along a line; roads start from their arms.
+pub const CROSSROAD: u32 = 9;
+
+/// True for a crossroad model by its file name.
+pub fn is_crossroad_name(path: &str) -> bool {
+    path.rsplit(['\\', '/']).next().unwrap_or(path).to_ascii_lowercase().starts_with("kr_")
+}
+
+/// The road families on the arms of a vanilla crossroad, by port (begin, end, left, right),
+/// read from its name: `kr_t_<main>_<side>`, `kr_x_<main>_<side>`, and
+/// `kr_x_<begin>_<side>_<end>` where the main road changes across it.
+pub fn crossroad_arms(path: &str) -> Option<[Option<String>; 4]> {
+    let file = path.rsplit(['\\', '/']).next().unwrap_or(path).to_ascii_lowercase();
+    let stem = file.strip_suffix(".p3d").unwrap_or(&file);
+    let mut words = stem.split('_');
+    if words.next()? != "kr" {
+        return None;
+    }
+    let kind = words.next()?;
+    let names: Vec<String> = words.map(str::to_string).collect();
+    let (begin, side, end) = match names.as_slice() {
+        [a, b] => (a.clone(), b.clone(), a.clone()),
+        [a, b, c] => (a.clone(), b.clone(), c.clone()),
+        _ => return None,
+    };
+    match kind {
+        "t" => Some([Some(begin), Some(end), Some(side), None]),
+        "x" => Some([Some(begin), Some(end), Some(side.clone()), Some(side)]),
+        _ => None,
+    }
+}
+
+/// The base road a family belongs to (`asf2sakhal` → `asf2`), as crossroad names give it.
+pub fn base_family(family: &str) -> String {
+    let f = family.to_ascii_lowercase();
+    ["asf1", "asf2", "asf3", "city", "grav", "mud"].into_iter().find(|b| f.starts_with(b)).map_or(f.clone(), str::to_string)
+}
+
+/// The connection ports of a placed piece in the world, facing away from it: begin, end,
+/// left and right, as its model has them.
+pub fn placed_ports(part: &PlacedPart, model: &Model) -> [Option<Port>; 4] {
+    let angle = -part.rotation.to_radians();
+    model.ports.map(|p| p.map(|p| Port { p: add(rotate(p.p, angle), part.position), outward: rotate(p.outward, angle) }))
+}
+
+/// A crossroad placed at `center` with its main road along `heading` (a unit vector from its
+/// begin to its end).
+pub fn crossroad_at(item: &CatalogPart, center: Point, heading: Point) -> Result<PlacedPart> {
+    let (b, e) = (item.model.ports[0].context("Brak portu modelu")?, item.model.ports[1].context("Brak portu modelu")?);
+    // The model's own axis from its begin to its end, and its middle between them.
+    let axis = sub(e.p, b.p);
+    let mid = mul(add(b.p, e.p), 0.5);
+    let angle = heading[1].atan2(heading[0]) - axis[1].atan2(axis[0]);
+    Ok(PlacedPart { model: item.path.clone(), reverse: false, position: sub(center, rotate(mid, angle)), rotation: -angle.to_degrees() })
+}
+
 pub fn append(
     parts: &mut Vec<PlacedPart>,
     catalog: &[CatalogPart],

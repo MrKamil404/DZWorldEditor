@@ -1084,6 +1084,9 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
     }
     let Some(route) = app.doc.as_mut().and_then(|d| d.world.routes.get_mut(index)) else { return };
     let mut typed = false;
+    let mut remove: Option<usize> = None;
+    // Points of a road laid piece by piece follow its pieces; the others can be taken away.
+    let removable = route.points.len() > 2 && route.method != RoadDraw::Parts;
     egui::CollapsingHeader::new(tf("{0} points", &[&route.points.len().to_string()])).id_salt("route_points").default_open(route.points.len() <= 10).show(ui, |ui| {
         egui::ScrollArea::vertical().id_salt("route_point_list").max_height(200.0).auto_shrink([false, true]).show(ui, |ui| {
             let marked = app.line.selected_point;
@@ -1092,10 +1095,15 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
                     if ui.selectable_label(marked == Some(i), format!("{}", i + 1)).clicked() { app.line.selected_point = Some(i); }
                     typed |= ui.add(egui::DragValue::new(&mut p[0]).speed(0.5).prefix("X ")).changed();
                     typed |= ui.add(egui::DragValue::new(&mut p[1]).speed(0.5).prefix("Z ")).changed();
+                    if ui.add_enabled(removable, egui::Button::new("✖").small()).on_hover_text(t("Delete the point (Delete or Backspace)")).clicked() { remove = Some(i); }
                 });
             }
         });
     });
+    if let Some(i) = remove {
+        app.delete_route_point(index, i);
+        return;
+    }
     if typed && app.line.typed.as_ref().is_none_or(|t| t.0 != index) { app.line.typed = Some((index, before.clone())); }
     let mut action = 0;
     ui.horizontal(|ui| {
@@ -1106,6 +1114,7 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         if tool_button(ui, app.line.extend == Some(true), &t("Extend start")).clicked() { app.line.extend = if app.line.extend == Some(true) { None } else { Some(true) }; }
         if tool_button(ui, app.line.extend == Some(false), &t("Extend end")).clicked() { app.line.extend = if app.line.extend == Some(false) { None } else { Some(false) }; }
     });
+    crossroad_fields(app, ui, index);
     ui.checkbox(&mut app.line.extend_only, t("Fit only the new stretch when extending")).on_hover_text(t("A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route."));
     if ui.button(t("Delete route")).clicked() { action = 4; }
     // Typed values wait for "Fit again", which fits from the points before the typing.
@@ -1122,6 +1131,37 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         }
         _ if regrade => app.route_grading_changed(index),
         _ => {}
+    }
+}
+
+/// Choosing a crossroad and putting it into the selected route with a click on it.
+fn crossroad_fields(app: &mut App, ui: &mut egui::Ui, index: usize) {
+    let Some(family) = app.doc.as_ref().and_then(|d| d.world.routes.get(index)).map(|r| r.family.clone()) else { return };
+    if dayz_road_tool::rails::is_track_family(&family) {
+        return;
+    }
+    let list = crate::crossroads::choices(&app.road_catalog, &family);
+    if list.is_empty() {
+        return;
+    }
+    if !list.iter().any(|c| c.path == app.line.crossroad_model) {
+        app.line.crossroad_model = list[0].path.clone();
+    }
+    let chosen = list.iter().find(|c| c.path == app.line.crossroad_model).map(crate::crossroads::label).unwrap_or_default();
+    row(ui, &t("Crossroad"), |ui| {
+        egui::ComboBox::from_id_salt("route_crossroad").selected_text(chosen).width(ui.available_width()).show_ui(ui, |ui| {
+            for c in &list {
+                ui.selectable_value(&mut app.line.crossroad_model, c.path.clone(), crate::crossroads::label(c));
+            }
+        });
+    });
+    let armed = app.line.crossroad_armed;
+    if tool_button(ui, armed, &t("Put in a crossroad")).on_hover_text(t("Click on the route where the crossroad goes; its side arm faces the side you click. The route is laid again as two roads leaving the crossroad.")).clicked() {
+        app.line.crossroad_armed = !armed;
+        app.line.extend = None;
+    }
+    if armed {
+        ui.weak(t("Click on the route where the crossroad goes (Esc cancels)."));
     }
 }
 
@@ -1214,6 +1254,10 @@ fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
                         for f in families { ui.selectable_value(&mut app.line.family, f.clone(), f); }
                     });
                 });
+                if app.line.draw != RoadDraw::Parts {
+                    ui.weak(t("A road begun or ended by a free arm of a crossroad starts from that arm."));
+                }
+                crate::roundabouts::fields(app, ui);
                 if app.line.draw == RoadDraw::Points { ui.checkbox(&mut app.line.route, t("Route across terrain")).on_hover_text(t("Finds the road through the clicked points within the grade limits, around water and forbidden areas, with bridges. Off: road parts follow the clicked line."));
                 if app.line.route {
                     let shapes: Vec<String> = app.doc.as_ref().map(|d| d.world.shape_layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();

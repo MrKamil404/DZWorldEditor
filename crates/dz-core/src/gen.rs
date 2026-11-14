@@ -1034,27 +1034,103 @@ pub fn pad_modifier(w: &mut World, object: u32, half_x: f32, half_z: f32, margin
 
 // ---------------------------------------------------------------- roads
 
+/// Folders of the road pieces that come with DayZ, on the work drive: Chernarus, Livonia,
+/// Sakhal and Takistan. The first one is where pieces named without a folder are looked for.
+pub const VANILLA_ROAD_FOLDERS: [&str; 4] = [
+    r"dz\structures\roads\parts",
+    r"dz\structures_bliss\roads\parts",
+    r"dz\structures_sakhal\roads\parts",
+    r"dz\structures_takistan\roads\parts",
+];
+
+/// What a road piece is by its file name: its family and whether it is an end piece, or a
+/// crossroad (family `kr`). None for models that are no road pieces (runways, their centre
+/// line markings, paths), and
+/// for variants of other pieces (crosswalks, lane exits and merges) a road is never fitted
+/// from. Families are named by everything before the last `_`, as `asf1sakhal_dashedline_25`
+/// or Takistan's `asf2takistan_1575`, which writes curves without the space.
+pub fn road_piece_kind(file: &str) -> Option<(String, bool)> {
+    let lower = file.rsplit(['\\', '/']).next().unwrap_or(file).to_ascii_lowercase();
+    let stem = lower.strip_suffix(".p3d")?;
+    if stem.starts_with("kr_") {
+        return Some(("kr".into(), false));
+    }
+    let (family, rest) = stem.rsplit_once('_')?;
+    // Pieces are named by their length (and radius); `6konec` closes a road.
+    if !rest.starts_with(|c: char| c.is_ascii_digit()) || family.split('_').skip(1).any(|w| w.starts_with(|c: char| c.is_ascii_digit())) {
+        return None;
+    }
+    if family.is_empty() || ["runway", "path", "crosswalk", "centerline"].iter().any(|w| family.starts_with(w)) || family.contains("crosswalk") {
+        return None;
+    }
+    // Takistan's `6End1`..`6End3` are kerbed ends of a lane, not caps of a whole road.
+    if rest.contains("end") {
+        return None;
+    }
+    Some((family.to_string(), rest.contains("konec")))
+}
+
+/// Parts of a road folder. `prefix` is how their paths are written: empty for the folder
+/// pieces are looked for in by name, else the folder on the work drive.
+fn road_catalog_in(lib: &mut dayz_road_tool::geometry::Library, folder: &Path, prefix: &str, out: &mut Vec<dayz_road_tool::roads::CatalogPart>) -> Result<()> {
+    use dayz_road_tool::roads::{CatalogPart, CROSSROAD};
+    let mut names: Vec<String> = std::fs::read_dir(folder).with_context(|| format!("{}", folder.display()))?.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    names.sort();
+    for name in names {
+        let Some((family, cap)) = road_piece_kind(&name) else { continue };
+        let path = if prefix.is_empty() { name.clone() } else { format!(r"{prefix}\{name}") };
+        let Ok(model) = lib.model(&path) else { continue };
+        let category = if family == "kr" {
+            if model.ports[2].is_none() && model.ports[3].is_none() { continue; }
+            CROSSROAD
+        } else if cap {
+            6
+        } else {
+            // A piece turns when its two ends do not face opposite ways, by more than 0.1°:
+            // the gentlest curves (`0 2000`) bend 0.5°.
+            let (Some(a), Some(b)) = (model.ports[0], model.ports[1]) else { continue };
+            if (a.outward[0] * b.outward[0] + a.outward[1] * b.outward[1]) > -0.9999985 { 4 } else { 3 }
+        };
+        out.push(CatalogPart { path, family, category, index: out.len() as u32, road_type_index: 0, model });
+    }
+    Ok(())
+}
+
 /// Parts of the road family folder, grouped by the Road Tool's naming scheme.
 pub fn road_catalog(folder: &Path) -> Result<Vec<dayz_road_tool::roads::CatalogPart>> {
-    use dayz_road_tool::{geometry::Library, roads::CatalogPart};
-    let mut lib = Library::new(folder.to_path_buf());
+    let mut lib = dayz_road_tool::geometry::Library::new(folder.to_path_buf());
     let mut out = Vec::new();
-    for e in std::fs::read_dir(folder).with_context(|| format!("{}", folder.display()))? {
-        let name = e?.file_name().to_string_lossy().to_string();
-        if !name.to_ascii_lowercase().ends_with(".p3d") {
-            continue;
-        }
-        let stem = name[..name.len() - 4].to_string();
-        let lower = stem.to_ascii_lowercase();
-        let Some((family, rest)) = lower.split_once('_') else { continue };
-        if rest.contains('_') {
-            continue;
-        }
-        let category = if rest.contains("konec") { 6 } else if rest.contains(' ') { 4 } else { 3 };
-        let Ok(model) = lib.model(&name) else { continue };
-        out.push(CatalogPart { path: name.clone(), family: family.to_string(), category, index: out.len() as u32, road_type_index: 0, model });
-    }
+    road_catalog_in(&mut lib, folder, "", &mut out)?;
     Ok(out)
+}
+
+/// The road pieces of every map that comes with DayZ, from the work drive `drive`.
+pub fn vanilla_road_catalog(drive: &Path) -> Vec<dayz_road_tool::roads::CatalogPart> {
+    let main = drive.join(VANILLA_ROAD_FOLDERS[0]);
+    let mut lib = dayz_road_tool::geometry::Library::new(main.clone());
+    let mut out = Vec::new();
+    for (k, folder) in VANILLA_ROAD_FOLDERS.iter().enumerate() {
+        let prefix = if k == 0 { "" } else { folder };
+        let _ = road_catalog_in(&mut lib, &drive.join(folder), prefix, &mut out);
+    }
+    out
+}
+
+/// Completes the road types of a Terrain Builder project with those of the game it does not
+/// define: every vanilla road family none of whose pieces the project has, with all its
+/// pieces, and the crossroads it lacks. They are marked as no type of the project
+/// (`road_type_index` `u32::MAX`), so saving the project's types leaves them out.
+pub fn add_vanilla_roads(catalog: &mut Vec<dayz_road_tool::roads::CatalogPart>, drive: &Path) {
+    let file = |p: &str| p.rsplit(['\\', '/']).next().unwrap_or(p).to_ascii_lowercase();
+    let have: std::collections::HashSet<String> = catalog.iter().map(|c| file(&c.path)).collect();
+    let vanilla = vanilla_road_catalog(drive);
+    let defined: std::collections::HashSet<&str> = vanilla.iter().filter(|c| have.contains(&file(&c.path))).map(|c| c.family.as_str()).collect();
+    let extra: Vec<_> = vanilla.iter().filter(|c| if c.family == "kr" { !have.contains(&file(&c.path)) } else { !defined.contains(c.family.as_str()) }).cloned().collect();
+    for mut c in extra {
+        c.index = catalog.len() as u32;
+        c.road_type_index = u32::MAX;
+        catalog.push(c);
+    }
 }
 
 pub fn road_families(catalog: &[dayz_road_tool::roads::CatalogPart]) -> Vec<String> {
@@ -1109,7 +1185,7 @@ pub fn build_road(w: &mut World, points: &[[f32; 2]], family: &str, catalog: &[d
     let center = roads::centerline(&parts, catalog);
     let mut objects = Vec::with_capacity(parts.len());
     for (k, p) in parts.iter().enumerate() {
-        let model = w.objects.intern(&format!("{models_prefix}\\{}", p.model));
+        let model = w.objects.intern(&road_model_path(&p.model, models_prefix));
         let (at, yaw) = road_part_pose(&parts, k);
         objects.push(Obj { x: at[0] as f32, z: at[1] as f32, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: 0 });
     }
@@ -1123,10 +1199,12 @@ pub fn road_catalog_from_project(project: &Path, folder: &Path) -> Result<Vec<da
     Ok(catalog)
 }
 
-fn road_model_path(model: &str, models_prefix: &str) -> String {
+pub fn road_model_path(model: &str, models_prefix: &str) -> String {
     let lower = crate::objects::ObjectStore::normalize_path(model);
     match lower.strip_prefix("p:\\") {
         Some(rest) => rest.to_string(),
+        // Pieces of other maps are named with their folder on the work drive.
+        None if lower.contains('\\') => lower,
         None => format!("{models_prefix}\\{}", lower.rsplit('\\').next().unwrap_or(&lower)),
     }
 }
@@ -3099,5 +3177,140 @@ mod tests {
         let r = build_road(&mut w, &[[100.0, 100.0], [100.0, 300.0], [260.0, 460.0]], "asf2", &cat, "dz\\structures\\roads\\parts", 25.0).unwrap();
         assert!(r.objects.len() >= 8);
         assert!(r.centerline.len() > 8);
+    }
+}
+
+#[cfg(test)]
+mod vanilla_roads {
+    use super::*;
+
+    /// Every road family of the four vanilla maps loads with straights, curves and an end,
+    /// and every crossroad with its side arms. Needs the work drive; skipped without it.
+    #[test]
+    fn every_vanilla_family_and_crossroad_loads() {
+        let drive = Path::new("P:\\");
+        if !drive.join(VANILLA_ROAD_FOLDERS[0]).exists() { return; }
+        let catalog = vanilla_road_catalog(drive);
+        let families = road_families(&catalog);
+        for f in &families {
+            let n = |c: u32| catalog.iter().filter(|p| &p.family == f && p.category == c).count();
+            println!("{f}: {} straight, {} curves, {} ends", n(3), n(4), n(6));
+            assert!(n(3) > 0 && n(4) > 0, "{f}");
+        }
+        for f in ["asf1", "asf2", "asf3", "city", "grav", "mud", "asf2enoch", "quarryenoch", "snowroad", "asf2sakhal", "asf1sakhal_dashedline", "asf2takistan", "dirt3takistan"] {
+            assert!(families.iter().any(|x| x == f), "{f} missing from {families:?}");
+        }
+        let cross: Vec<_> = catalog.iter().filter(|c| c.category == dayz_road_tool::roads::CROSSROAD).collect();
+        assert_eq!(cross.len(), 16);
+        for c in cross {
+            let arms = dayz_road_tool::roads::crossroad_arms(&c.path).unwrap();
+            for (k, arm) in arms.iter().enumerate() {
+                assert_eq!(arm.is_some(), c.model.ports[k].is_some(), "{} arm {k}", c.path);
+            }
+        }
+        // A road is fitted from a piece of another map's folder and placed with that folder.
+        let line = [[0.0, 0.0], [0.0, 120.0], [60.0, 220.0]];
+        let parts = dayz_road_tool::roads::fit(&line, "asf2takistan", &catalog, &Default::default(), |_, _| true).unwrap();
+        assert!(road_model_path(&parts[1].model, r"dz\structures\roads\parts").starts_with(r"dz\structures_takistan\roads\parts\"));
+    }
+
+    /// A crossroad put along a road has its main arms on the road, and roads fitted from its
+    /// arms start exactly there, with no end piece at the crossroad.
+    #[test]
+    fn roads_start_from_the_arms_of_a_crossroad() {
+        use dayz_road_tool::roads::{self, CROSSROAD};
+        let drive = Path::new("P:\\");
+        if !drive.join(VANILLA_ROAD_FOLDERS[0]).exists() { return; }
+        let catalog = vanilla_road_catalog(drive);
+        let item = catalog.iter().find(|c| c.category == CROSSROAD && c.path.eq_ignore_ascii_case("kr_t_asf2_asf2.p3d")).unwrap();
+        let heading = [0.6, 0.8];
+        let part = roads::crossroad_at(item, [500.0, 500.0], heading).unwrap();
+        let ports = roads::placed_ports(&part, &item.model);
+        let (b, e, side) = (ports[0].unwrap(), ports[1].unwrap(), ports[2].unwrap());
+        // Begin and end lie 6.25 m either way along the heading, the side arm across it.
+        assert!((b.p[0] - (500.0 - 0.6 * 6.25)).abs() < 1e-6 && (b.p[1] - (500.0 - 0.8 * 6.25)).abs() < 1e-6, "{b:?}");
+        assert!((e.outward[0] - 0.6).abs() < 1e-6 && (e.outward[1] - 0.8).abs() < 1e-6, "{e:?}");
+        assert!((side.outward[0] * 0.6 + side.outward[1] * 0.8).abs() < 1e-6);
+        for arm in [b, e, side] {
+            let line = [arm.p, [arm.p[0] + arm.outward[0] * 40.0, arm.p[1] + arm.outward[1] * 40.0], [arm.p[0] + arm.outward[0] * 90.0 + 30.0, arm.p[1] + arm.outward[1] * 90.0]];
+            let parts = roads::fit_from(arm, &line, "asf2", &catalog, &Default::default(), |_, _| true).unwrap();
+            let start = roads::startpoint(&parts, &catalog).unwrap();
+            assert!((start.p[0] - arm.p[0]).hypot(start.p[1] - arm.p[1]) < 1e-6);
+            assert!(!roads::is_cap(&parts[0], &catalog) && roads::is_cap(parts.last().unwrap(), &catalog));
+        }
+    }
+
+    /// The roads of balticrus that start at a crossroad come in as roads of their own type
+    /// on its arms, and the crossroad stays an object of no route.
+    #[test]
+    fn terrain_builder_roads_at_crossroads_import() {
+        use dayz_road_tool::roads;
+        let project = Path::new("P:/BalticrusSource/TerrainBuilder/balticrus.tv4p");
+        if !project.exists() { return; }
+        let mut w = World::new(crate::world::WorldMeta::new("B", 2048, 7.5), 0.0);
+        crate::import::import_tv4p(project, &mut w, Some(0)).unwrap();
+        let crossroads: Vec<u32> = w.objects.iter().filter(|(_, o)| roads::is_crossroad_name(w.objects.model_path(o))).map(|(id, _)| id).collect();
+        assert_eq!(crossroads.len(), 5);
+        assert!(w.routes.iter().all(|r| r.family != "kr"), "{:?}", w.routes.iter().map(|r| &r.family).collect::<Vec<_>>());
+        assert!(w.routes.iter().all(|r| r.objects.iter().all(|id| !crossroads.contains(id))));
+        // The roads leave the crossroads at their arms.
+        let catalog = road_catalog_from_project(project, Path::new(r"P:\dz\structures\roads\parts")).unwrap();
+        let item = catalog.iter().find(|c| c.category == roads::CROSSROAD).expect("crossroad defined in the project");
+        let mut joined = 0;
+        for id in &crossroads {
+            let o = w.objects.get(*id).unwrap();
+            let part = roads::PlacedPart { model: item.path.clone(), reverse: false, position: [o.x as f64, o.z as f64], rotation: o.yaw as f64 };
+            for port in roads::placed_ports(&part, &item.model).into_iter().flatten() {
+                let at_end = |p: &[f32; 2]| (p[0] as f64 - port.p[0]).hypot(p[1] as f64 - port.p[1]) < 0.05;
+                if w.routes.iter().any(|r| r.centerline.first().is_some_and(at_end) || r.centerline.last().is_some_and(at_end)) { joined += 1; }
+            }
+        }
+        // 5 T crossroads with 15 arms: 11 lead their own roads, and other roads end at some.
+        assert!(joined >= 11, "{joined}");
+    }
+
+    /// The road types of balticrus keep their own definitions and gain every vanilla road
+    /// family they lack, with all its pieces, and the crossroads.
+    #[test]
+    fn a_project_gains_the_vanilla_roads_it_lacks() {
+        let project = Path::new("P:/BalticrusSource/TerrainBuilder/balticrus.tv4p");
+        let drive = Path::new("P:\\");
+        if !project.exists() { return; }
+        let mut catalog = road_catalog_from_project(project, &drive.join(VANILLA_ROAD_FOLDERS[0])).unwrap();
+        let own = catalog.len();
+        let own_families = road_families(&catalog);
+        add_vanilla_roads(&mut catalog, drive);
+        assert!(catalog[..own].iter().all(|c| c.road_type_index != u32::MAX));
+        let families = road_families(&catalog);
+        for f in ["asf1", "city", "snowroad", "quarryenoch", "asf2takistan", "taxiway"] {
+            assert!(families.iter().any(|x| x == f), "{f} missing from {families:?}");
+        }
+        // Families the project defines are not added a second time.
+        assert_eq!(catalog.iter().filter(|c| c.path.to_ascii_lowercase().ends_with("asf2_25.p3d")).count(), 1);
+        assert!(own_families.iter().all(|f| families.contains(f)));
+        assert_eq!(catalog.iter().filter(|c| c.category == dayz_road_tool::roads::CROSSROAD).count(), 16);
+        assert!(!families.iter().any(|f| f == "kr"));
+    }
+
+    /// Roundabouts of any size are round: their joints lie on one circle near the size asked
+    /// for, the pieces follow it, and they meet with small kinks.
+    #[test]
+    fn roundabouts_are_round_at_any_diameter() {
+        let drive = Path::new("P:\\");
+        if !drive.join(VANILLA_ROAD_FOLDERS[0]).exists() { return; }
+        let catalog = vanilla_road_catalog(drive);
+        for family in ["asf2", "asf3", "city", "mud", "asf2sakhal", "asf2takistan"] {
+            for d in [24.0, 33.0, 50.0, 64.0, 80.0, 98.0, 117.0, 160.0, 300.0] {
+                let ring = dayz_road_tool::roundabout::roundabout(&catalog, family, [1000.0, 1000.0], d).unwrap_or_else(|e| panic!("{family} {d}: {e:#}"));
+                println!("{family} ⌀{d}: ⌀{:.1} from {} × {}, kink {:.1}°, stray {:.2} m", ring.radius * 2.0, ring.parts.len(), ring.parts[0].model, ring.kink, ring.stray);
+                let line = dayz_road_tool::roads::centerline(&ring.parts, &catalog);
+                let (a, b) = (line[0], *line.last().unwrap());
+                assert!((a[0] - b[0]).hypot(a[1] - b[1]) < 1e-6, "{family} {d}: open");
+                // Takistan has no gentle curves for small rings, so they come out at the nearest round size.
+                let slack = if family.contains("takistan") { 16.0 } else { 4.5 };
+                assert!((ring.radius * 2.0 - d).abs() < slack, "{family} {d}: {}", ring.radius * 2.0);
+                assert!(ring.kink < 6.0 && ring.stray < 0.5, "{family} {d}: kink {} stray {}", ring.kink, ring.stray);
+            }
+        }
     }
 }

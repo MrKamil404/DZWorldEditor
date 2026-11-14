@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use serde::Serialize;
 use std::{
     collections::HashMap,
@@ -213,6 +213,25 @@ fn parse_mlod(bytes: &[u8]) -> Result<Model> {
         verts.iter().copied().fold([0., 0.], add),
         1. / verts.len().max(1) as f64,
     );
+    let ports = memory_ports(&memory, center);
+    let (line, length) = centerline(ports);
+    if ports[0].is_none() || ports[1].is_none() {
+        bail!("Missing LB/PB/LE/PE connection selections")
+    }
+    Ok(Model {
+        file: None,
+        triangles,
+        ports,
+        line,
+        length,
+        source: "MLOD".into(),
+    })
+}
+
+/// Connection ports from the memory points of a road model: begin (LB/PB), end (LE/PE) and
+/// the side arms of crossroads, left (LH/LD) and right (PH/PD). Each port lies between its
+/// pair of points and faces away from the middle of the model.
+fn memory_ports(memory: &HashMap<String, Point>, center: Point) -> [Option<Port>; 4] {
     let pairs = [("LB", "PB"), ("LE", "PE"), ("LH", "LD"), ("PH", "PD")];
     let mut ports = [None; 4];
     for (i, (a, b)) in pairs.iter().enumerate() {
@@ -226,18 +245,39 @@ fn parse_mlod(bytes: &[u8]) -> Result<Model> {
             ports[i] = Some(Port { p, outward: out });
         }
     }
-    let (line, length) = centerline(ports);
+    ports
+}
+
+/// A road piece shipped only binarised (ODOL), measured from its memory points like an
+/// MLOD one; the triangles come from its most detailed visual LOD.
+pub fn odol_road_model(bytes: &[u8]) -> Result<Model> {
+    use crate::odol;
+    let lods = odol::read(bytes, |i, r| i == 0 || r == odol::MEMORY)?;
+    let memory = lods.iter().find(|l| l.resolution == odol::MEMORY).context("ODOL road model has no memory LOD")?;
+    let mut points = HashMap::new();
+    for (name, indices) in &memory.selections {
+        let chosen: Vec<Point> = indices.iter().filter_map(|&i| memory.vertices.get(i as usize)).map(|v| [v[0] as f64, v[2] as f64]).collect();
+        if !chosen.is_empty() {
+            let n = chosen.len() as f64;
+            points.insert(name.to_uppercase(), mul(chosen.into_iter().fold([0., 0.], add), 1. / n));
+        }
+    }
+    let visual = lods.first().filter(|l| l.resolution != odol::MEMORY).context("ODOL road model has no visual LOD")?;
+    let verts: Vec<Point> = visual.vertices.iter().map(|v| [v[0] as f64, v[2] as f64]).collect();
+    ensure!(!verts.is_empty(), "ODOL road model has no vertices");
+    let center = mul(verts.iter().copied().fold([0., 0.], add), 1. / verts.len() as f64);
+    let ports = memory_ports(&points, center);
     if ports[0].is_none() || ports[1].is_none() {
         bail!("Missing LB/PB/LE/PE connection selections")
     }
-    Ok(Model {
-        file: None,
-        triangles,
-        ports,
-        line,
-        length,
-        source: "MLOD".into(),
-    })
+    let triangles = visual
+        .faces
+        .iter()
+        .filter(|f| f.len() >= 3 && f.iter().all(|&i| (i as usize) < verts.len()))
+        .flat_map(|f| (1..f.len() - 1).map(|i| [verts[f[0] as usize], verts[f[i] as usize], verts[f[i + 1] as usize]]))
+        .collect();
+    let (line, length) = centerline(ports);
+    Ok(Model { file: None, triangles, ports, line, length, source: "ODOL".into() })
 }
 
 #[cfg(test)]
@@ -484,28 +524,36 @@ impl Library {
         if let Some(m) = self.cache.get(&key) {
             return Ok(m.clone());
         };
-        let requested = PathBuf::from(name);
+        let requested = PathBuf::from(name.replace('/', "\\"));
         let configured = self.root.join(file);
+        // A path such as `dz\structures_sakhal\roads\parts\x.p3d` lies on the drive that
+        // holds the configured folder.
+        let on_drive = (!requested.is_absolute() && requested.parent().is_some_and(|p| !p.as_os_str().is_empty()))
+            .then(|| self.root.ancestors().map(|a| a.join(&requested)).find(|p| p.exists()))
+            .flatten();
         let path = if configured.exists() {
             configured
         } else if requested.is_absolute() && requested.exists() {
             requested
+        } else if let Some(found) = on_drive {
+            found
         } else {
             configured
         };
         let model = if path.exists() {
             match read_mlod(&path) {
-                // Binarised track models are measured from their ODOL data.
+                // Binarised models: tracks, road pieces measured from their memory points,
+                // and other railway objects (crossing decks) that only need a footprint.
                 Err(e) if e.root_cause().is::<NonMlod>() => {
                     let bytes = fs::read(&path)?;
                     match crate::rails::track_model(&bytes) {
                         Ok(model) => model,
-                        // Other railway objects (crossing decks) only need a footprint.
                         Err(t) if t.is::<crate::rails::NotTrack>() => {
-                            if !key.starts_with("rail_") && !key.starts_with("bridge_") {
-                                return Err(e);
+                            if key.starts_with("rail_") || key.starts_with("bridge_") {
+                                crate::rails::object_model(&bytes)?
+                            } else {
+                                odol_road_model(&bytes).map_err(|_| e)?
                             }
-                            crate::rails::object_model(&bytes)?
                         }
                         Err(t) => return Err(t.context(format!("Nieprawidłowy model toru {}", path.display()))),
                     }

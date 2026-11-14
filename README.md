@@ -14,6 +14,7 @@ generate forests and rivers, then build the map and start it in the game, withou
 - **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile
 - **Object placement** from a searchable library of your `P:\` drive, with gizmos and undo
 - **Roads and railways** fitted from the game's own parts, with embankments, bridges and level crossings
+- **Every vanilla road type** of Chernarus, Livonia, Sakhal and Takistan, and **crossroads** (`kr_*`) that roads start from or that go into a road
 - **Generators** for forests, rivers, ponds, settlements, fences, power lines and more
 - **Key points** for named places on the map, compatible with Terrain Builder
 - **Terrain Builder import**, including layers, shapes, roads, key points and terrain holes

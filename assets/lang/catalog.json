@@ -127,9 +127,21 @@
   "de": "Ein Projekt kann höchstens 255 Oberflächen haben",
   "pl": "Projekt może mieć najwyżej 255 powierzchni"
  },
+ "A road begun or ended by a free arm of a crossroad starts from that arm.": {
+  "de": "Eine Straße, die an einem freien Arm einer Kreuzung beginnt oder endet, geht von diesem Arm aus.",
+  "pl": "Droga zaczęta lub zakończona przy wolnym ramieniu skrzyżowania wychodzi z tego ramienia."
+ },
+ "A road laid piece by piece is changed by its pieces": {
+  "de": "Eine Stück für Stück gelegte Straße wird über ihre Stücke geändert",
+  "pl": "Drogę układaną kawałek po kawałku zmienia się jej kawałkami"
+ },
  "A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route.": {
   "de": "Eine am Anfang oder Ende verlängerte Route behält ihre Modelle; Neu einpassen legt Modelle nur vom alten Ende zu den neuen Punkten. Das Verschieben anderer Punkte passt weiterhin die ganze Route ein.",
   "pl": "Trasa przedłużona na początku lub końcu zachowuje swoje modele; Dopasuj ponownie układa modele tylko od starego końca do nowych punktów. Przesunięcie innych punktów nadal dopasowuje całą trasę."
+ },
+ "A route needs at least two points": {
+  "de": "Eine Route braucht mindestens zwei Punkte",
+  "pl": "Trasa potrzebuje co najmniej dwóch punktów"
  },
  "A spawn of event {0} is outside the map ({1}, {2})": {
   "de": "Ein Spawn des Events {0} liegt außerhalb der Karte ({1}, {2})",
@@ -1059,6 +1071,18 @@
   "de": "Klicke auf die Karte, um es zu platzieren; es lässt sich auch auf die Karte ziehen.",
   "pl": "Kliknij na mapie, aby go postawić; można go też przeciągnąć na mapę."
  },
+ "Click on the map where the middle of the roundabout goes (Esc stops). Its ring is laid round from the road type's own pieces, as near the diameter as they allow.": {
+  "de": "Klicke auf die Karte, wo die Mitte des Kreisverkehrs hin soll (Esc beendet). Sein runder Ring wird aus den Stücken des Straßentyps gelegt, so nah am Durchmesser, wie sie es erlauben.",
+  "pl": "Kliknij na mapie, gdzie ma być środek ronda (Esc kończy). Okrągły pierścień zostanie ułożony z części tego typu drogi, możliwie najbliżej podanej średnicy."
+ },
+ "Click on the route where the crossroad goes (Esc cancels).": {
+  "de": "Klicke auf die Route, wo die Kreuzung hin soll (Esc bricht ab).",
+  "pl": "Kliknij na trasie, gdzie ma stanąć skrzyżowanie (Esc anuluje)."
+ },
+ "Click on the route where the crossroad goes; its side arm faces the side you click. The route is laid again as two roads leaving the crossroad.": {
+  "de": "Klicke auf die Route, wo die Kreuzung hin soll; ihr Seitenarm zeigt zur angeklickten Seite. Die Route wird als zwei Straßen neu gelegt, die von der Kreuzung ausgehen.",
+  "pl": "Kliknij na trasie, gdzie ma stanąć skrzyżowanie; jego boczne ramię skieruje się na stronę kliknięcia. Trasa zostanie ułożona na nowo jako dwie drogi wychodzące ze skrzyżowania."
+ },
  "Click or drag to take the camera there.": {
   "de": "Klicken oder ziehen, um die Kamera dorthin zu bringen.",
   "pl": "Kliknij lub przeciągnij, aby przenieść tam kamerę."
@@ -1255,6 +1279,14 @@
   "de": "Prefab aus der Auswahl erstellen",
   "pl": "Utwórz prefab z zaznaczenia"
  },
+ "Crossroad": {
+  "de": "Kreuzung",
+  "pl": "Skrzyżowanie"
+ },
+ "Crossroads go into roads, not tracks": {
+  "de": "Kreuzungen gehören in Straßen, nicht in Gleise",
+  "pl": "Skrzyżowania wstawia się w drogi, nie w tory"
+ },
  "Ctrl inverts raise and lower, Shift smooths. [ and ] or Shift+wheel change the size.": {
   "de": "Strg kehrt Heben und Senken um, Shift glättet. [ und ] oder Shift+Rad ändern die Größe.",
   "pl": "Ctrl odwraca podnoszenie i obniżanie, Shift wygładza. [ i ] lub Shift+kółko zmieniają rozmiar."
@@ -1422,6 +1454,10 @@
  "Delete the object {0} too": {
   "de": "Auch das Objekt {0} löschen",
   "pl": "Usuń także obiekt {0}"
+ },
+ "Delete the point (Delete or Backspace)": {
+  "de": "Punkt löschen (Entf oder Rücktaste)",
+  "pl": "Usuń punkt (Delete lub Backspace)"
  },
  "Delete the route {0} too": {
   "de": "Auch die Route {0} löschen",
@@ -3531,6 +3567,10 @@
   "de": "Entlang dieser Linie liegen keine Straßenteile",
   "pl": "Wzdłuż tej linii nie ma części drogi"
  },
+ "No roundabout of this size can be laid from this road type": {
+  "de": "Aus diesem Straßentyp lässt sich kein Kreisverkehr dieser Größe legen",
+  "pl": "Z tego typu drogi nie da się ułożyć ronda tej wielkości"
+ },
  "No source point yet": {
   "de": "Noch kein Quellpunkt",
   "pl": "Nie wybrano punktu źródłowego"
@@ -4071,6 +4111,10 @@
   "de": "Auf der Karte platzieren",
   "pl": "Rozmieść na mapie"
  },
+ "Place roundabout": {
+  "de": "Kreisverkehr setzen",
+  "pl": "Postaw rondo"
+ },
  "Place selected model here": {
   "de": "Gewähltes Modell hier platzieren",
   "pl": "Postaw tu wybrany model"
@@ -4250,6 +4294,14 @@
  "Put back the objects it removed ({0})": {
   "de": "Die entfernten Objekte zurücklegen ({0})",
   "pl": "Przywróć usunięte przez niego obiekty ({0})"
+ },
+ "Put in a crossroad": {
+  "de": "Kreuzung einsetzen",
+  "pl": "Wstaw skrzyżowanie"
+ },
+ "Putting in a crossroad": {
+  "de": "Kreuzung wird eingesetzt",
+  "pl": "Wstawianie skrzyżowania"
  },
  "Quality": {
   "de": "Qualität",
@@ -4435,6 +4487,10 @@
   "de": "Rechter Flügel",
   "pl": "Prawe skrzydło"
  },
+ "Ring Ø{0} m from {1} pieces, kinks of {2}° where they meet": {
+  "de": "Ring Ø{0} m aus {1} Stücken, Knicke von {2}° an den Stößen",
+  "pl": "Pierścień Ø{0} m z {1} części, załamania {2}° na stykach"
+ },
  "River": {
   "de": "Fluss",
   "pl": "Rzeka"
@@ -4554,6 +4610,14 @@
  "Round": {
   "de": "Rund",
   "pl": "Okrągły"
+ },
+ "Roundabout Ø": {
+  "de": "Kreisverkehr Ø",
+  "pl": "Rondo Ø"
+ },
+ "Roundabouts are made of roads, not tracks": {
+  "de": "Kreisverkehre bestehen aus Straßen, nicht aus Gleisen",
+  "pl": "Ronda buduje się z dróg, nie z torów"
  },
  "Route across terrain": {
   "de": "Route über das Gelände",
@@ -5539,6 +5603,10 @@
   "de": "Die Ecke des Rasters in Kartenkoordinaten, wie Terrain Builder es erwartet; aus setzt sie auf 0, 0.",
   "pl": "Narożnik siatki we współrzędnych mapy, jak oczekuje Terrain Builder; wyłączone ustawia go w 0, 0."
  },
+ "The crossroad does not fit this close to the end of the road": {
+  "de": "So nah am Ende der Straße passt die Kreuzung nicht",
+  "pl": "Skrzyżowanie nie zmieści się tak blisko końca drogi"
+ },
  "The download replaces the current file; the previous one stays as .old until the next start.": {
   "de": "Der Download ersetzt die aktuelle Datei; die vorherige bleibt bis zum nächsten Start als .old erhalten.",
   "pl": "Pobrany program zastąpi obecny plik; poprzedni zostaje jako .old do następnego uruchomienia."
@@ -5726,6 +5794,10 @@
  "The road crosses a track on a bend or too obliquely, so no level crossing was laid there": {
   "de": "Die Straße kreuzt ein Gleis in einer Kurve oder zu schräg, daher wurde dort kein Bahnübergang gelegt",
   "pl": "Droga przecina tor na łuku lub pod zbyt małym kątem, więc nie położono tam przejazdu"
+ },
+ "The roads from the crossroad could not be fitted": {
+  "de": "Die Straßen von der Kreuzung ließen sich nicht einpassen",
+  "pl": "Nie udało się dopasować dróg od skrzyżowania"
  },
  "The same for every brush: sculpting, painting, holes, placing and the clone brush.": {
   "de": "Für jeden Pinsel gleich: Formen, Malen, Löcher, Platzieren und Klonpinsel.",

@@ -8,6 +8,7 @@ pub mod paa;
 pub mod rails;
 pub mod raster;
 pub mod roads;
+pub mod roundabout;
 pub mod routing;
 pub mod shapefile;
 pub mod storage;

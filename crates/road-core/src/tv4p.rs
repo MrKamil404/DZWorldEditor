@@ -522,7 +522,7 @@ pub fn catalog(
                 };
                 let name = text(part, f);
                 match lib.model(&name) {
-                    Ok(model) if model.source == "MLOD" => {
+                    Ok(model) if model.source == "MLOD" || model.source == "ODOL" => {
                         let family = name
                             .rsplit(['\\', '/'])
                             .next()
@@ -545,6 +545,27 @@ pub fn catalog(
                     }
                     Err(e) => warnings.push(format!("{name}: {e}")),
                 }
+            }
+        }
+    }
+    // Crossroads (block 0x89): one model each, joining the road types on its arms.
+    if let Ok(cross) = block(&b, 0x89) {
+        for (index, entry) in cross.entries.into_iter().enumerate() {
+            let body = &b[entry.start..entry.start + entry.len];
+            let fs = fields(body)?;
+            let Some(f) = fs.iter().find(|f| f.tag == 0x7c && f.typ == 11) else { continue };
+            let name = text(body, f);
+            match lib.model(&name) {
+                Ok(model) if model.ports[2].is_some() || model.ports[3].is_some() => out.push(crate::roads::CatalogPart {
+                    path: name,
+                    family: "kr".into(),
+                    category: crate::roads::CROSSROAD,
+                    index: index as u32,
+                    road_type_index: index as u32,
+                    model,
+                }),
+                Ok(_) => warnings.push(format!("{name}: skrzyżowanie bez punktów LH/LD lub PH/PD")),
+                Err(e) => warnings.push(format!("{name}: {e}")),
             }
         }
     }
