@@ -5235,6 +5235,14 @@
   "de": "Gerade Teile",
   "pl": "Odcinki proste"
  },
+ "Stream": {
+  "de": "Bach",
+  "pl": "Strumień"
+ },
+ "Streambed": {
+  "de": "Bachbett",
+  "pl": "Koryto strumienia"
+ },
  "Streets": {
   "de": "Straßen",
   "pl": "Ulice"

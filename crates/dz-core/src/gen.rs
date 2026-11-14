@@ -2043,6 +2043,34 @@ const WATER_PIECES: &[(&str, [f32; 4], [f32; 4])] = &[
     ("stream_14_24_R45", [-1.577, -15.096, 0.0, -1.0], [8.300, 10.714, 0.6815, 0.7318]),
 ];
 
+/// The shapes of the stream beds of `dz\water\streambed` (14 m wide, water included), the
+/// same for every ground (`leaf`, `moss`, `sand`), with their ends as in [`WATER_PIECES`].
+/// They have no memory points; the ends are the 14 m edges of their water, moved by the
+/// centre of the model. Each shape lists its models: the first, then look-alikes swapped in
+/// along the bed so it does not repeat itself (`_2` only for leaf and moss).
+const STREAMBED_SHAPES: &[(&[&str], [f32; 4], [f32; 4])] = &[
+    (&["long_straight", "long_straight_2", "long_snake"], [0.000, -12.000, 0.0, -1.0], [0.000, 12.000, 0.0, 1.0]),
+    (&["short_straight"], [0.000, -5.998, 0.0, -1.0], [0.000, 6.002, 0.0, 1.0]),
+    (&["long_curve_left", "long_curve_left_2"], [0.003, -12.000, 0.0, -1.0], [9.108, 9.985, 0.6993, 0.7150]),
+    (&["long_curve_right", "long_curve_right_2"], [-0.001, -11.997, 0.0, -1.0], [-9.471, 10.378, -0.7012, 0.7134]),
+];
+
+/// The models a water line of `file`'s family is laid from: (model file stems, ends). `None`
+/// for a model that is not one of the game's rivers, streams or stream beds.
+fn water_family(file: &str) -> Option<(Vec<(Vec<String>, [f32; 4], [f32; 4])>, f32)> {
+    let stem = |s: &str| vec![s.to_string()];
+    if let Some(rest) = file.strip_prefix("streambed_") {
+        let ground = rest.split('_').next().filter(|g| !g.is_empty())?;
+        let table = STREAMBED_SHAPES.iter().map(|(names, a, b)| {
+            let names = names.iter().filter(|n| ground != "sand" || !n.ends_with("_2")).map(|n| format!("streambed_{ground}_{n}")).collect();
+            (names, *a, *b)
+        }).collect();
+        return Some((table, 14.0));
+    }
+    let (family, native) = if file.starts_with("river_24") { ("river_24", 24.0) } else if file.starts_with("stream_14") { ("stream_14", 14.0) } else { return None };
+    Some((WATER_PIECES.iter().filter(|p| p.0.starts_with(family)).map(|(n, a, b)| (stem(n), *a, *b)).collect(), native))
+}
+
 /// One water model of a river, joined end to end with the next.
 #[derive(Clone, Debug)]
 pub struct RiverPiece {
@@ -2134,7 +2162,7 @@ impl RiverFit<'_> {
 }
 
 /// Joins water models end to end along a line, bends included. `None` for a model that is
-/// not one of the game's rivers or streams.
+/// not one of the game's rivers, streams or stream beds.
 pub fn fit_river(line: &[[f32; 2]], g: &crate::library::RiverGen) -> Option<RiverChain> {
     if line.len() < 2 || g.model.is_empty() {
         return None;
@@ -2142,10 +2170,10 @@ pub fn fit_river(line: &[[f32; 2]], g: &crate::library::RiverGen) -> Option<Rive
     let path = g.model.replace('/', "\\");
     let (folder, file) = path.rsplit_once('\\').unwrap_or(("", &path));
     let file = file.to_ascii_lowercase();
-    let (family, native) = if file.starts_with("river_24") { ("river_24", 24.0) } else if file.starts_with("stream_14") { ("stream_14", 14.0) } else { return None };
+    let (table, native) = water_family(&file)?;
     let mut options = Vec::new();
     // Every model has a current, so all of them are entered from the same end.
-    for (k, (_, a, b)) in WATER_PIECES.iter().enumerate().filter(|(_, p)| p.0.starts_with(family)) {
+    for (k, (_, a, b)) in table.iter().enumerate() {
         options.push(if g.reverse_flow { (k, *b, *a) } else { (k, *a, *b) });
     }
     let mut run = vec![0.0f32];
@@ -2175,7 +2203,12 @@ pub fn fit_river(line: &[[f32; 2]], g: &crate::library::RiverGen) -> Option<Rive
             }
         }
         let Some((_, k, origin, yaw, exit, out, reached)) = best else { break };
-        pieces.push(RiverPiece { model: if folder.is_empty() { format!("{}.p3d", WATER_PIECES[k].0) } else { format!("{folder}\\{}.p3d", WATER_PIECES[k].0) }, x: origin[0], z: origin[1], yaw: yaw.to_degrees().rem_euclid(360.0), from: at, to: exit });
+        // Look-alike models take turns, picked by a hash of the place so the bed does not
+        // repeat itself and stays the same when built again.
+        let names = &table[k].0;
+        let pick = ((origin[0].to_bits() ^ origin[1].to_bits().rotate_left(11)).wrapping_mul(2_654_435_761) >> 7) as usize % names.len();
+        let stem = &names[pick];
+        pieces.push(RiverPiece { model: if folder.is_empty() { format!("{stem}.p3d") } else { format!("{folder}\\{stem}.p3d") }, x: origin[0], z: origin[1], yaw: yaw.to_degrees().rem_euclid(360.0), from: at, to: exit });
         let chord = (exit[0] - at[0]).hypot(exit[1] - at[1]);
         for q in 1..4 {
             // Along the curve of the piece, which a straight chord would cut.
@@ -2630,6 +2663,28 @@ mod tests {
         assert!(worst < 9.0, "{worst}");
         let end = chain.pieces.last().unwrap().to;
         assert!((end[0] - line[60][0]).hypot(end[1] - line[60][1]) < 30.0);
+    }
+
+    #[test]
+    fn a_stream_bed_follows_bends_both_ways_with_its_own_models() {
+        use crate::library::RiverGen;
+        for (ground, side) in [("moss", 1.0f32), ("sand", -1.0)] {
+            let line: Vec<[f32; 2]> = (0..=60).map(|k| { let a = k as f32 / 60.0 * 1.57; [300.0 + side * (150.0 - 150.0 * a.cos()), 300.0 + 150.0 * a.sin()] }).collect();
+            let g = RiverGen { width: 14.0, join_offset: 0.0, model: format!(r"dz\water\streambed\streambed_{ground}_long_straight.p3d"), ..Default::default() };
+            let chain = fit_river(&line, &g).unwrap();
+            assert!(chain.pieces.iter().all(|p| p.model.starts_with(&format!(r"dz\water\streambed\streambed_{ground}_"))), "{:?}", chain.pieces.iter().map(|p| &p.model).collect::<Vec<_>>());
+            assert!(chain.pieces.iter().any(|p| p.model.contains("_curve_")));
+            // Sand has no second versions of its pieces.
+            assert!(ground != "sand" || chain.pieces.iter().all(|p| !p.model.ends_with("_2.p3d")));
+            for w in chain.pieces.windows(2) {
+                assert!((w[0].to[0] - w[1].from[0]).abs() < 1e-3 && (w[0].to[1] - w[1].from[1]).abs() < 1e-3);
+            }
+            let worst = chain.pieces.iter().map(|p| line.iter().map(|q| (q[0] - p.to[0]).hypot(q[1] - p.to[1])).fold(f32::MAX, f32::min)).fold(0.0, f32::max);
+            // Only straights and 45° bends: a gentle bend is followed in steps, as rivers are.
+            assert!(worst < 9.0, "{ground}: {worst}");
+            let end = chain.pieces.last().unwrap().to;
+            assert!((end[0] - line[60][0]).hypot(end[1] - line[60][1]) < 20.0);
+        }
     }
 
     #[test]

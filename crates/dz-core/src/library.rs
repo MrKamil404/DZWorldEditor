@@ -1019,6 +1019,8 @@ pub fn built_in_generators() -> Vec<GeneratorPreset> {
         make(21, "Terrain along a line", GeneratorKind::LineTerrain(LineTerrainGen::default())),
         make(22, "Remove objects", GeneratorKind::Remove(RemoveGen::default())),
         make(23, "Ponds and lakes", GeneratorKind::Pond(PondGen::default())),
+        make(24, "Stream", GeneratorKind::River(RiverGen { width: 14.0, depth: 2.0, falloff: 5.0, model: r"dz\water\streams\stream_14_24.p3d".into(), ..Default::default() })),
+        make(25, "Streambed", GeneratorKind::River(RiverGen { width: 14.0, depth: 1.5, falloff: 5.0, model: r"dz\water\streambed\streambed_moss_long_straight.p3d".into(), ..Default::default() })),
     ]
 }
 
@@ -1182,7 +1184,7 @@ mod tests {
     #[test]
     fn built_ins_cover_every_kind() {
         let names: Vec<&str> = built_in_generators().iter().map(|g| g.kind.type_name()).collect();
-        assert_eq!(names.len(), 23);
+        assert_eq!(names.len(), 25);
         assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects"));
     }
 
