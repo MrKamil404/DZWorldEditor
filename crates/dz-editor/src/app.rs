@@ -145,6 +145,20 @@ pub struct PaintSettings {
     pub only_on: Option<usize>,
     /// The next click takes the surface under the cursor.
     pub picking: bool,
+    /// Strokes go into a mask modifier, as those of the satellite brushes do, rather than
+    /// straight onto the mask.
+    pub into_modifier: bool,
+    /// The modifier the strokes go into; a new one when it is gone.
+    pub target: Option<u32>,
+}
+
+/// A stroke of the surface brush that goes into a mask modifier.
+pub struct MaskModStroke {
+    pub id: u32,
+    /// The modifiers before the stroke, for undo.
+    pub before: Vec<dz_core::maskmod::MaskModifier>,
+    /// Takes the modifier's pixels away instead of painting.
+    pub erase: bool,
 }
 
 pub struct PlaceSettings {
@@ -394,6 +408,7 @@ pub struct App {
     pub road_parts: crate::road_draw::PartsDraw,
     pub stroke: Option<SculptStroke>,
     pub mask_stroke: Option<MaskStroke>,
+    pub mask_mod_stroke: Option<MaskModStroke>,
 
     pub camera: Camera,
     pub top_center: [f32; 2],
@@ -544,10 +559,10 @@ impl App {
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, road_guard: (u64::MAX, 0), hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
-            paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false },
+            paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false, into_modifier: true, target: None },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None, live_keep: true }, live: Default::default(), road_parts: Default::default(),
-            stroke: None, mask_stroke: None,
+            stroke: None, mask_stroke: None, mask_mod_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],

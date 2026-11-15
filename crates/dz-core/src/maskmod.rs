@@ -25,6 +25,8 @@ pub enum MaskKind {
     Forest,
     /// The result of a surface painting generator.
     Paint,
+    /// Strokes of the surface brush.
+    Strokes,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -88,6 +90,7 @@ impl MaskLayers {
                 MaskKind::UnderObjects => 0,
                 MaskKind::Forest => 1,
                 MaskKind::Paint => 2,
+                MaskKind::Strokes => 3,
             });
             b.push(m.enabled as u8);
             b.extend((m.name.len() as u32).to_le_bytes());
@@ -129,6 +132,7 @@ impl MaskLayers {
             let kind = match head[0] {
                 0 => MaskKind::UnderObjects,
                 1 => MaskKind::Forest,
+                3 => MaskKind::Strokes,
                 _ => MaskKind::Paint,
             };
             let enabled = head[1] != 0;
@@ -268,6 +272,74 @@ impl World {
             self.mask_keep(*k);
         }
         self.mask_mods.modifiers[at].tiles = tiles;
+        self.mask_recompose(keys)
+    }
+
+    /// After a dab of the brush painted the mask in `r`, with `before` the mask of `r` as it was
+    /// (row by row): what changed goes into modifier `id`, over what was there, and not into the
+    /// mask as painted under the modifiers.
+    pub fn mask_paint_into(&mut self, id: u32, r: Rect, before: &[u8]) -> Option<Rect> {
+        let at = self.mask_mods.position(id)?;
+        let (width, rw) = (self.mask.width, r.x1 - r.x0 + 1);
+        let changed: Vec<(usize, usize, u8)> = (r.y0..=r.y1).flat_map(|y| (r.x0..=r.x1).map(move |x| (x, y))).filter_map(|(x, y)| {
+            let now = self.mask.data[y * width + x];
+            (now != before[(y - r.y0) * rw + x - r.x0]).then_some((x, y, now))
+        }).collect();
+        if changed.is_empty() {
+            return None;
+        }
+        let keys: BTreeSet<Key> = changed.iter().map(|(x, y, _)| ((x / TILE) as u16, (y / TILE) as u16)).collect();
+        // A tile no modifier touched yet keeps the mask as it was before the dab under it.
+        for key in &keys {
+            if self.mask_mods.base.contains_key(key) {
+                continue;
+            }
+            self.mask_keep(*key);
+            let Some(t) = tile_rect(*key, self.mask.width, self.mask.height) else { continue };
+            let base = Arc::make_mut(self.mask_mods.base.get_mut(key).unwrap());
+            for y in t.y0.max(r.y0)..=t.y1.min(r.y1) {
+                for x in t.x0.max(r.x0)..=t.x1.min(r.x1) {
+                    base[(y - t.y0) * TILE + x - t.x0] = before[(y - r.y0) * rw + x - r.x0];
+                }
+            }
+        }
+        let tiles = &mut self.mask_mods.modifiers[at].tiles;
+        for (x, y, v) in changed {
+            let tile = Arc::make_mut(tiles.entry(((x / TILE) as u16, (y / TILE) as u16)).or_insert_with(|| Arc::new(vec![NONE; TILE * TILE])));
+            tile[(y % TILE) * TILE + x % TILE] = v;
+        }
+        self.mask_recompose(keys)
+    }
+
+    /// Takes what modifier `id` sets off the mask within `radius` pixels of `center`, so what is
+    /// under it shows again.
+    pub fn mask_erase_into(&mut self, id: u32, center: [f32; 2], radius: f32) -> Option<Rect> {
+        let at = self.mask_mods.position(id)?;
+        let r = radius.max(0.5);
+        let (w, h) = (self.mask.width, self.mask.height);
+        let (x0, y0) = ((center[0] - r).floor().max(0.0) as usize, (center[1] - r).floor().max(0.0) as usize);
+        let (x1, y1) = (((center[0] + r).ceil().max(0.0) as usize).min(w.saturating_sub(1)), ((center[1] + r).ceil().max(0.0) as usize).min(h.saturating_sub(1)));
+        let mut keys = BTreeSet::new();
+        let tiles = &mut self.mask_mods.modifiers[at].tiles;
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                if (x as f32 + 0.5 - center[0]).hypot(y as f32 + 0.5 - center[1]) > r {
+                    continue;
+                }
+                let key = ((x / TILE) as u16, (y / TILE) as u16);
+                let Some(tile) = tiles.get_mut(&key) else { continue };
+                let p = (y % TILE) * TILE + x % TILE;
+                if tile[p] != NONE {
+                    Arc::make_mut(tile)[p] = NONE;
+                    keys.insert(key);
+                }
+            }
+        }
+        // A tile left with nothing in it goes.
+        tiles.retain(|_, t| t.iter().any(|v| *v != NONE));
+        if keys.is_empty() {
+            return None;
+        }
         self.mask_recompose(keys)
     }
 
@@ -484,6 +556,36 @@ mod tests {
     }
     fn at(w: &World, x: usize, y: usize) -> u8 {
         w.mask.data[y * 256 + x]
+    }
+
+    #[test]
+    fn brush_strokes_go_into_a_modifier_and_can_be_erased_from_it() {
+        let mut w = world(); // surface 1 everywhere
+        let id = w.mask_mods.add(MaskKind::Strokes, "s".into());
+        // A dab painted surface 4 over x 10..=19 of row 20.
+        let r = Rect { x0: 10, y0: 20, x1: 19, y1: 20 };
+        let before: Vec<u8> = w.mask.data[20 * 256 + 10..20 * 256 + 20].to_vec();
+        for x in 10..20 { w.mask.data[20 * 256 + x] = 4; }
+        w.mask_paint_into(id, r, &before);
+        assert_eq!(at(&w, 15, 20), 4);
+        // It is the modifier's: hidden, what was painted under it shows.
+        w.mask_set_enabled(id, false);
+        assert_eq!(at(&w, 15, 20), 1);
+        w.mask_set_enabled(id, true);
+        // Painting straight on the mask later goes under the stroke.
+        w.mask.data[20 * 256 + 15] = 7;
+        w.mask.data[20 * 256 + 30] = 7;
+        w.mask_painted(Rect { x0: 15, y0: 20, x1: 30, y1: 20 });
+        assert_eq!((at(&w, 15, 20), at(&w, 30, 20)), (4, 7));
+        // Erased round x 12: the mask under it again, the rest of the stroke stays.
+        w.mask_erase_into(id, [12.5, 20.5], 2.0);
+        assert_eq!((at(&w, 12, 20), at(&w, 18, 20)), (1, 4));
+        // Saved with its kind; all erased, it holds no tiles.
+        let back = MaskLayers::from_bytes(&w.mask_mods.to_bytes()).unwrap();
+        assert_eq!(back.modifiers[0].kind, MaskKind::Strokes);
+        w.mask_erase_into(id, [15.0, 20.5], 10.0);
+        assert!(w.mask_mods.modifiers[0].tiles.is_empty());
+        assert_eq!(at(&w, 18, 20), 1);
     }
 
     #[test]

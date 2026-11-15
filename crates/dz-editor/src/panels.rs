@@ -747,6 +747,19 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
             });
         });
         if tool_button(ui, app.paint.picking, &icons::with(icons::EYEDROPPER, &t("Eyedropper"))).on_hover_text(t("Takes the surface under the cursor.")).clicked() { app.paint.picking = !app.paint.picking; }
+        ui.checkbox(&mut app.paint.into_modifier, t("Paint into a modifier")).on_hover_text(t("Strokes go into a mask modifier, which can be hidden, erased from or deleted, and which merges cleanly in team work when each person paints in their own. Off: strokes go straight onto the mask, under the modifiers."));
+        if app.paint.into_modifier {
+            let target = app.doc.as_ref().and_then(|d| app.paint.target.and_then(|id| d.world.mask_mods.modifiers.iter().find(|m| m.id == id && m.kind == dz_core::maskmod::MaskKind::Strokes)).map(|m| m.name.clone()));
+            ui.horizontal(|ui| {
+                ui.weak(match &target {
+                    Some(name) => tf("Strokes go to: {0}", &[name]),
+                    None => t("The next stroke starts a new modifier"),
+                });
+                if target.is_some() && ui.small_button(t("New modifier")).clicked() {
+                    app.paint.target = None;
+                }
+            });
+        }
     });
     section(ui, &icons::with(icons::STACK, &t("Surface layers")), true, |ui| {
         layer_list(app, ui);
@@ -757,7 +770,7 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
     crate::maskmods::panel(app, ui);
     shortcuts(ui, |ui| {
         let pick = app.settings.keys.hold(Hold::Pick).name().to_string();
-        brush_hints(app, ui, None, false, false, true);
+        brush_hints(app, ui, app.paint.into_modifier.then_some("Erase from the chosen modifier"), false, false, true);
         key_hints(ui, &[(format!("{pick}+{}", t("click")), t("Take the surface under the cursor"))]);
     });
 }

@@ -923,6 +923,26 @@ fn begin_paint_or_sculpt(app: &mut App, p: V3, invert: bool, smooth: bool) {
     let Some(doc) = &mut app.doc else { return };
     match app.mode {
         Mode::Paint => {
+            if app.paint.into_modifier {
+                use dz_core::maskmod::MaskKind;
+                let before = doc.world.mask_mods.modifiers.clone();
+                let target = app.paint.target.filter(|id| doc.world.mask_mods.modifiers.iter().any(|m| m.id == *id && m.kind == MaskKind::Strokes && m.enabled));
+                if invert {
+                    // Erasing takes from the modifier the strokes go into.
+                    match target {
+                        Some(id) => app.mask_mod_stroke = Some(crate::app::MaskModStroke { id, before, erase: true }),
+                        None => app.warn(t("Choose the modifier to erase from in the outliner")),
+                    }
+                    return;
+                }
+                let id = target.unwrap_or_else(|| {
+                    let n = doc.world.mask_mods.modifiers.iter().filter(|m| m.kind == MaskKind::Strokes).count() + 1;
+                    doc.world.mask_mods.add(MaskKind::Strokes, tf("Surface strokes {0}", &[&n.to_string()]))
+                });
+                app.paint.target = Some(id);
+                app.mask_mod_stroke = Some(crate::app::MaskModStroke { id, before, erase: false });
+            }
+            let Some(doc) = &mut app.doc else { return };
             let guard = dz_core::mask_limit::TileGuard::new(&doc.world);
             let stamp = crate::brushes::stamp(&app.brushes, &app.paint.picture);
             let spray = if app.paint.spray { app.paint.spray_density } else { 0.0 };
@@ -954,9 +974,19 @@ fn finish_strokes(app: &mut App) {
             doc.history.push(t("Sculpt terrain"), c);
         }
     }
+    let into = app.mask_mod_stroke.take();
     if let (Some(s), Some(doc)) = (app.mask_stroke.take(), app.doc.as_mut()) {
-        if let Some(c) = s.finish() {
+        // A stroke into a modifier is undone by the modifiers as they were.
+        let change = match &into {
+            Some(m) => Some(Change::MaskMods(m.before.clone())),
+            None => s.finish(),
+        };
+        if let Some(c) = change {
             doc.history.push(t("Paint surface"), c);
+        }
+    } else if let (Some(m), Some(doc)) = (into, app.doc.as_mut()) {
+        if m.before != doc.world.mask_mods.modifiers {
+            doc.history.push(t("Erase surface strokes"), Change::MaskMods(m.before));
         }
     }
 }
@@ -1767,14 +1797,35 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     }
                     ctx.request_repaint();
                 }
-                if let Some(mut s) = app.mask_stroke.take() {
+                let into = app.mask_mod_stroke.as_ref().map(|m| (m.id, m.erase));
+                if let Some((id, true)) = into {
+                    let d = app.doc.as_mut().unwrap();
+                    let size = d.world.meta.size_m();
+                    let r = MaskStroke::dab_area(&d.world.mask, size, h[0], h[2], app.paint.radius).and_then(|(_, c, rp)| d.world.mask_erase_into(id, c, rp));
+                    if let Some(r) = r {
+                        app.mask_recomposed(r);
+                    }
+                    ctx.request_repaint();
+                } else if let Some(mut s) = app.mask_stroke.take() {
                     s.dt = dt;
                     let d = app.doc.as_mut().unwrap();
                     let size = d.world.meta.size_m();
+                    // Into a modifier: the mask of the dab's area as it was, to see what changed.
+                    let area = into.and_then(|_| MaskStroke::dab_area(&d.world.mask, size, h[0], h[2], app.paint.radius)).map(|(a, _, _)| {
+                        let w = d.world.mask.width;
+                        let before: Vec<u8> = (a.y0..=a.y1).flat_map(|y| d.world.mask.data[y * w + a.x0..=y * w + a.x1].iter().copied()).collect();
+                        (a, before)
+                    });
                     let r = s.apply(&mut d.world.mask, size, h[0], h[2], app.paint.radius, app.paint.layer as u8, app.paint.scatter);
                     app.mask_stroke = Some(s);
-                    if let Some(r) = r {
-                        app.mask_changed(r);
+                    match (into, area, r) {
+                        (Some((id, _)), Some((a, before)), Some(_)) => {
+                            if let Some(r) = d.world.mask_paint_into(id, a, &before) {
+                                app.mask_recomposed(r);
+                            }
+                        }
+                        (_, _, Some(r)) => app.mask_changed(r),
+                        _ => {}
                     }
                     ctx.request_repaint();
                 }

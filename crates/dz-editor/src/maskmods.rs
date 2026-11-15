@@ -256,12 +256,12 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
 pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<bool>) {
     // In team work: only whose the outliner shows, with who made each.
     let team = crate::team_ui::active(app);
-    let rows: Vec<(u32, String, bool)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter()
+    let rows: Vec<(u32, String, bool, bool)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter()
         .filter(|m| crate::team_ui::shown(app, d.world.mask_mod_author(m.id)))
-        .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.mask_mod_author(m.id)), m.enabled)).collect()).unwrap_or_default();
+        .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.mask_mod_author(m.id)), m.enabled, m.kind == MaskKind::Strokes)).collect()).unwrap_or_default();
     let (mut toggle, mut delete) = (None, None);
     crate::panels::outliner_section(fold, "Mask modifiers", crate::icons::with(crate::icons::STACK, &tf("Mask modifiers ({0})", &[&rows.len().to_string()])), rows.len() == 0).show(ui, |ui| {
-        for (id, name, enabled) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
+        for (id, name, enabled, strokes) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 if ui.add(egui::Button::new(crate::icons::EYE).small().selected(*enabled)).on_hover_text(t("Visible")).clicked() {
@@ -270,7 +270,13 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                 if ui.add(egui::Button::new(crate::icons::TRASH).small()).on_hover_text(t("Delete the modifier; what it covered comes back")).clicked() {
                     delete = Some(*id);
                 }
-                ui.label(name).context_menu(|ui| {
+                // A modifier of brush strokes can be chosen for the next strokes to go into.
+                let row = if *strokes { ui.selectable_label(app.paint.target == Some(*id), name).on_hover_text(t("Click to paint into this modifier")) } else { ui.label(name) };
+                if *strokes && row.clicked() {
+                    app.paint.target = Some(*id);
+                    app.paint.into_modifier = true;
+                }
+                row.context_menu(|ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                     if ui.button(t("Delete")).clicked() {
                         delete = Some(*id);

@@ -501,7 +501,8 @@ pub struct MaskStroke {
 
 impl MaskStroke {
     /// `hardness` breaks the edge up with noise so surfaces do not meet on a clean circle.
-    pub fn apply(&mut self, mask: &mut MaskMap, size_m: f32, x: f32, z: f32, radius: f32, layer: u8, scatter: f32) -> Option<Rect> {
+    /// The pixels of the mask a dab at (x, z) can touch, its middle and its radius in pixels.
+    pub fn dab_area(mask: &MaskMap, size_m: f32, x: f32, z: f32, radius: f32) -> Option<(Rect, [f32; 2], f32)> {
         let px = mask.width as f32 / size_m;
         let (cx, cy) = (x * px, (1.0 - z / size_m) * mask.height as f32);
         let rp = (radius * px).max(0.5);
@@ -510,7 +511,11 @@ impl MaskStroke {
         if x0 > x1 || y0 > y1 {
             return None;
         }
-        let r = Rect { x0: x0 as usize, y0: y0 as usize, x1: x1 as usize, y1: y1 as usize };
+        Some((Rect { x0: x0 as usize, y0: y0 as usize, x1: x1 as usize, y1: y1 as usize }, [cx, cy], rp))
+    }
+
+    pub fn apply(&mut self, mask: &mut MaskMap, size_m: f32, x: f32, z: f32, radius: f32, layer: u8, scatter: f32) -> Option<Rect> {
+        let (r, [cx, cy], rp) = Self::dab_area(mask, size_m, x, z, radius)?;
         self.snapshot.capture(&mask.data, mask.width, mask.height, r);
         self.dab = self.dab.wrapping_add(1);
         let chance = if self.spray > 0.0 { spray_chance(self.spray, if self.dt > 0.0 { self.dt } else { 1.0 / 30.0 }) } else { 1.0 };

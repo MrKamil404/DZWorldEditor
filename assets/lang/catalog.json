@@ -1307,6 +1307,10 @@
   "de": "Klicke, um Punkte hinzuzufügen. Enter oder Doppelklick beendet, Rücktaste entfernt den letzten Punkt, Esc bricht ab.",
   "pl": "Klikaj, aby dodawać punkty. Enter lub dwuklik kończy, Backspace usuwa ostatni punkt, Esc anuluje."
  },
+ "Click to paint into this modifier": {
+  "de": "Klicken, um in diesen Modifikator zu malen",
+  "pl": "Kliknij, aby malować w tym modyfikatorze"
+ },
  "Click to select, drag for a box, Shift adds. Shift or Ctrl held while dragging a selected object rotates or scales it.": {
   "de": "Klicken wählt, Ziehen zieht einen Rahmen, Umschalt fügt hinzu. Umschalt oder Strg beim Ziehen eines gewählten Objekts dreht oder skaliert es.",
   "pl": "Kliknięcie zaznacza, przeciągnięcie zaznacza ramką, Shift dodaje. Shift lub Ctrl przy przeciąganiu zaznaczonego obiektu obraca go lub skaluje."
@@ -2142,6 +2146,10 @@
  "Erase strokes": {
   "de": "Striche löschen",
   "pl": "Wymazywanie pociągnięć"
+ },
+ "Erase surface strokes": {
+  "de": "Oberflächenstriche löschen",
+  "pl": "Wymazywanie pociągnięć powierzchni"
  },
  "Erosion": {
   "de": "Erosion",
@@ -4435,6 +4443,10 @@
   "de": "Gebietsflags malen",
   "pl": "Maluj flagi obszarów"
  },
+ "Paint into a modifier": {
+  "de": "In einen Modifikator malen",
+  "pl": "Maluj w modyfikatorze"
+ },
  "Paint on the map": {
   "de": "Auf der Karte malen",
   "pl": "Maluj na mapie"
@@ -5931,6 +5943,10 @@
   "de": "Streifenbreite",
   "pl": "Szerokość pasa"
  },
+ "Strokes go into a mask modifier, which can be hidden, erased from or deleted, and which merges cleanly in team work when each person paints in their own. Off: strokes go straight onto the mask, under the modifiers.": {
+  "de": "Striche gehen in einen Maskenmodifikator, der ausgeblendet, teilweise gelöscht oder entfernt werden kann und sich in der Teamarbeit sauber zusammenführen lässt, wenn jede Person in ihrem eigenen malt. Aus: Striche gehen direkt auf die Maske, unter die Modifikatoren.",
+  "pl": "Pociągnięcia trafiają do modyfikatora maski, który można ukryć, częściowo wymazać albo usunąć i który czysto łączy się w pracy zespołowej, gdy każdy maluje we własnym. Wyłączone: pociągnięcia trafiają prosto na maskę, pod modyfikatory."
+ },
  "Strokes go to: {0}": {
   "de": "Striche gehen in: {0}",
   "pl": "Pociągnięcia trafiają do: {0}"
@@ -5986,6 +6002,10 @@
  "Surface relief (nopx)": {
   "de": "Oberflächenrelief (nopx)",
   "pl": "Relief powierzchni (nopx)"
+ },
+ "Surface strokes {0}": {
+  "de": "Oberflächenstriche {0}",
+  "pl": "Pociągnięcia powierzchni {0}"
  },
  "Surface taken from {0} models": {
   "de": "Oberfläche von {0} Modellen entfernt",
