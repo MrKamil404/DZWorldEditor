@@ -2103,6 +2103,10 @@
   "de": "Jedes platzierte Gebäude, dessen Klasse einen Prototyp hat, kommt in mapgrouppos.xml, mit Position und Winkeln wie vom Spiel geschrieben.",
   "pl": "Każdy postawiony budynek, którego klasa ma prototyp, trafia do mapgrouppos.xml z pozycją i kątami, jakie zapisałaby gra."
  },
+ "Every tree gets a scale between the two; left at 1 to 1, each species keeps the spread its preset gives it.": {
+  "de": "Jeder Baum bekommt eine Größe zwischen den beiden Werten; bei 1 bis 1 behält jede Art die Streuung ihres Presets.",
+  "pl": "Każde drzewo dostaje skalę między tymi wartościami; przy 1 do 1 każdy gatunek zachowuje rozrzut ze swojego presetu."
+ },
  "Everyone": {
   "de": "Alle",
   "pl": "Wszyscy"

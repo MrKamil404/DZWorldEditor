@@ -383,10 +383,8 @@ pub struct ForestProject {
 
     /// Mnożnik odstępów Poisson-disk (>1 = rzadziej).
     pub spacing_multiplier: f64,
-    /// Globalny zakres randomizacji skali stawianych obiektów.
-    /// Dla każdego obiektu losowany jest mnożnik z tego zakresu
-    /// i mnożony przez skalę wylosowaną z zakresu gatunku.
-    /// 1.0..1.0 = brak dodatkowej randomizacji (tylko skala gatunku).
+    /// The scale of the plants: each one is drawn between these two. Left at 1.0..1.0 the
+    /// plants keep the scale range of their species instead.
     #[serde(default = "default_scale_bound")]
     pub scale_min: f32,
     #[serde(default = "default_scale_bound")]

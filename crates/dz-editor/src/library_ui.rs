@@ -219,6 +219,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 row(ui, &t("Preset in shapes"), |ui| preset_combo(ui, "area", &mut g.preset, &cx.presets));
                 number64(ui, t("Spacing"), &mut p.spacing_multiplier, 0.3..=4.0);
                 range_row(ui, t("Scale"), &mut p.scale_min, &mut p.scale_max, 0.1..=3.0, 0.01);
+                ui.weak(t("Every tree gets a scale between the two; left at 1 to 1, each species keeps the spread its preset gives it."));
                 number64(ui, t("Clearings"), &mut p.clearing_strength, 0.0..=0.95);
                 number64(ui, t("Clearing size m"), &mut p.clearing_scale_m, 0.0..=1500.0);
                 let mut slope = p.max_slope_deg.unwrap_or(90.0);

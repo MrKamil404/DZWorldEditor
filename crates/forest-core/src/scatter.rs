@@ -819,26 +819,18 @@ fn run_dart(
             } else {
                 (0.0, 0.0)
             };
-            let base_scale =
+            let species_scale =
                 rng.gen_range(f64::from(sp.scale_min)..=f64::from(sp.scale_max));
-            // …plus globalny mnożnik skali. Neutralny 1.0..1.0 nie rusza RNG,
-            // więc stare projekty dają bit-identyczne wyniki.
+            // The project's range, when set, is the scale itself: every plant comes out between
+            // its two ends. Left at 1.0..1.0 the plants keep the spread of their species, and
+            // the draw is skipped, so older projects come out as they did.
             let glo_min = f64::from(env.project.scale_min);
             let glo_max = f64::from(env.project.scale_max);
-            let global_mult = if (glo_min - 1.0).abs() < 1e-9 && (glo_max - 1.0).abs() < 1e-9
-            {
-                1.0
+            let scale = if (glo_min - 1.0).abs() < 1e-9 && (glo_max - 1.0).abs() < 1e-9 {
+                species_scale
             } else {
-                let (lo, hi) = if glo_min <= glo_max {
-                    (glo_min, glo_max)
-                } else {
-                    (glo_max, glo_min)
-                };
-                if (hi - lo).abs() < f64::EPSILON {
-                    lo
-                } else {
-                    rng.gen_range(lo..=hi)
-                }
+                let (lo, hi) = if glo_min <= glo_max { (glo_min, glo_max) } else { (glo_max, glo_min) };
+                if (hi - lo).abs() < f64::EPSILON { lo } else { rng.gen_range(lo..=hi) }
             };
             objects.push(PlacedObject {
                 model: sp.model.clone(),
@@ -847,7 +839,7 @@ fn run_dart(
                 yaw,
                 pitch,
                 roll,
-                scale: base_scale * global_mult,
+                scale,
                 elevation,
                 zone_index: source_index,
                 species_index: si,
@@ -1985,31 +1977,24 @@ mod tests {
     }
 
     #[test]
-    fn global_scale_range_multiplies_species_scale() {
+    fn global_scale_range_is_the_scale_of_every_plant() {
         let green = Rgb8([0, 200, 0]);
-        let mut proj = zone_project(&[green]); // gatunki 0.9..1.1
+        let mut proj = zone_project(&[green]); // species 0.9..1.1
         proj.scale_min = 0.5;
-        proj.scale_max = 2.0;
+        proj.scale_max = 0.8;
         let mask = mask_with_rect(60, 60, (5, 5, 50, 50), green);
         let (objs, _) = generate(&proj, Some(&mask), None, None, None, &|_| {}).unwrap();
         assert!(!objs.is_empty());
         for o in &objs {
-            assert!(
-                (0.9 * 0.5..=1.1 * 2.0).contains(&o.scale),
-                "skala poza zakresem globalnym: {}",
-                o.scale
-            );
+            assert!((0.5..=0.8).contains(&o.scale), "scale outside the range asked for: {}", o.scale);
         }
-        // rozrzut faktycznie szerszy niż sam gatunek (0.9..1.1)
-        let outside = objs
-            .iter()
-            .filter(|o| o.scale < 0.9 || o.scale > 1.1)
-            .count();
-        assert!(outside > 0, "globalny zakres nie rozszerzył skal");
+        // Spread over the whole range, not only part of it.
+        let (lo, hi) = objs.iter().fold((f64::MAX, f64::MIN), |(l, h), o| (l.min(o.scale), h.max(o.scale)));
+        assert!(lo < 0.52 && hi > 0.78, "{lo}..{hi}");
     }
 
     #[test]
-    fn fixed_global_scale_doubles_every_object() {
+    fn fixed_global_scale_sets_every_object() {
         let green = Rgb8([0, 200, 0]);
         let base = zone_project(&[green]);
         let mask = mask_with_rect(60, 60, (5, 5, 50, 50), green);
@@ -2021,8 +2006,8 @@ mod tests {
         let (o2, _) = generate(&proj, Some(&mask), None, None, None, &|_| {}).unwrap();
         assert_eq!(o_base.len(), o2.len());
         for (a, b) in o_base.iter().zip(&o2) {
-            assert!((b.scale - 2.0 * a.scale).abs() < 1e-9, "{} vs {}", b.scale, a.scale);
-            // pozycje identyczne (mnożnik stały nie rusza RNG)
+            assert_eq!(b.scale, 2.0);
+            // The same places: a fixed scale draws nothing more.
             assert!((a.x - b.x).abs() < 1e-9 && (a.y - b.y).abs() < 1e-9);
         }
     }
