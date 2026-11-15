@@ -1240,9 +1240,16 @@ pub fn add_forest(app: &mut App, preset: &str, drop: Option<Dropped>) {
     add_kind(app, GeneratorKind::Forest(Box::new(forest)), preset.to_string(), drop);
 }
 
-fn add_kind(app: &mut App, kind: GeneratorKind, name: String, drop: Option<Dropped>) {
-    let selected_route = app.line.selected_route.and_then(|i| app.doc.as_ref()?.world.routes.get(i)).map(|r| r.id);
-    let Some(doc) = &mut app.doc else { return };
+/// The library generator `preset` (or forest preset `forest`) as it would be added.
+fn kind_of(app: &App, preset: u64) -> Option<GeneratorKind> {
+    app.built_in.iter().chain(app.library.generators.iter()).find(|g| g.id == preset).map(|g| g.kind.clone())
+}
+
+/// What a generator of this kind would work on, dropped as `drop` (or added with no drop).
+/// An error says why it cannot be added.
+pub(crate) fn resolve_target(app: &App, kind: &GeneratorKind, drop: Option<Dropped>) -> Result<GenTarget, String> {
+    let Some(doc) = &app.doc else { return Err(String::new()) };
+    let selected_route = app.line.selected_route.and_then(|i| doc.world.routes.get(i)).map(|r| r.id);
     let shape_at = drop.and_then(|d| d.shape).or_else(|| app.shape.selection.iter().next().copied());
     let wants = kind.target_kind();
     let usable = shape_at.and_then(|(l, s)| {
@@ -1258,16 +1265,55 @@ fn add_kind(app: &mut App, kind: GeneratorKind, name: String, drop: Option<Dropp
     let on_route = drop.and_then(|d| d.route).or(selected_route).filter(|_| matches!(wants, TargetKind::Line | TargetKind::Any)).map(GenTarget::Route);
     // Dropped on a road, the road wins over a shape that merely happens to be selected.
     let usable = if drop.is_some_and(|d| d.route.is_some() && d.shape.is_none()) { on_route.clone().or(usable) } else { usable.or(on_route) };
-    let target = match (wants, usable, drop) {
+    Ok(match (wants, usable, drop) {
         (_, Some(t), _) => t,
         (TargetKind::Point, _, Some(d)) => GenTarget::Point(d.at),
         (TargetKind::Point, _, None) => { let s = doc.world.meta.size_m(); GenTarget::Point([s * 0.5, s * 0.5]) }
         (TargetKind::Area | TargetKind::Map | TargetKind::Any, _, _) => GenTarget::Map,
-        (TargetKind::Line, _, _) => {
-            app.warn(t("Drop this generator on a line or a road, or select one first"));
+        (TargetKind::Line, _, _) => return Err(t("Drop this generator on a line or a road, or select one first")),
+    })
+}
+
+/// What a generator dragged from a library would work on if dropped now, said in words, with
+/// the lines it would follow. `Err` when it could not be dropped here.
+pub(crate) fn drop_hint(app: &App, drag: &LibDrag, drop: Dropped) -> Option<(Result<String, String>, Vec<Vec<[f32; 2]>>)> {
+    let kind = match drag {
+        LibDrag::Generator(id) => kind_of(app, *id)?,
+        LibDrag::ForestPreset(name) => GeneratorKind::Forest(Box::new(ForestGen { preset: name.clone(), ..Default::default() })),
+        _ => return None,
+    };
+    let w = &app.doc.as_ref()?.world;
+    let target = match resolve_target(app, &kind, Some(drop)) {
+        Ok(t) => t,
+        Err(e) => return Some((Err(e), Vec::new())),
+    };
+    let text = match &target {
+        GenTarget::Route(id) => tf("On the road {0}", &[&w.routes.iter().find(|r| r.id == *id).map(|r| r.name.clone()).unwrap_or_default()]),
+        GenTarget::Shape { layer, index } => {
+            let picked = drop.shape.and_then(|(l, s)| Some((w.shape_layers.get(l)?.name.clone(), s))) == Some((layer.clone(), *index));
+            let what = tf("On the shape {0}", &[&format!("{layer} #{}", index + 1)]);
+            if picked { what } else { format!("{what} ({})", t("selected")) }
+        }
+        GenTarget::Map => t("On the whole map"),
+        GenTarget::Layer(l) => tf("On the layer {0}", &[l]),
+        GenTarget::Point(_) => t("At this point"),
+    };
+    let lines = match &target {
+        GenTarget::Map | GenTarget::Point(_) => Vec::new(),
+        _ => target_lines(w, &target),
+    };
+    Some((Ok(text), lines))
+}
+
+fn add_kind(app: &mut App, kind: GeneratorKind, name: String, drop: Option<Dropped>) {
+    let target = match resolve_target(app, &kind, drop) {
+        Ok(t) => t,
+        Err(e) => {
+            if !e.is_empty() { app.warn(e); }
             return;
         }
     };
+    let Some(doc) = &mut app.doc else { return };
     let before = doc.world.generators.clone();
     let id = new_id();
     let run = target != GenTarget::Map && match &kind {

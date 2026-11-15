@@ -1835,6 +1835,25 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         let spin = if g.random_rotation { rng.gen_range(0.0..360.0) } else { 0.0 };
         out.push(Obj { x, z, elevation, yaw: yaw + g.yaw_offset + spin, pitch, roll, scale: 1.0, model: p.model, flags: 0 });
     }
+    // Where a circle of radius `r` around `from` first leaves the line, searching on from segment `i`.
+    fn chord(line: &[[f32; 2]], from: [f32; 2], i: usize, r: f32) -> Option<([f32; 2], usize)> {
+        for j in i..line.len().saturating_sub(1) {
+            let (a, b) = (line[j], line[j + 1]);
+            let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+            let (fx, fz) = (a[0] - from[0], a[1] - from[1]);
+            let qa = dx * dx + dz * dz;
+            let qb = 2.0 * (fx * dx + fz * dz);
+            let qc = fx * fx + fz * fz - r * r;
+            let disc = qb * qb - 4.0 * qa * qc;
+            if qa > 1e-6 && disc >= 0.0 {
+                let t = (-qb + disc.sqrt()) / (2.0 * qa);
+                if (0.0..=1.0).contains(&t) {
+                    return Some(([a[0] + dx * t, a[1] + dz * t], j));
+                }
+            }
+        }
+        None
+    }
     for line in stretches.iter().filter(|l| l.len() >= 2) {
     if g.join_corners && g.line.mode == LineMode::Polyline {
         // Each stretch is divided so its first and last piece end exactly on the corners.
@@ -1874,33 +1893,23 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         while let (true, Some(k)) = (i + 1 < line.len() && guard < 400_000, choose(&mut rng)) {
             guard += 1;
             let p = &pieces[k];
-            let mut hit = None;
-            let mut j = i;
-            while j + 1 < line.len() {
-                let (a, b) = (line[j], line[j + 1]);
-                let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
-                let (fx, fz) = (a[0] - from[0], a[1] - from[1]);
-                let qa = dx * dx + dz * dz;
-                let qb = 2.0 * (fx * dx + fz * dz);
-                let qc = fx * fx + fz * fz - p.length * p.length;
-                let disc = qb * qb - 4.0 * qa * qc;
-                if qa > 1e-6 && disc >= 0.0 {
-                    let t = (-qb + disc.sqrt()) / (2.0 * qa);
-                    if (0.0..=1.0).contains(&t) {
-                        hit = Some(([a[0] + dx * t, a[1] + dz * t], j));
-                        break;
-                    }
-                }
-                j += 1;
-            }
-            match hit {
+            match chord(line, from, i, p.length) {
                 Some((to, at)) => {
                     place(w, g, &mut out, &mut rng, p, from, to);
-                    let (dx, dz) = (to[0] - from[0], to[1] - from[1]);
-                    let d = (dx * dx + dz * dz).sqrt().max(1e-3);
                     let gap = g.spacing.max(0.2 - p.length);
-                    from = [to[0] + dx / d * gap, to[1] + dz / d * gap];
-                    i = at;
+                    if gap > 0.0 {
+                        // The gap follows the line too, so the next piece starts on it even
+                        // where the line bends: a straight step would leave a curve behind.
+                        match chord(line, to, at, gap) {
+                            Some((next, j)) => { from = next; i = j; }
+                            None => break,
+                        }
+                    } else {
+                        let (dx, dz) = (to[0] - from[0], to[1] - from[1]);
+                        let d = (dx * dx + dz * dz).sqrt().max(1e-3);
+                        from = [to[0] + dx / d * gap, to[1] + dz / d * gap];
+                        i = at;
+                    }
                 }
                 None => {
                     // The last, shorter stretch: one more piece ending on the line's end.
@@ -2995,6 +3004,20 @@ mod tests {
         assert_eq!([first.x, first.z], line[0]);
         assert_eq!([last.x, last.z], line[1]);
         assert!(((last.yaw - first.yaw).rem_euclid(360.0) - 180.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn spaced_pieces_go_all_round_a_curve() {
+        use crate::library::{FenceGen, LineMode, LineOptions};
+        let mut w = World::new(crate::world::WorldMeta::new("F", 64, 4.0), 10.0);
+        let db = crate::model_info::ModelDb::new("Z:/none");
+        // A circle of radius 50 m, about 314 m round; unknown models are 4 m long.
+        let circle: Vec<[f32; 2]> = (0..=48).map(|i| { let a = i as f32 / 48.0 * std::f32::consts::TAU; [128.0 + 50.0 * a.cos(), 128.0 + 50.0 * a.sin()] }).collect();
+        for mode in [LineMode::Polyline, LineMode::Bezier] {
+            let g = FenceGen { model: "stone.p3d".into(), spacing: 25.0, join_corners: false, line: LineOptions { mode, offset: 0.0 }, ..Default::default() };
+            let n = fence_objects(&mut w, &db, &circle, &g).len();
+            assert!((10..=12).contains(&n), "{mode:?}: {n}");
+        }
     }
 
     #[test]

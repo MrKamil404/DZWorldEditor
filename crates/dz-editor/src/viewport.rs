@@ -2221,6 +2221,21 @@ fn drop_targets(app: &App, v: &View, mouse: Pos2, hit: Option<V3>) -> (Option<(u
     (pick_shape(&doc.world, v, mouse, hit), route)
 }
 
+/// While a generator is dragged over the view: what it would work on if dropped here, lit on
+/// the map and said next to the cursor.
+fn drop_target_hint(app: &mut App, painter: &egui::Painter, v: &View, mouse: Pos2, at: V3) {
+    let Some(drag) = egui::DragAndDrop::payload::<crate::library_ui::LibDrag>(painter.ctx()) else { return };
+    let (shape, route) = drop_targets(app, v, mouse, Some(at));
+    let Some((hint, lines)) = crate::library_ui::drop_hint(app, &drag, crate::library_ui::Dropped { shape, route, at: [at[0], at[2]] }) else { return };
+    if let Some(doc) = &app.doc {
+        for l in &lines {
+            let pts: Vec<Pos2> = l.iter().filter_map(|p| shape_screen(&doc.world, v, *p)).collect();
+            painter.add(egui::Shape::line(pts, Stroke::new(4.0f32, Color32::from_rgba_unmultiplied(255, 200, 60, 220))));
+        }
+    }
+    app.browser.drop_hint = Some(hint);
+}
+
 /// Picks a waypoint, a "+" handle between two waypoints, or a route.
 enum RouteHit {
     Point(usize),
@@ -3275,6 +3290,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         });
         if let Some(at) = at {
             crate::asset_browser::drop_preview(app, &painter, &v, at);
+            drop_target_hint(app, &painter, &v, ctx.pointer_latest_pos().unwrap_or_default(), at);
         }
         ctx.request_repaint();
     }

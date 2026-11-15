@@ -341,13 +341,15 @@ pub struct Browser {
     templates: Templates,
     /// What follows the cursor while something is dragged out of the browser.
     ghost: Option<(Vec<egui::TextureId>, String, Color32, &'static str)>,
+    /// What the dragged thing would be dropped on, set by the view under the cursor each frame.
+    pub drop_hint: Option<Result<String, String>>,
     /// A model to scroll the grid to once, after it was shown from the map.
     scroll_to: Option<String>,
 }
 
 impl Default for Browser {
     fn default() -> Self {
-        Self { source: Source::Drive(String::new()), back: Vec::new(), forward: Vec::new(), selected: Vec::new(), anchor: None, kind: 0, tree: DriveTree::default(), preview: Preview3d::default(), preview_item: None, rename: None, templates: Templates::default(), ghost: None, scroll_to: None }
+        Self { source: Source::Drive(String::new()), back: Vec::new(), forward: Vec::new(), selected: Vec::new(), anchor: None, kind: 0, tree: DriveTree::default(), preview: Preview3d::default(), preview_item: None, rename: None, templates: Templates::default(), ghost: None, drop_hint: None, scroll_to: None }
     }
 }
 
@@ -2151,6 +2153,7 @@ pub fn drag_ghost(app: &mut App, ctx: &egui::Context) {
         app.browser.ghost = None;
         return;
     }
+    let hint = app.browser.drop_hint.take();
     let (Some((images, text, color, letter)), Some(p)) = (app.browser.ghost.as_ref(), ctx.pointer_latest_pos()) else { return };
     egui::Area::new(egui::Id::new("asset_drag_ghost")).fixed_pos(p + vec2(16.0, 12.0)).order(egui::Order::Tooltip).interactable(false).show(ctx, |ui| {
         egui::Frame::popup(ui.style()).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
@@ -2171,7 +2174,14 @@ pub fn drag_ghost(app: &mut App, ctx: &egui::Context) {
                     ui.painter().image(*img, r, uv, Color32::WHITE);
                     ui.painter().rect_stroke(r, 3.0, Stroke::new(1.0f32, Color32::from_gray(90)), egui::StrokeKind::Inside);
                 }
-                ui.label(egui::RichText::new(text).strong());
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new(text).strong());
+                    match &hint {
+                        Some(Ok(h)) => { ui.label(egui::RichText::new(format!("{} {h}", crate::icons::ARROW_DOWN)).color(Color32::from_rgb(90, 190, 255))); }
+                        Some(Err(e)) => { ui.label(egui::RichText::new(format!("{} {e}", crate::icons::PROHIBIT)).color(Color32::from_rgb(240, 120, 90))); }
+                        None => {}
+                    }
+                });
             });
         });
     });

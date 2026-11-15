@@ -591,6 +591,10 @@
   "de": "Bei der Kamera",
   "pl": "Przy kamerze"
  },
+ "At this point": {
+  "de": "An diesem Punkt",
+  "pl": "W tym punkcie"
+ },
  "Attempts per type and pass to respawn loot.": {
   "de": "Versuche pro Typ und Durchlauf, Beute neu zu spawnen.",
   "pl": "Próby odrodzenia lootu na typ i przebieg."
@@ -4227,6 +4231,22 @@
   "de": "Am Boden",
   "pl": "Na ziemi"
  },
+ "On the layer {0}": {
+  "de": "Auf die Ebene {0}",
+  "pl": "Na warstwę {0}"
+ },
+ "On the road {0}": {
+  "de": "Auf die Straße {0}",
+  "pl": "Na drogę {0}"
+ },
+ "On the shape {0}": {
+  "de": "Auf die Form {0}",
+  "pl": "Na kształt {0}"
+ },
+ "On the whole map": {
+  "de": "Auf die ganze Karte",
+  "pl": "Na całą mapę"
+ },
  "On: changing a point fits the route again only from that point on; the pieces before it stay as they are. Off: the whole route is fitted again.": {
   "de": "An: Wird ein Punkt geändert, wird die Route erst ab diesem Punkt neu eingepasst; die Stücke davor bleiben. Aus: Die ganze Route wird neu eingepasst.",
   "pl": "Włączone: zmiana punktu dopasowuje trasę od nowa dopiero od tego punktu; części przed nim zostają bez zmian. Wyłączone: cała trasa jest dopasowywana od nowa."
@@ -7382,6 +7402,10 @@
  "satellite image in {0} places": {
   "de": "Satellitenbild an {0} Stellen",
   "pl": "zdjęcie satelitarne w {0} miejscach"
+ },
+ "selected": {
+  "de": "ausgewählt",
+  "pl": "zaznaczony"
  },
  "start": {
   "de": "Anfang",
