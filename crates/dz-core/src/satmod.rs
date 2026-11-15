@@ -27,6 +27,22 @@ pub enum SatKind {
     Bake,
     /// Strokes of the clone brush.
     Clone,
+    /// Strokes of the adjust brush: the image under them lighter, darker or in other colours.
+    Adjust,
+    /// Strokes and fills of the colour brush.
+    Paint,
+    /// A colour correction worked out from what is under it whenever the image is composed,
+    /// so its settings can be changed at any time. Its tiles hold a mask, one byte a pixel.
+    Correct,
+}
+
+/// The settings of a correction modifier.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Correction {
+    pub adjust: Adjust,
+    /// Over the whole image; otherwise where its mask tiles say.
+    pub whole: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -38,6 +54,16 @@ pub struct SatModifier {
     /// How much of the modifier shows over what is under it, 0 to 255. Less blends it in.
     pub opacity: u8,
     pub tiles: HashMap<Key, Tile>,
+    /// The settings of a correction.
+    pub correction: Option<Correction>,
+}
+
+/// One layer of a tile as it is composed.
+pub enum Layer<'a> {
+    /// RGBA pixels laid over what is under them, at an opacity 0 to 255.
+    Paint(&'a Tile, u32),
+    /// What is under it adjusted, as far as its mask (all of it without one) and opacity say.
+    Correct(&'a Adjust, Option<&'a Tile>, u32),
 }
 
 /// The modifiers of a world and the original pixels under them.
@@ -62,15 +88,27 @@ impl PixelRect {
     }
 }
 
-/// The colour of pixel `t` of a tile with the modifier tiles `layers` (RGBA, with their opacity)
-/// laid over the original colour `base`.
-pub fn compose_pixel(base: [u8; 3], layers: &[(&Tile, u32)], t: usize) -> [u8; 3] {
+/// The colour of pixel `t` of a tile with `layers` laid over the original colour `base` in order.
+pub fn compose_pixel(base: [u8; 3], layers: &[Layer], t: usize) -> [u8; 3] {
     let mut c = [base[0] as u32, base[1] as u32, base[2] as u32];
-    for (l, opacity) in layers {
-        let a = (l[t * 4 + 3] as u32 * opacity + 127) / 255;
-        if a > 0 {
-            for k in 0..3 {
-                c[k] = (c[k] * (255 - a) + l[t * 4 + k] as u32 * a + 127) / 255;
+    for layer in layers {
+        match layer {
+            Layer::Paint(l, opacity) => {
+                let a = (l[t * 4 + 3] as u32 * opacity + 127) / 255;
+                if a > 0 {
+                    for k in 0..3 {
+                        c[k] = (c[k] * (255 - a) + l[t * 4 + k] as u32 * a + 127) / 255;
+                    }
+                }
+            }
+            Layer::Correct(adjust, mask, opacity) => {
+                let a = (mask.map_or(255, |m| m[t] as u32) * opacity + 127) / 255;
+                if a > 0 {
+                    let to = adjust.apply([c[0] as u8, c[1] as u8, c[2] as u8]);
+                    for k in 0..3 {
+                        c[k] = (c[k] * (255 - a) + to[k] as u32 * a + 127) / 255;
+                    }
+                }
             }
         }
     }
@@ -107,13 +145,16 @@ impl SatLayers {
         // Random, so that two people working on copies of one map do not make the same id.
         let id = crate::maskmod::free_id(|id| self.modifiers.iter().any(|m| m.id == id));
         self.next_id = self.next_id.max(id.saturating_add(1));
-        self.modifiers.push(SatModifier { id, name, kind, enabled: true, opacity: 255, tiles: HashMap::new() });
+        let correction = (kind == SatKind::Correct).then(Correction::default);
+        self.modifiers.push(SatModifier { id, name, kind, enabled: true, opacity: 255, tiles: HashMap::new(), correction });
         id
     }
 
     /// The layers in the form saved beside a project.
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut b = b"DZSM2".to_vec();
+        // Without corrections the file keeps the form older versions read.
+        let with_settings = self.modifiers.iter().any(|m| m.correction.is_some());
+        let mut b = if with_settings { b"DZSM3".to_vec() } else { b"DZSM2".to_vec() };
         b.extend(self.next_id.to_le_bytes());
         let tiles = |b: &mut Vec<u8>, map: &HashMap<Key, Tile>| {
             b.extend((map.len() as u32).to_le_bytes());
@@ -133,19 +174,28 @@ impl SatLayers {
             b.push(match m.kind {
                 SatKind::Bake => 0,
                 SatKind::Clone => 1,
+                SatKind::Adjust => 2,
+                SatKind::Paint => 3,
+                SatKind::Correct => 4,
             });
             b.push(m.enabled as u8);
             b.push(m.opacity);
             b.extend((m.name.len() as u32).to_le_bytes());
             b.extend(m.name.as_bytes());
+            if with_settings {
+                let settings = m.correction.as_ref().and_then(|c| serde_json::to_vec(c).ok()).unwrap_or_default();
+                b.extend((settings.len() as u32).to_le_bytes());
+                b.extend(&settings);
+            }
             tiles(&mut b, &m.tiles);
         }
         b
     }
 
     pub fn from_bytes(b: &[u8]) -> anyhow::Result<Self> {
-        // The first form of the file had no opacity.
-        let with_opacity = b.starts_with(b"DZSM2");
+        // The first form of the file had no opacity, the second no corrections.
+        let with_settings = b.starts_with(b"DZSM3");
+        let with_opacity = with_settings || b.starts_with(b"DZSM2");
         anyhow::ensure!(with_opacity || b.starts_with(b"DZSM1"), "Not a satellite modifier file");
         let mut r = Bytes { b, p: 5 };
         let next_id = r.int()?;
@@ -155,11 +205,26 @@ impl SatLayers {
         for _ in 0..count {
             let id = r.int()?;
             let head = r.take(2)?;
-            let (kind, enabled) = (if head[0] == 0 { SatKind::Bake } else { SatKind::Clone }, head[1] != 0);
+            let kind = match head[0] {
+                0 => SatKind::Bake,
+                2 => SatKind::Adjust,
+                3 => SatKind::Paint,
+                4 => SatKind::Correct,
+                _ => SatKind::Clone,
+            };
+            let enabled = head[1] != 0;
             let opacity = if with_opacity { r.take(1)?[0] } else { 255 };
             let len = r.int()? as usize;
             let name = String::from_utf8_lossy(r.take(len)?).into_owned();
-            modifiers.push(SatModifier { id, name, kind, enabled, opacity, tiles: r.tiles(4)? });
+            let correction = if with_settings {
+                let n = r.int()? as usize;
+                let bytes = r.take(n)?;
+                (n > 0).then(|| serde_json::from_slice(bytes)).transpose()?
+            } else {
+                None
+            };
+            let pixel = if kind == SatKind::Correct { 1 } else { 4 };
+            modifiers.push(SatModifier { id, name, kind, enabled, opacity, tiles: r.tiles(pixel)?, correction });
         }
         Ok(Self { modifiers, base, next_id })
     }
@@ -227,32 +292,89 @@ impl World {
         self.sat.base.insert(key, Arc::new(t));
     }
 
+    /// The tiles modifier `m` lays something over: all of the image for a whole correction.
+    pub fn sat_mod_keys(&self, m: &SatModifier) -> Vec<Key> {
+        if m.correction.as_ref().is_some_and(|c| c.whole) {
+            let Some(img) = &self.satellite else { return Vec::new() };
+            let (cols, rows) = (img.width.div_ceil(TILE), img.height.div_ceil(TILE));
+            return (0..rows).flat_map(|y| (0..cols).map(move |x| (x as u16, y as u16))).collect();
+        }
+        m.tiles.keys().copied().collect()
+    }
+
+    fn sat_keys_of(&self, list: &[SatModifier]) -> BTreeSet<Key> {
+        list.iter().flat_map(|m| self.sat_mod_keys(m)).collect()
+    }
+
     /// Lays the enabled modifiers over the original pixels of the given tiles again.
     pub fn sat_recompose(&mut self, keys: impl IntoIterator<Item = Key>) -> Option<PixelRect> {
-        let mut touched: Option<PixelRect> = None;
-        for key in keys {
-            self.sat_keep(key);
-            let Some(base) = self.sat.base.get(&key).cloned() else { continue };
-            let Some(img) = &mut self.satellite else { return None };
-            let Some(r) = tile_rect(key, img) else { continue };
-            let layers: Vec<(&Tile, u32)> = self.sat.modifiers.iter().filter(|m| m.enabled && m.opacity > 0).filter_map(|m| m.tiles.get(&key).map(|t| (t, m.opacity as u32))).collect();
+        use rayon::prelude::*;
+        let keys: Vec<Key> = keys.into_iter().collect();
+        for key in &keys {
+            self.sat_keep(*key);
+        }
+        let img = self.satellite.as_ref()?;
+        // Each tile worked out on its own, as many at a time as there are cores.
+        let done: Vec<(PixelRect, Vec<u8>)> = keys.par_iter().filter_map(|&key| {
+            let base = self.sat.base.get(&key)?;
+            let r = tile_rect(key, img)?;
+            let layers: Vec<Layer> = self.sat.modifiers.iter().filter(|m| m.enabled && m.opacity > 0).filter_map(|m| match &m.correction {
+                Some(c) if c.whole => Some(Layer::Correct(&c.adjust, None, m.opacity as u32)),
+                Some(c) => m.tiles.get(&key).map(|t| Layer::Correct(&c.adjust, Some(t), m.opacity as u32)),
+                None => m.tiles.get(&key).map(|t| Layer::Paint(t, m.opacity as u32)),
+            }).collect();
+            let mut out = Vec::with_capacity((r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1) * 3);
             for y in r.y0..=r.y1 {
                 for x in r.x0..=r.x1 {
                     let t = (y - r.y0) * TILE + (x - r.x0);
-                    let c = compose_pixel([base[t * 3], base[t * 3 + 1], base[t * 3 + 2]], &layers, t);
-                    let o = (y * img.width + x) * 3;
-                    img.data[o..o + 3].copy_from_slice(&c);
+                    out.extend(compose_pixel([base[t * 3], base[t * 3 + 1], base[t * 3 + 2]], &layers, t));
                 }
+            }
+            Some((r, out))
+        }).collect();
+        let img = self.satellite.as_mut()?;
+        let mut touched: Option<PixelRect> = None;
+        for (r, pixels) in done {
+            let w = (r.x1 - r.x0 + 1) * 3;
+            for y in r.y0..=r.y1 {
+                let o = (y * img.width + r.x0) * 3;
+                img.data[o..o + w].copy_from_slice(&pixels[(y - r.y0) * w..(y - r.y0 + 1) * w]);
             }
             touched = Some(touched.map_or(r, |t| t.union(r)));
         }
         touched
     }
 
+    /// Adds a correction over the whole image, or where `mask` (pixels and strength 0..255)
+    /// says, and returns its id and what changed.
+    pub fn sat_add_correction(&mut self, name: String, adjust: Adjust, mask: Option<&[(usize, usize, u32)]>) -> (u32, Option<PixelRect>) {
+        let id = self.sat.add(SatKind::Correct, name);
+        let at = self.sat.modifiers.len() - 1;
+        self.sat.modifiers[at].correction = Some(Correction { adjust, whole: mask.is_none() });
+        if let Some(mask) = mask {
+            let tiles = &mut self.sat.modifiers[at].tiles;
+            for &(x, y, a) in mask {
+                let tile = Arc::make_mut(tiles.entry(((x / TILE) as u16, (y / TILE) as u16)).or_insert_with(|| Arc::new(vec![0u8; TILE * TILE])));
+                let p = (y % TILE) * TILE + x % TILE;
+                tile[p] = tile[p].max(a.min(255) as u8);
+            }
+        }
+        let keys = self.sat_mod_keys(&self.sat.modifiers[at].clone());
+        (id, self.sat_recompose(keys))
+    }
+
+    /// Changes the settings of correction `id`; the image under it is worked out again.
+    pub fn sat_set_correction(&mut self, id: u32, adjust: Adjust) -> Option<PixelRect> {
+        let at = self.sat.position(id)?;
+        self.sat.modifiers[at].correction.as_mut()?.adjust = adjust;
+        let keys = self.sat_mod_keys(&self.sat.modifiers[at].clone());
+        self.sat_recompose(keys)
+    }
+
     /// Replaces the list of modifiers and returns the pixels that changed.
     pub fn sat_set_modifiers(&mut self, list: &mut Vec<SatModifier>) -> Option<PixelRect> {
-        let mut keys = SatLayers::keys_of(&self.sat.modifiers);
-        keys.extend(SatLayers::keys_of(list));
+        let mut keys = self.sat_keys_of(&self.sat.modifiers);
+        keys.extend(self.sat_keys_of(list));
         std::mem::swap(list, &mut self.sat.modifiers);
         self.sat_recompose(keys)
     }
@@ -261,13 +383,14 @@ impl World {
     pub fn sat_remove(&mut self, id: u32) -> Option<PixelRect> {
         let at = self.sat.position(id)?;
         let gone = self.sat.modifiers.remove(at);
-        self.sat_recompose(gone.tiles.keys().copied().collect::<Vec<_>>())
+        let keys = self.sat_mod_keys(&gone);
+        self.sat_recompose(keys)
     }
 
     pub fn sat_set_enabled(&mut self, id: u32, enabled: bool) -> Option<PixelRect> {
         let at = self.sat.position(id)?;
         self.sat.modifiers[at].enabled = enabled;
-        let keys: Vec<Key> = self.sat.modifiers[at].tiles.keys().copied().collect();
+        let keys = self.sat_mod_keys(&self.sat.modifiers[at].clone());
         self.sat_recompose(keys)
     }
 
@@ -275,14 +398,14 @@ impl World {
     pub fn sat_set_opacity(&mut self, id: u32, opacity: u8) -> Option<PixelRect> {
         let at = self.sat.position(id)?;
         self.sat.modifiers[at].opacity = opacity;
-        let keys: Vec<Key> = self.sat.modifiers[at].tiles.keys().copied().collect();
+        let keys = self.sat_mod_keys(&self.sat.modifiers[at].clone());
         self.sat_recompose(keys)
     }
 
     /// After another image became the satellite: it is the new original, with the modifiers on it.
     pub fn sat_image_replaced(&mut self) -> Option<PixelRect> {
         self.sat.base.clear();
-        let keys = SatLayers::keys_of(&self.sat.modifiers);
+        let keys = self.sat_keys_of(&self.sat.modifiers);
         self.sat_recompose(keys)
     }
 
@@ -313,6 +436,13 @@ impl World {
     /// The colour comes from `source` (the satellite itself when `None`) at the same pixel
     /// moved by `offset`.
     pub fn sat_clone_dab(&mut self, id: u32, center: [f32; 2], brush: &CloneBrush, source: Option<&RgbImage>, offset: [i64; 2]) -> Option<PixelRect> {
+        self.sat_clone_dab_mapped(id, center, brush, source, &SourceMap::shift(offset), false)
+    }
+
+    /// [`Self::sat_clone_dab`] with the colour read where `map` takes each pixel: moved, turned
+    /// and scaled. With `match_colour` the copy takes on the average colour of the place it is
+    /// painted on, so a patch from elsewhere blends in, as a healing brush does.
+    pub fn sat_clone_dab_mapped(&mut self, id: u32, center: [f32; 2], brush: &CloneBrush, source: Option<&RgbImage>, map: &SourceMap, match_colour: bool) -> Option<PixelRect> {
         let at = self.sat.position(id)?;
         let (w, h) = self.satellite.as_ref().map(|s| (s.width, s.height))?;
         let r = brush.radius.max(0.5);
@@ -322,9 +452,11 @@ impl World {
             return None;
         }
         // The colours are read before anything is written, so a source under the brush is not smeared.
-        let mut dabs: Vec<(usize, usize, [u8; 3], u32)> = Vec::new();
+        let mut dabs: Vec<(usize, usize, [f32; 3], u32)> = Vec::new();
+        let (mut here, mut there, mut weight) = ([0f64; 3], [0f64; 3], 0f64);
         {
             let img = source.or(self.satellite.as_ref())?;
+            let shown = self.satellite.as_ref()?;
             for y in y0..=y1 {
                 for x in x0..=x1 {
                     let d = ((x as f32 + 0.5 - center[0]).powi(2) + (y as f32 + 0.5 - center[1]).powi(2)).sqrt() / r;
@@ -333,17 +465,29 @@ impl World {
                     }
                     let edge = if brush.hardness >= 0.999 { 1.0 } else { 1.0 - ((d - brush.hardness) / (1.0 - brush.hardness)).clamp(0.0, 1.0) };
                     let a = (brush.opacity.clamp(0.0, 1.0) * edge * edge * (3.0 - 2.0 * edge) * 255.0) as u32;
-                    let (sx, sy) = (x as i64 + offset[0], y as i64 + offset[1]);
-                    if a == 0 || sx < 0 || sy < 0 || sx >= img.width as i64 || sy >= img.height as i64 {
+                    if a == 0 {
                         continue;
                     }
-                    let o = (sy as usize * img.width + sx as usize) * 3;
-                    dabs.push((x, y, [img.data[o], img.data[o + 1], img.data[o + 2]], a));
+                    let s = map.apply([x as f32 + 0.5, y as f32 + 0.5]);
+                    let Some(c) = sample_image(img, s) else { continue };
+                    if match_colour {
+                        let o = (y * shown.width + x) * 3;
+                        let k = a as f64;
+                        for i in 0..3 {
+                            here[i] += shown.data[o + i] as f64 * k;
+                            there[i] += c[i] as f64 * k;
+                        }
+                        weight += k;
+                    }
+                    dabs.push((x, y, c, a));
                 }
             }
         }
+        // The copy moved by the difference of the averages under the brush.
+        let shift: [f32; 3] = if match_colour && weight > 0.0 { std::array::from_fn(|i| ((here[i] - there[i]) / weight) as f32) } else { [0.0; 3] };
         let mut keys = BTreeSet::new();
         for (x, y, c, a) in dabs {
+            let c: [u32; 3] = std::array::from_fn(|i| (c[i] + shift[i]).round().clamp(0.0, 255.0) as u32);
             let key = ((x / TILE) as u16, (y / TILE) as u16);
             if keys.insert(key) {
                 self.sat_keep(key);
@@ -355,14 +499,362 @@ impl World {
             let out = a + old * (255 - a) / 255;
             if out > 0 {
                 for k in 0..3 {
-                    tile[p + k] = ((c[k] as u32 * a + tile[p + k] as u32 * old * (255 - a) / 255) / out).min(255) as u8;
+                    tile[p + k] = ((c[k] * a + tile[p + k] as u32 * old * (255 - a) / 255) / out).min(255) as u8;
                 }
                 tile[p + 3] = out.min(255) as u8;
             }
         }
         self.sat_recompose(keys)
     }
+
+    /// One touch of the adjust brush on modifier `id`: the image under the brush with `adjust`
+    /// applied, laid over it as far as the brush is strong. `before` keeps the colour each pixel
+    /// had when the stroke first reached it, so going over it again in the same stroke does not
+    /// pile the change up; a new stroke does.
+    pub fn sat_adjust_dab(&mut self, id: u32, center: [f32; 2], brush: &CloneBrush, adjust: &Adjust, before: &mut HashMap<usize, [u8; 3]>) -> Option<PixelRect> {
+        let (w, h) = self.satellite.as_ref().map(|s| (s.width, s.height))?;
+        self.sat_paint(id, &dab_pixels(center, brush, w, h), &PaintOp::Adjust(*adjust, 0.0), before)
+    }
+
+    /// Lays `op` over the pixels `(x, y, strength 0..255)` of the satellite, into modifier `id`.
+    /// `before` keeps the colour each pixel had when the stroke or fill first reached it: the
+    /// operation always works from those, so going over a pixel again in the same stroke does
+    /// not pile the change up, and blurring reads the image as it was.
+    pub fn sat_paint(&mut self, id: u32, pixels: &[(usize, usize, u32)], op: &PaintOp, before: &mut HashMap<usize, [u8; 3]>) -> Option<PixelRect> {
+        let at = self.sat.position(id)?;
+        let img = self.satellite.as_ref()?;
+        let (w, h) = (img.width, img.height);
+        for &(x, y, _) in pixels {
+            let o = y * w + x;
+            before.entry(o).or_insert_with(|| [img.data[o * 3], img.data[o * 3 + 1], img.data[o * 3 + 2]]);
+        }
+        let get = |x: i64, y: i64| -> [u8; 3] {
+            let (x, y) = (x.clamp(0, w as i64 - 1) as usize, y.clamp(0, h as i64 - 1) as usize);
+            let o = y * w + x;
+            before.get(&o).copied().unwrap_or([img.data[o * 3], img.data[o * 3 + 1], img.data[o * 3 + 2]])
+        };
+        let dabs: Vec<(usize, usize, [u8; 3], u32)> = pixels.iter().filter(|p| p.2 > 0).map(|&(x, y, a)| (x, y, op.apply(x, y, &get), a)).collect();
+        let mut keys = BTreeSet::new();
+        for (x, y, c, a) in dabs {
+            let key = ((x / TILE) as u16, (y / TILE) as u16);
+            if keys.insert(key) {
+                self.sat_keep(key);
+            }
+            let tile = Arc::make_mut(self.sat.modifiers[at].tiles.entry(key).or_insert_with(|| Arc::new(vec![0u8; TILE * TILE * 4])));
+            let p = ((y % TILE) * TILE + x % TILE) * 4;
+            let old = tile[p + 3] as u32;
+            let out = a + old * (255 - a) / 255;
+            if out > 0 {
+                for k in 0..3 {
+                    tile[p + k] = ((c[k] as u32 * a + tile[p + k] as u32 * old * (255 - a) / 255) / out).min(255) as u8;
+                }
+                tile[p + 3] = out.min(255) as u8;
+            }
+        }
+        if keys.is_empty() {
+            return None;
+        }
+        self.sat_recompose(keys)
+    }
+
+    /// Takes back what modifier `id` painted under the brush, as far as the brush is strong,
+    /// so the image under it shows again.
+    pub fn sat_erase_dab(&mut self, id: u32, center: [f32; 2], brush: &CloneBrush) -> Option<PixelRect> {
+        let at = self.sat.position(id)?;
+        let (w, h) = self.satellite.as_ref().map(|s| (s.width, s.height))?;
+        let r = brush.radius.max(0.5);
+        let (x0, y0) = ((center[0] - r).floor().max(0.0) as usize, (center[1] - r).floor().max(0.0) as usize);
+        let (x1, y1) = (((center[0] + r).ceil() as usize).min(w.saturating_sub(1)), ((center[1] + r).ceil() as usize).min(h.saturating_sub(1)));
+        if x0 > x1 || y0 > y1 || center[0] + r < 0.0 || center[1] + r < 0.0 {
+            return None;
+        }
+        let mut keys = BTreeSet::new();
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let d = ((x as f32 + 0.5 - center[0]).powi(2) + (y as f32 + 0.5 - center[1]).powi(2)).sqrt() / r;
+                if d >= 1.0 {
+                    continue;
+                }
+                let edge = if brush.hardness >= 0.999 { 1.0 } else { 1.0 - ((d - brush.hardness) / (1.0 - brush.hardness)).clamp(0.0, 1.0) };
+                let a = (brush.opacity.clamp(0.0, 1.0) * edge * edge * (3.0 - 2.0 * edge) * 255.0) as u32;
+                let key = ((x / TILE) as u16, (y / TILE) as u16);
+                let Some(tile) = self.sat.modifiers[at].tiles.get_mut(&key) else { continue };
+                let p = ((y % TILE) * TILE + x % TILE) * 4 + 3;
+                if a == 0 || tile[p] == 0 {
+                    continue;
+                }
+                Arc::make_mut(tile)[p] = (tile[p] as u32 * (255 - a) / 255) as u8;
+                keys.insert(key);
+            }
+        }
+        if keys.is_empty() {
+            return None;
+        }
+        self.sat_recompose(keys)
+    }
 }
+
+/// The pixels under a round brush at `center`, with how strongly the brush touches each.
+pub fn dab_pixels(center: [f32; 2], brush: &CloneBrush, w: usize, h: usize) -> Vec<(usize, usize, u32)> {
+    let r = brush.radius.max(0.5);
+    let (x0, y0) = ((center[0] - r).floor().max(0.0) as usize, (center[1] - r).floor().max(0.0) as usize);
+    let (x1, y1) = (((center[0] + r).ceil() as usize).min(w.saturating_sub(1)), ((center[1] + r).ceil() as usize).min(h.saturating_sub(1)));
+    let mut out = Vec::new();
+    if x0 > x1 || y0 > y1 || center[0] + r < 0.0 || center[1] + r < 0.0 {
+        return out;
+    }
+    for y in y0..=y1 {
+        for x in x0..=x1 {
+            let d = ((x as f32 + 0.5 - center[0]).powi(2) + (y as f32 + 0.5 - center[1]).powi(2)).sqrt() / r;
+            if d >= 1.0 {
+                continue;
+            }
+            let edge = if brush.hardness >= 0.999 { 1.0 } else { 1.0 - ((d - brush.hardness) / (1.0 - brush.hardness)).clamp(0.0, 1.0) };
+            let a = (brush.opacity.clamp(0.0, 1.0) * edge * edge * (3.0 - 2.0 * edge) * 255.0) as u32;
+            if a > 0 {
+                out.push((x, y, a));
+            }
+        }
+    }
+    out
+}
+
+/// The pixels inside `polygons` and within half of `widths` of `lines` (all in pixels of the
+/// image), fading out over `feather` pixels at their edges (inwards for polygons, across the
+/// edge for lines), at `strength` 0 to 1.
+pub fn shape_pixels(polygons: &[Vec<[f32; 2]>], lines: &[(Vec<[f32; 2]>, f32)], feather: f32, strength: f32, w: usize, h: usize) -> Vec<(usize, usize, u32)> {
+    let feather = feather.max(0.5);
+    let segs = |pts: &[[f32; 2]], closed: bool| -> Vec<([f32; 2], [f32; 2])> {
+        let mut v: Vec<_> = pts.windows(2).map(|s| (s[0], s[1])).collect();
+        if closed && pts.len() > 2 {
+            v.push((pts[pts.len() - 1], pts[0]));
+        }
+        v
+    };
+    let dist = |p: [f32; 2], s: &[([f32; 2], [f32; 2])]| s.iter().map(|(a, b)| {
+        let (ab, ap) = ([b[0] - a[0], b[1] - a[1]], [p[0] - a[0], p[1] - a[1]]);
+        let t = ((ap[0] * ab[0] + ap[1] * ab[1]) / (ab[0] * ab[0] + ab[1] * ab[1]).max(1e-6)).clamp(0.0, 1.0);
+        (ap[0] - ab[0] * t).hypot(ap[1] - ab[1] * t)
+    }).fold(f32::MAX, f32::min);
+    let mut best: HashMap<(usize, usize), f32> = HashMap::new();
+    let mut put = |x: usize, y: usize, k: f32| {
+        let e = best.entry((x, y)).or_insert(0.0);
+        *e = e.max(k);
+    };
+    let span = |pts: &[[f32; 2]], pad: f32| {
+        let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
+        for p in pts {
+            lo = [lo[0].min(p[0]), lo[1].min(p[1])];
+            hi = [hi[0].max(p[0]), hi[1].max(p[1])];
+        }
+        let x0 = (lo[0] - pad).floor().max(0.0) as usize;
+        let y0 = (lo[1] - pad).floor().max(0.0) as usize;
+        let x1 = ((hi[0] + pad).ceil().max(0.0) as usize).min(w.saturating_sub(1));
+        let y1 = ((hi[1] + pad).ceil().max(0.0) as usize).min(h.saturating_sub(1));
+        (x0, y0, x1, y1)
+    };
+    for poly in polygons.iter().filter(|p| p.len() >= 3) {
+        let edges = segs(poly, true);
+        let (x0, y0, x1, y1) = span(poly, 0.0);
+        for y in y0..=y1 {
+            let py = y as f32 + 0.5;
+            // Where the rows cross the outline, for inside or out.
+            let mut xs: Vec<f32> = edges.iter().filter(|(a, b)| (a[1] <= py) != (b[1] <= py)).map(|(a, b)| a[0] + (py - a[1]) / (b[1] - a[1]) * (b[0] - a[0])).collect();
+            xs.sort_by(f32::total_cmp);
+            for pair in xs.chunks_exact(2) {
+                let (from, to) = ((pair[0] - 0.5).ceil().max(x0 as f32) as usize, ((pair[1] - 0.5).floor().max(0.0) as usize).min(x1));
+                for x in from..=to.max(from) {
+                    if (x as f32 + 0.5) < pair[0] || (x as f32 + 0.5) > pair[1] {
+                        continue;
+                    }
+                    let d = dist([x as f32 + 0.5, py], &edges);
+                    let t = (d / feather).clamp(0.0, 1.0);
+                    put(x, y, t * t * (3.0 - 2.0 * t));
+                }
+            }
+        }
+    }
+    // A line's soft edge lies across its nominal edge, so the band keeps its width and is
+    // at full strength along its middle however soft the edge is.
+    for (line, width) in lines.iter().filter(|l| l.0.len() >= 2) {
+        let width = width.max(1.0);
+        let soft = feather.min(width * 0.5);
+        let half = width * 0.5 + soft * 0.5;
+        let edges = segs(line, false);
+        let (x0, y0, x1, y1) = span(line, half);
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let d = dist([x as f32 + 0.5, y as f32 + 0.5], &edges);
+                if d >= half {
+                    continue;
+                }
+                let t = ((half - d) / soft).clamp(0.0, 1.0);
+                put(x, y, t * t * (3.0 - 2.0 * t));
+            }
+        }
+    }
+    let mut out: Vec<(usize, usize, u32)> = best.into_iter().map(|((x, y), k)| (x, y, (k * strength.clamp(0.0, 1.0) * 255.0) as u32)).filter(|p| p.2 > 0).collect();
+    out.sort_unstable();
+    out
+}
+
+/// How a colour is laid over the image.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlendMode {
+    /// The colour itself.
+    Normal,
+    /// The colour's hue and saturation over the image's lightness: recolours and keeps the pattern.
+    Tint,
+    /// Darkens: the image times the colour.
+    Multiply,
+    /// Lightens: the opposite of multiply.
+    Screen,
+}
+
+/// What a painting brush or fill does to each pixel.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PaintOp {
+    /// The colours adjusted, after a blur reaching this many pixels (0 for none).
+    Adjust(Adjust, f32),
+    Colour([u8; 3], BlendMode),
+}
+
+impl PaintOp {
+    /// The new colour of pixel (x, y), with `get` the image as it was before.
+    pub fn apply(&self, x: usize, y: usize, get: &dyn Fn(i64, i64) -> [u8; 3]) -> [u8; 3] {
+        let (x, y) = (x as i64, y as i64);
+        match *self {
+            PaintOp::Adjust(adjust, blur) => {
+                let c = if blur >= 1.0 {
+                    // A soft blur from 7 x 7 samples across its reach.
+                    let (mut sum, mut weight) = ([0f32; 3], 0f32);
+                    for j in -3i64..=3 {
+                        for i in -3i64..=3 {
+                            let k = (-((i * i + j * j) as f32) / 4.5).exp();
+                            let c = get(x + (i as f32 * blur / 3.0).round() as i64, y + (j as f32 * blur / 3.0).round() as i64);
+                            for n in 0..3 {
+                                sum[n] += c[n] as f32 * k;
+                            }
+                            weight += k;
+                        }
+                    }
+                    sum.map(|v| (v / weight).round().clamp(0.0, 255.0) as u8)
+                } else {
+                    get(x, y)
+                };
+                adjust.apply(c)
+            }
+            PaintOp::Colour(colour, mode) => {
+                let c = get(x, y);
+                let (b, p) = (c.map(|v| v as f32 / 255.0), colour.map(|v| v as f32 / 255.0));
+                let out: [f32; 3] = match mode {
+                    BlendMode::Normal => p,
+                    BlendMode::Multiply => std::array::from_fn(|k| b[k] * p[k]),
+                    BlendMode::Screen => std::array::from_fn(|k| 1.0 - (1.0 - b[k]) * (1.0 - p[k])),
+                    BlendMode::Tint => {
+                        let lum = |v: [f32; 3]| 0.299 * v[0] + 0.587 * v[1] + 0.114 * v[2];
+                        let shift = lum(b) - lum(p);
+                        std::array::from_fn(|k| p[k] + shift)
+                    }
+                };
+                out.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+            }
+        }
+    }
+}
+
+/// What the adjust brush does to the colours under it; all 0 leaves them as they are.
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Adjust {
+    /// -1 darker to 1 lighter.
+    pub brightness: f32,
+    /// -1 flat to 1 strong.
+    pub contrast: f32,
+    /// -1 grey to 1 vivid.
+    pub saturation: f32,
+    /// Turn of the hue in degrees.
+    pub hue: f32,
+    /// -1 cooler (bluer) to 1 warmer (yellower).
+    pub warmth: f32,
+}
+
+impl Adjust {
+    pub fn apply(&self, c: [u8; 3]) -> [u8; 3] {
+        let mut v: [f32; 3] = c.map(|x| x as f32 / 255.0);
+        // Lighter towards white and darker towards black, so the pattern stays.
+        let b = self.brightness.clamp(-1.0, 1.0);
+        for x in &mut v {
+            *x = if b >= 0.0 { *x + (1.0 - *x) * b } else { *x * (1.0 + b) };
+        }
+        let k = 1.0 + self.contrast.clamp(-1.0, 1.0);
+        for x in &mut v {
+            *x = (*x - 0.5) * k + 0.5;
+        }
+        // Hue turned about the grey axis, then saturation from the grey of the same lightness.
+        if self.hue != 0.0 {
+            let (s, cs) = self.hue.to_radians().sin_cos();
+            let (y, i, q) = (0.299 * v[0] + 0.587 * v[1] + 0.114 * v[2], 0.596 * v[0] - 0.274 * v[1] - 0.322 * v[2], 0.211 * v[0] - 0.523 * v[1] + 0.312 * v[2]);
+            let (i, q) = (i * cs - q * s, i * s + q * cs);
+            v = [y + 0.956 * i + 0.621 * q, y - 0.272 * i - 0.647 * q, y - 1.106 * i + 1.703 * q];
+        }
+        let grey = 0.299 * v[0] + 0.587 * v[1] + 0.114 * v[2];
+        let s = 1.0 + self.saturation.clamp(-1.0, 1.0);
+        for x in &mut v {
+            *x = grey + (*x - grey) * s;
+        }
+        let warm = self.warmth.clamp(-1.0, 1.0) * 0.1;
+        v[0] += warm;
+        v[1] += warm * 0.4;
+        v[2] -= warm;
+        v.map(|x| (x.clamp(0.0, 1.0) * 255.0).round() as u8)
+    }
+    pub fn is_neutral(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Where the clone brush reads the colour of each pixel it paints: the point `from` of the
+/// source goes to `to` on the satellite, and everything round it turns by `turn` degrees and
+/// grows by `scale` with it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SourceMap {
+    pub to: [f32; 2],
+    pub from: [f32; 2],
+    pub turn: f32,
+    pub scale: f32,
+}
+
+impl SourceMap {
+    /// Every pixel read `offset` pixels away.
+    pub fn shift(offset: [i64; 2]) -> Self {
+        Self { to: [0.0; 2], from: [offset[0] as f32, offset[1] as f32], turn: 0.0, scale: 1.0 }
+    }
+    /// The point of the source read for point `p` of the satellite.
+    pub fn apply(&self, p: [f32; 2]) -> [f32; 2] {
+        let (d, (s, c)) = ([p[0] - self.to[0], p[1] - self.to[1]], self.turn.to_radians().sin_cos());
+        let k = 1.0 / self.scale.max(0.01);
+        [self.from[0] + (d[0] * c - d[1] * s) * k, self.from[1] + (d[0] * s + d[1] * c) * k]
+    }
+}
+
+/// The colour of `img` at a point, blended from the four pixels round it; `None` outside it.
+fn sample_image(img: &RgbImage, p: [f32; 2]) -> Option<[f32; 3]> {
+    let (fx, fy) = (p[0] - 0.5, p[1] - 0.5);
+    if fx < -0.5 || fy < -0.5 || fx > img.width as f32 - 0.5 || fy > img.height as f32 - 0.5 {
+        return None;
+    }
+    let (x0, y0) = (fx.floor().max(0.0) as usize, fy.floor().max(0.0) as usize);
+    let (x1, y1) = ((x0 + 1).min(img.width - 1), (y0 + 1).min(img.height - 1));
+    let (tx, ty) = ((fx - x0 as f32).clamp(0.0, 1.0), (fy - y0 as f32).clamp(0.0, 1.0));
+    let px = |x: usize, y: usize, k: usize| img.data[(y * img.width + x) * 3 + k] as f32;
+    Some(std::array::from_fn(|k| {
+        let top = px(x0, y0, k) * (1.0 - tx) + px(x1, y0, k) * tx;
+        let bottom = px(x0, y1, k) * (1.0 - tx) + px(x1, y1, k) * tx;
+        top * (1.0 - ty) + bottom * ty
+    }))
+}
+
 
 /// Size and softness of the clone brush.
 #[derive(Clone, Copy, Debug)]
@@ -810,6 +1302,174 @@ mod tests {
         assert_eq!(pixel(&w, 20, 20), [255, 255, 255]);
         w.sat_remove(id);
         assert_eq!(pixel(&w, 20, 20), [90, 90, 90]);
+    }
+
+    #[test]
+    fn the_source_can_be_turned_and_scaled() {
+        let mut w = world();
+        // Red to the left of x = 128, blue to the right.
+        let mut src = RgbImage::new(256, 256, [200, 0, 0]);
+        for y in 0..256 { for x in 128..256 { src.data[(y * 256 + x) * 3..(y * 256 + x) * 3 + 3].copy_from_slice(&[0, 0, 200]); } }
+        let id = w.sat.add(SatKind::Clone, "a".into());
+        let brush = CloneBrush { radius: 12.0, hardness: 1.0, opacity: 1.0 };
+        // Turned round: what lies left of the brush comes from the right of the source.
+        let map = SourceMap { to: [50.0, 50.0], from: [128.0, 128.0], turn: 180.0, scale: 1.0 };
+        w.sat_clone_dab_mapped(id, [50.0, 50.0], &brush, Some(&src), &map, false);
+        assert_eq!((pixel(&w, 44, 50), pixel(&w, 55, 50)), ([0, 0, 200], [200, 0, 0]));
+        // Twice as large: 8 pixels to the right reads only 4 to the right of the source edge.
+        let map = SourceMap { to: [150.0, 150.0], from: [124.0, 128.0], turn: 0.0, scale: 2.0 };
+        w.sat_clone_dab_mapped(id, [150.0, 150.0], &brush, Some(&src), &map, false);
+        assert_eq!((pixel(&w, 156, 150), pixel(&w, 159, 150)), ([200, 0, 0], [0, 0, 200]));
+    }
+
+    #[test]
+    fn a_matched_copy_takes_the_colour_of_where_it_goes() {
+        let mut w = world(); // 10, 20, 30 everywhere
+        // Stripes much lighter than the ground: they keep their pattern, not their brightness.
+        let mut src = RgbImage::new(256, 256, [230, 230, 230]);
+        for y in 0..256 { for x in (0..256).step_by(2) { src.data[(y * 256 + x) * 3..(y * 256 + x) * 3 + 3].copy_from_slice(&[210, 210, 210]); } }
+        let id = w.sat.add(SatKind::Clone, "a".into());
+        let brush = CloneBrush { radius: 10.0, hardness: 1.0, opacity: 1.0 };
+        w.sat_clone_dab_mapped(id, [100.0, 100.0], &brush, Some(&src), &SourceMap::shift([0, 0]), true);
+        let (a, b) = (pixel(&w, 100, 100)[1] as i32, pixel(&w, 101, 100)[1] as i32);
+        assert!(((a - b).abs() - 20).abs() <= 2 && ((a + b) / 2 - 20).abs() <= 3, "{a} {b}");
+    }
+
+    #[test]
+    fn the_adjust_brush_changes_what_is_under_it_once_per_stroke() {
+        let mut w = world(); // 10, 20, 30
+        let id = w.sat.add(SatKind::Adjust, "a".into());
+        let brush = CloneBrush { radius: 6.0, hardness: 1.0, opacity: 1.0 };
+        let lighter = Adjust { brightness: 0.5, ..Default::default() };
+        let mut before = HashMap::new();
+        w.sat_adjust_dab(id, [60.5, 60.5], &brush, &lighter, &mut before);
+        let once = pixel(&w, 60, 60);
+        assert_eq!(once, lighter.apply([10, 20, 30]));
+        // Over the same place in the same stroke: no lighter than once.
+        w.sat_adjust_dab(id, [61.5, 60.5], &brush, &lighter, &mut before);
+        assert_eq!(pixel(&w, 60, 60), once);
+        // A new stroke goes on from there.
+        w.sat_adjust_dab(id, [60.5, 60.5], &brush, &lighter, &mut HashMap::new());
+        assert_eq!(pixel(&w, 60, 60), lighter.apply(once));
+        // It is a modifier like the others: saved, and taken away to show the image again.
+        let back = SatLayers::from_bytes(&w.sat.to_bytes()).unwrap();
+        assert_eq!(back.modifiers[0].kind, SatKind::Adjust);
+        w.sat_remove(id);
+        assert_eq!(pixel(&w, 60, 60), [10, 20, 30]);
+    }
+
+    #[test]
+    fn a_correction_works_from_what_is_under_it_and_can_be_changed() {
+        let mut w = world(); // 10, 20, 30
+        let white = RgbImage::new(256, 256, [200, 200, 200]);
+        let clone = w.sat.add(SatKind::Clone, "a".into());
+        w.sat_clone_dab(clone, [40.5, 40.5], &CloneBrush { radius: 4.0, hardness: 1.0, opacity: 1.0 }, Some(&white), [0, 0]);
+        let darker = Adjust { brightness: -0.5, ..Default::default() };
+        let (id, _) = w.sat_add_correction("c".into(), darker, None);
+        // Over everything, the clone stroke under it too.
+        assert_eq!(pixel(&w, 100, 100), darker.apply([10, 20, 30]));
+        assert_eq!(pixel(&w, 40, 40), darker.apply([200, 200, 200]));
+        // Changed later: worked out again from what is under it, not from the darkened image.
+        let lighter = Adjust { brightness: 0.3, ..Default::default() };
+        w.sat_set_correction(id, lighter);
+        assert_eq!(pixel(&w, 100, 100), lighter.apply([10, 20, 30]));
+        // Saved and read back with its settings; hidden, the image is as it was.
+        let back = SatLayers::from_bytes(&w.sat.to_bytes()).unwrap();
+        assert_eq!(back.modifiers[1].correction, Some(Correction { adjust: lighter, whole: true }));
+        // Without corrections the file keeps the older form.
+        let mut plain = w.sat.clone();
+        plain.modifiers.retain(|m| m.correction.is_none());
+        assert!(plain.to_bytes().starts_with(b"DZSM2"));
+        w.sat_set_enabled(id, false);
+        assert_eq!(pixel(&w, 100, 100), [10, 20, 30]);
+        // In an area only: its mask says where.
+        let area = shape_pixels(&[vec![[50.0, 50.0], [70.0, 50.0], [70.0, 70.0], [50.0, 70.0]]], &[], 1.0, 1.0, 256, 256);
+        w.sat_add_correction("d".into(), darker, Some(&area));
+        assert_eq!(pixel(&w, 60, 60), darker.apply([10, 20, 30]));
+        assert_eq!(pixel(&w, 90, 60), [10, 20, 30]);
+        let back = SatLayers::from_bytes(&w.sat.to_bytes()).unwrap();
+        assert!(back.modifiers[2].tiles.values().all(|t| t.len() == TILE * TILE));
+    }
+
+    #[test]
+    fn colours_blend_as_their_mode_says() {
+        let get = |_: i64, _: i64| [100u8, 150, 200];
+        let red = [200u8, 40, 40];
+        assert_eq!(PaintOp::Colour(red, BlendMode::Normal).apply(0, 0, &get), red);
+        let m = PaintOp::Colour([128, 128, 128], BlendMode::Multiply).apply(0, 0, &get);
+        assert!(m.iter().zip([100u8, 150, 200]).all(|(a, b)| (*a as i32 - b as i32 / 2).abs() <= 1), "{m:?}");
+        let s = PaintOp::Colour([128, 128, 128], BlendMode::Screen).apply(0, 0, &get);
+        assert!(s.iter().zip([100u8, 150, 200]).all(|(a, b)| *a > b), "{s:?}");
+        // A tint keeps the lightness of the image and takes the colour's hue.
+        let t = PaintOp::Colour(red, BlendMode::Tint).apply(0, 0, &get);
+        let lum = |c: [u8; 3]| 0.299 * c[0] as f32 + 0.587 * c[1] as f32 + 0.114 * c[2] as f32;
+        assert!((lum(t) - lum([100, 150, 200])).abs() < 2.0 && t[0] > t[1] && t[0] > t[2], "{t:?}");
+    }
+
+    #[test]
+    fn a_blur_evens_out_a_sharp_edge() {
+        // Black to the left of x = 10, white from it.
+        let get = |x: i64, _: i64| if x < 10 { [0u8; 3] } else { [255u8; 3] };
+        let blur = PaintOp::Adjust(Adjust::default(), 6.0);
+        let (near, far) = (blur.apply(10, 5, &get)[0], blur.apply(30, 5, &get)[0]);
+        assert!(near > 60 && near < 200, "{near}");
+        assert_eq!(far, 255);
+    }
+
+    #[test]
+    fn shapes_give_their_inside_and_a_band_along_lines() {
+        let square = vec![[10.0, 10.0], [50.0, 10.0], [50.0, 50.0], [10.0, 50.0]];
+        let px = shape_pixels(&[square], &[], 4.0, 1.0, 100, 100);
+        let at = |x, y| px.iter().find(|p| p.0 == x && p.1 == y).map_or(0, |p| p.2);
+        assert_eq!(at(30, 30), 255);
+        assert!(at(11, 30) > 0 && at(11, 30) < 128, "edge fades: {}", at(11, 30));
+        assert_eq!(at(5, 30), 0);
+        // A line 10 wide with an edge 4 soft: full in the middle, half way at its nominal
+        // edge, nothing 7 off it.
+        let line = (vec![[0.0, 80.0], [99.0, 80.0]], 10.0);
+        let px = shape_pixels(&[], &[line.clone()], 4.0, 0.5, 100, 100);
+        let at = |x, y| px.iter().find(|p| p.0 == x && p.1 == y).map_or(0, |p| p.2);
+        assert_eq!(at(50, 80), 127);
+        assert!(at(50, 84) > 30 && at(50, 84) < 100, "{}", at(50, 84));
+        assert_eq!(at(50, 87), 0);
+        // However soft, the middle of a narrow band is at full strength.
+        let px = shape_pixels(&[], &[(line.0, 3.0)], 6.0, 1.0, 100, 100);
+        assert!(px.iter().any(|p| p.1 == 80 && p.2 >= 250));
+    }
+
+    #[test]
+    fn adjustments_go_the_way_they_say() {
+        let c = [120, 100, 80];
+        let lum = |c: [u8; 3]| 0.299 * c[0] as f32 + 0.587 * c[1] as f32 + 0.114 * c[2] as f32;
+        let spread = |c: [u8; 3]| c.iter().max().unwrap() - c.iter().min().unwrap();
+        assert_eq!(Adjust::default().apply(c), c);
+        assert!(lum(Adjust { brightness: -0.3, ..Default::default() }.apply(c)) < lum(c));
+        assert!(spread(Adjust { saturation: -1.0, ..Default::default() }.apply(c)) <= 1);
+        assert!(spread(Adjust { saturation: 0.5, ..Default::default() }.apply(c)) > spread(c));
+        let warm = Adjust { warmth: 1.0, ..Default::default() }.apply(c);
+        assert!(warm[0] > c[0] && warm[2] < c[2]);
+        let flat = Adjust { contrast: -1.0, ..Default::default() }.apply([20, 240, 20]);
+        assert!(flat.iter().all(|v| (*v as i32 - 128).abs() <= 1), "{flat:?}");
+        // A full turn of the hue comes back round.
+        let round = Adjust { hue: 360.0, ..Default::default() }.apply(c);
+        assert!(round.iter().zip(c).all(|(a, b)| (*a as i32 - b as i32).abs() <= 1), "{round:?}");
+    }
+
+    #[test]
+    fn the_eraser_takes_a_stroke_back() {
+        let mut w = world();
+        let white = RgbImage::new(256, 256, [255, 255, 255]);
+        let id = w.sat.add(SatKind::Clone, "a".into());
+        let brush = CloneBrush { radius: 6.0, hardness: 1.0, opacity: 1.0 };
+        w.sat_clone_dab(id, [40.5, 40.5], &brush, Some(&white), [0, 0]);
+        assert_eq!(pixel(&w, 40, 40), [255, 255, 255]);
+        // Half strength: half way back.
+        w.sat_erase_dab(id, [40.5, 40.5], &CloneBrush { opacity: 0.5, ..brush });
+        assert!((pixel(&w, 40, 40)[0] as i32 - 133).abs() <= 2, "{:?}", pixel(&w, 40, 40));
+        w.sat_erase_dab(id, [40.5, 40.5], &brush);
+        assert_eq!(pixel(&w, 40, 40), [10, 20, 30]);
+        // Nothing painted there: nothing to take back.
+        assert!(w.sat_erase_dab(id, [200.5, 200.5], &brush).is_none());
     }
 
     #[test]

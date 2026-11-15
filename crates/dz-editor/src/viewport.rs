@@ -1722,7 +1722,14 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         Mode::Satellite => {
             if pressed {
                 if let Some(h) = hit {
-                    crate::satellite::begin_stroke(app, h[0], h[2]);
+                    // With the pick key a click chooses where to copy from; with invert it erases.
+                    if pick && app.sat.brush == crate::satellite::SatBrush::Clone {
+                        crate::satellite::pick_source(app, h[0], h[2]);
+                    } else if pick && app.sat.brush == crate::satellite::SatBrush::Colour {
+                        crate::satellite::pick_colour(app, h[0], h[2]);
+                    } else {
+                        crate::satellite::begin_stroke(app, h[0], h[2], invert);
+                    }
                 }
             }
             if !primary_down {
@@ -2678,6 +2685,17 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     let painter = ui.painter_at(v.rect);
     let Some(doc) = &app.doc else { return };
     let world = &doc.world;
+    // Where the clone brush copies from, as it moves with the cursor.
+    if app.mode == Mode::Satellite && resp.hovered() {
+        if let Some((s, r)) = app.cursor_ground.and_then(|c| crate::satellite::source_on_map(app, c[0], c[2])) {
+            let ring: Vec<[f32; 2]> = (0..=48).map(|k| { let a = k as f32 / 48.0 * std::f32::consts::TAU; [s[0] + r * a.cos(), s[1] + r * a.sin()] }).collect();
+            for (width, col) in [(3.0f32, Color32::BLACK), (1.5f32, Color32::from_rgb(255, 210, 60))] {
+                draw_polyline(&painter, v, world, &ring, Stroke::new(width, col));
+                draw_polyline(&painter, v, world, &[[s[0] - r * 0.3, s[1]], [s[0] + r * 0.3, s[1]]], Stroke::new(width, col));
+                draw_polyline(&painter, v, world, &[[s[0], s[1] - r * 0.3], [s[0], s[1] + r * 0.3]], Stroke::new(width, col));
+            }
+        }
+    }
     if app.show_lines {
         for (i, r) in world.routes.iter().enumerate() {
             let selected = app.line.selected_route == Some(i);
@@ -4021,11 +4039,47 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         // Source point in metres, then the ends of a stroke in metres.
         "satclone" if nums.len() >= 6 => {
             if let Some((w, size)) = app.doc.as_ref().and_then(|d| d.world.satellite.as_ref().map(|s| (s.width as f32, d.world.meta.size_m()))) {
-                app.sat.source = Some([nums[0] / size * w, (1.0 - nums[1] / size) * w]);
-                crate::satellite::begin_stroke(app, nums[2], nums[3]);
+                crate::satellite::set_source(app, [nums[0] / size * w, (1.0 - nums[1] / size) * w]);
+                crate::satellite::begin_stroke(app, nums[2], nums[3], false);
                 crate::satellite::continue_stroke(app, nums[4], nums[5]);
                 crate::satellite::finish_stroke(app);
             }
+        }
+        // Brightness, saturation and warmth of the adjust brush, then the ends of a stroke in metres.
+        "satadjust" if nums.len() >= 7 => {
+            app.sat.brush = crate::satellite::SatBrush::Adjust;
+            app.sat.adjust = dz_core::satmod::Adjust { brightness: nums[0], saturation: nums[1], warmth: nums[2], ..Default::default() };
+            crate::satellite::begin_stroke(app, nums[3], nums[4], false);
+            crate::satellite::continue_stroke(app, nums[5], nums[6]);
+            crate::satellite::finish_stroke(app);
+        }
+        // Colour r g b and blend (0 tint, 1 plain, 2 multiply, 3 screen), then a stroke in metres.
+        "satcolour" if nums.len() >= 8 => {
+            app.sat.brush = crate::satellite::SatBrush::Colour;
+            app.sat.colour = [nums[0] as u8, nums[1] as u8, nums[2] as u8];
+            app.sat.blend = [dz_core::satmod::BlendMode::Tint, dz_core::satmod::BlendMode::Normal, dz_core::satmod::BlendMode::Multiply, dz_core::satmod::BlendMode::Screen][(nums[3] as usize).min(3)];
+            crate::satellite::begin_stroke(app, nums[4], nums[5], false);
+            crate::satellite::continue_stroke(app, nums[6], nums[7]);
+            crate::satellite::finish_stroke(app);
+        }
+        // The current brush over all shapes of layer n, with the soft edge and line width given.
+        "satfill" if nums.len() >= 3 => {
+            app.sat.fill_layer = Some(nums[0] as usize);
+            (app.sat.feather, app.sat.line_width) = (nums[1], nums[2]);
+            crate::satellite::fill_shapes(app);
+        }
+        // A correction over the whole image (first number -1) or the shapes of layer n, with
+        // brightness, saturation and warmth; `satcorrectset b s w` changes the chosen one.
+        "satcorrect" if nums.len() >= 4 => {
+            app.sat.correct_whole = nums[0] < 0.0;
+            app.sat.fill_layer = (nums[0] >= 0.0).then_some(nums[0] as usize);
+            crate::satellite::add_correction(app);
+            crate::satellite::set_correction(app, dz_core::satmod::Adjust { brightness: nums[1], saturation: nums[2], warmth: nums[3], ..Default::default() });
+        }
+        "satcorrectset" if nums.len() >= 3 => {
+            let t0 = std::time::Instant::now();
+            crate::satellite::set_correction(app, dz_core::satmod::Adjust { brightness: nums[0], saturation: nums[1], warmth: nums[2], ..Default::default() });
+            eprintln!("CORRECT took {:?}", t0.elapsed());
         }
         "satradius" if !nums.is_empty() => app.sat.radius = nums[0],
         "satdel" => {

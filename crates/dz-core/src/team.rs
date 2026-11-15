@@ -1323,7 +1323,11 @@ fn merge_satellite(base: &World, patch: &Patch, sb: &SatBody, mine: &World, dirs
                     let i = (y * width + x0) * 3;
                     original[y * SAT_TILE * 3..y * SAT_TILE * 3 + w * 3].copy_from_slice(&mb[i..i + w * 3]);
                 }
-                let layers: Vec<(&crate::satmod::Tile, u32)> = mods.iter().filter(|m| m.enabled && m.opacity > 0).filter_map(|m| m.tiles.get(&key).map(|t| (t, m.opacity as u32))).collect();
+                let layers: Vec<crate::satmod::Layer> = mods.iter().filter(|m| m.enabled && m.opacity > 0).filter_map(|m| match &m.correction {
+                    Some(c) if c.whole => Some(crate::satmod::Layer::Correct(&c.adjust, None, m.opacity as u32)),
+                    Some(c) => m.tiles.get(&key).map(|t| crate::satmod::Layer::Correct(&c.adjust, Some(t), m.opacity as u32)),
+                    None => m.tiles.get(&key).map(|t| crate::satmod::Layer::Paint(t, m.opacity as u32)),
+                }).collect();
                 for y in 0..rows {
                     for x in 0..w {
                         let t = y * SAT_TILE + x;

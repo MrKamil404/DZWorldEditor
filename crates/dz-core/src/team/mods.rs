@@ -35,10 +35,10 @@ impl LayerMod for SatModifier {
         &mut self.tiles
     }
     fn same_settings(&self, o: &Self) -> bool {
-        (&self.name, self.kind, self.enabled, self.opacity) == (&o.name, o.kind, o.enabled, o.opacity)
+        (&self.name, self.kind, self.enabled, self.opacity, &self.correction) == (&o.name, o.kind, o.enabled, o.opacity, &o.correction)
     }
     fn take_settings(&mut self, from: &Self) {
-        (self.name, self.kind, self.enabled, self.opacity) = (from.name.clone(), from.kind, from.enabled, from.opacity);
+        (self.name, self.kind, self.enabled, self.opacity, self.correction) = (from.name.clone(), from.kind, from.enabled, from.opacity, from.correction.clone());
     }
 }
 
@@ -222,7 +222,7 @@ mod tests {
         Arc::new(vec![v; 4])
     }
     fn modifier(tiles: &[(Key, u8)]) -> SatModifier {
-        SatModifier { id: 7, name: "clone".into(), kind: SatKind::Clone, enabled: true, opacity: 255, tiles: tiles.iter().map(|(k, v)| (*k, tile(*v))).collect() }
+        SatModifier { id: 7, name: "clone".into(), kind: SatKind::Clone, enabled: true, opacity: 255, tiles: tiles.iter().map(|(k, v)| (*k, tile(*v))).collect(), correction: None }
     }
     fn run(base: &[SatModifier], theirs: &[SatModifier], mine: &mut Vec<SatModifier>, choices: &HashMap<ConflictKey, Choice>) -> Merged {
         let (set, deltas, removed) = diff(base, theirs, |_| "Ania".into());

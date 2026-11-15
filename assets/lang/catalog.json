@@ -235,6 +235,10 @@
   "de": "Kind hinzufügen",
   "pl": "Dodaj dziecko"
  },
+ "Add correction": {
+  "de": "Korrektur hinzufügen",
+  "pl": "Dodaj korektę"
+ },
  "Add edge preset": {
   "de": "Rand-Preset hinzufügen",
   "pl": "Dodaj preset granicy"
@@ -375,6 +379,22 @@
   "de": "Addons und zusätzliche Zeilen",
   "pl": "Addony i dodatkowe linie"
  },
+ "Adjust": {
+  "de": "Anpassen",
+  "pl": "Korekcja"
+ },
+ "Adjust brush": {
+  "de": "Anpassungspinsel",
+  "pl": "Pędzel korekcji"
+ },
+ "Adjust brush {0}": {
+  "de": "Anpassungspinsel {0}",
+  "pl": "Pędzel korekcji {0}"
+ },
+ "After": {
+  "de": "Danach",
+  "pl": "Po"
+ },
  "Align to slope": {
   "de": "An Hang ausrichten",
   "pl": "Dopasuj do spadku"
@@ -382,6 +402,10 @@
  "Align to the ground": {
   "de": "Am Boden ausrichten",
   "pl": "Dopasuj do terenu"
+ },
+ "Aligned": {
+  "de": "Ausgerichtet",
+  "pl": "Wyrównany"
  },
  "All": {
   "de": "Alle",
@@ -707,6 +731,10 @@
   "de": "Fleckengröße m",
   "pl": "Wielkość plam m"
  },
+ "Blur": {
+  "de": "Weichzeichnen",
+  "pl": "Rozmycie"
+ },
  "Both height changes are added together.": {
   "de": "Beide Höhenänderungen werden addiert.",
   "pl": "Obie zmiany wysokości są sumowane."
@@ -758,6 +786,10 @@
  "Bridges may cross forbidden areas and water": {
   "de": "Brücken dürfen Sperrgebiete und Wasser queren",
   "pl": "Mosty mogą przechodzić nad obszarami zakazanymi i wodą"
+ },
+ "Brightness": {
+  "de": "Helligkeit",
+  "pl": "Jasność"
  },
  "Bring it back": {
   "de": "Zurückholen",
@@ -935,6 +967,14 @@
   "de": "Änderungen der anderen",
   "pl": "Zmiany innych"
  },
+ "Changes show when a slider is let go. Opacity and visibility are in the outliner, as for the other modifiers.": {
+  "de": "Änderungen erscheinen beim Loslassen eines Reglers. Deckkraft und Sichtbarkeit stehen im Outliner, wie bei den anderen Modifikatoren.",
+  "pl": "Zmiany pojawiają się po puszczeniu suwaka. Krycie i widoczność są w konspekcie, jak przy innych modyfikatorach."
+ },
+ "Changes the colours of the whole satellite image, or of an area, and can be changed or taken away at any time. Choose a correction in the outliner to change it.": {
+  "de": "Ändert die Farben des ganzen Satellitenbildes oder eines Bereichs und lässt sich jederzeit ändern oder entfernen. Wähle eine Korrektur im Outliner, um sie zu ändern.",
+  "pl": "Zmienia kolory całej satelitarki albo obszaru i można ją w każdej chwili zmienić lub usunąć. Wybierz korektę w konspekcie, aby ją zmienić."
+ },
  "Changes: {0}": {
   "de": "Ändert: {0}",
   "pl": "Zmienia: {0}"
@@ -1035,9 +1075,17 @@
   "de": "Vollständige Kopie im Teamordner wählen",
   "pl": "Wybierz pełną kopię w folderze zespołu"
  },
+ "Choose the modifier to erase from in the outliner": {
+  "de": "Wähle im Outliner den Modifikator, aus dem gelöscht wird",
+  "pl": "Wybierz w konspekcie modyfikator, z którego chcesz wymazywać"
+ },
  "Choose the mpmissions folder": {
   "de": "mpmissions-Ordner wählen",
   "pl": "Wybierz folder mpmissions"
+ },
+ "Choose the point in the preview: the brush copies from the picture": {
+  "de": "Wähle den Punkt in der Vorschau: der Pinsel kopiert aus dem Bild",
+  "pl": "Wybierz punkt w podglądzie: pędzel kopiuje z obrazu"
  },
  "Choose the source point in the preview first": {
   "de": "Zuerst den Quellpunkt in der Vorschau wählen",
@@ -1130,6 +1178,10 @@
  "Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it.": {
   "de": "In die Vorschau klicken, um die Quelle zu wählen, dann auf der Karte malen. Das Mausrad zoomt die Vorschau, Ziehen verschiebt sie.",
   "pl": "Kliknij w podglądzie, żeby wybrać miejsce źródłowe, potem maluj na mapie. Kółko przybliża podgląd, przeciąganie go przesuwa."
+ },
+ "Click in the preview, or on the map with {0} held, to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it.": {
+  "de": "Klicke in die Vorschau oder mit gedrückter {0} auf die Karte, um die Quelle zu wählen, und male dann auf der Karte. Das Mausrad zoomt die Vorschau, Ziehen verschiebt sie.",
+  "pl": "Kliknij w podglądzie albo na mapie z wciśniętym {0}, aby wybrać, skąd kopiować, a potem maluj na mapie. Kółko przybliża podgląd, przeciąganie go przesuwa."
  },
  "Click nearer to the fence": {
   "de": "Näher am Zaun klicken",
@@ -1279,6 +1331,10 @@
   "de": "Klick: aktive Ebene (neue Objekte landen hier). Strg+Klick: Bearbeitung ein- oder ausschalten.",
   "pl": "Kliknięcie: aktywna warstwa (tu trafiają nowe obiekty). Ctrl+kliknięcie: włącza lub wyłącza edycję."
  },
+ "Clone": {
+  "de": "Klonen",
+  "pl": "Klon"
+ },
  "Clone brush": {
   "de": "Klonpinsel",
   "pl": "Pędzel klonujący"
@@ -1311,6 +1367,26 @@
   "de": "Alle einklappen",
   "pl": "Zwiń wszystko"
  },
+ "Colour": {
+  "de": "Farbe",
+  "pl": "Kolor"
+ },
+ "Colour brush": {
+  "de": "Farbpinsel",
+  "pl": "Pędzel koloru"
+ },
+ "Colour brush {0}": {
+  "de": "Farbpinsel {0}",
+  "pl": "Pędzel koloru {0}"
+ },
+ "Colour correction": {
+  "de": "Farbkorrektur",
+  "pl": "Korekta kolorów"
+ },
+ "Colour correction {0}": {
+  "de": "Farbkorrektur {0}",
+  "pl": "Korekta kolorów {0}"
+ },
  "Configuration": {
   "de": "Konfiguration",
   "pl": "Konfiguracja"
@@ -1335,6 +1411,10 @@
   "de": "Höhenlinien",
   "pl": "Warstwice"
  },
+ "Contrast": {
+  "de": "Kontrast",
+  "pl": "Kontrast"
+ },
  "Copies a file into the mission, e.g. a types file of a mod.": {
   "de": "Kopiert eine Datei in die Mission, z. B. eine Typendatei einer Mod.",
   "pl": "Kopiuje plik do misji, np. plik typów moda."
@@ -1342,6 +1422,10 @@
  "Copies a project someone sent to the team folder to your computer and opens it.": {
   "de": "Kopiert ein Projekt, das jemand in den Teamordner gelegt hat, auf deinen Computer und öffnet es.",
   "pl": "Kopiuje projekt wysłany przez kogoś do folderu zespołu na twój komputer i go otwiera."
+ },
+ "Copies another part of the image, or of a picture, onto the map.": {
+  "de": "Kopiert einen anderen Teil des Bildes oder eines Fotos auf die Karte.",
+  "pl": "Kopiuje inną część obrazu albo wczytanego zdjęcia na mapę."
  },
  "Copies the whole project to the team folder, for someone who joins.": {
   "de": "Kopiert das ganze Projekt in den Teamordner, für jemanden, der dazukommt.",
@@ -1354,6 +1438,10 @@
  "Copy from": {
   "de": "Kopieren aus",
   "pl": "Kopiuj z"
+ },
+ "Copy from the point clicked": {
+  "de": "Vom angeklickten Punkt kopieren",
+  "pl": "Kopiuj z klikniętego punktu"
  },
  "Copy objects": {
   "de": "Objekte kopieren",
@@ -1378,6 +1466,10 @@
  "Copy the selection to the cursor": {
   "de": "Auswahl an den Cursor kopieren",
   "pl": "Kopia zaznaczenia pod kursor"
+ },
+ "Copying from here": {
+  "de": "Kopiere von hier",
+  "pl": "Kopiowanie stąd"
  },
  "Copying the project": {
   "de": "Projekt wird kopiert",
@@ -1466,6 +1558,14 @@
  "DZ_Data and the addon of the base world are always there.": {
   "de": "DZ_Data und das Addon der Basiswelt sind immer dabei.",
   "pl": "DZ_Data i addon świata bazowego są zawsze dodane."
+ },
+ "Darken": {
+  "de": "Abdunkeln",
+  "pl": "Przyciemnij"
+ },
+ "Darken (multiply)": {
+  "de": "Abdunkeln (multiplizieren)",
+  "pl": "Przyciemnij (mnożenie)"
  },
  "Date and time": {
   "de": "Datum und Uhrzeit",
@@ -1831,6 +1931,10 @@
   "de": "Tropfen",
   "pl": "Krople"
  },
+ "Dry grass": {
+  "de": "Trockenes Gras",
+  "pl": "Sucha trawa"
+ },
  "Duplicate": {
   "de": "Duplizieren",
   "pl": "Powiel"
@@ -2026,6 +2130,18 @@
  "Erase": {
   "de": "Radieren",
   "pl": "Wymazuj"
+ },
+ "Erase clone strokes": {
+  "de": "Klonstriche löschen",
+  "pl": "Wymazywanie pociągnięć klonowania"
+ },
+ "Erase from the chosen modifier": {
+  "de": "Aus dem gewählten Modifikator löschen",
+  "pl": "Wymazuj z wybranego modyfikatora"
+ },
+ "Erase strokes": {
+  "de": "Striche löschen",
+  "pl": "Wymazywanie pociągnięć"
  },
  "Erosion": {
   "de": "Erosion",
@@ -2254,6 +2370,10 @@
  "Fill and cut": {
   "de": "Auffüllen und abtragen",
   "pl": "Nasyp i wykop"
+ },
+ "Fill shapes": {
+  "de": "Formen füllen",
+  "pl": "Wypełnij kształty"
  },
  "Fill the footprint of buildings": {
   "de": "Grundriss von Gebäuden füllen",
@@ -2783,6 +2903,14 @@
   "de": "Wie weit die Dünung den Strand hinauf- und zurückläuft; MaxWave des Spiels ist 0,25 m.",
   "pl": "Jak daleko fala wbiega na brzeg i się cofa; MaxWave w grze to 0,25 m."
  },
+ "How large the copy comes out against the source: to fit a picture of another resolution, or to make fields larger or smaller.": {
+  "de": "Wie groß die Kopie gegenüber der Quelle wird: für ein Bild anderer Auflösung oder um Felder größer oder kleiner zu machen.",
+  "pl": "Jak duża wychodzi kopia względem źródła: aby dopasować obraz o innej rozdzielczości albo powiększyć lub zmniejszyć pola."
+ },
+ "Hue": {
+  "de": "Farbton",
+  "pl": "Odcień"
+ },
  "Hydraulic erosion": {
   "de": "Wassererosion",
   "pl": "Erozja wodna"
@@ -2991,6 +3119,10 @@
   "de": "Art",
   "pl": "Rodzaj"
  },
+ "Laid as": {
+  "de": "Aufgetragen als",
+  "pl": "Nakładany jako"
+ },
  "Land grid": {
   "de": "Geländeraster",
   "pl": "Siatka terenu"
@@ -3063,6 +3195,10 @@
   "de": "Ebenen",
   "pl": "Warstwy"
  },
+ "Lays the brush over whole shapes at once: inside polygons, along lines as a band. Fields, clearings, field tracks.": {
+  "de": "Trägt den Pinsel auf ganze Formen auf einmal auf: innerhalb von Polygonen, entlang von Linien als Band. Felder, Lichtungen, Feldwege.",
+  "pl": "Nakłada pędzel na całe kształty naraz: wnętrze wielokątów, pas wzdłuż linii. Pola, polany, polne drogi."
+ },
  "Least damage of spawned loot, 0..1.": {
   "de": "Geringster Schaden gespawnter Beute, 0..1.",
   "pl": "Najmniejsze uszkodzenie lootu, 0..1."
@@ -3090,6 +3226,10 @@
  "Legend texture": {
   "de": "Legendentextur",
   "pl": "Tekstura legendy"
+ },
+ "Less colour": {
+  "de": "Weniger Farbe",
+  "pl": "Mniej koloru"
  },
  "Level the ground under buildings": {
   "de": "Gelände unter Gebäuden einebnen",
@@ -3123,6 +3263,14 @@
   "de": "Hebt die Fahrbahn über die Mitte ihrer beiden Ufer; die Straße an beiden Ufern steigt zu ihr an.",
   "pl": "Podnosi pomost ponad średnią wysokość obu brzegów; droga na obu brzegach wznosi się do niego."
  },
+ "Lighten": {
+  "de": "Aufhellen",
+  "pl": "Rozjaśnij"
+ },
+ "Lighten (screen)": {
+  "de": "Aufhellen (Negativ multiplizieren)",
+  "pl": "Rozjaśnij (ekran)"
+ },
  "Lighting": {
   "de": "Beleuchtung",
   "pl": "Oświetlenie"
@@ -3138,6 +3286,10 @@
  "Line to shapes": {
   "de": "Linie zu Formen",
   "pl": "Linia do kształtów"
+ },
+ "Line width m": {
+  "de": "Linienbreite m",
+  "pl": "Szerokość linii m"
  },
  "Line: Nodes Objects": {
   "de": "Linie: Objekte an Knoten",
@@ -3315,6 +3467,10 @@
   "de": "Erstellt die Datei im Ordner custom und trägt sie in cfgeconomycore.xml ein.",
   "pl": "Tworzy plik w folderze custom i dodaje go do cfgeconomycore.xml."
  },
+ "Makes the image lighter or darker, or changes its colours, where you paint.": {
+  "de": "Macht das Bild dort, wo du malst, heller oder dunkler oder ändert seine Farben.",
+  "pl": "Rozjaśnia, przyciemnia albo zmienia kolory obrazu tam, gdzie malujesz."
+ },
  "Map ID": {
   "de": "Karten-ID",
   "pl": "ID mapy"
@@ -3378,6 +3534,10 @@
  "Mask modifiers ({0})": {
   "de": "Masken-Modifikatoren ({0})",
   "pl": "Modyfikatory maski ({0})"
+ },
+ "Match the colour": {
+  "de": "Farbe angleichen",
+  "pl": "Dopasuj kolor"
  },
  "Max height": {
   "de": "Max. Höhe",
@@ -3702,6 +3862,10 @@
  "New attribute": {
   "de": "Neues Attribut",
   "pl": "Nowy atrybut"
+ },
+ "New correction": {
+  "de": "Neue Korrektur",
+  "pl": "Nowa korekta"
  },
  "New element": {
   "de": "Neues Element",
@@ -4211,6 +4375,22 @@
   "de": "Ausgabeprotokoll",
   "pl": "Dziennik"
  },
+ "Over": {
+  "de": "Über",
+  "pl": "Na"
+ },
+ "Over the area of the shapes it was made from.": {
+  "de": "Über den Bereich der Formen, aus denen sie entstand.",
+  "pl": "Na obszarze kształtów, z których powstała."
+ },
+ "Over the whole image the original is kept in memory, which takes about as much again as the image.": {
+  "de": "Für das ganze Bild wird das Original im Speicher gehalten, was noch einmal etwa so viel wie das Bild braucht.",
+  "pl": "Przy całym obrazie oryginał jest trzymany w pamięci, co zajmuje mniej więcej drugie tyle co obraz."
+ },
+ "Over the whole image.": {
+  "de": "Über das ganze Bild.",
+  "pl": "Na całym obrazie."
+ },
  "Overcast": {
   "de": "Bedeckt",
   "pl": "Pochmurno"
@@ -4259,6 +4439,10 @@
   "de": "Auf der Karte malen",
   "pl": "Maluj na mapie"
  },
+ "Paint on the map to make the satellite image there lighter or darker, or change its colours. Going over a place again in one stroke does not add up; a new stroke does.": {
+  "de": "Male auf die Karte, um das Satellitenbild dort heller oder dunkler zu machen oder seine Farben zu ändern. Mehrmals über dieselbe Stelle in einem Strich verstärkt nichts; ein neuer Strich schon.",
+  "pl": "Maluj po mapie, aby rozjaśnić, przyciemnić albo zmienić kolory satelitarki. Wielokrotne przejście po tym samym miejscu w jednym pociągnięciu nie kumuluje zmiany; nowe pociągnięcie tak."
+ },
  "Paint only on": {
   "de": "Nur malen auf",
   "pl": "Maluj tylko na"
@@ -4302,6 +4486,14 @@
  "Paints": {
   "de": "Malt",
   "pl": "Maluje"
+ },
+ "Paints a colour on the map: tracks, bare earth, patches. A click with {0} held takes the colour from the map.": {
+  "de": "Malt eine Farbe auf die Karte: Wege, kahle Erde, Flecken. Ein Klick mit gedrückter {0} nimmt die Farbe von der Karte.",
+  "pl": "Maluje kolorem po mapie: ścieżki, gołą ziemię, plamy. Kliknięcie z wciśniętym {0} pobiera kolor z mapy."
+ },
+ "Paints a colour, plain or as a tint that keeps the pattern of the image.": {
+  "de": "Malt eine Farbe, deckend oder als Tönung, die das Muster des Bildes behält.",
+  "pl": "Maluje kolorem, kryjąco albo jako odcień zachowujący wzór obrazu."
  },
  "Paints a surface under objects as a mask modifier, which can be hidden or deleted in the outliner.": {
   "de": "Malt eine Oberfläche unter Objekte als Masken-Modifikator, der in der Hierarchie ausgeblendet oder gelöscht werden kann.",
@@ -4523,6 +4715,10 @@
   "de": "Setzen: Mitte anklicken (Esc beendet)",
   "pl": "Stawianie: kliknij środek (Esc kończy)"
  },
+ "Plain colour": {
+  "de": "Deckende Farbe",
+  "pl": "Kolor kryjący"
+ },
  "Plains": {
   "de": "Ebenen",
   "pl": "Równiny"
@@ -4562,6 +4758,10 @@
  "Point": {
   "de": "Punkt",
   "pl": "Punkt"
+ },
+ "Point at the map to see what the brush makes of the colour there.": {
+  "de": "Zeige auf die Karte, um zu sehen, was der Pinsel aus der Farbe dort macht.",
+  "pl": "Wskaż miejsce na mapie, aby zobaczyć, co pędzel zrobi z tamtejszym kolorem."
  },
  "Points": {
   "de": "Punkte",
@@ -5095,6 +5295,10 @@
   "de": "Satelliten-Modifikatoren ({0})",
   "pl": "Modyfikatory satki ({0})"
  },
+ "Saturation": {
+  "de": "Sättigung",
+  "pl": "Nasycenie"
+ },
  "Save": {
   "de": "Speichern",
   "pl": "Zapisz"
@@ -5307,6 +5511,10 @@
   "de": "Wähle zuerst Polygone im Modus Formen.",
   "pl": "Najpierw zaznacz wielokąty w trybie Kształty."
  },
+ "Select polygons or lines in the Shapes tool, or choose a shape layer": {
+  "de": "Wähle Polygone oder Linien im Formen-Werkzeug aus oder wähle eine Formenebene",
+  "pl": "Zaznacz wielokąty lub linie w narzędziu Shapes albo wybierz warstwę kształtów"
+ },
  "Select shapes in the Shapes mode first.": {
   "de": "Wähle zuerst Formen im Modus Formen.",
   "pl": "Najpierw zaznacz kształty w trybie Kształty."
@@ -5334,6 +5542,10 @@
  "Selected shape": {
   "de": "Ausgewählte Form",
   "pl": "Zaznaczony kształt"
+ },
+ "Selected shapes ({0})": {
+  "de": "Ausgewählte Formen ({0})",
+  "pl": "Zaznaczone kształty ({0})"
  },
  "Selection": {
   "de": "Auswahl",
@@ -5374,6 +5586,10 @@
  "Set": {
   "de": "Setzen",
   "pl": "Ustaw"
+ },
+ "Set how the brush changes the colours first": {
+  "de": "Lege zuerst fest, wie der Pinsel die Farben ändert",
+  "pl": "Najpierw ustaw, jak pędzel ma zmieniać kolory"
  },
  "Set player start here": {
   "de": "Spielerstart hier setzen",
@@ -5531,6 +5747,10 @@
   "de": "Größe",
   "pl": "Rozmiar"
  },
+ "Size of the copy": {
+  "de": "Größe der Kopie",
+  "pl": "Rozmiar kopii"
+ },
  "Size variation": {
   "de": "Größenstreuung",
   "pl": "Losowość rozmiaru"
@@ -5566,6 +5786,14 @@
  "Snap to angle steps": {
   "de": "An Winkelschritten einrasten",
   "pl": "Przyciąganie do skoku kąta"
+ },
+ "Soft edge m": {
+  "de": "Weiche Kante m",
+  "pl": "Miękka krawędź m"
+ },
+ "Softens the image under the brush over this distance: seams of cloning, hard edges of baked objects.": {
+  "de": "Zeichnet das Bild unter dem Pinsel über diese Strecke weich: Nähte vom Klonen, harte Kanten gebackener Objekte.",
+  "pl": "Zmiękcza obraz pod pędzlem na tej odległości: szwy po klonowaniu, ostre krawędzie wypalonych obiektów."
  },
  "Some actions share a key; only the first of them will work.": {
   "de": "Einige Aktionen teilen eine Taste; nur die erste davon wirkt.",
@@ -5674,6 +5902,10 @@
  "Stop": {
   "de": "Stoppen",
   "pl": "Zatrzymaj"
+ },
+ "Straight and at full size": {
+  "de": "Gerade und in voller Größe",
+  "pl": "Prosto i w pełnym rozmiarze"
  },
  "Straight parts": {
   "de": "Gerade Teile",
@@ -5826,6 +6058,10 @@
  "Take a full copy...": {
   "de": "Vollständige Kopie übernehmen...",
   "pl": "Pobierz pełną kopię..."
+ },
+ "Take the colour from the map": {
+  "de": "Farbe von der Karte nehmen",
+  "pl": "Pobierz kolor z mapy"
  },
  "Take the last away": {
   "de": "Letztes entfernen",
@@ -6063,9 +6299,21 @@
   "de": "Der Pinsel fügt einer Kachel keine Oberfläche hinzu, wenn das Limit des Projekts erreicht ist.",
   "pl": "Pędzel nie doda powierzchni do kafla, który ma już tyle, ile pozwala projekt."
  },
+ "The colour itself, covering what is under it.": {
+  "de": "Die Farbe selbst, die darunterliegendes verdeckt.",
+  "pl": "Sam kolor, zakrywający to, co pod spodem."
+ },
+ "The colour over the light and shade of the image: the pattern stays.": {
+  "de": "Die Farbe über Licht und Schatten des Bildes: das Muster bleibt.",
+  "pl": "Kolor na światłocieniu obrazu: wzór zostaje."
+ },
  "The config is on the clipboard": {
   "de": "Die Config ist in der Zwischenablage",
   "pl": "Config jest w schowku"
+ },
+ "The copy takes on the average colour of where it is painted, so a patch from elsewhere blends in. The pattern of the source stays.": {
+  "de": "Die Kopie nimmt die mittlere Farbe der Stelle an, auf die gemalt wird, damit ein Stück von anderswo hineinpasst. Das Muster der Quelle bleibt.",
+  "pl": "Kopia przyjmuje średni kolor miejsca, na którym jest malowana, więc łata z innego miejsca się wtapia. Wzór źródła zostaje."
  },
  "The corner of the grid in map coordinates, as Terrain Builder expects; off places it at 0, 0.": {
   "de": "Die Ecke des Rasters in Kartenkoordinaten, wie Terrain Builder es erwartet; aus setzt sie auf 0, 0.",
@@ -6110,6 +6358,14 @@
  "The heightmap has {0} columns, the project {1}": {
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
   "pl": "Mapa wysokości ma {0} kolumn, a projekt {1}"
+ },
+ "The image darkened by the colour.": {
+  "de": "Das Bild durch die Farbe abgedunkelt.",
+  "pl": "Obraz przyciemniony kolorem."
+ },
+ "The image lightened by the colour.": {
+  "de": "Das Bild durch die Farbe aufgehellt.",
+  "pl": "Obraz rozjaśniony kolorem."
  },
  "The key tables and the lines telling what clicks and keys do, in all panels.": {
   "de": "Die Tastentabellen und die Zeilen, die erklären, was Klicks und Tasten tun, in allen Bereichen.",
@@ -6307,6 +6563,14 @@
   "de": "Die Form dieses Generators existiert nicht mehr",
   "pl": "Kształt, na którym działa generator, już nie istnieje"
  },
+ "The shapes lie outside the satellite image": {
+  "de": "Die Formen liegen außerhalb des Satellitenbildes",
+  "pl": "Kształty leżą poza obrazem satelitarnym"
+ },
+ "The source keeps its distance from the brush from one stroke to the next. Off: every stroke starts copying from the source point again.": {
+  "de": "Die Quelle behält ihren Abstand zum Pinsel von Strich zu Strich. Aus: jeder Strich beginnt wieder am Quellpunkt.",
+  "pl": "Źródło zachowuje odległość od pędzla między pociągnięciami. Wyłączone: każde pociągnięcie zaczyna kopiować od punktu źródła."
+ },
  "The surface it painted": {
   "de": "Die von ihm gemalte Oberfläche",
   "pl": "Powierzchnię, którą namalował"
@@ -6415,6 +6679,10 @@
   "de": "Neigt die ausgewählten Objekte jetzt nach dem Boden darunter.",
   "pl": "Przechyla teraz zaznaczone obiekty zgodnie z terenem pod nimi."
  },
+ "Tint": {
+  "de": "Tönung",
+  "pl": "Odcień"
+ },
  "To restore a backup, open the project.dzwe inside it and use Save as.": {
   "de": "Um eine Sicherung wiederherzustellen, öffne die darin enthaltene project.dzwe und verwende „Speichern unter“.",
   "pl": "Aby przywrócić kopię, otwórz znajdujący się w niej plik project.dzwe i użyj „Zapisz jako”."
@@ -6446,6 +6714,10 @@
  "Top view first": {
   "de": "Draufsicht zuerst",
   "pl": "Widok z góry jako pierwszy"
+ },
+ "Towards yellow to the right, towards blue to the left.": {
+  "de": "Nach rechts gelblicher, nach links bläulicher.",
+  "pl": "W prawo cieplej (żółciej), w lewo chłodniej (bardziej niebiesko)."
  },
  "Tower": {
   "de": "Mast",
@@ -6490,6 +6762,10 @@
  "Turn by 180° to open the other way": {
   "de": "Um 180° drehen, um zur anderen Seite zu öffnen",
   "pl": "Obróć o 180°, aby otwierała się w drugą stronę"
+ },
+ "Turns what is copied about the source point, to lay fields or rows another way.": {
+  "de": "Dreht das Kopierte um den Quellpunkt, um Felder oder Reihen anders zu legen.",
+  "pl": "Obraca kopiowany obraz wokół punktu źródła, aby ułożyć pola lub rzędy inaczej."
  },
  "Type": {
   "de": "Typ",
@@ -6631,6 +6907,10 @@
   "de": "Ordner der Benutzerkarte",
   "pl": "Folder mapy użytkownika"
  },
+ "Uses the brush's settings and its opacity, into the modifier its strokes go to.": {
+  "de": "Nutzt die Einstellungen und die Deckkraft des Pinsels, im Modifikator seiner Striche.",
+  "pl": "Używa ustawień i krycia pędzla, do modyfikatora, do którego trafiają jego pociągnięcia."
+ },
  "Value": {
   "de": "Value",
   "pl": "Value"
@@ -6674,6 +6954,10 @@
  "Walls and fences": {
   "de": "Mauern und Zäune",
   "pl": "Mury i płoty"
+ },
+ "Warmth": {
+  "de": "Wärme",
+  "pl": "Ciepło barwy"
  },
  "Warp": {
   "de": "Verzerrung",
@@ -6770,6 +7054,10 @@
  "Which parts of the economy start, load, respawn and save.": {
   "de": "Welche Teile der Wirtschaft starten, laden, neu spawnen und speichern.",
   "pl": "Które części ekonomii startują, wczytują, odradzają i zapisują."
+ },
+ "Whole image": {
+  "de": "Ganzes Bild",
+  "pl": "Cały obraz"
  },
  "Whole map": {
   "de": "Ganze Karte",
