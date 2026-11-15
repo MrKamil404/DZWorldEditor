@@ -1553,6 +1553,43 @@ impl App {
         self.info(label.to_string());
     }
 
+    /// Sets `flag` on the selected objects, or clears it, as one step to undo. Objects that take
+    /// or lose a fixed height stay where they stand: their elevation turns from over the ground
+    /// to over the sea and back.
+    pub fn set_selection_flag(&mut self, flag: u32, on: bool, label: &str) {
+        use dz_core::objects::FLAG_ABSOLUTE;
+        let Some(doc) = &mut self.doc else { return };
+        let ids: Vec<u32> = self.selection.iter().copied().collect();
+        let mut change = Vec::with_capacity(ids.len());
+        let mut moved = Vec::new();
+        for id in ids {
+            let Some(o) = doc.world.objects.get(id).copied() else { continue };
+            if (o.flags & flag != 0) == on {
+                continue;
+            }
+            let mut n = o;
+            if on { n.flags |= flag } else { n.flags &= !flag }
+            if flag == FLAG_ABSOLUTE {
+                let ground = doc.world.height.sample(o.x, o.z);
+                n.elevation += if on { ground } else { -ground };
+            }
+            doc.world.objects.update(id, n);
+            change.push((id, Some(o), Some(n)));
+            moved.extend(doc.world.sync_attached(id));
+        }
+        if change.is_empty() {
+            return;
+        }
+        let count = change.len().to_string();
+        doc.history.push(label, Change::Objects(change));
+        doc.dirty.objects = true;
+        for r in moved {
+            self.height_changed(r);
+        }
+        self.selection_rev += 1;
+        self.status = tf(if on { "{0}: set on {1} objects" } else { "{0}: cleared on {1} objects" }, &[label, &count]);
+    }
+
     /// Sets the underground flag of the selected objects, or clears it when all have it.
     pub fn toggle_underground(&mut self) {
         use dz_core::objects::FLAG_UNDERGROUND;

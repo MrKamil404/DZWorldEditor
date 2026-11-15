@@ -1698,12 +1698,42 @@ fn details(app: &mut App, ui: &mut egui::Ui) {
             replace_section(app, ui);
         } else if app.selection.len() > 1 {
             ui.label(tf("{0} objects selected", &[&app.selection.len().to_string()]));
+            selection_flags(app, ui);
             ground_fit(app, ui);
             replace_section(app, ui);
         } else {
             map_summary(app, ui);
         }
     });
+}
+
+/// The flags of several selected objects, each shown as set, cleared or mixed; changing one
+/// sets it on all of them.
+fn selection_flags(app: &mut App, ui: &mut egui::Ui) {
+    let Some(doc) = &app.doc else { return };
+    let objects: Vec<u32> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id)).map(|o| o.flags).collect();
+    if objects.is_empty() {
+        return;
+    }
+    let mut set = None;
+    let flags = [
+        (FLAG_UNDERGROUND, t("Underground"), String::new()),
+        (FLAG_ABSOLUTE, t("Fixed height, ignores the terrain"), t("The elevation is then measured from sea level")),
+    ];
+    for (flag, label, hint) in flags {
+        let on = objects.iter().filter(|f| *f & flag != 0).count();
+        let (all, mixed) = (on == objects.len(), on > 0 && on < objects.len());
+        let mut shown = all;
+        let r = ui.add(egui::Checkbox::new(&mut shown, &label).indeterminate(mixed));
+        let r = if hint.is_empty() { r } else { r.on_hover_text(hint) };
+        if r.clicked() {
+            // A mixed selection turns the flag on for all.
+            set = Some((flag, !all, label));
+        }
+    }
+    if let Some((flag, on, label)) = set {
+        app.set_selection_flag(flag, on, &label);
+    }
 }
 
 /// What the Details show with nothing selected: the map in a few lines, and where to click.

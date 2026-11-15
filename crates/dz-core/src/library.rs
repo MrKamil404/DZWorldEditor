@@ -1071,21 +1071,26 @@ pub fn new_id() -> u64 {
 mod tests {
     #[test]
     fn a_prefab_keeps_its_layout_wherever_it_is_placed() {
-        use crate::objects::{Obj, FLAG_ABSOLUTE};
+        use crate::objects::{Obj, FLAG_ABSOLUTE, FLAG_UNDERGROUND};
         let mut h = crate::terrain::Heightmap::new(64, 64, 4.0, 10.0);
         for j in 0..64 { for i in 0..64 { h.data[j * 64 + i] = i as f32; } }
         let o = |x, z, yaw, elevation, flags| Obj { x, z, elevation, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags };
         // A crate on the ground and a lamp at a fixed height, 4 m over the ground at the middle.
-        let objects = vec![("a.p3d".to_string(), o(100.0, 100.0, 0.0, 0.0, 3 << 16)), ("b.p3d".to_string(), o(110.0, 100.0, 90.0, 26.25 + 4.0, FLAG_ABSOLUTE))];
+        // A crate on the ground, a lamp at a fixed height, a cellar door underground.
+        let objects = vec![("a.p3d".to_string(), o(100.0, 100.0, 0.0, 0.0, 3 << 16)), ("b.p3d".to_string(), o(110.0, 100.0, 90.0, 26.25 + 4.0, FLAG_ABSOLUTE)), ("c.p3d".to_string(), o(105.0, 100.0, 0.0, -1.0, FLAG_UNDERGROUND | (2 << 16)))];
         let p = Prefab::from_objects(1, "Set".into(), &objects, &h);
         assert_eq!((p.items[0].x, p.items[1].x), (-5.0, 5.0));
         assert_eq!(p.items[0].flags, 0, "no layer");
+        assert_eq!((p.items[1].flags, p.items[2].flags), (FLAG_ABSOLUTE, FLAG_UNDERGROUND), "flags but no layer");
         let placed = p.objects_at(200.0, 50.0, 90.0, &h);
         // Turned a quarter: east becomes south, as objects turn.
         assert!((placed[0].1.x - 200.0).abs() < 1e-3 && (placed[0].1.z - 55.0).abs() < 1e-3, "{:?}", placed[0].1);
         assert!((placed[1].1.z - 45.0).abs() < 1e-3);
         assert_eq!(placed[1].1.yaw, 180.0);
         assert!((placed[1].1.elevation - (h.sample(200.0, 50.0) + 4.0)).abs() < 0.01, "{}", placed[1].1.elevation);
+        // Placed, each keeps its flags; the cellar door stays underground at its depth.
+        assert_eq!((placed[0].1.flags, placed[1].1.flags, placed[2].1.flags), (0, FLAG_ABSOLUTE, FLAG_UNDERGROUND));
+        assert_eq!(placed[2].1.elevation, -1.0);
         // In its own group of the library, and folders made there.
         let mut l = Library::default();
         l.prefabs.push(p);

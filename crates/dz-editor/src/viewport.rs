@@ -4181,7 +4181,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             if let Some(d) = &app.doc {
                 for id in &app.selection {
                     if let Some(o) = d.world.objects.get(*id) {
-                        eprintln!("OBJINFO {} x={:.2} z={:.2} elev={:.3} yaw={:.2} pitch={:.2} roll={:.2} scale={:.2} layer={} undo={:?}", d.world.objects.model_path(o), o.x, o.z, o.elevation, o.yaw, o.pitch, o.roll, o.scale, o.layer(), d.history.undo_label());
+                        eprintln!("OBJINFO {} x={:.2} z={:.2} elev={:.3} yaw={:.2} pitch={:.2} roll={:.2} scale={:.2} layer={} flags={} undo={:?}", d.world.objects.model_path(o), o.x, o.z, o.elevation, o.yaw, o.pitch, o.roll, o.scale, o.layer(), o.flags & 0xffff, d.history.undo_label());
                     }
                 }
             }

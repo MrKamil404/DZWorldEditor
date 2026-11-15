@@ -7343,6 +7343,10 @@
   "de": "{0} × {1} Zellen über {2} × {3} m; {4} Bits usage, {5} Bits value.",
   "pl": "{0} × {1} komórek na {2} × {3} m; {4} bitów usage, {5} bitów value."
  },
+ "{0}: cleared on {1} objects": {
+  "de": "{0}: bei {1} Objekten entfernt",
+  "pl": "{0}: wyłączone dla {1} obiektów"
+ },
  "{0}: item {1} is not in the type files": {
   "de": "{0}: Gegenstand {1} ist nicht in den Typendateien",
   "pl": "{0}: przedmiotu {1} nie ma w plikach typów"
@@ -7350,6 +7354,10 @@
  "{0}: preset {1} is not in cfgrandompresets.xml": {
   "de": "{0}: Preset {1} ist nicht in cfgrandompresets.xml",
   "pl": "{0}: presetu {1} nie ma w cfgrandompresets.xml"
+ },
+ "{0}: set on {1} objects": {
+  "de": "{0}: bei {1} Objekten gesetzt",
+  "pl": "{0}: włączone dla {1} obiektów"
  },
  "{0}°  ·  step {1}° (wheel)": {
   "de": "{0}°  ·  Schritt {1}° (Mausrad)",
