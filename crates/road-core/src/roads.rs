@@ -442,7 +442,7 @@ pub fn fit_path(
     s: &RoutingSettings,
     allowed: impl Fn(Point, Point) -> bool,
 ) -> Result<Vec<PlacedPart>> {
-    fit_path_inner(points, family, catalog, s, allowed, None)
+    fit_path_inner(points, family, catalog, s, allowed, None, true)
 }
 
 /// [`fit`] that goes on from `start`, the open end of a road already laid: it keeps that
@@ -457,7 +457,7 @@ pub fn fit_from(
 ) -> Result<Vec<PlacedPart>> {
     ensure!(points.len() >= 2, "Wskaż przynajmniej dwa punkty");
     let smoothed = widen(points, s.min_radius, (s.tolerance * 1.2).max(4.))?;
-    fit_path_inner(&smoothed, family, catalog, s, allowed, Some(start))
+    fit_path_inner(&smoothed, family, catalog, s, allowed, Some(start), true)
 }
 
 /// [`fit_path`] from `start` along a path searched or drawn from it.
@@ -469,7 +469,38 @@ pub fn fit_path_from(
     s: &RoutingSettings,
     allowed: impl Fn(Point, Point) -> bool,
 ) -> Result<Vec<PlacedPart>> {
-    fit_path_inner(points, family, catalog, s, allowed, Some(start))
+    fit_path_inner(points, family, catalog, s, allowed, Some(start), true)
+}
+
+/// [`fit`] of a stretch of road next to a bridge: from `start`, the end of a bridge, when given
+/// (no end piece there, as with [`fit_from`]), and with an end piece at the far end only when
+/// `end_cap` says so. A stretch running onto a bridge ends exactly where an end piece would,
+/// with a straight as long as one in its place, so the road goes on onto the deck without a gap.
+pub fn fit_stretch(
+    start: Option<Port>,
+    points: &[Point],
+    end_cap: bool,
+    family: &str,
+    catalog: &[CatalogPart],
+    s: &RoutingSettings,
+    allowed: impl Fn(Point, Point) -> bool,
+) -> Result<Vec<PlacedPart>> {
+    ensure!(points.len() >= 2, "Wskaż przynajmniej dwa punkty");
+    let smoothed = widen(points, s.min_radius, (s.tolerance * 1.2).max(4.))?;
+    fit_path_inner(&smoothed, family, catalog, s, allowed, start, end_cap)
+}
+
+/// [`fit_stretch`] along a line already limited in curvature, as [`fit_path`].
+pub fn fit_path_stretch(
+    start: Option<Port>,
+    points: &[Point],
+    end_cap: bool,
+    family: &str,
+    catalog: &[CatalogPart],
+    s: &RoutingSettings,
+    allowed: impl Fn(Point, Point) -> bool,
+) -> Result<Vec<PlacedPart>> {
+    fit_path_inner(points, family, catalog, s, allowed, start, end_cap)
 }
 
 /// The same parts run the other way: last first, each entered by its other port.
@@ -498,6 +529,7 @@ fn fit_path_inner(
     s: &RoutingSettings,
     allowed: impl Fn(Point, Point) -> bool,
     start: Option<Port>,
+    end_cap: bool,
 ) -> Result<Vec<PlacedPart>> {
     ensure!(points.len() >= 2, "Wskaż przynajmniej dwa punkty");
     let track = crate::rails::is_track_family(family);
@@ -528,8 +560,12 @@ fn fit_path_inner(
         !choices.is_empty(),
         "Brak prostych i zakrętów MLOD dla tej rodziny"
     );
+    // An end that runs onto a bridge is fitted as if it had an end piece, so it ends exactly
+    // there, and gets a straight of the same length in its place.
+    let closing_cap = cap;
+    let closing_length = cap_length;
     // Without caps the end can only be met to within half the shortest piece.
-    let slack = if track {
+    let slack = if closing_cap.is_none() {
         choices.iter().map(|m| m.model.length).fold(f64::INFINITY, f64::min) / 2.
     } else {
         0.
@@ -618,7 +654,7 @@ fn fit_path_inner(
             continue;
         }
         furthest = furthest.max(progress);
-        if let Some(cap) = cap {
+        if let Some(cap) = closing_cap {
             let last = place(cap, at, false)?;
             let last_end = placed_endpoint(&last, &cap.model)?;
             let miss = norm(sub(last_end.p, end));
@@ -665,7 +701,7 @@ fn fit_path_inner(
                 };
                 let (deviation, pr) = near(next.p, progress);
                 if pr <= progress + 0.01 || deviation > s.tolerance
-                    || pr + cap_length > length + s.tolerance
+                    || pr + closing_length > length + s.tolerance
                 {
                     continue;
                 }
@@ -748,9 +784,15 @@ fn fit_path_inner(
     }
     chain.reverse();
     parts.extend(chain);
+    // A straight as long as the end piece, where the road runs on onto a bridge.
+    let open_end = (!end_cap).then(|| closing.as_ref().and_then(|c| {
+        let length = catalog.iter().find(|m| m.path == c.model)?.model.length;
+        let straight = choices.iter().find(|m| m.category == 3 && (m.model.length - length).abs() < 0.02)?;
+        place(straight, nodes[last].at, false).ok()
+    })).flatten();
     match closing {
         Some(c) => {
-            parts.push(c);
+            parts.push(open_end.unwrap_or(c));
             Ok(parts)
         }
         None => merge_straights(parts, &choices, |_, line: &[Point]| {

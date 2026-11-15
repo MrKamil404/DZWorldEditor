@@ -85,6 +85,40 @@ impl BridgeKit {
         }
         Self::load(&tracks.parent()?.join("Bridges").join("Rail_Bridge_15.p3d"), true).ok()
     }
+    /// A road bridge from its model file.
+    pub fn open(file: &Path) -> Result<Self> {
+        Self::load(file, false)
+    }
+    /// The road bridges of the vanilla maps that can be chained over a gap, relative to the
+    /// work drive `drive`: their ends and pillars are left out.
+    pub fn road_models(drive: &Path) -> Vec<String> {
+        let mut out = Vec::new();
+        for folder in ["dz/structures/roads/Bridges", "dz/structures_bliss/roads/Bridges", "dz/structures_sakhal/roads/Bridges", "dz/structures_takistan/roads/Bridges"] {
+            let Ok(entries) = std::fs::read_dir(drive.join(folder)) else { continue };
+            let mut found: Vec<String> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("p3d")))
+                .filter(|p| {
+                    let name = p.file_stem().unwrap_or_default().to_string_lossy().to_lowercase();
+                    !["left", "right", "pillar", "end"].iter().any(|w| name.contains(w)) && Self::open(p).is_ok()
+                })
+                .map(|p| format!("{}/{}", folder, p.file_name().unwrap_or_default().to_string_lossy()).replace('/', "\\"))
+                .collect();
+            found.sort();
+            out.extend(found);
+        }
+        out
+    }
+    /// The road bridge `model` names (relative to the work drive next to `parts`), or, without
+    /// one, the bridge that suits the road's width.
+    pub fn for_road_model(parts: &Path, family: &str, catalog: &[CatalogPart], model: &str) -> Option<Self> {
+        if model.trim().is_empty() {
+            return Self::for_road(parts, family, catalog);
+        }
+        let drive = parts.ancestors().nth(4)?;
+        Self::open(&drive.join(model.replace('\\', "/"))).ok().or_else(|| Self::for_road(parts, family, catalog))
+    }
     /// The road bridge of the right width from the `Bridges` folder next to the road parts.
     pub fn for_road(parts: &Path, family: &str, catalog: &[CatalogPart]) -> Option<Self> {
         let width = catalog
@@ -1142,6 +1176,20 @@ mod tests {
     }
 
     /// The DayZ bridge models when the work drive holds them.
+    /// The road bridges offered are those that chain: whole spans, not ends or pillars.
+    #[test]
+    fn road_bridges_to_choose_from() {
+        let drive = Path::new("P:/");
+        if !drive.join("dz/structures/roads/Bridges").exists() { return; }
+        let models = BridgeKit::road_models(drive);
+        println!("{models:#?}");
+        assert!(models.iter().any(|m| m.ends_with("Bridge_Stone_25.p3d")));
+        assert!(!models.iter().any(|m| { let l = m.to_lowercase(); l.contains("left") || l.contains("pillar") }));
+        let parts = drive.join("dz/structures/roads/parts");
+        let metal = models.iter().find(|m| m.ends_with("Bridge_Metal_25.p3d")).unwrap();
+        assert!(BridgeKit::for_road_model(&parts, "f", &[], metal).unwrap().model.ends_with("Bridge_Metal_25.p3d"));
+    }
+
     #[test]
     fn dayz_bridges_measure_as_expected() {
         let (roads, tracks) = (Path::new("P:/dz/structures/roads/parts"), Path::new(DEFAULT_FOLDER));

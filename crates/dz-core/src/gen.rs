@@ -1466,7 +1466,7 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
                 let parts = roads::fit_path_from(start, &path, &req.family, catalog, &req.settings, |_, _| true)?;
                 return Ok(Planned { parts, ..Default::default() });
             }
-            let bridge = if rail { BridgeKit::for_track(tracks, &req.family) } else { BridgeKit::for_road(&road_folder, &req.family, catalog) };
+            let bridge = if rail { BridgeKit::for_track(tracks, &req.family) } else { BridgeKit::for_road_model(&road_folder, &req.family, catalog, &req.settings.bridge_model) };
             routing::plan(&terrain, &line, &req.family, catalog, &req.settings, &obstacles, &crossings.with_bridge(bridge), &cancel)
         })();
         let _ = std::fs::remove_dir_all(&dir);
@@ -1495,7 +1495,7 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
         }
         let (parts, extras) = result?;
         // Gorges and water along the drawn line take bridges too, where a kit exists.
-        let bridge = if rail { BridgeKit::for_track(tracks, &req.family) } else { BridgeKit::for_road(&road_folder, &req.family, catalog) };
+        let bridge = if rail { BridgeKit::for_track(tracks, &req.family) } else { BridgeKit::for_road_model(&road_folder, &req.family, catalog, &req.settings.bridge_model) };
         let bridged = bridge.as_ref().filter(|_| req.start.is_none()).and_then(|kit| {
             let (height, sea) = (&w.height, w.meta.sea_level);
             // Rivers and ponds are water too, though their beds lie above the sea.
@@ -1524,7 +1524,9 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
             decks.push(crate::world::BridgeDeck { from, to, height: 0.0, free: true });
             continue;
         }
-        let height = ((w.height.sample(from[0], from[1]) + w.height.sample(to[0], to[1])) * 0.5).max(w.meta.sea_level + 1.0);
+        // Between the banks, raised as the settings say, or at the height they give.
+        let between = (w.height.sample(from[0], from[1]) + w.height.sample(to[0], to[1])) * 0.5 + req.settings.deck_raise as f32;
+        let height = if req.settings.deck_fixed { req.settings.deck_height as f32 } else { between }.max(w.meta.sea_level + 1.0);
         decks.push(crate::world::BridgeDeck { from, to, height, free: false });
         deck_of.push(height);
     }
@@ -2567,10 +2569,14 @@ pub fn road_modifier(base: &Heightmap, id: u64, name: &str, center: &[[f32; 2]],
         return None;
     }
     // Long straight parts give few points, which would bridge over the terrain between them.
+    // Near a bridge they lie closer, so the road eases onto the deck instead of meeting it at
+    // a kink.
+    let near_deck = |p: [f32; 2]| decks.iter().filter(|d| !d.free).any(|d| [d.from, d.to].iter().any(|e| (e[0] - p[0]).hypot(e[1] - p[1]) < 40.0));
     let mut points: Vec<[f32; 2]> = Vec::with_capacity(center.len() * 2);
     for w in center.windows(2) {
         let (dx, dz) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
-        let steps = ((dx * dx + dz * dz).sqrt() / 8.0).ceil().max(1.0) as usize;
+        let spacing = if near_deck(w[0]) || near_deck(w[1]) { 1.0 } else { 8.0 };
+        let steps = ((dx * dx + dz * dz).sqrt() / spacing).ceil().max(1.0) as usize;
         for k in 0..steps {
             let t = k as f32 / steps as f32;
             points.push([w[0][0] + dx * t, w[0][1] + dz * t]);
@@ -3072,6 +3078,50 @@ mod tests {
         // Road records stay readable.
         let project = tv4p::load(&out, &mut Library::new(parts.to_path_buf())).unwrap();
         assert!(!project.roads.is_empty());
+    }
+
+
+    /// A road runs onto a bridge and off it with no end pieces at the deck, and the ground
+    /// graded under it meets the deck at its height on both banks, when P: is mounted.
+    #[test]
+    fn a_bridged_road_runs_onto_its_deck() {
+        let parts = Path::new("P:/dz/structures/roads/parts");
+        if !parts.exists() { return; }
+        let catalog = road_catalog(parts).unwrap();
+        let mut w = World::new(crate::world::WorldMeta::new("B", 512, 2.0), 100.0);
+        // A gorge, with the far bank 3 m higher than the near one.
+        for j in 0..w.base.rows {
+            for i in 0..w.base.cols {
+                let (x, c) = (i as f32 * w.base.cell, w.base.cols);
+                if (480.0..540.0).contains(&x) { w.base.data[j * c + i] = 88.0; } else if x > 540.0 { w.base.data[j * c + i] = 103.0; }
+            }
+        }
+        w.recompose(None);
+        let db = crate::model_info::ModelDb::new("P:/");
+        let base = w.clone();
+        // As chosen: by the road's width between the banks, or a metal bridge raised 4 m, or one at a fixed height.
+        let metal = r"dz\structures\roads\Bridges\Bridge_Metal_25.p3d".to_string();
+        for (model, fixed, height, raise) in [(String::new(), false, 0.0, 0.0), (metal.clone(), false, 0.0, 4.0), (metal, true, 106.0, 0.0)] {
+        let mut w = base.clone();
+        let settings = dayz_road_tool::document::RoutingSettings { bridge_model: model.clone(), deck_fixed: fixed, deck_height: height, deck_raise: raise, ..Default::default() };
+        let req = RouteRequest { family: "asf2".into(), points: vec![[200.0, 500.0], [800.0, 500.0]], terrain_route: false, settings, forbidden: vec![], roads: vec![], start: None, laid: vec![] };
+        let r = build_route(&mut w, &db, &req, &catalog, &Job::default()).unwrap();
+        let d = r.decks[0];
+        let bridges: Vec<&str> = r.objects.iter().map(|o| w.objects.models[o.model as usize].path.as_str()).filter(|p| p.contains("bridges")).collect();
+        let want = if model.is_empty() { "bridge_stone_25" } else { "bridge_metal_25" };
+        assert!(!bridges.is_empty() && bridges.iter().all(|p| p.to_ascii_lowercase().contains(want)), "{bridges:?}");
+        if fixed { assert_eq!(d.height, 106.0); } else if raise > 0.0 { assert!((d.height - 105.5).abs() < 0.01, "{d:?}"); }
+        let caps: Vec<f32> = r.objects.iter().filter(|o| w.objects.models[o.model as usize].path.contains("konec")).map(|o| o.x).collect();
+        assert!(caps.iter().all(|x| (x - d.from[0]).abs() > 20.0 && (x - d.to[0]).abs() > 20.0), "end pieces at the bridge: {caps:?} {d:?}");
+        w.modifiers.push(road_modifier(&w.base, 1, "r", &r.centerline, 8.0, 6.0, &r.decks, &Default::default(), &r.profile).unwrap());
+        w.recompose(None);
+        for (end, out) in [(d.from, -1.0f32), (d.to, 1.0)] {
+            for k in [0.0f32, 1.0, 2.0] {
+                let h = w.height.sample(end[0] + out * k, end[1]);
+                assert!((h - d.height).abs() < 0.15, "{k} m off the deck end {end:?}: {h} for a deck at {}", d.height);
+            }
+        }
+        }
     }
 
     /// A road drawn straight across a gorge gets a bridge, with or without earthworks, when P: is mounted.

@@ -114,6 +114,17 @@ pub struct RoutingSettings {
     /// Cost of earthwork in metres of road per m² of cut or fill along the route.
     #[serde(default = "default_earth_weight")]
     pub earth_weight: f64,
+    /// Bridge model, relative to the work drive; empty for the one that suits the road's width.
+    #[serde(default)]
+    pub bridge_model: String,
+    /// Bridge decks stand at `deck_height` above sea level instead of between their banks.
+    #[serde(default)]
+    pub deck_fixed: bool,
+    #[serde(default)]
+    pub deck_height: f64,
+    /// Raises (or lowers) decks that stand between their banks, m.
+    #[serde(default)]
+    pub deck_raise: f64,
 }
 fn default_earth_weight() -> f64 {
     0.5
@@ -133,6 +144,10 @@ impl Default for RoutingSettings {
             bridge_max: 150.,
             bridge_over_forbidden: false,
             bridge_weight: default_bridge_weight(),
+            bridge_model: String::new(),
+            deck_fixed: false,
+            deck_height: 0.,
+            deck_raise: 0.,
         }
     }
 }
@@ -152,6 +167,10 @@ impl RoutingSettings {
             bridge_max: 150.,
             bridge_over_forbidden: false,
             bridge_weight: default_bridge_weight(),
+            bridge_model: String::new(),
+            deck_fixed: false,
+            deck_height: 0.,
+            deck_raise: 0.,
         }
     }
     fn valid(&self) -> bool {

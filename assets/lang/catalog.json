@@ -667,6 +667,10 @@
   "de": "Wo die Linie abbiegt, werden Kurven derselben Familie verwendet. Das Bett samt Übergang bleibt innerhalb der Wasserbreite.",
   "pl": "Tam, gdzie linia skręca, używane są zakręty z tej samej rodziny. Koryto razem z przejściem mieści się w szerokości wody."
  },
+ "Between the banks": {
+  "de": "Zwischen den Ufern",
+  "pl": "Między brzegami"
+ },
  "Beyond the edge of the map": {
   "de": "Jenseits des Kartenrands",
   "pl": "Poza krawędzią mapy"
@@ -746,6 +750,10 @@
  "Bridge cost": {
   "de": "Brückenkosten",
   "pl": "Koszt mostu"
+ },
+ "Bridge model": {
+  "de": "Brückenmodell",
+  "pl": "Model mostu"
  },
  "Bridges may cross forbidden areas and water": {
   "de": "Brücken dürfen Sperrgebiete und Wasser queren",
@@ -858,6 +866,10 @@
  "By points": {
   "de": "Nach Punkten",
   "pl": "Po punktach"
+ },
+ "By road width": {
+  "de": "Nach Straßenbreite",
+  "pl": "Według szerokości drogi"
  },
  "Camera": {
   "de": "Kamera",
@@ -1490,6 +1502,14 @@
  "Decimals": {
   "de": "Nachkommastellen",
   "pl": "Miejsca po przecinku"
+ },
+ "Deck at m": {
+  "de": "Fahrbahn auf m",
+  "pl": "Pomost na m"
+ },
+ "Deck height": {
+  "de": "Fahrbahnhöhe",
+  "pl": "Wysokość pomostu"
  },
  "Default": {
   "de": "Standard",
@@ -2279,6 +2299,10 @@
   "de": "Kacheln korrigieren",
   "pl": "Napraw kafle"
  },
+ "Fixed": {
+  "de": "Fest",
+  "pl": "Stała"
+ },
  "Fixed height, ignores the terrain": {
   "de": "Feste Höhe, ignoriert das Gelände",
   "pl": "Stała wysokość, ignoruje teren"
@@ -2666,6 +2690,10 @@
  "Height m": {
   "de": "Höhe m",
   "pl": "Wysokość m"
+ },
+ "Height of the driving surface above sea level. The road on both banks rises or falls to it.": {
+  "de": "Höhe der Fahrbahn über dem Meeresspiegel. Die Straße an beiden Ufern steigt oder fällt zu ihr.",
+  "pl": "Wysokość jezdni nad poziomem morza. Droga na obu brzegach wznosi się lub opada do niej."
  },
  "Height offset": {
   "de": "Höhenversatz",
@@ -3086,6 +3114,10 @@
  "Lifetime": {
   "de": "Lebensdauer",
   "pl": "Czas życia"
+ },
+ "Lifts the deck above the middle of its two banks; the road on both banks rises to it.": {
+  "de": "Hebt die Fahrbahn über die Mitte ihrer beiden Ufer; die Straße an beiden Ufern steigt zu ihr an.",
+  "pl": "Podnosi pomost ponad średnią wysokość obu brzegów; droga na obu brzegach wznosi się do niego."
  },
  "Lighting": {
   "de": "Beleuchtung",
@@ -4666,6 +4698,10 @@
  "Raise by": {
   "de": "Anheben um",
   "pl": "Podnieś o"
+ },
+ "Raise deck m": {
+  "de": "Fahrbahn anheben m",
+  "pl": "Podnieś pomost m"
  },
  "Raise the bed": {
   "de": "Fahrbahn anheben",
@@ -6802,6 +6838,10 @@
  "Without template libraries the layers cannot be matched to models.": {
   "de": "Ohne Vorlagenbibliotheken lassen sich die Ebenen keinen Modellen zuordnen.",
   "pl": "Bez bibliotek szablonów nie da się dopasować warstw do modeli."
+ },
+ "Wooden for narrow roads, stone for most, metal for the widest.": {
+  "de": "Holz für schmale Straßen, Stein für die meisten, Metall für die breitesten.",
+  "pl": "Drewniany dla wąskich dróg, kamienny dla większości, metalowy dla najszerszych."
  },
  "Work drive": {
   "de": "Arbeitslaufwerk",

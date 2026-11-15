@@ -1016,6 +1016,12 @@ fn shape_details(app: &mut App, ui: &mut egui::Ui) {
     }
 }
 
+/// The road bridges that can be chosen, read from the work drive once.
+fn bridge_models() -> &'static [String] {
+    static MODELS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    MODELS.get_or_init(|| dayz_road_tool::rails::BridgeKit::road_models(std::path::Path::new("P:\\")))
+}
+
 fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSettings) -> bool {
     let mut changed = false;
     let mut field = |ui: &mut egui::Ui, label: String, v: &mut f64, range: std::ops::RangeInclusive<f64>| {
@@ -1033,6 +1039,28 @@ fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSe
     field(ui, t("Max. bridge length m"), &mut r.bridge_max, 0.0..=600.0);
     row(ui, &t("Bridge cost"), |ui| { changed |= ui.add(egui::Slider::new(&mut r.bridge_weight, 0.5..=10.0)).on_hover_text(t("A metre of bridge counts as this many metres of road. Lower it when cheap earthworks lead the road down into valleys instead of over them.")).changed(); });
     changed |= ui.checkbox(&mut r.bridge_over_forbidden, t("Bridges may cross forbidden areas and water")).changed();
+    row(ui, &t("Bridge model"), |ui| {
+        let name = |m: &str| m.rsplit(['\\', '/']).next().unwrap_or(m).trim_end_matches(".p3d").to_string();
+        let shown = if r.bridge_model.is_empty() { t("By road width") } else { name(&r.bridge_model) };
+        egui::ComboBox::from_id_salt("bridge_model").selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
+            changed |= ui.selectable_value(&mut r.bridge_model, String::new(), t("By road width")).on_hover_text(t("Wooden for narrow roads, stone for most, metal for the widest.")).changed();
+            for m in bridge_models() {
+                changed |= ui.selectable_value(&mut r.bridge_model, m.clone(), name(m)).on_hover_text(m.as_str()).changed();
+            }
+        });
+    });
+    row(ui, &t("Deck height"), |ui| {
+        let shown = t(if r.deck_fixed { "Fixed" } else { "Between the banks" });
+        egui::ComboBox::from_id_salt("deck_height").selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
+            changed |= ui.selectable_value(&mut r.deck_fixed, false, t("Between the banks")).changed();
+            changed |= ui.selectable_value(&mut r.deck_fixed, true, t("Fixed")).changed();
+        });
+    });
+    if r.deck_fixed {
+        row(ui, &t("Deck at m"), |ui| { changed |= ui.add(egui::DragValue::new(&mut r.deck_height).speed(0.1).suffix(" m")).on_hover_text(t("Height of the driving surface above sea level. The road on both banks rises or falls to it.")).changed(); });
+    } else {
+        row(ui, &t("Raise deck m"), |ui| { changed |= ui.add(egui::Slider::new(&mut r.deck_raise, -5.0..=20.0)).on_hover_text(t("Lifts the deck above the middle of its two banks; the road on both banks rises to it.")).changed(); });
+    }
     changed
 }
 

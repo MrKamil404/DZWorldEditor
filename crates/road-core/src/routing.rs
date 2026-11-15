@@ -1092,7 +1092,7 @@ fn fit_bridged(
     s: &RoutingSettings,
     allowed: impl Fn(Point, Point) -> bool + Copy,
 ) -> Result<Planned> {
-    fit_bridged_with(path, spans, kit, catalog, |stretch| crate::roads::fit_path(stretch, family, catalog, s, allowed))
+    fit_bridged_with(path, spans, kit, catalog, |start, stretch, end_cap| crate::roads::fit_path_stretch(start, stretch, end_cap, family, catalog, s, allowed))
 }
 
 /// [`fit_bridged`] for a road fitted straight along its waypoints: `points` holds the
@@ -1105,7 +1105,7 @@ pub fn fit_waypoints_bridged(
     catalog: &[crate::roads::CatalogPart],
     s: &RoutingSettings,
 ) -> Result<Planned> {
-    fit_bridged_with(points, spans, kit, catalog, |stretch| crate::roads::fit(stretch, family, catalog, s, |_, _| true))
+    fit_bridged_with(points, spans, kit, catalog, |start, stretch, end_cap| crate::roads::fit_stretch(start, stretch, end_cap, family, catalog, s, |_, _| true))
 }
 
 /// Where a road drawn straight along its waypoints needs bridges: on a straight leg, from the
@@ -1195,31 +1195,34 @@ fn fit_bridged_with(
     spans: &[(Point, Point, usize)],
     kit: &crate::rails::BridgeKit,
     catalog: &[crate::roads::CatalogPart],
-    fit: impl Fn(&[Point]) -> Result<Vec<crate::roads::PlacedPart>>,
+    fit: impl Fn(Option<crate::geometry::Port>, &[Point], bool) -> Result<Vec<crate::roads::PlacedPart>>,
 ) -> Result<Planned> {
     let at = |p: Point, from: usize| path[from..].iter().position(|q| norm(sub(*q, p)) < 1e-6).map(|i| i + from).context("Most poza trasą");
     let mut planned = Planned::default();
     let mut from = 0;
-    let mut start: Option<Point> = None;
+    // The road runs onto each bridge and off it again in one line, with no end pieces at the
+    // bridge: the road before ends at the deck, the road after goes on from it straight ahead.
+    let mut start: Option<crate::geometry::Port> = None;
     for &(a, b, count) in spans {
         let (ia, ib) = (at(a, from)?, at(b, from)?);
         let mut stretch = path[from..=ia].to_vec();
         if let Some(p) = start {
-            stretch[0] = p;
+            stretch[0] = p.p;
         }
-        planned.parts.extend(fit(&stretch)?);
-        let end = crate::roads::endpoint(&planned.parts, catalog)?.p;
-        let d = sub(b, end);
-        let (pieces, exit) = kit.lay(end, d[1].atan2(d[0]), count);
+        planned.parts.extend(fit(start, &stretch, false)?);
+        let end = crate::roads::endpoint(&planned.parts, catalog)?;
+        let d = sub(b, end.p);
+        let heading = d[1].atan2(d[0]);
+        let (pieces, exit) = kit.lay(end.p, heading, count);
         planned.bridges.push(crate::document::Bridge { deck: kit.deck, after: planned.parts.len(), pieces });
-        start = Some(exit);
+        start = Some(crate::geometry::Port { p: exit, outward: [heading.cos(), heading.sin()] });
         from = ib;
     }
     let mut stretch = path[from..].to_vec();
     if let Some(p) = start {
-        stretch[0] = p;
+        stretch[0] = p.p;
     }
-    planned.parts.extend(fit(&stretch)?);
+    planned.parts.extend(fit(start, &stretch, true)?);
     Ok(planned)
 }
 /// Terrain route through `waypoints` fitted with models of `family`. The fitted models may
