@@ -806,6 +806,19 @@ impl App {
         }
     }
 
+    /// Fits the whole of a route again, bridges and all, as it was built: what "Fit again"
+    /// does, whatever is kept when points are moved.
+    pub fn fit_route_again(&mut self, i: usize, before: Vec<[f32; 2]>) {
+        let Some(r) = self.doc.as_ref().and_then(|d| d.world.routes.get(i)).cloned() else { return };
+        if self.task.is_some() {
+            if let Some(d) = &mut self.doc { d.world.routes[i].points = before; }
+            self.warn(t("Another task is still running"));
+            return;
+        }
+        let req = self.route_request(r.family, r.points, r.terrain_route, r.settings);
+        self.start_route(req, Some(i), Some(before), false);
+    }
+
     /// Fits the models of a route again after its waypoints or settings changed.
     pub fn refit_route(&mut self, i: usize, before: Vec<[f32; 2]>) {
         let Some(r) = self.doc.as_ref().and_then(|d| d.world.routes.get(i)).cloned() else { return };

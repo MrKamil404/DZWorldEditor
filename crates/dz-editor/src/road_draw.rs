@@ -159,7 +159,9 @@ pub fn live_route_with(app: &mut App, i: usize, points: Vec<[f32; 2]>, ctx: &egu
 /// waypoints they reach. None when the change starts at the first waypoint, or the route
 /// keeps no pieces, and the whole route is fitted again.
 pub fn route_kept(r: &dz_core::world::RoadRoute, old: &[[f32; 2]], points: &[[f32; 2]], catalog: &[CatalogPart]) -> Option<(Vec<PlacedPart>, usize)> {
-    if r.parts.is_empty() || r.terrain_route || r.method == RoadDraw::Parts {
+    // The pieces of a route with bridges do not run on one after another across them, so
+    // it is fitted again whole, bridges and all.
+    if r.parts.is_empty() || r.terrain_route || r.method == RoadDraw::Parts || !r.decks.is_empty() {
         return None;
     }
     let common = old.len().min(points.len());

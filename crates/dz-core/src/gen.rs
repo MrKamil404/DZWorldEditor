@@ -1567,7 +1567,13 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
     for (i, p) in route.parts.iter().chain(&route.extras).chain(spans).enumerate() {
         let model = w.objects.intern(&road_model_path(&p.model, prefix));
         if let Some((height, deck)) = level.get(i).copied().flatten() {
-            objects.push(Obj { x: p.position[0] as f32, z: p.position[1] as f32, elevation: height - deck, yaw: p.rotation.rem_euclid(360.0) as f32, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: crate::objects::FLAG_ABSOLUTE });
+            // A bridge is measured round the middle of its binarised model, as the game keeps
+            // it; the object stands at the model's own origin, that far from the middle.
+            let yaw = p.rotation.rem_euclid(360.0) as f32;
+            let c = db.get(&w.objects.models[model as usize].path).center;
+            let m = crate::objects::rotation(yaw, 0.0, 0.0, 1.0);
+            let off = |k: usize| m[0][k] * c[0] + m[2][k] * c[2];
+            objects.push(Obj { x: p.position[0] as f32 - off(0), z: p.position[1] as f32 - off(2), elevation: height - deck - c[1], yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model, flags: crate::objects::FLAG_ABSOLUTE });
             continue;
         }
         let obj = match poses.get(i).copied().flatten() {
@@ -3111,6 +3117,20 @@ mod tests {
         let want = if model.is_empty() { "bridge_stone_25" } else { "bridge_metal_25" };
         assert!(!bridges.is_empty() && bridges.iter().all(|p| p.to_ascii_lowercase().contains(want)), "{bridges:?}");
         if fixed { assert_eq!(d.height, 106.0); } else if raise > 0.0 { assert!((d.height - 105.5).abs() < 0.01, "{d:?}"); }
+        // The deck of the first span starts where the road ends, and that of the last ends
+        // where it goes on, at the deck's height: the objects stand at the models' own origins.
+        let kit = dayz_road_tool::rails::BridgeKit::for_road_model(parts, "asf2", &catalog, &model).unwrap();
+        let spans: Vec<&Obj> = r.objects.iter().filter(|o| w.objects.models[o.model as usize].path.contains("bridges")).collect();
+        let at = |o: &Obj, q: [f64; 2]| {
+            let c = db.get(&w.objects.models[o.model as usize].path).center;
+            let m = crate::objects::rotation(o.yaw, 0.0, 0.0, 1.0);
+            let (x, z) = (q[0] as f32 + c[0], q[1] as f32 + c[2]);
+            ([o.x + m[0][0] * x + m[2][0] * z, o.z + m[0][2] * x + m[2][2] * z], o.elevation + c[1] + kit.deck as f32)
+        };
+        for (o, q, end) in [(spans[0], kit.start, d.from), (*spans.last().unwrap(), kit.end, d.to)] {
+            let (p, h) = at(o, q);
+            assert!((p[0] - end[0]).hypot(p[1] - end[1]) < 0.05 && (h - d.height).abs() < 0.02, "deck end {p:?} at {h}, road at {end:?} and {}", d.height);
+        }
         let caps: Vec<f32> = r.objects.iter().filter(|o| w.objects.models[o.model as usize].path.contains("konec")).map(|o| o.x).collect();
         assert!(caps.iter().all(|x| (x - d.from[0]).abs() > 20.0 && (x - d.to[0]).abs() > 20.0), "end pieces at the bridge: {caps:?} {d:?}");
         w.modifiers.push(road_modifier(&w.base, 1, "r", &r.centerline, 8.0, 6.0, &r.decks, &Default::default(), &r.profile).unwrap());

@@ -1191,11 +1191,11 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
     // Typed values wait for "Fit again", which fits from the points before the typing.
     let typed_before = if action == 1 || action == 2 { app.line.typed.take().filter(|t| t.0 == index).map(|t| t.1) } else { None };
     match action {
-        1 => app.refit_route(index, typed_before.unwrap_or(before)),
+        1 => app.fit_route_again(index, typed_before.unwrap_or(before)),
         2 => {
             if let Some(d) = &mut app.doc { d.world.routes[index].points.reverse(); }
             app.line.selected_point = None;
-            app.refit_route(index, typed_before.unwrap_or(before));
+            app.fit_route_again(index, typed_before.unwrap_or(before));
         }
         4 => {
             if let Some(id) = app.doc.as_ref().and_then(|d| d.world.routes.get(index)).map(|r| r.id) { crate::deleting::request(app, crate::deleting::Target::Route(id)); }
