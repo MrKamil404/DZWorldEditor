@@ -1732,6 +1732,9 @@ fn model_list(w: &World) -> Vec<String> {
 
 /// Puts the new result of a generator in place of its previous one, as one undo step.
 fn store_generated(app: &mut App, id: u64, models: Vec<String>, objects: Vec<Obj>) -> Vec<u32> {
+    // Generators count heights from the model's origin; a model with a LandContact LOD rests on
+    // its contact points instead, as it does when placed by hand.
+    let rest: Vec<f32> = models.iter().map(|m| { let i = app.db.get(&ObjectStore::normalize_path(m)); if i.contact_count > 0 { i.contact_y } else { 0.0 } }).collect();
     let Some(doc) = &mut app.doc else { return Vec::new() };
     let Some(index) = doc.world.generators.iter().position(|g| g.id == id) else { return Vec::new() };
     let before = doc.world.generators.clone();
@@ -1744,6 +1747,7 @@ fn store_generated(app: &mut App, id: u64, models: Vec<String>, objects: Vec<Obj
     let map: Vec<u32> = models.iter().map(|m| doc.world.objects.intern(m)).collect();
     let mut ids = Vec::with_capacity(objects.len());
     for mut o in objects {
+        if o.flags & dz_core::objects::FLAG_ABSOLUTE == 0 { o.elevation -= rest[o.model as usize] * o.scale; }
         o.model = map[o.model as usize];
         o.set_layer(layer);
         let new = doc.world.objects.insert(o);

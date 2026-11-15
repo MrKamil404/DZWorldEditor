@@ -124,8 +124,20 @@ pub fn parse_tb_objects(text: &str, w: &mut World, assets: &AssetIndex, db: &Mod
 /// its side, a barrier on an embankment) and stays as the built world has it.
 const LEVEL_BELOW: f32 = 10.0;
 
+/// A built WRP keeps the tilts meant for it, a barrier with one end sunk into a bank among
+/// them, but models the game fits to the ground also come with tilts of a tenth of a degree
+/// that are only noise. Taken as meant, they would stand the model on one contact point and
+/// sink the other by up to a metre, leaving steps in a crash barrier the game does not show.
+/// On Balticrus, levelling them below this brings the steps at barrier joints from 6.6 cm to
+/// 0.7 cm on average, while the barriers tilted by 6 degrees and more keep their sunk ends.
+const WRP_LEVEL_BELOW: f32 = 1.0;
+
 fn level_on_ground(info: &crate::model_info::ModelInfo, pitch: f32, roll: f32) -> (f32, f32) {
-    if info.placement.skews() && pitch.abs() < LEVEL_BELOW && roll.abs() < LEVEL_BELOW {
+    level_below(info, pitch, roll, LEVEL_BELOW)
+}
+
+fn level_below(info: &crate::model_info::ModelInfo, pitch: f32, roll: f32, below: f32) -> (f32, f32) {
+    if info.placement.skews() && pitch.abs() < below && roll.abs() < below {
         (0.0, 0.0)
     } else {
         (pitch, roll)
@@ -139,6 +151,7 @@ fn objects_from_wrp(wrp: &Wrp, height: &Heightmap, sea: f32, db: &ModelDb) -> Ob
         let info = db.get(&path);
         let m3 = [[o.matrix[0], o.matrix[1], o.matrix[2]], [o.matrix[3], o.matrix[4], o.matrix[5]], [o.matrix[6], o.matrix[7], o.matrix[8]]];
         let (yaw, pitch, roll, scale) = angles(&m3);
+        let (pitch, roll) = level_below(&info, pitch, roll, WRP_LEVEL_BELOW);
         let c = info.center;
         let off = |k: usize| m3[0][k] * c[0] + m3[1][k] * c[1] + m3[2][k] * c[2];
         let (x, y, z) = (o.matrix[9] - off(0), o.matrix[10] - off(1) + sea, o.matrix[11] - off(2));
@@ -1009,6 +1022,18 @@ mod tests {
         let raised = [(1, 0, 50.0, 50.0, 20.0f32), (1, 0, 80.0, 50.0, 17.0), (1, 0, 110.0, 50.0, 14.0)];
         assert_eq!(level_pairs(&raised, &grid(1.0)), 2);
         assert_eq!(level_pairs(&raised, &grid(0.0)), 0);
+    }
+
+    #[test]
+    fn a_built_map_keeps_meant_tilts_of_ground_fitted_models() {
+        use crate::model_info::{ModelInfo, Placement};
+        let barrier = ModelInfo { placement: Placement::SlopeLandContact, known: true, ..Default::default() };
+        // Noise comes in level; a barrier sunk into a bank keeps its tilt, at any size.
+        assert_eq!(level_below(&barrier, 0.2, -0.1, WRP_LEVEL_BELOW), (0.0, 0.0));
+        assert_eq!(level_below(&barrier, 0.2, 8.1, WRP_LEVEL_BELOW), (0.2, 8.1));
+        // Models the game does not fit to the ground keep every tilt.
+        let rock = ModelInfo { known: true, ..Default::default() };
+        assert_eq!(level_below(&rock, 0.2, -0.1, WRP_LEVEL_BELOW), (0.2, -0.1));
     }
 
     #[test]
