@@ -17,6 +17,8 @@ pub struct MaskTool {
     pub selection_only: bool,
     pub plants: bool,
     pub buildings: bool,
+    /// Road parts, whose whole footprint takes the surface.
+    pub roads: bool,
     /// Fill the footprint of buildings instead of stamping a patch under them.
     pub footprint: bool,
     /// Models with a surface assigned in the asset browser get that one.
@@ -24,7 +26,7 @@ pub struct MaskTool {
 }
 impl Default for MaskTool {
     fn default() -> Self {
-        Self { surface: 0, stamp: StampSettings::default(), selection_only: true, plants: true, buildings: false, footprint: true, own_surfaces: true }
+        Self { surface: 0, stamp: StampSettings::default(), selection_only: true, plants: true, buildings: false, roads: false, footprint: true, own_surfaces: true }
     }
 }
 
@@ -109,16 +111,18 @@ pub fn stamp_under_objects(app: &mut App) {
     let mut stamps: Vec<(Stamp, String, bool, f32)> = Vec::new();
     let mut add = |o: &dz_core::objects::Obj| {
         let path = w.objects.model_path(o);
-        if !w.object_visible(o) || path.contains("\\roads\\parts\\") || crate::models::is_water_model(path) || crate::models::is_decal_model(path, &app.db.get(path)) {
+        if !w.object_visible(o) || crate::models::is_water_model(path) || crate::models::is_decal_model(path, &app.db.get(path)) {
             return;
         }
-        let plant = crate::viewport::is_plant(path);
-        if (plant && !tool.plants) || (!plant && !tool.buildings) {
+        let road = path.to_ascii_lowercase().contains("\\roads\\parts\\");
+        let plant = !road && crate::viewport::is_plant(path);
+        if (road && !tool.roads) || (plant && !tool.plants) || (!road && !plant && !tool.buildings) {
             return;
         }
         let own = if tool.own_surfaces { library.surface_of(path).and_then(index) } else { None };
         let Some(surface) = own.or(fallback) else { return };
-        let footprint = (!plant && tool.footprint && !geometry).then(|| app.db.get(path)).filter(|i| i.known).map(|i| {
+        // A road part takes the surface over all of it, as a building with its footprint filled.
+        let footprint = (!plant && (tool.footprint || road) && !geometry).then(|| app.db.get(path)).filter(|i| i.known).map(|i| {
             let (hx, hz) = i.footprint();
             [hx * o.scale, hz * o.scale, o.yaw]
         });
@@ -242,6 +246,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         ui.checkbox(&mut app.mask_tool.own_surfaces, t("Use the surface assigned to each model")).on_hover_text(t("Assigned in the asset browser, with the right mouse button on a model or a folder. The surface above is for the other models."));
         ui.checkbox(&mut app.mask_tool.plants, t("Under trees and bushes"));
         ui.checkbox(&mut app.mask_tool.buildings, t("Under buildings and other objects"));
+        ui.checkbox(&mut app.mask_tool.roads, t("Under road parts")).on_hover_text(t("The whole of each road part takes the surface; the patch size is the margin round it."));
         ui.add_enabled_ui(app.mask_tool.buildings && app.mask_tool.stamp.shape != StampShape::Geometry, |ui| {
             ui.checkbox(&mut app.mask_tool.footprint, t("Fill the footprint of buildings")).on_hover_text(t("The patch size is then the margin round the footprint."));
         });
