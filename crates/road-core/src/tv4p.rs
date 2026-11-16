@@ -1042,6 +1042,48 @@ fn ensure_different(a: &Path, b: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
+mod diag_tests {
+    use super::*;
+    /// Fields of the parts of the roads of a project (DZ_TV4P_A, DZ_TV4P_B).
+    #[test]
+    #[ignore]
+    fn diag_part_fields() {
+        for key in ["DZ_TV4P_A", "DZ_TV4P_B"] {
+            let Ok(path) = std::env::var(key) else { continue };
+            let b = fs::read(&path).unwrap();
+            let bl = block(&b, 0x8a).unwrap();
+            let mut tags: std::collections::BTreeMap<(u8, u8, String), usize> = Default::default();
+            let mut shown = 0;
+            for e in bl.entries.iter() {
+                let body = &b[e.start..e.start + e.len];
+                for f in fields(body).unwrap() {
+                    let Some(list) = &f.list else { continue };
+                    for part in list {
+                        let pb = &body[part.start..part.start + part.len];
+                        let pf = fields(pb).unwrap();
+                        for g in &pf {
+                            let v = match g.typ {
+                                11 => String::new(),
+                                _ if g.len == 4 => format!("{}", u32(pb, g.start).unwrap()),
+                                _ => format!("len{}", g.len),
+                            };
+                            *tags.entry((g.tag, g.typ, v)).or_default() += 1;
+                        }
+                        if shown < 3 {
+                            shown += 1;
+                            println!("{key} part fields {:?}", pf.iter().map(|g| (format!("{:02X}", g.tag), g.typ, g.len, if g.typ == 11 { text(pb, g) } else { format!("{:?}", &pb[g.start..g.start + g.len.min(16)]) })).collect::<Vec<_>>());
+                        }
+                    }
+                }
+            }
+            for ((t, ty, v), n) in &tags {
+                println!("{key} tag {t:02X} type {ty} value {v}: {n}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod editor_tests {
     use super::*;
     use crate::{
