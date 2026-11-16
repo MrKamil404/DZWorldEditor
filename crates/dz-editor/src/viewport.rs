@@ -4249,6 +4249,16 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             eprintln!("GENSTATS satmods={}", app.doc.as_ref().map_or(0, |d| d.world.sat.modifiers.len()));
         }
         // Stamps surface `n` under every object, buildings by their footprint.
+        // `maskroads n [geometry margin]`: surface n under the road parts only.
+        "maskroads" => {
+            app.mask_tool.surface = nums.first().map(|v| *v as usize).unwrap_or(0);
+            (app.mask_tool.selection_only, app.mask_tool.buildings, app.mask_tool.plants, app.mask_tool.roads) = (false, false, false, true);
+            app.mask_tool.stamp.size_m = nums.get(2).copied().unwrap_or(1.0);
+            if nums.get(1).is_some_and(|v| *v > 0.0) {
+                app.mask_tool.stamp.shape = dz_core::maskmod::StampShape::Geometry;
+            }
+            crate::maskmods::stamp_under_objects(app);
+        }
         "maskunder" => {
             app.mask_tool.surface = nums.first().map(|v| *v as usize).unwrap_or(0);
             app.mask_tool.selection_only = false;
@@ -4259,6 +4269,12 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
             crate::maskmods::stamp_under_objects(app);
             eprintln!("GENSTATS maskmods={}", app.doc.as_ref().map_or(0, |d| d.world.mask_mods.modifiers.len()));
+        }
+        // How many mask pixels hold surface n.
+        "maskcount" => {
+            if let (Some(d), Some(n)) = (&app.doc, nums.first()) {
+                eprintln!("MASKCOUNT {} {}", *n as u8, d.world.mask.data.iter().filter(|v| **v == *n as u8).count());
+            }
         }
         "maskstat" => {
             if let Some(d) = &app.doc {

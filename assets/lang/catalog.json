@@ -7087,6 +7087,10 @@
   "de": "Die ganze Karte",
   "pl": "Cała mapa"
  },
+ "The whole of each road part takes the surface; the patch size is the margin round it.": {
+  "de": "Jedes Straßenteil erhält die Oberfläche ganz; die Fleckgröße ist der Rand um es herum.",
+  "pl": "Cały part drogi dostaje powierzchnię; rozmiar łaty to margines wokół niego."
+ },
  "The wicket or gate stays level instead of leaning with the slope like the fence.": {
   "de": "Pforte oder Tor bleibt waagerecht, statt sich wie der Zaun mit dem Hang zu neigen.",
   "pl": "Furtka lub brama stoi prosto zamiast pochylać się ze zboczem jak płot."
@@ -7298,6 +7302,10 @@
  "Under buildings and other objects": {
   "de": "Unter Gebäuden und anderen Objekten",
   "pl": "Pod budynkami i innymi obiektami"
+ },
+ "Under road parts": {
+  "de": "Unter Straßenteilen",
+  "pl": "Pod partami dróg"
  },
  "Under trees and bushes": {
   "de": "Unter Bäumen und Büschen",
