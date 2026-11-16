@@ -20,7 +20,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Key points** for named places on the map, compatible with Terrain Builder
 - **Map config**: the `CfgWorlds` entry of the map, with its base world, map grid and main menu scenes
 - **Terrain Builder import**, including layers, shapes, roads, key points and terrain holes, and import of built WRP worlds
-- **One-click build and test**: export, binarise with AddonBuilder and start a local server and client
+- **One-click build and test**: export, binarise with AddonBuilder and start a local server and client, after a **map check** that finds missing models and textures, floating, buried and doubled objects and more
 - **Automatic backups** and a built-in updater
 - **Mission editor** (experimental): the economy, loot, events, spawns and the rest of the server mission, see [docs/mission-editor.md](docs/mission-editor.md)
 - **Team work** (experimental): several people work on their own copies and merge their changes through a shared folder, see [docs/team-work.md](docs/team-work.md)

@@ -6,6 +6,7 @@ pub const WARN_MARK: &str = "\u{1}warn:";
 pub mod analysis;
 pub mod assets;
 pub mod build;
+pub mod check;
 pub mod clutter;
 pub mod edit;
 pub mod export;

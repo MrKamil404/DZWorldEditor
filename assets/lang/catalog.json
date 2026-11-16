@@ -919,6 +919,10 @@
   "de": "Erstellen und starten",
   "pl": "Zbuduj i uruchom"
  },
+ "Build anyway": {
+  "de": "Trotzdem bauen",
+  "pl": "Zbuduj mimo to"
+ },
  "Build finished": {
   "de": "Erstellung abgeschlossen",
   "pl": "Budowanie zakończone"
@@ -1095,6 +1099,10 @@
   "de": "Prüfung",
   "pl": "Sprawdzenie"
  },
+ "Check again": {
+  "de": "Erneut prüfen",
+  "pl": "Sprawdź ponownie"
+ },
  "Check for updates": {
   "de": "Nach Updates suchen",
   "pl": "Sprawdź aktualizacje"
@@ -1103,6 +1111,14 @@
   "de": "Beim Start nach Updates suchen",
   "pl": "Sprawdzaj aktualizacje przy starcie"
  },
+ "Check the map": {
+  "de": "Karte prüfen",
+  "pl": "Sprawdź mapę"
+ },
+ "Check the map before building": {
+  "de": "Karte vor dem Bauen prüfen",
+  "pl": "Sprawdzaj mapę przed budowaniem"
+ },
  "Check tiles": {
   "de": "Kacheln prüfen",
   "pl": "Sprawdź kafle"
@@ -1110,6 +1126,10 @@
  "Checking for updates...": {
   "de": "Suche nach Updates...",
   "pl": "Sprawdzanie aktualizacji..."
+ },
+ "Checking the map": {
+  "de": "Karte wird geprüft",
+  "pl": "Sprawdzanie mapy"
  },
  "Children": {
   "de": "Kinder",
@@ -1891,6 +1911,10 @@
   "de": "Ausgewählte Typen löschen ({0})",
   "pl": "Usuń zaznaczone typy ({0})"
  },
+ "Delete these objects": {
+  "de": "Diese Objekte löschen",
+  "pl": "Usuń te obiekty"
+ },
  "Delete types": {
   "de": "Typen löschen",
   "pl": "Usuń typy"
@@ -2358,6 +2382,10 @@
  "Erosion rate": {
   "de": "Erosionsrate",
   "pl": "Siła erozji"
+ },
+ "Errors, such as models or surface textures missing from the work drive, stop the build until they are fixed or you build anyway.": {
+  "de": "Fehler, etwa auf dem Arbeitslaufwerk fehlende Modelle oder Oberflächentexturen, halten den Bau an, bis sie behoben sind oder du trotzdem baust.",
+  "pl": "Błędy, takie jak brak modeli lub tekstur powierzchni na dysku roboczym, wstrzymują budowanie, dopóki ich nie poprawisz albo nie zbudujesz mimo to."
  },
  "Evening": {
   "de": "Abend",
@@ -2966,6 +2994,10 @@
  "Globals": {
   "de": "Globale Werte",
   "pl": "Zmienne globalne"
+ },
+ "Go there and select the objects": {
+  "de": "Dorthin gehen und die Objekte auswählen",
+  "pl": "Przejdź tam i zaznacz obiekty"
  },
  "Go to": {
   "de": "Hingehen",
@@ -3859,6 +3891,14 @@
   "de": "Karten-ID",
   "pl": "ID mapy"
  },
+ "Map check": {
+  "de": "Kartenprüfung",
+  "pl": "Kontrola mapy"
+ },
+ "Map check: {0} errors, {1} warnings": {
+  "de": "Kartenprüfung: {0} Fehler, {1} Warnungen",
+  "pl": "Kontrola mapy: błędy {0}, ostrzeżenia {1}"
+ },
  "Map class name or terrain size (send a full copy)": {
   "de": "Klassenname der Karte oder Geländegröße (vollständige Kopie senden)",
   "pl": "Nazwa klasy mapy lub rozmiar terenu (wyślij pełną kopię)"
@@ -4427,6 +4467,10 @@
   "de": "Kein Modell für {0} Klassen gefunden",
   "pl": "Nie znaleziono modelu dla {0} klas"
  },
+ "No navmesh yet: AI does not walk until it is generated (Build > Generate navmesh)": {
+  "de": "Noch kein Navmesh: Die KI läuft nicht, bis es erzeugt ist (Bauen > Navmesh erzeugen)",
+  "pl": "Brak jeszcze navmesha: AI nie chodzi, dopóki go nie wygenerujesz (Buduj > Generuj navmesh)"
+ },
  "No objects to bake": {
   "de": "Keine Objekte zum Einbrennen",
   "pl": "Brak obiektów do wypalenia"
@@ -4534,6 +4578,14 @@
  "Not signed": {
   "de": "Nicht signiert",
   "pl": "Bez podpisu"
+ },
+ "Notes ({0})": {
+  "de": "Hinweise ({0})",
+  "pl": "Uwagi ({0})"
+ },
+ "Nothing found": {
+  "de": "Nichts gefunden",
+  "pl": "Nic nie znaleziono"
  },
  "Nothing here": {
   "de": "Hier ist nichts",
@@ -6967,6 +7019,10 @@
   "de": "Der Pinsel fügt einer Kachel keine Oberfläche hinzu, wenn das Limit des Projekts erreicht ist.",
   "pl": "Pędzel nie doda powierzchni do kafla, który ma już tyle, ile pozwala projekt."
  },
+ "The build waits for the errors to be fixed.": {
+  "de": "Der Bau wartet, bis die Fehler behoben sind.",
+  "pl": "Budowanie czeka na poprawienie błędów."
+ },
  "The class of the game is written again with these changes; they apply wherever the map's mod is loaded.": {
   "de": "Die Klasse des Spiels wird mit diesen Änderungen neu geschrieben; sie gelten überall, wo der Mod der Karte geladen ist.",
   "pl": "Klasa gry jest zapisywana ponownie z tymi zmianami; obowiązują wszędzie, gdzie wczytany jest mod mapy."
@@ -7071,6 +7127,22 @@
   "de": "Ebene von {0}. Klicken, um trotzdem daran zu arbeiten.",
   "pl": "Warstwa należąca do: {0}. Kliknij, aby mimo to na niej pracować."
  },
+ "The map check found {0} errors: the build waits": {
+  "de": "Die Kartenprüfung hat {0} Fehler gefunden: Der Bau wartet",
+  "pl": "Kontrola mapy znalazła błędy ({0}): budowanie czeka"
+ },
+ "The map check found {0} warnings; they are in Build > Check the map": {
+  "de": "Die Kartenprüfung hat {0} Warnungen gefunden; sie stehen unter Bauen > Karte prüfen",
+  "pl": "Kontrola mapy znalazła ostrzeżenia ({0}); są w Buduj > Sprawdź mapę"
+ },
+ "The map has no key points, so the in-game map shows no names": {
+  "de": "Die Karte hat keine Schlüsselpunkte, daher zeigt die Karte im Spiel keine Namen",
+  "pl": "Mapa nie ma key pointów, więc mapa w grze nie pokazuje nazw"
+ },
+ "The map has no satellite image: import one or make it from the mask in the Satellite tab": {
+  "de": "Die Karte hat kein Satellitenbild: Importiere eines oder erstelle es im Tab Satellit aus der Maske",
+  "pl": "Mapa nie ma zdjęcia satelitarnego: zaimportuj je albo utwórz z maski w zakładce Satelita"
+ },
  "The map has no surfaces of its own.": {
   "de": "Die Karte hat keine eigenen Oberflächen.",
   "pl": "Mapa nie ma własnych powierzchni."
@@ -7078,6 +7150,10 @@
  "The map has no town or village key points.": {
   "de": "Die Karte hat keine Stadt- oder Dorf-Schlüsselpunkte.",
   "pl": "Mapa nie ma punktów kluczowych miast ani wsi."
+ },
+ "The map id '{0}' may only have letters, digits and underscores (File > Project settings)": {
+  "de": "Die Karten-ID '{0}' darf nur Buchstaben, Ziffern und Unterstriche enthalten (Datei > Projekteinstellungen)",
+  "pl": "Identyfikator mapy '{0}' może zawierać tylko litery, cyfry i podkreślenia (Plik > Ustawienia projektu)"
  },
  "The map is {0} m; the flags cover {1} m.": {
   "de": "Die Karte ist {0} m groß; die Flags decken {1} m ab.",
@@ -7106,6 +7182,10 @@
  "The mission has no {0}": {
   "de": "Die Mission hat kein {0}",
   "pl": "Misja nie ma {0}"
+ },
+ "The mission has {0} errors (Mission tab)": {
+  "de": "Die Mission hat {0} Fehler (Tab Mission)",
+  "pl": "Misja ma błędy ({0}) (zakładka Misja)"
  },
  "The model chosen in the Content Browser.": {
   "de": "Das im Inhaltsbrowser gewählte Modell.",
@@ -7191,6 +7271,10 @@
   "de": "Der Fleck folgt dann dem Umriss jedes Modells von oben, seine Größe ist der Rand darum.",
   "pl": "Plama idzie wtedy za obrysem każdego modelu widzianym z góry, a jej rozmiar to margines wokół niego."
  },
+ "The player start is outside the map or in the sea": {
+  "de": "Der Spielerstart liegt außerhalb der Karte oder im Meer",
+  "pl": "Start gracza jest poza mapą albo w morzu"
+ },
  "The prefab takes the selected objects instead of those it had.": {
   "de": "Das Prefab übernimmt die ausgewählten Objekte statt seiner bisherigen.",
   "pl": "Prefab przejmuje zaznaczone obiekty w miejsce dotychczasowych."
@@ -7234,6 +7318,10 @@
  "The river runs from the first point of the line to the last.": {
   "de": "Der Fluss fließt vom ersten zum letzten Punkt der Linie.",
   "pl": "Rzeka płynie od pierwszego do ostatniego punktu linii."
+ },
+ "The road '{0}' has no parts": {
+  "de": "Die Straße '{0}' hat keine Teile",
+  "pl": "Droga '{0}' nie ma żadnych części"
  },
  "The road cannot reach this point": {
   "de": "Die Straße erreicht diesen Punkt nicht",
@@ -7303,6 +7391,10 @@
   "de": "Das unter ihr geebnete Gelände",
   "pl": "Teren wyrównany pod nią"
  },
+ "The terrain size does not divide into the land grid (File > Project settings)": {
+  "de": "Die Geländegröße lässt sich nicht durch das Landraster teilen (Datei > Projekteinstellungen)",
+  "pl": "Rozmiar terenu nie dzieli się przez siatkę terenu (Plik > Ustawienia projektu)"
+ },
  "The texture could not be copied into the map": {
   "de": "Die Textur konnte nicht in die Karte kopiert werden",
   "pl": "Nie udało się skopiować tekstury do mapy"
@@ -7310,6 +7402,10 @@
  "The texture has to be on the work drive": {
   "de": "Die Textur muss auf dem Arbeitslaufwerk liegen",
   "pl": "Tekstura musi leżeć na dysku roboczym"
+ },
+ "The texture of the surface '{0}' is not on the work drive": {
+  "de": "Die Textur der Oberfläche '{0}' ist nicht auf dem Arbeitslaufwerk",
+  "pl": "Tekstury powierzchni '{0}' nie ma na dysku roboczym"
  },
  "The textures of the base world show its own terrain; a map of its own needs its own.": {
   "de": "Die Texturen der Basiswelt zeigen deren Gelände; eine eigene Karte braucht eigene.",
@@ -8235,6 +8331,10 @@
   "de": "{0} Gebäude der Klasse {1} haben keinen Prototyp in mapgroupproto.xml",
   "pl": "{0} budynków klasy {1} nie ma prototypu w mapgroupproto.xml"
  },
+ "{0} buildings stand in other buildings": {
+  "de": "{0} Gebäude stehen in anderen Gebäuden",
+  "pl": "Budynki stojące w innych budynkach: {0}"
+ },
  "{0} cells": {
   "de": "{0} Zellen",
   "pl": "Komórki: {0}"
@@ -8311,9 +8411,21 @@
   "de": "{0} Objekte",
   "pl": "Obiekty: {0}"
  },
+ "{0} objects are wholly under the ground but not marked as underground": {
+  "de": "{0} Objekte liegen ganz unter dem Boden, sind aber nicht als unterirdisch markiert",
+  "pl": "Obiekty całkiem pod ziemią, ale nieoznaczone jako podziemne: {0}"
+ },
+ "{0} objects hang over the ground": {
+  "de": "{0} Objekte schweben über dem Boden",
+  "pl": "Obiekty wiszące nad ziemią: {0}"
+ },
  "{0} objects in the group": {
   "de": "{0} Objekte in der Gruppe",
   "pl": "{0} obiektów w grupie"
+ },
+ "{0} objects lie outside the map": {
+  "de": "{0} Objekte liegen außerhalb der Karte",
+  "pl": "Obiekty poza mapą: {0}"
  },
  "{0} objects made by generators were left as they are; change the generator's models instead.": {
   "de": "{0} von Generatoren erzeugte Objekte blieben unverändert; ändere stattdessen die Modelle des Generators.",
@@ -8323,6 +8435,10 @@
   "de": "{0} Objekte auf die Ebene {1} verschoben",
   "pl": "Przeniesiono obiekty ({0}) na warstwę {1}"
  },
+ "{0} objects of a model that is not on the work drive: {1}": {
+  "de": "{0} Objekte eines Modells, das nicht auf dem Arbeitslaufwerk ist: {1}",
+  "pl": "Obiekty modelu, którego nie ma na dysku roboczym ({0}): {1}"
+ },
  "{0} objects removed": {
   "de": "{0} Objekte entfernt",
   "pl": "Usunięto obiektów: {0}"
@@ -8330,6 +8446,10 @@
  "{0} objects selected": {
   "de": "{0} Objekte ausgewählt",
   "pl": "Zaznaczono obiektów: {0}"
+ },
+ "{0} objects stand twice in the same place": {
+  "de": "{0} Objekte stehen doppelt an derselben Stelle",
+  "pl": "Obiekty stojące podwójnie w tym samym miejscu: {0}"
  },
  "{0} objects will be imported": {
   "de": "{0} Objekte werden importiert",
@@ -8439,6 +8559,10 @@
   "de": "{0} Vorlagen aus {1} entfernt",
   "pl": "Usunięto {0} szablonów z {1}"
  },
+ "{0} texture tiles hold more surfaces than the project allows; the rarest are replaced in the build": {
+  "de": "{0} Texturkacheln haben mehr Oberflächen, als das Projekt erlaubt; die seltensten werden beim Bauen ersetzt",
+  "pl": "Kafle tekstur z większą liczbą powierzchni, niż pozwala projekt: {0}; najrzadsze zostaną zastąpione przy budowaniu"
+ },
  "{0} texture tiles use more than the surfaces allowed; they are marked in the 2D view and Project settings can fix them": {
   "de": "{0} Texturkacheln nutzen mehr Oberflächen als erlaubt; sie sind in der 2D-Ansicht markiert und die Projekteinstellungen können sie beheben",
   "pl": "{0} kafli tekstur ma więcej powierzchni niż wolno; są zaznaczone w widoku 2D, a ustawienia projektu mogą je poprawić"
@@ -8446,6 +8570,10 @@
  "{0} tiles over the limit, marked in the 2D view": {
   "de": "{0} Kacheln über dem Limit, in der 2D-Ansicht markiert",
   "pl": "Kafle ponad limit: {0}, zaznaczone w widoku 2D"
+ },
+ "{0} trees or buildings stand in the sea": {
+  "de": "{0} Bäume oder Gebäude stehen im Meer",
+  "pl": "Drzewa lub budynki stojące w morzu: {0}"
  },
  "{0} types changed": {
   "de": "{0} Typen geändert",

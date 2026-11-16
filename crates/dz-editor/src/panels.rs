@@ -52,6 +52,7 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
     }
     dialogs(app, ctx);
     crate::mission_ui::window(app, ctx);
+    crate::map_check::window(app, ctx);
     crate::team_ui::window(app, ctx);
     app.updater.window(ctx);
     crate::asset_browser::drag_ghost(app, ctx);
@@ -234,6 +235,7 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                     if ui.add(egui::Button::new(icons::with(icons::HAMMER, &t("Build PBO"))).shortcut_text(keys.text(Action::Build))).clicked() { ui.close_menu(); app.build(false); }
                     if ui.add(egui::Button::new(icons::with(icons::PLAY, &t("Build and play"))).shortcut_text(keys.text(Action::Play))).clicked() { ui.close_menu(); app.build(true); }
                     ui.separator();
+                    if ui.button(icons::with(icons::LIST_CHECKS, &t("Check the map"))).clicked() { ui.close_menu(); crate::map_check::run(app, None); }
                     if ui.button(t("Generate navmesh...")).clicked() { ui.close_menu(); app.generate_navmesh(); }
                 });
             });
@@ -2175,8 +2177,10 @@ fn build_tab(app: &mut App, ui: &mut egui::Ui) {
                     ui.end_row();
                 }
             });
+            ui.checkbox(&mut app.settings.check_before_build, t("Check the map before building")).on_hover_text(t("Errors, such as models or surface textures missing from the work drive, stop the build until they are fixed or you build anyway."));
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
+                if ui.add_enabled(free, egui::Button::new(icons::with(icons::LIST_CHECKS, &t("Check the map")))).clicked() { crate::map_check::run(app, None); }
                 if ui.add_enabled(free, egui::Button::new(t("Generate navmesh..."))).clicked() { app.generate_navmesh(); }
                 if let Some(d) = &app.doc {
                     let folder = app.settings.tools.work_drive.join(&d.world.meta.map_id);

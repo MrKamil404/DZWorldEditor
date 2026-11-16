@@ -4314,6 +4314,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         // A correction over the whole image (first number -1) or the shapes of layer n, with
         // brightness, saturation and warmth; `satcorrectset b s w` changes the chosen one.
+        "check" => crate::map_check::run(app, None),
         // courses [wetness] [shortest m]
         "courses" => {
             if let Some(v) = nums.first() { app.shape.course_wetness = *v; }

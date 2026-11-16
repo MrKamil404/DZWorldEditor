@@ -214,6 +214,14 @@ every key, and which modifier keys the brushes use.
 * **Export files for the PBO**, or **with Terrain Builder sources** as well.
 * **Build PBO** (F7) and **Build and play** (F5): see *Building a map* in the [README](../README.md).
 * **Generate navmesh** starts the data server and NavMeshGenerator.
+* **Check the map** lists what would break the build or the game (errors: models or surface
+  textures missing from the work drive, no satellite image, a wrong map id) and what is most
+  likely a mistake (warnings: objects hanging over the ground or wholly under it, trees and
+  buildings in the sea, objects outside the map, the same object twice in one place, houses
+  standing in one another, roads without parts, a player start in the sea, errors of the mission).
+  A click goes to the place and selects the objects; doubled objects and those outside the map can
+  be deleted from the list. Building checks the map first and waits on errors until they are
+  fixed or you choose **Build anyway**; this can be turned off on the Build tab.
 
 ### Language
 
