@@ -12,7 +12,7 @@ fn main() -> anyhow::Result<()> {
     gen::generate_terrain(&mut w.base, &gen::TerrainParams { kind: gen::TerrainKind::Island, ..Default::default() }, &job);
     w.recompose(None);
     let rules = gen::default_paint_rules(&w);
-    w.mask.data = gen::auto_paint(&w, &rules, 1, None, &job);
+    w.mask.data = gen::auto_paint(&w, &rules, 1, None, &Default::default(), &job);
     let db = model_info::ModelDb::new(paths.work_drive.clone());
     println!("objects {}", w.objects.len());
     let t = Instant::now();

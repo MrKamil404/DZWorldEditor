@@ -3,9 +3,12 @@
 /// Starts the job log lines that are warnings.
 pub const WARN_MARK: &str = "\u{1}warn:";
 
+pub mod analysis;
 pub mod assets;
 pub mod build;
+pub mod check;
 pub mod clutter;
+pub mod dressing;
 pub mod edit;
 pub mod export;
 pub mod export_files;
@@ -18,6 +21,7 @@ pub mod layers_cfg;
 pub mod modules;
 pub mod library;
 pub mod keypoints;
+pub mod landscape;
 pub mod mask_limit;
 pub mod model_info;
 pub mod noise;
@@ -27,6 +31,7 @@ pub mod pbo;
 pub mod maskmod;
 pub mod mission;
 pub mod project;
+pub mod satgen;
 pub mod satmod;
 pub mod shapes;
 pub mod surfaces;

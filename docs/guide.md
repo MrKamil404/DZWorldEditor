@@ -30,9 +30,15 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 
 ![The split view](screenshots/split.jpg)
 
+**View > Measure** (ruler) measures on the map: each click adds a point, and the view shows the
+length on the map and along the ground, the climb from the first point to the last and, from three
+points, the area they close. Backspace takes the last point back, Esc or a right click ends.
+**View > Saved views** keeps places of the 3D camera in the project to go back to with a click.
+
 The bar at the top of each view chooses the shading (Lit, Satellite, Mask, Hillshade, Height,
-Slope), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
-**Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
+Slope, Water flow), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
+**Lighting** also has **Time of day** and **Overcast**: the sun of that hour at the map's
+latitude and start date, weaker and with more fog under cloud. **Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
 (Shift+H), the land grid and texture tiles.
 
 `View > Full screen` (F11) gives the whole screen to the view; move the pointer to an edge for the
@@ -115,6 +121,11 @@ models with its own settings.
 Polygons, lines and points that generators work on, in layers. They can be imported from SHP and
 TV4S files and exported to SHP.
 
+**Water courses from the terrain** finds the lines along which water runs down the hills and adds
+them as a new shape layer, ready for the River or Stream generator. *Wetness* sets how much water
+must gather for a course to start, *Shortest* leaves out the short ones. The **Water flow** shading
+of the view shows the same: blue where water runs and gathers, darker where more of it does.
+
 ### 7 Key points
 
 ![Key points](screenshots/keypoints.jpg)
@@ -133,8 +144,21 @@ written to the `Names` of the world config on export, so the in-game map shows t
 * **Clone brush** copies from another place of the satellite image or from a picture you load.
   Choose the source in the preview, then paint on the map.
 
-Every bake and every clone stroke is a **satellite modifier** in the outliner: it can be hidden or
-deleted, and what it covered comes back.
+* **Colour correction** changes the colours of the whole image or of shapes, and can be changed
+  later. **Use legacy** makes brightness and contrast work as Photoshop's legacy mode.
+* **Satellite from the mask** paints the image in the colours of the surfaces of the mask, with the
+  pattern of their textures, ragged soft edges between them, lighter and darker patches, the
+  shading of the hills and water under the sea level. Each surface gets its colour in **Colours of
+  the surfaces**: guessed from its name, or taken from the satellite image the map already has. A
+  project without a satellite image gets one. It works on the whole map or on shapes.
+* **Surfaces from the satellite** reads the mask from the satellite image. Brightness and contrast
+  (legacy) push the image to a few strong colours, as *Image > Adjustments > Brightness/Contrast*
+  with *Use Legacy* does in Photoshop; the preview shows them, and each colour can be given a
+  surface. Smoothing takes away specks. The result is a mask modifier.
+
+Every bake, clone stroke, correction and generated image is a **satellite modifier** in the
+outliner: it can be hidden or deleted, and what it covered comes back. Everything the satellite and
+mask modifiers make is part of the map when it is built.
 
 ### 9 Mission
 
@@ -157,6 +181,11 @@ A generator is dropped on a shape, a road or the map (or select the shape first 
 the generator). It appears in the outliner, where its settings can be changed and it can be run
 again.
 
+The rules of Surface painting and of the Scatter generator have **More conditions** besides height
+and slope: hollows and ridges (how far the ground lies below the ground round it), wetness (where
+water runs and gathers), and the distance to water and to roads, each with ragged edges if wanted.
+Moss in wet hollows, reeds along the water, dry grass on the crests, verges by the roads.
+
 | Generators | |
 | --- | --- |
 | Vegetation | Forest with extra presets and edges, area and line scatter methods |
@@ -164,6 +193,33 @@ again.
 | Settlements and lines | Settlement, fence, power line |
 | Terrain | Terrain shape, hydraulic and thermal erosion, terraces, terrain along a line |
 | Surfaces and clean-up | Rule-based surface painting, removing objects by category or name |
+| Landscape | Coast, cliffs and rocks, fields |
+| Along roads | Road verges with bushes and signs, railway surroundings, wrecks and road decals |
+| Round buildings | Things round the buildings already on the map |
+
+* **Coast** paints beaches by the water and sand on the shallow sea floor (a layer named like sand,
+  or else gravel), rock on steep shores, lays stones along the water and can lay the beaches to a
+  gentle slope. It works on the whole map or inside polygons.
+* **Cliffs and rocks** sets rocks of the game on steep slopes, facing down the slope and sunk into
+  it, with a rock surface under them.
+* **Fields** cuts polygons into strips of fields with balks between them, each strip sown with one
+  of the chosen surfaces, and lays hay bales along them.
+* **Road verges** follows roads or lines: a verge surface, bushes beyond it and now and then a
+  sign, a row of posts (poles, lamps) and stops with a platform. Dropped on the map, it follows
+  every road, every railway or both.
+* **Railway surroundings** is the same generator set up for tracks: a gravel ballast verge,
+  bushes, signals, a row of telegraph poles and now and then a small station with its platform.
+* **Wrecks and road decals** puts places with wrecks along roads: a jam of cars in a lane, a crash
+  of two or three, or a car left on the verge, with oil stains under them, and cracks, patches and
+  tyre marks on paved roads.
+* **Things round buildings** dresses the buildings already on the map by their kind: woodpiles,
+  bins and kennels at houses, pallets, barrels and tyres at works, sandbags and crates at military
+  buildings, hay and logs at farms. Some stand against the walls, along them, the others free
+  nearby; none inside another building or on a road. The game's models do not say where their
+  doors are, so a thing can end up in front of one: move it, or run again with another seed.
+* **Settlement** can take the game's buildings of a village, town, farm, industrial area or
+  military base from the work drive, gives each building a yard with its own surface, and fences
+  some of the plots, leaving the side to the street open.
 
 ## Menus
 
@@ -191,6 +247,14 @@ every key, and which modifier keys the brushes use.
 * **Export files for the PBO**, or **with Terrain Builder sources** as well.
 * **Build PBO** (F7) and **Build and play** (F5): see *Building a map* in the [README](../README.md).
 * **Generate navmesh** starts the data server and NavMeshGenerator.
+* **Check the map** lists what would break the build or the game (errors: models or surface
+  textures missing from the work drive, no satellite image, a wrong map id) and what is most
+  likely a mistake (warnings: objects hanging over the ground or wholly under it, trees and
+  buildings in the sea, objects outside the map, the same object twice in one place, houses
+  standing in one another, roads without parts, a player start in the sea, errors of the mission).
+  A click goes to the place and selects the objects; doubled objects and those outside the map can
+  be deleted from the list. Building checks the map first and waits on errors until they are
+  fixed or you choose **Build anyway**; this can be turned off on the Build tab.
 
 ### Language
 

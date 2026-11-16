@@ -10,14 +10,14 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::HashMap;
 
 /// Chooses models by weight and builds their objects.
-struct Picker<'a> {
+pub(crate) struct Picker<'a> {
     set: &'a ObjectSet,
     models: Vec<(u32, f32)>,
     total: f32,
 }
 
 impl<'a> Picker<'a> {
-    fn new(w: &mut World, set: &'a ObjectSet) -> Result<Self> {
+    pub(crate) fn new(w: &mut World, set: &'a ObjectSet) -> Result<Self> {
         let models: Vec<(u32, f32)> = set.models.iter().filter(|m| m.1 > 0.0 && !m.0.is_empty()).map(|(m, k)| (w.objects.intern(m), *k)).collect();
         if models.is_empty() {
             bail!("Choose at least one model");
@@ -25,7 +25,7 @@ impl<'a> Picker<'a> {
         let total = models.iter().map(|m| m.1).sum();
         Ok(Self { set, models, total })
     }
-    fn model(&self, rng: &mut StdRng) -> u32 {
+    pub(crate) fn model(&self, rng: &mut StdRng) -> u32 {
         let mut pick = rng.gen_range(0.0..self.total);
         for (m, k) in &self.models {
             pick -= k;
@@ -36,7 +36,7 @@ impl<'a> Picker<'a> {
         self.models[0].0
     }
     /// `along` turns the object to a direction instead of the set's own rotation.
-    fn object(&self, w: &World, rng: &mut StdRng, model: u32, x: f32, z: f32, along: Option<f32>) -> Obj {
+    pub(crate) fn object(&self, w: &World, rng: &mut StdRng, model: u32, x: f32, z: f32, along: Option<f32>) -> Obj {
         let yaw = along.unwrap_or_else(|| if self.set.random_yaw { rng.gen_range(0.0..360.0) } else { 0.0 });
         let (pitch, roll) = if self.set.align { slope_angles(&w.height, x, z, yaw) } else { (0.0, 0.0) };
         let scale = if self.set.scale_max > self.set.scale_min { rng.gen_range(self.set.scale_min..=self.set.scale_max) } else { self.set.scale_min };
@@ -45,18 +45,18 @@ impl<'a> Picker<'a> {
 }
 
 /// Keeps objects a minimum distance apart.
-struct Spacing {
+pub(crate) struct Spacing {
     cell: f32,
     min2: f32,
     grid: HashMap<(i32, i32), Vec<[f32; 2]>>,
 }
 
 impl Spacing {
-    fn new(min: f32) -> Self {
+    pub(crate) fn new(min: f32) -> Self {
         Self { cell: min.max(0.25), min2: min * min, grid: HashMap::new() }
     }
     /// Takes the place when it is free.
-    fn claim(&mut self, x: f32, z: f32) -> bool {
+    pub(crate) fn claim(&mut self, x: f32, z: f32) -> bool {
         let key = ((x / self.cell).floor() as i32, (z / self.cell).floor() as i32);
         for dz in -1..=1 {
             for dx in -1..=1 {

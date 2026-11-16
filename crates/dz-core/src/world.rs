@@ -52,6 +52,18 @@ pub struct WorldMeta {
     /// Folders of the work drive built into the map's mod besides the map itself.
     #[serde(default)]
     pub build_folders: Vec<crate::build::BuildFolder>,
+    /// Places of the camera kept to go back to.
+    #[serde(default)]
+    pub views: Vec<SavedView>,
+}
+
+/// A place of the 3D camera: where it stands and which way it looks, in degrees.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SavedView {
+    pub name: String,
+    pub pos: [f32; 3],
+    pub yaw: f32,
+    pub pitch: f32,
 }
 
 /// The world class of the game a map builds on: its class, and the addon that brings it.
@@ -178,7 +190,7 @@ impl WorldMeta {
         let map_id = if map_id.is_empty() { "NewMap".to_string() } else { map_id };
         let side = size as f32 * cell;
         Self {
-            max_tile_surfaces: 6, build_folders: Vec::new(), name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
+            max_tile_surfaces: 6, build_folders: Vec::new(), views: Vec::new(), name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
             sea_level: 0.0, easting: 200000.0, northing: 0.0, tile_px: 512, cells_per_tile: 8,
             spawn: [side / 2.0, side / 2.0], latitude: 54.0, longitude: 23.0, write_underground_flag: true, config: MapConfig::default(),
         }

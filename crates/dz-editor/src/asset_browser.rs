@@ -68,7 +68,7 @@ pub enum Source {
 /// The folders a built-in group is sorted into.
 fn categories(g: Group) -> &'static [&'static str] {
     match g {
-        Group::BuiltInGenerators => &["Terrain", "Surfaces and vegetation", "Objects in areas", "Objects along lines", "Water"],
+        Group::BuiltInGenerators => &["Terrain", "Surfaces and vegetation", "Objects in areas", "Objects along lines", "Water", "Landscape"],
         Group::BuiltInPresets => &["Forests", "Roads"],
         Group::BuiltInModifiers => &["Levelling", "Raise and lower", "Fill and cut"],
         _ => &[],
@@ -82,8 +82,10 @@ fn generator_category(kind: &dz_core::library::GeneratorKind) -> usize {
         K::Terrain(_) | K::Erosion(_) | K::ThermalErosion { .. } | K::Terraces { .. } | K::LineTerrain(_) => 0,
         K::Forest(_) | K::SurfacePaint { .. } => 1,
         K::Settlement(_) | K::Scatter(_) | K::Area(_) | K::Remove(_) => 2,
-        K::Fence(_) | K::PowerLine(_) | K::Line(_) => 3,
+        K::Fence(_) | K::PowerLine(_) | K::Line(_) | K::Roadside(_) | K::Wrecks(_) => 3,
+        K::Dressing(_) => 2,
         K::River(_) | K::Pond(_) => 4,
+        K::Coast(_) | K::Cliffs(_) | K::Fields(_) => 5,
     }
 }
 

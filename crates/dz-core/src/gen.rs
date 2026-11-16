@@ -445,12 +445,21 @@ pub struct PaintRule {
     pub noise_scale: f32,
     /// Share of the area the rule covers, 0..1.
     pub coverage: f32,
+    /// Hollows and ridges, where water gathers, distances to water and roads.
+    #[serde(default)]
+    pub conditions: crate::analysis::Conditions,
+}
+
+impl Default for PaintRule {
+    fn default() -> Self {
+        Self { layer: 0, min_height: -1000.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0, conditions: Default::default() }
+    }
 }
 
 /// Default rules using layer names, later rules win.
 pub fn default_paint_rules(w: &World) -> Vec<PaintRule> {
     let rule = |name: &str, h0: f32, h1: f32, s0: f32, s1: f32, n: f32, c: f32| {
-        w.layer_index(name).map(|layer| PaintRule { layer, min_height: h0, max_height: h1, min_slope: s0, max_slope: s1, noise_scale: n, coverage: c })
+        w.layer_index(name).map(|layer| PaintRule { layer, min_height: h0, max_height: h1, min_slope: s0, max_slope: s1, noise_scale: n, coverage: c, ..Default::default() })
     };
     [
         rule("grass1", -1000.0, 9000.0, 0.0, 90.0, 0.0, 1.0),
@@ -462,7 +471,18 @@ pub fn default_paint_rules(w: &World) -> Vec<PaintRule> {
     ].into_iter().flatten().collect()
 }
 
-pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, area: Option<&crate::shapes::PolygonIndex>, job: &Job) -> Vec<u8> {
+/// The maps the conditions of some rules need, or none.
+fn maps_for(w: &World, marks: &crate::analysis::Landmarks, conditions: &[&crate::analysis::Conditions], job: &Job) -> Option<crate::analysis::TerrainMaps> {
+    let needs = conditions.iter().fold(crate::analysis::Needs::default(), |n, c| n.or(c.needs()));
+    needs.any().then(|| {
+        job.stage("Reading the shape of the terrain");
+        crate::analysis::TerrainMaps::new(w, marks, needs, crate::analysis::HOLLOW_RADIUS)
+    })
+}
+
+pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, area: Option<&crate::shapes::PolygonIndex>, marks: &crate::analysis::Landmarks, job: &Job) -> Vec<u8> {
+    let maps = maps_for(w, marks, &rules.iter().map(|r| &r.conditions).collect::<Vec<_>>(), job).unwrap_or_default();
+    let edge = Perlin::new(seed ^ 0xed6e);
     let noise = Perlin::new(seed);
     let (mw, mh) = (w.mask.width, w.mask.height);
     let size = w.meta.size_m();
@@ -478,6 +498,9 @@ pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, area: Option<&crate
             let (h, s) = (w.height.sample(wx, wz), w.height.slope(wx, wz));
             for r in rules {
                 if h < r.min_height || h > r.max_height || s < r.min_slope || s > r.max_slope {
+                    continue;
+                }
+                if !r.conditions.test(&maps, &edge, wx, wz) {
                     continue;
                 }
                 if r.noise_scale > 0.0 {
@@ -517,16 +540,20 @@ pub struct ScatterRule {
     pub scale_max: f32,
     pub align_to_slope: bool,
     pub seed: u64,
+    /// Hollows and ridges, where water gathers, distances to water and roads.
+    pub conditions: crate::analysis::Conditions,
 }
 
 impl Default for ScatterRule {
     fn default() -> Self {
-        Self { models: Vec::new(), preset: None, density: 40.0, min_distance: 3.0, min_slope: 0.0, max_slope: 35.0, min_height: 0.5, max_height: 9000.0, layers: Vec::new(), scale_min: 0.9, scale_max: 1.1, align_to_slope: false, seed: 1 }
+        Self { models: Vec::new(), preset: None, density: 40.0, min_distance: 3.0, min_slope: 0.0, max_slope: 35.0, min_height: 0.5, max_height: 9000.0, layers: Vec::new(), scale_min: 0.9, scale_max: 1.1, align_to_slope: false, seed: 1, conditions: Default::default() }
     }
 }
 
 /// Scatters objects inside polygons, or over the whole map without any.
-pub fn scatter(w: &mut World, rule: &ScatterRule, area: Option<&crate::shapes::PolygonIndex>, bounds: [f32; 4], job: &Job) -> Result<Vec<Obj>> {
+pub fn scatter(w: &mut World, rule: &ScatterRule, area: Option<&crate::shapes::PolygonIndex>, bounds: [f32; 4], marks: &crate::analysis::Landmarks, job: &Job) -> Result<Vec<Obj>> {
+    let maps = maps_for(w, marks, &[&rule.conditions], job).unwrap_or_default();
+    let edge = Perlin::new(rule.seed ^ 0xed6e);
     let total: f32 = rule.models.iter().map(|m| m.1).sum();
     if rule.models.is_empty() || total <= 0.0 {
         bail!("Choose at least one model");
@@ -564,6 +591,9 @@ pub fn scatter(w: &mut World, rule: &ScatterRule, area: Option<&crate::shapes::P
             continue;
         }
         if !layers.is_empty() && !layers.contains(&(w.mask.sample(x, z, size) as usize)) {
+            continue;
+        }
+        if !rule.conditions.test(&maps, &edge, x, z) {
             continue;
         }
         let key = ((x / cell).floor() as i32, (z / cell).floor() as i32);
@@ -947,11 +977,77 @@ pub struct SettlementRule {
     pub seed: u64,
     pub max_slope: f32,
     pub flatten: bool,
+    /// Fence models laid round the back and sides of plots, and the share of plots fenced.
+    #[serde(default)]
+    pub fences: Vec<(String, f32)>,
+    #[serde(default)]
+    pub fence_share: f32,
+    /// Metres of yard round each building, inside its fence.
+    #[serde(default = "default_yard")]
+    pub yard: f32,
+    /// Surface of the yards; empty paints none.
+    #[serde(default)]
+    pub yard_surface: String,
+}
+fn default_yard() -> f32 {
+    5.0
 }
 impl Default for SettlementRule {
     fn default() -> Self {
-        Self { buildings: Vec::new(), radius: 200.0, streets: 4, plot: 26.0, setback: 12.0, seed: 3, max_slope: 18.0, flatten: true }
+        let fences = vec![("dz\\structures\\walls\\wall_fen1_5.p3d".to_string(), 1.0), ("dz\\structures\\walls\\wall_vilvar1_6.p3d".to_string(), 1.0)];
+        Self { buildings: Vec::new(), radius: 200.0, streets: 4, plot: 26.0, setback: 12.0, seed: 3, max_slope: 18.0, flatten: true, fences, fence_share: 0.5, yard: default_yard(), yard_surface: String::new() }
     }
+}
+
+/// Kinds of places whose buildings can be taken from the game.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettlementStyle {
+    Village,
+    Town,
+    Farm,
+    Industrial,
+    Military,
+}
+
+impl SettlementStyle {
+    pub const ALL: [SettlementStyle; 5] = [SettlementStyle::Village, SettlementStyle::Town, SettlementStyle::Farm, SettlementStyle::Industrial, SettlementStyle::Military];
+    pub fn name(self) -> &'static str {
+        match self {
+            SettlementStyle::Village => "Village",
+            SettlementStyle::Town => "Town",
+            SettlementStyle::Farm => "Farm",
+            SettlementStyle::Industrial => "Industrial",
+            SettlementStyle::Military => "Military",
+        }
+    }
+    /// Folders of the game's buildings of this kind.
+    fn folders(self) -> &'static [&'static str] {
+        match self {
+            SettlementStyle::Village => &["dz\\structures\\residential\\houses", "dz\\structures\\residential\\sheds"],
+            SettlementStyle::Town => &["dz\\structures\\residential\\houses", "dz\\structures\\residential\\tenements", "dz\\structures\\residential\\houseblocks", "dz\\structures\\residential\\stores", "dz\\structures\\residential\\offices"],
+            SettlementStyle::Farm => &["dz\\structures\\industrial\\farms", "dz\\structures\\residential\\sheds"],
+            SettlementStyle::Industrial => &["dz\\structures\\industrial\\sheds", "dz\\structures\\industrial\\garages", "dz\\structures\\industrial\\houses", "dz\\structures\\industrial\\containers"],
+            SettlementStyle::Military => &["dz\\structures\\military\\houses"],
+        }
+    }
+}
+
+/// The game's buildings of a kind found on the work drive, as model paths.
+pub fn vanilla_buildings(root: &std::path::Path, style: SettlementStyle) -> Vec<String> {
+    let mut out = Vec::new();
+    for folder in style.folders() {
+        let Ok(rd) = std::fs::read_dir(root.join(folder.replace('\\', "/"))) else { continue };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+            // Ruins, proxies and the parts of buildings are left out.
+            if !name.ends_with(".p3d") || ["proxy", "ruin", "ghost", "basement", "_lod", "_d.p3d"].iter().any(|k| name.contains(k)) {
+                continue;
+            }
+            out.push(format!("{folder}\\{name}"));
+        }
+    }
+    out.sort();
+    out
 }
 
 pub struct Settlement {
@@ -959,6 +1055,8 @@ pub struct Settlement {
     pub streets: Vec<MapLine>,
     /// (index in `objects`, footprint half x, half z)
     pub pads: Vec<(usize, f32, f32)>,
+    /// The yard of each plot.
+    pub yards: Vec<Vec<[f32; 2]>>,
 }
 
 pub fn settlement(w: &mut World, db: &crate::model_info::ModelDb, cx: f32, cz: f32, rule: &SettlementRule) -> Result<Settlement> {
@@ -967,7 +1065,8 @@ pub fn settlement(w: &mut World, db: &crate::model_info::ModelDb, cx: f32, cz: f
     }
     let models: Vec<(u32, crate::model_info::ModelInfo)> = rule.buildings.iter().map(|b| (w.objects.intern(b), db.get(&ObjectStorePath::norm(b)))).collect();
     let mut rng = StdRng::seed_from_u64(rule.seed);
-    let (mut objects, mut streets, mut pads) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut objects, mut streets, mut pads, mut yards) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut fenced = Vec::new();
     let mut taken: Vec<[f32; 3]> = Vec::new();
     for s in 0..rule.streets.max(1) {
         let base = s as f32 / rule.streets.max(1) as f32 * std::f32::consts::TAU + rng.gen_range(-0.3..0.3);
@@ -1007,11 +1106,29 @@ pub fn settlement(w: &mut World, db: &crate::model_info::ModelDb, cx: f32, cz: f
                     pads.push((objects.len(), hx, hz));
                 }
                 objects.push(Obj { x: px, z: pz, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 });
+                // The yard round the building; its fence leaves the side to the street open.
+                let (s, c) = yaw.to_radians().sin_cos();
+                let (yx, yz) = (hx + rule.yard, hz + rule.yard);
+                let corner = |lx: f32, lz: f32| [px + lx * c + lz * s, pz - lx * s + lz * c];
+                let ring = vec![corner(-yx, -yz), corner(yx, -yz), corner(yx, yz), corner(-yx, yz)];
+                if !rule.fences.is_empty() && rng.gen::<f32>() < rule.fence_share {
+                    let near = (0..4).min_by(|a, b| {
+                        let mid = |k: usize| { let (p, q) = (ring[k], ring[(k + 1) % 4]); ((p[0] + q[0]) * 0.5 - x).hypot((p[1] + q[1]) * 0.5 - z) };
+                        mid(*a).total_cmp(&mid(*b))
+                    }).unwrap_or(0);
+                    // From the far corner of the street side round to the near one.
+                    fenced.push((0..4).map(|k| ring[(near + 1 + k) % 4]).collect::<Vec<_>>());
+                }
+                yards.push(ring);
             }
         }
         streets.push(MapLine { name: format!("Street {}", s + 1), family: "street".into(), points, width: 6.0 });
     }
-    Ok(Settlement { objects, streets, pads })
+    let fence = crate::library::FenceGen { resolved: rule.fences.clone(), ..Default::default() };
+    for line in fenced {
+        objects.extend(fence_objects(w, db, &line, &fence));
+    }
+    Ok(Settlement { objects, streets, pads, yards })
 }
 
 struct ObjectStorePath;
@@ -3361,10 +3478,10 @@ mod tests {
         for j in 0..256 { for i in 128..256 { w.base.set(i, j, 100.0 + (i - 128) as f32 * 8.0); } }
         w.recompose(None);
         let rules = vec![
-            PaintRule { layer: 1, min_height: -100.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 },
-            PaintRule { layer: 6, min_height: -100.0, max_height: 9000.0, min_slope: 30.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 },
+            PaintRule { layer: 1, min_height: -100.0, ..Default::default() },
+            PaintRule { layer: 6, min_height: -100.0, min_slope: 30.0, ..Default::default() },
         ];
-        let out = auto_paint(&w, &rules, 1, None, &Job::default());
+        let out = auto_paint(&w, &rules, 1, None, &Default::default(), &Job::default());
         let px = w.mask.width;
         assert_eq!(out[px * px / 2 + px / 4], 1);
         assert_eq!(out[px * px / 2 + px * 3 / 4], 6);
@@ -3382,7 +3499,7 @@ mod tests {
     fn settlement_avoids_overlap() {
         let mut w = world(10.0);
         let db = crate::model_info::ModelDb::new("Z:/none");
-        let rule = SettlementRule { buildings: vec!["dz\\h.p3d".into()], radius: 300.0, ..Default::default() };
+        let rule = SettlementRule { buildings: vec!["dz\\h.p3d".into()], radius: 300.0, fence_share: 0.0, ..Default::default() };
         let s = settlement(&mut w, &db, 1000.0, 1000.0, &rule).unwrap();
         assert!(s.objects.len() >= 8);
         for (i, a) in s.objects.iter().enumerate() {
@@ -3390,6 +3507,18 @@ mod tests {
                 assert!((a.x - b.x).hypot(a.z - b.z) > 8.0);
             }
         }
+        assert_eq!(s.yards.len(), s.objects.len());
+    }
+    #[test]
+    fn settlement_fences_its_plots() {
+        let mut w = world(10.0);
+        let db = crate::model_info::ModelDb::new("Z:/none");
+        let rule = SettlementRule { buildings: vec!["dz\\h.p3d".into()], radius: 300.0, fence_share: 1.0, ..Default::default() };
+        let s = settlement(&mut w, &db, 1000.0, 1000.0, &rule).unwrap();
+        let houses = s.yards.len();
+        assert!(houses >= 8);
+        // Three sides of every plot, in pieces.
+        assert!(s.objects.len() > houses * 3, "{} objects for {houses} houses", s.objects.len());
     }
     #[test]
     fn grading_evens_out_a_bump_under_the_line() {

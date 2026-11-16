@@ -528,6 +528,12 @@ pub enum GeneratorKind {
     Erosion(ErosionParams),
     ThermalErosion { iterations: u32, talus: f32 },
     Terraces { step: f32, sharpness: f32 },
+    Coast(crate::landscape::CoastGen),
+    Cliffs(crate::landscape::CliffGen),
+    Fields(crate::landscape::FieldGen),
+    Roadside(crate::landscape::RoadsideGen),
+    Wrecks(crate::dressing::WreckGen),
+    Dressing(crate::dressing::DressGen),
 }
 
 /// What a generator needs to be pointed at.
@@ -545,7 +551,9 @@ pub enum TargetKind {
 impl GeneratorKind {
     pub fn target_kind(&self) -> TargetKind {
         match self {
-            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) | GeneratorKind::Pond(_) => TargetKind::Area,
+            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) | GeneratorKind::Pond(_) | GeneratorKind::Coast(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Fields(_) => TargetKind::Area,
+            GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) => TargetKind::Line,
+            GeneratorKind::Dressing(_) => TargetKind::Area,
             GeneratorKind::Settlement(_) => TargetKind::Point,
             GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::River(_) | GeneratorKind::Line(_) | GeneratorKind::LineTerrain(_) => TargetKind::Line,
             GeneratorKind::Remove(_) => TargetKind::Any,
@@ -582,6 +590,12 @@ impl GeneratorKind {
             GeneratorKind::Erosion(_) => "Hydraulic erosion",
             GeneratorKind::ThermalErosion { .. } => "Thermal erosion",
             GeneratorKind::Terraces { .. } => "Terraces",
+            GeneratorKind::Coast(_) => "Coast",
+            GeneratorKind::Cliffs(_) => "Cliffs and rocks",
+            GeneratorKind::Fields(_) => "Fields",
+            GeneratorKind::Roadside(_) => "Road verges",
+            GeneratorKind::Wrecks(_) => "Wrecks and road decals",
+            GeneratorKind::Dressing(_) => "Things round buildings",
         }
     }
 }
@@ -993,7 +1007,7 @@ impl Library {
 
 /// The generators every installation starts with; they cannot be changed, only copied.
 pub fn built_in_generators() -> Vec<GeneratorPreset> {
-    let rule = PaintRule { layer: 0, min_height: -1000.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 };
+    let rule = PaintRule::default();
     let make = |id, name: &str, kind| GeneratorPreset { id, name: name.to_string(), folder: BUILT_IN.to_string(), kind };
     vec![
         make(1, "Forest", GeneratorKind::Forest(Box::default())),
@@ -1021,6 +1035,13 @@ pub fn built_in_generators() -> Vec<GeneratorPreset> {
         make(23, "Ponds and lakes", GeneratorKind::Pond(PondGen::default())),
         make(24, "Stream", GeneratorKind::River(RiverGen { width: 14.0, depth: 2.0, falloff: 5.0, model: r"dz\water\streams\stream_14_24.p3d".into(), ..Default::default() })),
         make(25, "Streambed", GeneratorKind::River(RiverGen { width: 14.0, depth: 1.5, falloff: 5.0, model: r"dz\water\streambed\streambed_moss_long_straight.p3d".into(), ..Default::default() })),
+        make(26, "Coast", GeneratorKind::Coast(Default::default())),
+        make(27, "Cliffs and rocks", GeneratorKind::Cliffs(Default::default())),
+        make(28, "Fields", GeneratorKind::Fields(Default::default())),
+        make(29, "Road verges", GeneratorKind::Roadside(Default::default())),
+        make(30, "Railway surroundings", GeneratorKind::Roadside(crate::landscape::RoadsideGen::railway())),
+        make(31, "Wrecks and road decals", GeneratorKind::Wrecks(Default::default())),
+        make(32, "Things round buildings", GeneratorKind::Dressing(Default::default())),
     ]
 }
 
@@ -1189,7 +1210,7 @@ mod tests {
     #[test]
     fn built_ins_cover_every_kind() {
         let names: Vec<&str> = built_in_generators().iter().map(|g| g.kind.type_name()).collect();
-        assert_eq!(names.len(), 25);
+        assert_eq!(names.len(), 32);
         assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects"));
     }
 

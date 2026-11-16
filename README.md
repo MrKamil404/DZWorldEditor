@@ -12,15 +12,15 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Live 3D and 2D views** of the whole map with real DayZ models, textures, satellite image and water; a split view, a minimap, full screen and a view in a window of its own
 - **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces and non-destructive modifiers
 - **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile
-- **Satellite image** editing: bake objects, roads and water into it, and a clone brush, all as modifiers that can be hidden or deleted
+- **Satellite image** editing: bake objects, roads and water into it, a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite, all as modifiers that can be hidden or deleted
 - **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, painting objects with a brush, prefabs and undo
 - **Roads and railways** fitted from the game's own parts, with embankments, bridges, level crossings and roundabouts
 - **Every vanilla road type** of Chernarus, Livonia, Sakhal and Takistan, and **crossroads** (`kr_*`) that roads start from or that go into a road
-- **Generators** for forests, rivers, ponds, settlements, fences, power lines and more
+- **Generators** for forests, rivers, ponds, coasts and beaches, cliffs, fields, road verges, railway surroundings, wrecks and road decals, things round buildings, settlements, fences, power lines and more
 - **Key points** for named places on the map, compatible with Terrain Builder
 - **Map config**: the `CfgWorlds` entry of the map, with its base world, map grid and main menu scenes
 - **Terrain Builder import**, including layers, shapes, roads, key points and terrain holes, and import of built WRP worlds
-- **One-click build and test**: export, binarise with AddonBuilder and start a local server and client
+- **One-click build and test**: export, binarise with AddonBuilder and start a local server and client, after a **map check** that finds missing models and textures, floating, buried and doubled objects and more
 - **Automatic backups** and a built-in updater
 - **Mission editor** (experimental): the economy, loot, events, spawns and the rest of the server mission, see [docs/mission-editor.md](docs/mission-editor.md)
 - **Team work** (experimental): several people work on their own copies and merge their changes through a shared folder, see [docs/team-work.md](docs/team-work.md)

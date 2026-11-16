@@ -83,6 +83,10 @@
   "de": "Eine Sicherung entsteht nur, wenn sich das Projekt geändert hat. Unveränderte Dateien werden zwischen Sicherungen geteilt und belegen keinen zusätzlichen Platz.",
   "pl": "Kopia powstaje tylko wtedy, gdy projekt się zmienił. Niezmienione pliki są współdzielone między kopiami, więc nie zajmują dodatkowego miejsca."
  },
+ "A building beside the line, its front towards it, with a platform laid along the line.": {
+  "de": "Ein Gebäude neben der Linie, mit der Vorderseite zu ihr, und ein Bahnsteig entlang der Linie.",
+  "pl": "Budynek obok linii, frontem do niej, z peronem ułożonym wzdłuż linii."
+ },
  "A built-in generator. Duplicate it to make your own version, or drop it on the map.": {
   "de": "Eingebauter Generator. Dupliziere ihn für eine eigene Version oder lege ihn auf der Karte ab.",
   "pl": "Generator wbudowany. Zduplikuj go, aby zrobić własną wersję, albo upuść na mapę."
@@ -203,6 +207,10 @@
   "de": "Eine Route braucht mindestens zwei Punkte",
   "pl": "Trasa potrzebuje co najmniej dwóch punktów"
  },
+ "A satellite image of {0} × {1} pixels was made for the project": {
+  "de": "Für das Projekt wurde ein Satellitenbild mit {0} × {1} Pixeln erstellt",
+  "pl": "Dla projektu utworzono zdjęcie satelitarne {0} × {1} pikseli"
+ },
  "A single point; a click places it.": {
   "de": "Ein einzelner Punkt; ein Klick setzt ihn.",
   "pl": "Pojedynczy punkt; kliknięcie go stawia."
@@ -218,6 +226,10 @@
  "A surface of the mask and the preset planted where it is.": {
   "de": "Eine Oberfläche der Maske und die Vorlage, die dort gepflanzt wird.",
   "pl": "Powierzchnia maski i preset sadzony tam, gdzie ona jest."
+ },
+ "A verge along roads and lines, bushes beyond it, and now and then a sign. Drop it on a road or a line.": {
+  "de": "Ein Bankett entlang von Straßen und Linien, dahinter Büsche und ab und zu ein Schild. Ziehe ihn auf eine Straße oder Linie.",
+  "pl": "Pobocze wzdłuż dróg i linii, za nim krzaki, a co jakiś czas znak. Upuść go na drogę albo linię."
  },
  "A window of its own, which can go outside the program and onto another screen": {
   "de": "Ein eigenes Fenster, das außerhalb des Programms und auf einem anderen Bildschirm stehen kann",
@@ -663,6 +675,10 @@
   "de": "Automatisch",
   "pl": "Automatycznie"
  },
+ "Automatic": {
+  "de": "Automatisch",
+  "pl": "Automatycznie"
+ },
  "Autosave every": {
   "de": "Automatisch speichern alle",
   "pl": "Autozapis co"
@@ -727,6 +743,18 @@
   "de": "Objekte werden in das Satellitenbild eingebrannt",
   "pl": "Wypalanie obiektów na satce"
  },
+ "Balk surface": {
+  "de": "Oberfläche der Feldraine",
+  "pl": "Powierzchnia miedzy"
+ },
+ "Balk width m": {
+  "de": "Breite der Feldraine m",
+  "pl": "Szerokość miedzy m"
+ },
+ "Band width m": {
+  "de": "Streifenbreite m",
+  "pl": "Szerokość pasa m"
+ },
  "Bank reach": {
   "de": "Böschungsreichweite",
   "pl": "Zasięg skarp"
@@ -746,6 +774,26 @@
  "Based on": {
   "de": "Basiert auf",
   "pl": "Na bazie"
+ },
+ "Beach slope °": {
+  "de": "Strandneigung °",
+  "pl": "Nachylenie plaży °"
+ },
+ "Beach surface": {
+  "de": "Strandoberfläche",
+  "pl": "Powierzchnia plaży"
+ },
+ "Beach up to m above the sea": {
+  "de": "Strand bis m über dem Meer",
+  "pl": "Plaża do m nad morzem"
+ },
+ "Beach width m": {
+  "de": "Strandbreite m",
+  "pl": "Szerokość plaży m"
+ },
+ "Beaches by the water, sand on the shallow sea floor, rock on steep shores, and stones along the water. Works on the whole map or inside polygons.": {
+  "de": "Strände am Wasser, Sand auf dem flachen Meeresboden, Fels an steilen Ufern und Steine entlang des Wassers. Wirkt auf der ganzen Karte oder in Polygonen.",
+  "pl": "Plaże przy wodzie, piasek na płytkim dnie morza, skała na stromych brzegach i kamienie wzdłuż wody. Działa na całej mapie albo wewnątrz wielokątów."
  },
  "Before every merge the project is copied to .team/before-merge.": {
   "de": "Vor jedem Zusammenführen wird das Projekt nach .team/before-merge kopiert.",
@@ -779,6 +827,10 @@
   "de": "Binarisieren",
   "pl": "Binaryzuj"
  },
+ "Black": {
+  "de": "Schwarz",
+  "pl": "Czarny"
+ },
  "Blend": {
   "de": "Übergang",
   "pl": "Przejście"
@@ -799,9 +851,17 @@
   "de": "Fleckengröße m",
   "pl": "Wielkość plam m"
  },
+ "Blue": {
+  "de": "Blau",
+  "pl": "Niebieski"
+ },
  "Blur": {
   "de": "Weichzeichnen",
   "pl": "Rozmycie"
+ },
+ "Both": {
+  "de": "Beide",
+  "pl": "Oba"
  },
  "Both height changes are added together.": {
   "de": "Beide Höhenänderungen werden addiert.",
@@ -830,6 +890,10 @@
  "Both of you painted different surfaces here": {
   "de": "Beide haben hier verschiedene Oberflächen gemalt",
   "pl": "Oboje pomalowaliście tu różne powierzchnie"
+ },
+ "Both sides": {
+  "de": "Beide Seiten",
+  "pl": "Obie strony"
  },
  "Bottom": {
   "de": "Unten",
@@ -862,6 +926,14 @@
  "Brightness": {
   "de": "Helligkeit",
   "pl": "Jasność"
+ },
+ "Brightness and contrast as in Photoshop's legacy mode: brightness moves every colour by the same amount, and full contrast leaves each channel either off or full.": {
+  "de": "Helligkeit und Kontrast wie im Legacy-Modus von Photoshop: Die Helligkeit verschiebt jede Farbe um denselben Betrag, und voller Kontrast lässt jeden Kanal entweder aus oder voll.",
+  "pl": "Jasność i kontrast jak w trybie dziedziczenia Photoshopa: jasność przesuwa każdy kolor o tyle samo, a pełny kontrast zostawia każdy kanał wyłączony albo pełny."
+ },
+ "Brightness and contrast push the satellite image to a few strong colours, as Photoshop's legacy brightness and contrast does. Each colour that comes out can become a surface of the mask.": {
+  "de": "Helligkeit und Kontrast reduzieren das Satellitenbild auf wenige kräftige Farben, wie Helligkeit und Kontrast im Legacy-Modus von Photoshop. Jede entstandene Farbe kann zu einer Oberfläche der Maske werden.",
+  "pl": "Jasność i kontrast sprowadzają zdjęcie satelitarne do kilku mocnych kolorów, tak jak jasność i kontrast w trybie dziedziczenia Photoshopa. Każdy powstały kolor może stać się powierzchnią maski."
  },
  "Bring it back": {
   "de": "Zurückholen",
@@ -899,6 +971,10 @@
   "de": "Erstellen und starten",
   "pl": "Zbuduj i uruchom"
  },
+ "Build anyway": {
+  "de": "Trotzdem bauen",
+  "pl": "Zbuduj mimo to"
+ },
  "Build finished": {
   "de": "Erstellung abgeschlossen",
   "pl": "Budowanie zakończone"
@@ -930,6 +1006,10 @@
  "Buildings and structures": {
   "de": "Gebäude und Bauwerke",
   "pl": "Budynki i konstrukcje"
+ },
+ "Buildings of the game": {
+  "de": "Gebäude des Spiels",
+  "pl": "Budynki z gry"
  },
  "Buildings: pick in the Content Browser and press Add, or drop them here.": {
   "de": "Gebäude: im Browser wählen und Hinzufügen klicken oder hier ablegen.",
@@ -970,6 +1050,10 @@
  "Bushes": {
   "de": "Büsche",
   "pl": "Krzewy"
+ },
+ "Bushes and trees": {
+  "de": "Büsche und Bäume",
+  "pl": "Krzaki i drzewa"
  },
  "Buy me a coffee": {
   "de": "Spendier mir einen Kaffee",
@@ -1075,6 +1159,10 @@
   "de": "Prüfung",
   "pl": "Sprawdzenie"
  },
+ "Check again": {
+  "de": "Erneut prüfen",
+  "pl": "Sprawdź ponownie"
+ },
  "Check for updates": {
   "de": "Nach Updates suchen",
   "pl": "Sprawdź aktualizacje"
@@ -1083,6 +1171,14 @@
   "de": "Beim Start nach Updates suchen",
   "pl": "Sprawdzaj aktualizacje przy starcie"
  },
+ "Check the map": {
+  "de": "Karte prüfen",
+  "pl": "Sprawdź mapę"
+ },
+ "Check the map before building": {
+  "de": "Karte vor dem Bauen prüfen",
+  "pl": "Sprawdzaj mapę przed budowaniem"
+ },
  "Check tiles": {
   "de": "Kacheln prüfen",
   "pl": "Sprawdź kafle"
@@ -1090,6 +1186,10 @@
  "Checking for updates...": {
   "de": "Suche nach Updates...",
   "pl": "Sprawdzanie aktualizacji..."
+ },
+ "Checking the map": {
+  "de": "Karte wird geprüft",
+  "pl": "Sprawdzanie mapy"
  },
  "Children": {
   "de": "Kinder",
@@ -1155,6 +1255,10 @@
   "de": "Zuerst eine Oberfläche wählen",
   "pl": "Najpierw wybierz powierzchnię"
  },
+ "Choose a surface for at least one colour": {
+  "de": "Wähle für mindestens eine Farbe eine Oberfläche",
+  "pl": "Wybierz powierzchnię dla co najmniej jednego koloru"
+ },
  "Choose at least one model": {
   "de": "Wähle mindestens ein Modell",
   "pl": "Wybierz co najmniej jeden model"
@@ -1190,6 +1294,10 @@
  "Choose the source point in the preview first": {
   "de": "Zuerst den Quellpunkt in der Vorschau wählen",
   "pl": "Najpierw wybierz punkt źródłowy w podglądzie"
+ },
+ "Choose the surfaces of the strips in the generator": {
+  "de": "Wähle im Generator die Oberflächen der Streifen",
+  "pl": "Wybierz w generatorze powierzchnie pasów"
  },
  "Choose the team folder": {
   "de": "Teamordner wählen",
@@ -1327,6 +1435,10 @@
   "de": "Klicke auf die Karte, um es zu platzieren; es lässt sich auch auf die Karte ziehen.",
   "pl": "Kliknij na mapie, aby go postawić; można go też przeciągnąć na mapę."
  },
+ "Click on the map to start measuring": {
+  "de": "Klicke auf die Karte, um mit dem Messen zu beginnen",
+  "pl": "Kliknij na mapie, żeby zacząć mierzyć"
+ },
  "Click on the map where the line starts.": {
   "de": "Klicke auf die Karte, wo die Linie beginnt.",
   "pl": "Kliknij na mapie, gdzie zaczyna się linia."
@@ -1435,6 +1547,14 @@
   "de": "Klick: aktive Ebene (neue Objekte landen hier). Strg+Klick: Bearbeitung ein- oder ausschalten.",
   "pl": "Kliknięcie: aktywna warstwa (tu trafiają nowe obiekty). Ctrl+kliknięcie: włącza lub wyłącza edycję."
  },
+ "Clicks on the map measure lengths, the climb along them and the area they close.": {
+  "de": "Klicks auf die Karte messen Längen, den Anstieg entlang und die Fläche, die sie umschließen.",
+  "pl": "Kliknięcia na mapie mierzą długości, różnicę wysokości i pole, które zamykają."
+ },
+ "Cliffs and rocks": {
+  "de": "Klippen und Felsen",
+  "pl": "Klify i skały"
+ },
  "Clone": {
   "de": "Klonen",
   "pl": "Klon"
@@ -1498,6 +1618,10 @@
  "Colour texture": {
   "de": "Farbtextur",
   "pl": "Tekstura koloru"
+ },
+ "Colours of the surfaces": {
+  "de": "Farben der Oberflächen",
+  "pl": "Kolory powierzchni"
  },
  "Configuration": {
   "de": "Konfiguration",
@@ -1675,9 +1799,17 @@
   "de": "Bis zur Höhe abtragen",
   "pl": "Ścięcie do poziomu"
  },
+ "Cuts polygons into strips of fields with balks between them, and lays hay bales along them.": {
+  "de": "Teilt Polygone in Feldstreifen mit Rainen dazwischen und legt Heuballen entlang der Streifen.",
+  "pl": "Dzieli wielokąty na pasy pól z miedzami pomiędzy nimi i układa wzdłuż nich bele siana."
+ },
  "Cutting slope": {
   "de": "Einschnittneigung",
   "pl": "Nachylenie wykopu"
+ },
+ "Cyan": {
+  "de": "Cyan",
+  "pl": "Cyjan"
  },
  "DZ_Data and the addon of the base world are always there.": {
   "de": "DZ_Data und das Addon der Basiswelt sind immer dabei.",
@@ -1859,6 +1991,10 @@
   "de": "Ausgewählte Typen löschen ({0})",
   "pl": "Usuń zaznaczone typy ({0})"
  },
+ "Delete these objects": {
+  "de": "Diese Objekte löschen",
+  "pl": "Usuń te obiekty"
+ },
  "Delete types": {
   "de": "Typen löschen",
   "pl": "Usuń typy"
@@ -1919,6 +2055,10 @@
   "de": "Diffus",
   "pl": "Rozproszone (diffuse)"
  },
+ "Direction °": {
+  "de": "Richtung °",
+  "pl": "Kierunek °"
+ },
  "Discard the changes": {
   "de": "Änderungen verwerfen",
   "pl": "Odrzuć zmiany"
@@ -1954,6 +2094,14 @@
  "Distance in metres from a player within which nothing is cleaned up.": {
   "de": "Entfernung in Metern vom Spieler, in der nichts aufgeräumt wird.",
   "pl": "Odległość w metrach od gracza, w której nic nie jest sprzątane."
+ },
+ "Distance to roads m": {
+  "de": "Abstand zu Straßen m",
+  "pl": "Odległość od dróg m"
+ },
+ "Distance to water m": {
+  "de": "Abstand zu Wasser m",
+  "pl": "Odległość od wody m"
  },
  "Distances": {
   "de": "Entfernungen",
@@ -2131,6 +2279,10 @@
   "de": "Jede Oberfläche in ihrer Farbe aus layers.cfg.",
   "pl": "Każda nawierzchnia w swoim kolorze z layers.cfg."
  },
+ "Each surface takes the average colour the satellite image has where the mask holds it.": {
+  "de": "Jede Oberfläche nimmt die Durchschnittsfarbe des Satellitenbilds dort an, wo die Maske sie hat.",
+  "pl": "Każda powierzchnia przyjmuje średni kolor zdjęcia satelitarnego w miejscach, gdzie leży w masce."
+ },
  "Earthwork penalty": {
   "de": "Erdarbeiten-Malus",
   "pl": "Kara za roboty ziemne"
@@ -2146,6 +2298,10 @@
  "Economy files written by the game": {
   "de": "Wirtschaftsdateien, die das Spiel schreibt",
   "pl": "Pliki ekonomii zapisywane przez grę"
+ },
+ "Edge between surfaces m": {
+  "de": "Rand zwischen Oberflächen m",
+  "pl": "Krawędź między powierzchniami m"
  },
  "Edge blend in a shape": {
   "de": "Randübergang in einer Form",
@@ -2310,6 +2466,10 @@
  "Erosion rate": {
   "de": "Erosionsrate",
   "pl": "Siła erozji"
+ },
+ "Errors, such as models or surface textures missing from the work drive, stop the build until they are fixed or you build anyway.": {
+  "de": "Fehler, etwa auf dem Arbeitslaufwerk fehlende Modelle oder Oberflächentexturen, halten den Bau an, bis sie behoben sind oder du trotzdem baust.",
+  "pl": "Błędy, takie jak brak modeli lub tekstur powierzchni na dysku roboczym, wstrzymują budowanie, dopóki ich nie poprawisz albo nie zbudujesz mimo to."
  },
  "Evening": {
   "de": "Abend",
@@ -2511,6 +2671,14 @@
   "de": "Weit",
   "pl": "Z daleka"
  },
+ "Farm": {
+  "de": "Bauernhof",
+  "pl": "Gospodarstwo"
+ },
+ "Farms": {
+  "de": "Bauernhöfe",
+  "pl": "Gospodarstwa"
+ },
  "Feature size": {
   "de": "Formgröße",
   "pl": "Rozmiar form"
@@ -2523,9 +2691,17 @@
   "de": "Zaun",
   "pl": "Płot"
  },
+ "Fence models": {
+  "de": "Zaunmodelle",
+  "pl": "Modele płotów"
+ },
  "Field of view": {
   "de": "Sichtfeld",
   "pl": "Pole widzenia"
+ },
+ "Fields": {
+  "de": "Felder",
+  "pl": "Pola"
  },
  "File": {
   "de": "Datei",
@@ -2558,6 +2734,10 @@
  "Fill up to the level": {
   "de": "Bis zur Höhe auffüllen",
   "pl": "Nasyp do poziomu"
+ },
+ "Find water courses": {
+  "de": "Wasserläufe finden",
+  "pl": "Znajdź cieki wodne"
  },
  "Finds the road through the clicked points within the grade limits, around water and forbidden areas, with bridges. Off: road parts follow the clicked line.": {
   "de": "Sucht die Straße durch die geklickten Punkte innerhalb der Steigung, um Wasser und Sperrgebiete herum, mit Brücken. Aus: Teile folgen der geklickten Linie.",
@@ -2759,6 +2939,10 @@
   "de": "Bilder pro Sekunde",
   "pl": "Klatki na sekundę"
  },
+ "Free ones up to m from the walls": {
+  "de": "Freistehende bis m von den Wänden",
+  "pl": "Wolnostojące do m od ścian"
+ },
  "Friction": {
   "de": "Reibung",
   "pl": "Tarcie"
@@ -2775,9 +2959,21 @@
   "de": "Von der Kamera",
   "pl": "Z kamery"
  },
+ "From the centre lines of the roads.": {
+  "de": "Von den Mittellinien der Straßen.",
+  "pl": "Od osi dróg."
+ },
+ "From the middle m": {
+  "de": "Von der Mitte m",
+  "pl": "Od środka m"
+ },
  "From the project species": {
   "de": "Aus den Arten des Projekts",
   "pl": "Z gatunków projektu"
+ },
+ "From the sea, ponds and river models.": {
+  "de": "Vom Meer, von Teichen und Flussmodellen.",
+  "pl": "Od morza, stawów i modeli rzek."
  },
  "From the selected objects ({0})": {
   "de": "Aus den ausgewählten Objekten ({0})",
@@ -2907,6 +3103,10 @@
   "de": "Globale Werte",
   "pl": "Zmienne globalne"
  },
+ "Go there and select the objects": {
+  "de": "Dorthin gehen und die Objekte auswählen",
+  "pl": "Przejdź tam i zaznacz obiekty"
+ },
  "Go to": {
   "de": "Hingehen",
   "pl": "Przejdź"
@@ -2938,6 +3138,10 @@
  "Grass under objects": {
   "de": "Gras unter Objekten",
   "pl": "Trawa pod obiektami"
+ },
+ "Green": {
+  "de": "Grün",
+  "pl": "Zielony"
  },
  "Ground colour on grass": {
   "de": "Bodenfarbe auf Gras",
@@ -2995,9 +3199,21 @@
   "de": "Gruppen:",
   "pl": "Grupy:"
  },
+ "Guess from the names": {
+  "de": "Aus den Namen raten",
+  "pl": "Zgadnij z nazw"
+ },
+ "Half the road width m": {
+  "de": "Halbe Straßenbreite m",
+  "pl": "Połowa szerokości drogi m"
+ },
  "Hardness": {
   "de": "Härte",
   "pl": "Twardość"
+ },
+ "Hay bales": {
+  "de": "Heuballen",
+  "pl": "Bele siana"
  },
  "Health of the starting items": {
   "de": "Zustand der Startgegenstände",
@@ -3071,6 +3287,10 @@
   "de": "Hochland",
   "pl": "Wyżyna"
  },
+ "Hill shading": {
+  "de": "Hangschattierung",
+  "pl": "Cieniowanie wzgórz"
+ },
  "Hills": {
   "de": "Hügel",
   "pl": "Wzgórza"
@@ -3091,6 +3311,14 @@
   "de": "Taste halten, um Objekte zu malen.",
   "pl": "Przytrzymaj przycisk, aby malować obiekty."
  },
+ "Hollows and ridges m": {
+  "de": "Senken und Kämme m",
+  "pl": "Zagłębienia i grzbiety m"
+ },
+ "Houses": {
+  "de": "Häuser",
+  "pl": "Domy"
+ },
  "How deep the relief in the alpha channel of the surface textures looks close up; 0 leaves them flat.": {
   "de": "Wie tief das Relief im Alphakanal der Oberflächentexturen aus der Nähe wirkt; 0 lässt sie flach.",
   "pl": "Jak głęboki z bliska wydaje się relief z kanału alfa tekstur powierzchni; 0 zostawia je płaskie."
@@ -3103,6 +3331,10 @@
   "de": "Wie stark die eingebrannten Objekte in das Satellitenbild darunter übergehen.",
   "pl": "Jak mocno wypalone obiekty wtapiają się w satkę pod nimi."
  },
+ "How far the ground lies below the ground round it: above 0 in hollows and valleys, below 0 on ridges and crests.": {
+  "de": "Wie tief der Boden unter dem Boden ringsum liegt: über 0 in Senken und Tälern, unter 0 auf Kämmen und Graten.",
+  "pl": "Jak nisko teren leży względem terenu wokół: powyżej 0 w zagłębieniach i dolinach, poniżej 0 na grzbietach i szczytach."
+ },
  "How far the swell runs up the shore and back; the game's MaxWave is 0.25 m.": {
   "de": "Wie weit die Dünung den Strand hinauf- und zurückläuft; MaxWave des Spiels ist 0,25 m.",
   "pl": "Jak daleko fala wbiega na brzeg i się cofa; MaxWave w grze to 0,25 m."
@@ -3114,6 +3346,18 @@
  "How many times the textures repeat in their uv space (aside and up of both stages)": {
   "de": "Wie oft sich die Texturen in ihrem UV-Raum wiederholen (aside und up beider Stages)",
   "pl": "Ile razy tekstury powtarzają się w swoim UV (aside i up obu stage'y)"
+ },
+ "How much of the light and dark pattern of the surface texture shows.": {
+  "de": "Wie viel vom hellen und dunklen Muster der Oberflächentextur zu sehen ist.",
+  "pl": "Ile widać jasnego i ciemnego wzoru tekstury powierzchni."
+ },
+ "How much of the texture's own pattern shows over its average colour.": {
+  "de": "Wie viel vom eigenen Muster der Textur über ihrer Durchschnittsfarbe zu sehen ist.",
+  "pl": "Ile własnego wzoru tekstury widać na jej średnim kolorze."
+ },
+ "How much water must gather for a course to start: higher gives fewer, larger ones.": {
+  "de": "Wie viel Wasser sich sammeln muss, damit ein Lauf beginnt: höher ergibt weniger, größere.",
+  "pl": "Ile wody musi się zebrać, żeby zaczął się ciek: wyżej daje mniej, ale większych."
  },
  "How well someone lying, kneeling and standing on it is seen": {
   "de": "Wie gut man liegend, kniend und stehend darauf gesehen wird",
@@ -3227,6 +3471,10 @@
   "de": "Beim Export einbeziehen",
   "pl": "Uwzględnij w eksporcie"
  },
+ "Industrial": {
+  "de": "Industrie",
+  "pl": "Przemysł"
+ },
  "Infected": {
   "de": "Infizierte",
   "pl": "Zarażeni"
@@ -3315,6 +3563,10 @@
   "de": "Baumfrei halten",
   "pl": "Bez drzew"
  },
+ "Keep from roads m": {
+  "de": "Abstand zu Straßen m",
+  "pl": "Odstęp od dróg m"
+ },
  "Keep mine": {
   "de": "Meine behalten",
   "pl": "Zostaw moje"
@@ -3322,6 +3574,10 @@
  "Keep the pieces already laid": {
   "de": "Gelegte Stücke behalten",
   "pl": "Zachowuj ułożone części"
+ },
+ "Keep this view": {
+  "de": "Diese Ansicht merken",
+  "pl": "Zapisz ten widok"
  },
  "Keeps the economy of the mission and drops what was placed on the other map: spawns, zones, areas, map groups and area flags.": {
   "de": "Behält die Wirtschaft der Mission und verwirft, was auf der anderen Karte platziert war: Spawns, Zonen, Gebiete, Kartengruppen und Gebietsflags.",
@@ -3367,9 +3623,21 @@
   "de": "Geländeraster {0}, Zelle {1} m, {2} Kacheln pro Seite",
   "pl": "Siatka terenu {0}, komórka {1} m, kafli na bok: {2}"
  },
+ "Landscape": {
+  "de": "Landschaft",
+  "pl": "Krajobraz"
+ },
+ "Lane from the middle m": {
+  "de": "Fahrspur von der Mitte m",
+  "pl": "Pas ruchu od środka m"
+ },
  "Language": {
   "de": "Sprache",
   "pl": "Język"
+ },
+ "Larger areas a little lighter or darker, as real ground is.": {
+  "de": "Größere Flächen etwas heller oder dunkler, wie echter Boden.",
+  "pl": "Większe obszary nieco jaśniejsze lub ciemniejsze, jak na prawdziwym terenie."
  },
  "Lasso": {
   "de": "Lasso",
@@ -3410,6 +3678,10 @@
  "Lay pieces at the open end or take them away, then apply.": {
   "de": "Lege Teile am offenen Ende an oder nimm sie weg, dann übernehmen.",
   "pl": "Dokładaj party na otwartym końcu lub je zdejmuj, potem zastosuj."
+ },
+ "Lay the beaches to a gentle slope": {
+  "de": "Strände sanft abfallend formen",
+  "pl": "Wyprofiluj plaże do łagodnego spadku"
  },
  "Lay the chosen piece": {
   "de": "Gewähltes Teil legen",
@@ -3458,6 +3730,10 @@
  "Least damage of spawned loot, 0..1.": {
   "de": "Geringster Schaden gespawnter Beute, 0..1.",
   "pl": "Najmniejsze uszkodzenie lootu, 0..1."
+ },
+ "Leave as it is": {
+  "de": "Unverändert lassen",
+  "pl": "Zostaw bez zmian"
  },
  "Leave out objects hidden behind the terrain or buildings": {
   "de": "Objekte hinter Gelände oder Gebäuden weglassen",
@@ -3562,6 +3838,10 @@
  "Line: Sparse Cluster": {
   "de": "Linie: Lockere Gruppen",
   "pl": "Linia: Rzadkie skupiska"
+ },
+ "Lines along which water runs down the terrain, in a new shape layer: drop the River or Stream generator on them. The Water flow shading of the view shows the same.": {
+  "de": "Linien, entlang derer Wasser das Gelände hinabläuft, in einer neuen Formebene: Ziehe den Fluss- oder Bach-Generator darauf. Die Schattierung Wasserfluss der Ansicht zeigt dasselbe.",
+  "pl": "Linie, którymi woda spływa po terenie, w nowej warstwie kształtów: upuść na nie generator Rzeki albo Strumienia. Cieniowanie Przepływ wody w widoku pokazuje to samo."
  },
  "Lines at the end of the file": {
   "de": "Zeilen am Ende der Datei",
@@ -3679,6 +3959,10 @@
   "de": "Senkt den Boden unter dem Pinsel.",
   "pl": "Obniża teren pod pędzlem."
  },
+ "Magenta": {
+  "de": "Magenta",
+  "pl": "Purpurowy"
+ },
  "Main menu scenes": {
   "de": "Hauptmenü-Szenen",
   "pl": "Sceny menu głównego"
@@ -3731,6 +4015,10 @@
   "de": "Eigene Kopie der Karte anlegen",
   "pl": "Zrób kopię dla mapy"
  },
+ "Make the satellite": {
+  "de": "Satellitenbild erstellen",
+  "pl": "Utwórz satelitę"
+ },
  "Makes env/<name>.xml and adds it to cfgenvironment.xml.": {
   "de": "Erstellt env/<Name>.xml und trägt sie in cfgenvironment.xml ein.",
   "pl": "Tworzy env/<nazwa>.xml i dodaje go do cfgenvironment.xml."
@@ -3746,6 +4034,14 @@
  "Map ID": {
   "de": "Karten-ID",
   "pl": "ID mapy"
+ },
+ "Map check": {
+  "de": "Kartenprüfung",
+  "pl": "Kontrola mapy"
+ },
+ "Map check: {0} errors, {1} warnings": {
+  "de": "Kartenprüfung: {0} Fehler, {1} Warnungen",
+  "pl": "Kontrola mapy: błędy {0}, ostrzeżenia {1}"
  },
  "Map class name or terrain size (send a full copy)": {
   "de": "Klassenname der Karte oder Geländegröße (vollständige Kopie senden)",
@@ -3863,6 +4159,14 @@
   "de": "Ich ({0})",
   "pl": "Ja ({0})"
  },
+ "Measure": {
+  "de": "Messen",
+  "pl": "Linijka"
+ },
+ "Measuring: a click adds a point, Backspace takes the last back, Esc or a right click ends": {
+  "de": "Messen: Ein Klick fügt einen Punkt hinzu, Rücktaste nimmt den letzten zurück, Esc oder Rechtsklick beendet",
+  "pl": "Mierzenie: kliknięcie dodaje punkt, Backspace cofa ostatni, Esc albo prawy przycisk kończy"
+ },
  "Medium": {
   "de": "Mittel",
   "pl": "Średnie"
@@ -3903,6 +4207,14 @@
   "de": "Nachrichten an Spieler: Begrüßung, wiederholte und Countdowns zum Herunterfahren.",
   "pl": "Wiadomości dla graczy: powitania, powtarzane i odliczania do wyłączenia."
  },
+ "Metres a pixel": {
+  "de": "Meter pro Pixel",
+  "pl": "Metry na piksel"
+ },
+ "Metres one repeat of a surface texture covers.": {
+  "de": "Wie viele Meter eine Wiederholung der Oberflächentextur abdeckt.",
+  "pl": "Ile metrów zajmuje jedno powtórzenie tekstury powierzchni."
+ },
  "Middle": {
   "de": "Mittel",
   "pl": "Średnio"
@@ -3910,6 +4222,14 @@
  "Middle distance texture": {
   "de": "Textur mittlerer Entfernung",
   "pl": "Tekstura średniej odległości"
+ },
+ "Military": {
+  "de": "Militär",
+  "pl": "Wojsko"
+ },
+ "Military buildings": {
+  "de": "Militärgebäude",
+  "pl": "Budynki wojskowe"
  },
  "Min": {
   "de": "Min",
@@ -4015,6 +4335,10 @@
   "de": "Mehr",
   "pl": "Więcej"
  },
+ "More conditions": {
+  "de": "Weitere Bedingungen",
+  "pl": "Więcej warunków"
+ },
  "More presets in shapes": {
   "de": "Weitere Presets in Formen",
   "pl": "Kolejne presety w kształtach"
@@ -4026,6 +4350,10 @@
  "Most animals alive at once.": {
   "de": "Höchstzahl gleichzeitig lebender Tiere.",
   "pl": "Najwięcej zwierząt naraz."
+ },
+ "Most cars in a jam": {
+  "de": "Höchstens Autos im Stau",
+  "pl": "Najwięcej aut w korku"
  },
  "Most damage of spawned loot, 0..1.": {
   "de": "Größter Schaden gespawnter Beute, 0..1.",
@@ -4303,6 +4631,10 @@
   "de": "Kein Modell für {0} Klassen gefunden",
   "pl": "Nie znaleziono modelu dla {0} klas"
  },
+ "No navmesh yet: AI does not walk until it is generated (Build > Generate navmesh)": {
+  "de": "Noch kein Navmesh: Die KI läuft nicht, bis es erzeugt ist (Bauen > Navmesh erzeugen)",
+  "pl": "Brak jeszcze navmesha: AI nie chodzi, dopóki go nie wygenerujesz (Buduj > Generuj navmesh)"
+ },
  "No objects to bake": {
   "de": "Keine Objekte zum Einbrennen",
   "pl": "Brak obiektów do wypalenia"
@@ -4343,6 +4675,10 @@
   "de": "Noch kein Quellpunkt",
   "pl": "Nie wybrano punktu źródłowego"
  },
+ "No surface for the beaches: choose one in the generator, or add a sand layer": {
+  "de": "Keine Oberfläche für die Strände: Wähle eine im Generator oder füge eine Sandebene hinzu",
+  "pl": "Brak powierzchni dla plaż: wybierz ją w generatorze albo dodaj warstwę piasku"
+ },
  "No surface of the game is named like this texture: in the game it has no grass, and the sounds and physics of the default ground.": {
   "de": "Keine Oberfläche des Spiels passt zu dieser Textur: im Spiel hat sie kein Gras und die Geräusche und Physik des Standardbodens.",
   "pl": "Żadna powierzchnia gry nie pasuje do nazwy tej tekstury: w grze nie ma na niej trawy, a dźwięki i fizyka są domyślne."
@@ -4358,6 +4694,10 @@
  "No template libraries in the project. Load them with + Add, or import Terrain Builder layers.": {
   "de": "Keine Vorlagenbibliotheken im Projekt. Mit + Hinzufügen laden oder Terrain-Builder-Ebenen importieren.",
   "pl": "Brak bibliotek szablonów w projekcie. Wczytaj je przez + Dodaj albo zaimportuj warstwy Terrain Buildera."
+ },
+ "No water course is long enough: lower the wetness or the shortest length": {
+  "de": "Kein Wasserlauf ist lang genug: Senke die Feuchtigkeit oder die kürzeste Länge",
+  "pl": "Żaden ciek nie jest wystarczająco długi: obniż wilgotność albo najkrótszą długość"
  },
  "No {0} next to the key: servers need the public key to let the mod in.": {
   "de": "Kein {0} neben dem Schlüssel: Server brauchen den öffentlichen Schlüssel, um den Mod zuzulassen.",
@@ -4378,6 +4718,10 @@
  "None": {
   "de": "Keine",
   "pl": "Żadne"
+ },
+ "None chosen: layers named like fields are used.": {
+  "de": "Nichts gewählt: Ebenen mit feldähnlichen Namen werden verwendet.",
+  "pl": "Nic nie wybrano: użyte zostaną warstwy o nazwach jak pola."
  },
  "None of the objects could be drawn": {
   "de": "Keines der Objekte konnte gezeichnet werden",
@@ -4406,6 +4750,14 @@
  "Not signed": {
   "de": "Nicht signiert",
   "pl": "Bez podpisu"
+ },
+ "Notes ({0})": {
+  "de": "Hinweise ({0})",
+  "pl": "Uwagi ({0})"
+ },
+ "Nothing found": {
+  "de": "Nichts gefunden",
+  "pl": "Nic nie znaleziono"
  },
  "Nothing here": {
   "de": "Hier ist nichts",
@@ -4531,6 +4883,10 @@
   "de": "Aus startet die Wirtschaft des Servers neu.",
   "pl": "Wyłączone uruchamia ekonomię serwera od nowa."
  },
+ "Off: the strips of each field follow its longest side.": {
+  "de": "Aus: Die Streifen jedes Feldes folgen seiner längsten Seite.",
+  "pl": "Wyłączone: pasy każdego pola biegną wzdłuż jego najdłuższego boku."
+ },
  "Offset": {
   "de": "Versatz",
   "pl": "Przesunięcie"
@@ -4567,6 +4923,10 @@
   "de": "Auf die ganze Karte",
   "pl": "Na całą mapę"
  },
+ "On the whole map it follows": {
+  "de": "Auf der ganzen Karte folgt er",
+  "pl": "Na całej mapie idzie wzdłuż"
+ },
  "On: changing a point fits the route again only from that point on; the pieces before it stay as they are. Off: the whole route is fitted again.": {
   "de": "An: Wird ein Punkt geändert, wird die Route erst ab diesem Punkt neu eingepasst; die Stücke davor bleiben. Aus: Die ganze Route wird neu eingepasst.",
   "pl": "Włączone: zmiana punktu dopasowuje trasę od nowa dopiero od tego punktu; części przed nim zostają bez zmian. Wyłączone: cała trasa jest dopasowywana od nowa."
@@ -4582,6 +4942,10 @@
  "One container without loot points for each; ExportProxyProto in init.c makes the points in the game.": {
   "de": "Je ein Behälter ohne Beutepunkte; ExportProxyProto in init.c erzeugt die Punkte im Spiel.",
   "pl": "Po jednym pojemniku bez punktów lootu; ExportProxyProto w init.c tworzy punkty w grze."
+ },
+ "One every m (0 = none)": {
+  "de": "Einer alle m (0 = keiner)",
+  "pl": "Jeden co m (0 = brak)"
  },
  "One file for each layer": {
   "de": "Eine Datei pro Ebene",
@@ -4610,6 +4974,10 @@
  "Only layers marked for export": {
   "de": "Nur zum Export markierte Ebenen",
   "pl": "Tylko warstwy oznaczone do eksportu"
+ },
+ "Only on paved roads": {
+  "de": "Nur auf befestigten Straßen",
+  "pl": "Tylko na drogach utwardzonych"
  },
  "Only on satellite colours": {
   "de": "Nur auf Satellitenfarben",
@@ -4819,6 +5187,10 @@
   "de": "Boden unter den Bäumen malen",
   "pl": "Maluj podłoże pod drzewami"
  },
+ "Paint the surfaces": {
+  "de": "Oberflächen malen",
+  "pl": "Pomaluj powierzchnie"
+ },
  "Paint under objects": {
   "de": "Unter Objekten malen",
   "pl": "Maluj pod obiektami"
@@ -4863,6 +5235,10 @@
   "de": "Malt die Zellen, die das Spiel nicht zeichnet, für Eingänge unter die Erde.",
   "pl": "Maluje komórki, których gra nie rysuje, np. na wejścia pod ziemię."
  },
+ "Paints the satellite image in the colours of the surfaces of the mask, with their pattern, soft edges between them and the shading of the hills. It is a modifier, so it can be hidden, blended or deleted.": {
+  "de": "Malt das Satellitenbild in den Farben der Oberflächen der Maske, mit ihrem Muster, weichen Rändern dazwischen und der Schattierung der Hügel. Es ist ein Modifikator, der ausgeblendet, überblendet oder gelöscht werden kann.",
+  "pl": "Maluje zdjęcie satelitarne w kolorach powierzchni z maski, z ich wzorem, miękkimi krawędziami między nimi i cieniowaniem wzgórz. To modyfikator, więc można go ukryć, przenikać lub usunąć."
+ },
  "Paints {0} (L{1})": {
   "de": "Malt {0} (L{1})",
   "pl": "Maluje {0} (L{1})"
@@ -4903,6 +5279,14 @@
   "de": "Fleckgröße",
   "pl": "Rozmiar plamy"
  },
+ "Patch size m": {
+  "de": "Fleckengröße m",
+  "pl": "Wielkość plam m"
+ },
+ "Patches": {
+  "de": "Flecken",
+  "pl": "Plamy"
+ },
  "Patches per hectare": {
   "de": "Flecken pro Hektar",
   "pl": "Płaty na hektar"
@@ -4911,9 +5295,21 @@
   "de": "Pfade",
   "pl": "Ścieżki"
  },
+ "Per 100 m": {
+  "de": "Pro 100 m",
+  "pl": "Na 100 m"
+ },
+ "Per building": {
+  "de": "Pro Gebäude",
+  "pl": "Na budynek"
+ },
  "Per hectare": {
   "de": "Pro Hektar",
   "pl": "Na hektar"
+ },
+ "Per km": {
+  "de": "Pro km",
+  "pl": "Na km"
  },
  "Percent of the loot spawned again after a restart.": {
   "de": "Prozent der Beute, die nach einem Neustart wieder spawnt.",
@@ -5059,6 +5455,10 @@
   "de": "Setzt ein Modell in gleichen Abständen entlang einer geklickten Linie, einmalig. Die Linien-Generatoren tun dasselbe mit mehr Optionen und lassen sich erneut ausführen.",
   "pl": "Stawia jeden model w równych odstępach wzdłuż klikniętej linii, jednorazowo. Generatory liniowe robią to samo z większą liczbą opcji i można je uruchomić ponownie."
  },
+ "Places per km": {
+  "de": "Stellen pro km",
+  "pl": "Miejsc na km"
+ },
  "Places the main menu shows behind the character. Set one from where the 3D camera stands and looks; without any the base world's are used.": {
   "de": "Orte, die das Hauptmenü hinter der Figur zeigt. Setze einen von dort, wo die 3D-Kamera steht und hinsieht; ohne werden die der Basiswelt genutzt.",
   "pl": "Miejsca, które menu główne pokazuje za postacią. Ustaw je z miejsca, gdzie stoi i patrzy kamera 3D; bez nich używane są sceny świata bazowego."
@@ -5066,6 +5466,10 @@
  "Places the preset {0}": {
   "de": "Setzt die Vorlage {0}",
   "pl": "Stawia preset {0}"
+ },
+ "Places with wrecks along roads: a jam of cars in a lane, a crash, or a car left on the verge, with stains under them; and cracks, patches and tyre marks on the road. Drop it on a road, or on the map for all roads.": {
+  "de": "Stellen mit Wracks entlang der Straßen: ein Stau auf einer Spur, ein Unfall oder ein am Bankett zurückgelassenes Auto, mit Flecken darunter; dazu Risse, Flicken und Reifenspuren auf der Straße. Ziehe ihn auf eine Straße oder auf die Karte für alle Straßen.",
+  "pl": "Miejsca z wrakami wzdłuż dróg: korek aut na pasie, kolizja albo auto porzucone na poboczu, z plamami pod nimi; do tego pęknięcia, łaty i ślady opon na drodze. Upuść go na drogę albo na mapę dla wszystkich dróg."
  },
  "Places {0}": {
   "de": "Setzt {0}",
@@ -5090,6 +5494,18 @@
  "Plants grow (0 or 1)": {
   "de": "Pflanzen wachsen (0 oder 1)",
   "pl": "Rośliny rosną (0 lub 1)"
+ },
+ "Platform from the middle m": {
+  "de": "Bahnsteig von der Mitte m",
+  "pl": "Peron od środka m"
+ },
+ "Platform length m": {
+  "de": "Bahnsteiglänge m",
+  "pl": "Długość peronu m"
+ },
+ "Platform pieces": {
+  "de": "Bahnsteigteile",
+  "pl": "Elementy peronu"
  },
  "Play": {
   "de": "Starten",
@@ -5154,6 +5570,10 @@
  "Positions of dirt piles; usually empty.": {
   "de": "Positionen von Erdhaufen; meist leer.",
   "pl": "Pozycje kopców ziemi; zwykle pusty."
+ },
+ "Posts in a row": {
+  "de": "Pfosten in einer Reihe",
+  "pl": "Słupy w rzędzie"
  },
  "Power line": {
   "de": "Stromleitung",
@@ -5255,6 +5675,18 @@
   "de": "Radius",
   "pl": "Promień"
  },
+ "Ragged edges m": {
+  "de": "Ausgefranste Ränder m",
+  "pl": "Postrzępione krawędzie m"
+ },
+ "Railway surroundings": {
+  "de": "Bahnumfeld",
+  "pl": "Otoczenie kolei"
+ },
+ "Railways": {
+  "de": "Bahnstrecken",
+  "pl": "Tory"
+ },
  "Rain": {
   "de": "Regen",
   "pl": "Deszcz"
@@ -5326,6 +5758,10 @@
  "Recent projects": {
   "de": "Letzte Projekte",
   "pl": "Ostatnie projekty"
+ },
+ "Red": {
+  "de": "Rot",
+  "pl": "Czerwony"
  },
  "Redo": {
   "de": "Wiederholen",
@@ -5527,6 +5963,10 @@
   "de": "Straßenkatalog...",
   "pl": "Katalog dróg..."
  },
+ "Road decals": {
+  "de": "Straßen-Decals",
+  "pl": "Decale na drodze"
+ },
  "Road ends": {
   "de": "Straßenenden",
   "pl": "Końce dróg"
@@ -5550,6 +5990,10 @@
  "Road types saved": {
   "de": "Straßentypen gespeichert",
   "pl": "Zapisano typy dróg"
+ },
+ "Road verges": {
+  "de": "Straßenbankette",
+  "pl": "Pobocza dróg"
  },
  "Roads": {
   "de": "Straßen",
@@ -5583,6 +6027,10 @@
   "de": "Straßen, Flächen und Teiche im Gelände; ohne sie das Gelände wie modelliert.",
   "pl": "Drogi, wyrównania i stawy wcięte w teren; bez nich teren taki, jak wyrzeźbiony."
  },
+ "Rock on shores steeper than °": {
+  "de": "Fels an Ufern steiler als °",
+  "pl": "Skała na brzegach bardziej stromych niż °"
+ },
  "Rocks": {
   "de": "Felsen",
   "pl": "Skały"
@@ -5590,6 +6038,14 @@
  "Rocks for a rock square": {
   "de": "Felsen für ein Felsfeld",
   "pl": "Skał na pole skalne"
+ },
+ "Rocks on steep slopes, facing down the slope and sunk into it, with a rock surface under them.": {
+  "de": "Felsen an steilen Hängen, hangabwärts gedreht und in den Hang eingesenkt, mit Felsoberfläche darunter.",
+  "pl": "Skały na stromych zboczach, zwrócone w dół stoku i wpuszczone w niego, z powierzchnią skały pod nimi."
+ },
+ "Rocky shore surface": {
+  "de": "Oberfläche felsiger Ufer",
+  "pl": "Powierzchnia skalistego brzegu"
  },
  "Roll": {
   "de": "Rollen",
@@ -5671,6 +6127,14 @@
   "de": "Satellit",
   "pl": "Satelita"
  },
+ "Satellite from the mask": {
+  "de": "Satellitenbild aus der Maske",
+  "pl": "Satelita z maski"
+ },
+ "Satellite from the mask {0}": {
+  "de": "Satellitenbild aus der Maske {0}",
+  "pl": "Satelita z maski {0}"
+ },
  "Satellite image": {
   "de": "Satellitenbild",
   "pl": "Obraz satelitarny"
@@ -5734,6 +6198,10 @@
  "Saved in the generator library": {
   "de": "In der Generatorbibliothek gespeichert",
   "pl": "Zapisano w bibliotece generatorów"
+ },
+ "Saved views": {
+  "de": "Gespeicherte Ansichten",
+  "pl": "Zapisane widoki"
  },
  "Saved {0}": {
   "de": "{0} gespeichert",
@@ -5915,6 +6383,10 @@
   "de": "Wähle zuerst Polygone im Modus Formen.",
   "pl": "Najpierw zaznacz wielokąty w trybie Kształty."
  },
+ "Select polygons in the Shapes tool, or choose a shape layer": {
+  "de": "Wähle Polygone im Werkzeug Formen aus oder wähle eine Formebene",
+  "pl": "Zaznacz wielokąty w narzędziu Kształty albo wybierz warstwę kształtów"
+ },
  "Select polygons or lines in the Shapes tool, or choose a shape layer": {
   "de": "Wähle Polygone oder Linien im Formen-Werkzeug aus oder wähle eine Formenebene",
   "pl": "Zaznacz wielokąty lub linie w narzędziu Shapes albo wybierz warstwę kształtów"
@@ -6063,6 +6535,26 @@
   "de": "Formen (SHP, TV4S)...",
   "pl": "Kształty (SHP, TV4S)..."
  },
+ "Share against the walls": {
+  "de": "Anteil an den Wänden",
+  "pl": "Udział przy ścianach"
+ },
+ "Share of crashes": {
+  "de": "Anteil der Unfälle",
+  "pl": "Udział kolizji"
+ },
+ "Share of jams": {
+  "de": "Anteil der Staus",
+  "pl": "Udział korków"
+ },
+ "Share of plots fenced": {
+  "de": "Anteil eingezäunter Grundstücke",
+  "pl": "Udział ogrodzonych działek"
+ },
+ "Share of wrecks": {
+  "de": "Anteil der Wracks",
+  "pl": "Udział wraków"
+ },
  "Share the room evenly": {
   "de": "Platz gleich aufteilen",
   "pl": "Podziel miejsce po równo"
@@ -6090,6 +6582,10 @@
  "Shortcuts": {
   "de": "Tastenkürzel",
   "pl": "Skróty"
+ },
+ "Shortest m": {
+  "de": "Kürzester m",
+  "pl": "Najkrótszy m"
  },
  "Shoulder": {
   "de": "Bankett",
@@ -6155,6 +6651,10 @@
   "de": "Signieren",
   "pl": "Podpisywanie"
  },
+ "Signs": {
+  "de": "Schilder",
+  "pl": "Znaki"
+ },
  "Size": {
   "de": "Größe",
   "pl": "Rozmiar"
@@ -6183,6 +6683,10 @@
   "de": "Neigung °",
   "pl": "Nachylenie °"
  },
+ "Slopes steeper than °": {
+  "de": "Hänge steiler als °",
+  "pl": "Zbocza bardziej strome niż °"
+ },
  "Smaller brush": {
   "de": "Kleinerer Pinsel",
   "pl": "Mniejszy pędzel"
@@ -6194,6 +6698,10 @@
  "Smooth instead": {
   "de": "Stattdessen glätten",
   "pl": "Wygładzaj zamiast tego"
+ },
+ "Smoothing": {
+  "de": "Glättung",
+  "pl": "Wygładzanie"
  },
  "Snap to angle steps": {
   "de": "An Winkelschritten einrasten",
@@ -6275,6 +6783,10 @@
   "de": "Quadrat",
   "pl": "Kwadrat"
  },
+ "Stains under wrecks": {
+  "de": "Flecken unter Wracks",
+  "pl": "Plamy pod wrakami"
+ },
  "Stand upright": {
   "de": "Aufrecht stehen",
   "pl": "Stoi prosto"
@@ -6323,9 +6835,17 @@
   "de": "Am Boden haften",
   "pl": "Przyklejaj do terenu"
  },
+ "Stones along the water": {
+  "de": "Steine entlang des Wassers",
+  "pl": "Kamienie wzdłuż wody"
+ },
  "Stop": {
   "de": "Stoppen",
   "pl": "Zatrzymaj"
+ },
+ "Stops and stations": {
+  "de": "Haltestellen und Bahnhöfe",
+  "pl": "Przystanki i stacje"
  },
  "Straight and at full size": {
   "de": "Gerade und in voller Größe",
@@ -6355,6 +6875,14 @@
   "de": "Streifenbreite",
   "pl": "Szerokość pasa"
  },
+ "Strip width m": {
+  "de": "Streifenbreite m",
+  "pl": "Szerokość pasa m"
+ },
+ "Strips in one direction": {
+  "de": "Streifen in einer Richtung",
+  "pl": "Pasy w jednym kierunku"
+ },
  "Strokes go into a mask modifier, which can be hidden, erased from or deleted, and which merges cleanly in team work when each person paints in their own. Off: strokes go straight onto the mask, under the modifiers.": {
   "de": "Striche gehen in einen Maskenmodifikator, der ausgeblendet, teilweise gelöscht oder entfernt werden kann und sich in der Teamarbeit sauber zusammenführen lässt, wenn jede Person in ihrem eigenen malt. Aus: Striche gehen direkt auf die Maske, unter die Modifikatoren.",
   "pl": "Pociągnięcia trafiają do modyfikatora maski, który można ukryć, częściowo wymazać albo usunąć i który czysto łączy się w pracy zespołowej, gdy każdy maluje we własnym. Wyłączone: pociągnięcia trafiają prosto na maskę, pod modyfikatory."
@@ -6379,9 +6907,17 @@
   "de": "Sonnenhöhe",
   "pl": "Wysokość słońca"
  },
+ "Sun from": {
+  "de": "Sonne aus",
+  "pl": "Słońce z"
+ },
  "Sun strength": {
   "de": "Sonnenstärke",
   "pl": "Siła słońca"
+ },
+ "Sunk into the slope": {
+  "de": "In den Hang eingesenkt",
+  "pl": "Wpuszczenie w zbocze"
  },
  "Surface": {
   "de": "Oberfläche",
@@ -6487,6 +7023,14 @@
   "de": "Oberflächen und Bewuchs",
   "pl": "Powierzchnie i roślinność"
  },
+ "Surfaces from the satellite": {
+  "de": "Oberflächen aus dem Satellitenbild",
+  "pl": "Powierzchnie z satelity"
+ },
+ "Surfaces from the satellite {0}": {
+  "de": "Oberflächen aus dem Satellitenbild {0}",
+  "pl": "Powierzchnie z satelity {0}"
+ },
  "Surfaces in the game": {
   "de": "Oberflächen im Spiel",
   "pl": "Powierzchnie w grze"
@@ -6494,6 +7038,10 @@
  "Surfaces of the map (CfgSurfaces)": {
   "de": "Oberflächen der Karte (CfgSurfaces)",
   "pl": "Powierzchnie mapy (CfgSurfaces)"
+ },
+ "Surfaces of the strips": {
+  "de": "Oberflächen der Streifen",
+  "pl": "Powierzchnie pasów"
  },
  "Surfaces per tile": {
   "de": "Oberflächen pro Kachel",
@@ -6506,6 +7054,10 @@
  "Take a full copy...": {
   "de": "Vollständige Kopie übernehmen...",
   "pl": "Pobierz pełną kopię..."
+ },
+ "Take from the satellite": {
+  "de": "Aus dem Satellitenbild nehmen",
+  "pl": "Weź z satelity"
  },
  "Take the colour from the map": {
   "de": "Farbe von der Karte nehmen",
@@ -6530,6 +7082,10 @@
  "Take theirs": {
   "de": "Fremde übernehmen",
   "pl": "Weź cudze"
+ },
+ "Takes away specks: each pixel of the mask takes the colour most pixels round it have.": {
+  "de": "Entfernt Sprenkel: Jedes Pixel der Maske nimmt die Farbe an, die die meisten Pixel um es herum haben.",
+  "pl": "Usuwa drobinki: każdy piksel maski przyjmuje kolor, który ma większość pikseli wokół niego."
  },
  "Takes the 3D camera to this scene.": {
   "de": "Bringt die 3D-Kamera zu dieser Szene.",
@@ -6566,6 +7122,10 @@
  "Team work...": {
   "de": "Teamarbeit...",
   "pl": "Praca zespołowa..."
+ },
+ "Telegraph poles, lamps: on the right of the line, turned towards it.": {
+  "de": "Telegrafenmasten, Lampen: rechts der Linie, zu ihr gedreht.",
+  "pl": "Słupy telegraficzne, latarnie: po prawej stronie linii, zwrócone do niej."
  },
  "Template libraries": {
   "de": "Vorlagenbibliotheken",
@@ -6723,6 +7283,14 @@
   "de": "Texturfilterung",
   "pl": "Filtrowanie tekstur"
  },
+ "Texture pattern": {
+  "de": "Texturmuster",
+  "pl": "Wzór tekstury"
+ },
+ "Texture size m": {
+  "de": "Texturgröße m",
+  "pl": "Rozmiar tekstury m"
+ },
  "Texture tiles": {
   "de": "Texturkacheln",
   "pl": "Kafle tekstur"
@@ -6766,6 +7334,10 @@
  "The brush will not add a surface to a tile that already has as many as the project allows.": {
   "de": "Der Pinsel fügt einer Kachel keine Oberfläche hinzu, wenn das Limit des Projekts erreicht ist.",
   "pl": "Pędzel nie doda powierzchni do kafla, który ma już tyle, ile pozwala projekt."
+ },
+ "The build waits for the errors to be fixed.": {
+  "de": "Der Bau wartet, bis die Fehler behoben sind.",
+  "pl": "Budowanie czeka na poprawienie błędów."
  },
  "The class of the game is written again with these changes; they apply wherever the map's mod is loaded.": {
   "de": "Die Klasse des Spiels wird mit diesen Änderungen neu geschrieben; sie gelten überall, wo der Mod der Karte geladen ist.",
@@ -6831,6 +7403,10 @@
   "de": "Das Spiel mischt höchstens fünf Oberflächen pro Kachel; bei mehr werden die seltensten beim Export ersetzt.",
   "pl": "Gra miesza najwyżej pięć powierzchni na kafel; gdy kafel ma ich więcej, najrzadsze zostaną zastąpione przy eksporcie."
  },
+ "The game takes the colour of the ground from the satellite image and only the pattern from the surface texture, so each surface is given its colour here.": {
+  "de": "Das Spiel nimmt die Farbe des Bodens aus dem Satellitenbild und von der Oberflächentextur nur das Muster, deshalb bekommt hier jede Oberfläche ihre Farbe.",
+  "pl": "Gra bierze kolor terenu ze zdjęcia satelitarnego, a z tekstury powierzchni tylko wzór, dlatego tutaj każda powierzchnia dostaje swój kolor."
+ },
  "The generators along it and what they made ({0})": {
   "de": "Die Generatoren entlang der Route und was sie erzeugt haben ({0})",
   "pl": "Generatory wzdłuż niej i to, co utworzyły ({0})"
@@ -6867,6 +7443,22 @@
   "de": "Ebene von {0}. Klicken, um trotzdem daran zu arbeiten.",
   "pl": "Warstwa należąca do: {0}. Kliknij, aby mimo to na niej pracować."
  },
+ "The map check found {0} errors: the build waits": {
+  "de": "Die Kartenprüfung hat {0} Fehler gefunden: Der Bau wartet",
+  "pl": "Kontrola mapy znalazła błędy ({0}): budowanie czeka"
+ },
+ "The map check found {0} warnings; they are in Build > Check the map": {
+  "de": "Die Kartenprüfung hat {0} Warnungen gefunden; sie stehen unter Bauen > Karte prüfen",
+  "pl": "Kontrola mapy znalazła ostrzeżenia ({0}); są w Buduj > Sprawdź mapę"
+ },
+ "The map has no key points, so the in-game map shows no names": {
+  "de": "Die Karte hat keine Schlüsselpunkte, daher zeigt die Karte im Spiel keine Namen",
+  "pl": "Mapa nie ma key pointów, więc mapa w grze nie pokazuje nazw"
+ },
+ "The map has no satellite image: import one or make it from the mask in the Satellite tab": {
+  "de": "Die Karte hat kein Satellitenbild: Importiere eines oder erstelle es im Tab Satellit aus der Maske",
+  "pl": "Mapa nie ma zdjęcia satelitarnego: zaimportuj je albo utwórz z maski w zakładce Satelita"
+ },
  "The map has no surfaces of its own.": {
   "de": "Die Karte hat keine eigenen Oberflächen.",
   "pl": "Mapa nie ma własnych powierzchni."
@@ -6874,6 +7466,10 @@
  "The map has no town or village key points.": {
   "de": "Die Karte hat keine Stadt- oder Dorf-Schlüsselpunkte.",
   "pl": "Mapa nie ma punktów kluczowych miast ani wsi."
+ },
+ "The map id '{0}' may only have letters, digits and underscores (File > Project settings)": {
+  "de": "Die Karten-ID '{0}' darf nur Buchstaben, Ziffern und Unterstriche enthalten (Datei > Projekteinstellungen)",
+  "pl": "Identyfikator mapy '{0}' może zawierać tylko litery, cyfry i podkreślenia (Plik > Ustawienia projektu)"
  },
  "The map is {0} m; the flags cover {1} m.": {
   "de": "Die Karte ist {0} m groß; die Flags decken {1} m ab.",
@@ -6902,6 +7498,10 @@
  "The mission has no {0}": {
   "de": "Die Mission hat kein {0}",
   "pl": "Misja nie ma {0}"
+ },
+ "The mission has {0} errors (Mission tab)": {
+  "de": "Die Mission hat {0} Fehler (Tab Mission)",
+  "pl": "Misja ma błędy ({0}) (zakładka Misja)"
  },
  "The model chosen in the Content Browser.": {
   "de": "Das im Inhaltsbrowser gewählte Modell.",
@@ -6987,6 +7587,10 @@
   "de": "Der Fleck folgt dann dem Umriss jedes Modells von oben, seine Größe ist der Rand darum.",
   "pl": "Plama idzie wtedy za obrysem każdego modelu widzianym z góry, a jej rozmiar to margines wokół niego."
  },
+ "The player start is outside the map or in the sea": {
+  "de": "Der Spielerstart liegt außerhalb der Karte oder im Meer",
+  "pl": "Start gracza jest poza mapą albo w morzu"
+ },
  "The prefab takes the selected objects instead of those it had.": {
   "de": "Das Prefab übernimmt die ausgewählten Objekte statt seiner bisherigen.",
   "pl": "Prefab przejmuje zaznaczone obiekty w miejsce dotychczasowych."
@@ -6998,6 +7602,10 @@
  "The project has no satellite image": {
   "de": "Das Projekt hat kein Satellitenbild",
   "pl": "Projekt nie ma satki"
+ },
+ "The project has no satellite image yet: a new one is made at this resolution.": {
+  "de": "Das Projekt hat noch kein Satellitenbild: Ein neues wird in dieser Auflösung erstellt.",
+  "pl": "Projekt nie ma jeszcze zdjęcia satelitarnego: nowe powstanie w tej rozdzielczości."
  },
  "The project has no satellite image.": {
   "de": "Das Projekt hat kein Satellitenbild.",
@@ -7026,6 +7634,10 @@
  "The river runs from the first point of the line to the last.": {
   "de": "Der Fluss fließt vom ersten zum letzten Punkt der Linie.",
   "pl": "Rzeka płynie od pierwszego do ostatniego punktu linii."
+ },
+ "The road '{0}' has no parts": {
+  "de": "Die Straße '{0}' hat keine Teile",
+  "pl": "Droga '{0}' nie ma żadnych części"
  },
  "The road cannot reach this point": {
   "de": "Die Straße erreicht diesen Punkt nicht",
@@ -7075,9 +7687,17 @@
   "de": "Die Quelle behält ihren Abstand zum Pinsel von Strich zu Strich. Aus: jeder Strich beginnt wieder am Quellpunkt.",
   "pl": "Źródło zachowuje odległość od pędzla między pociągnięciami. Wyłączone: każde pociągnięcie zaczyna kopiować od punktu źródła."
  },
+ "The sun of that hour at the map's latitude and start date (Map config).": {
+  "de": "Die Sonne zu dieser Stunde am Breitengrad und Startdatum der Karte (Kartenkonfiguration).",
+  "pl": "Słońce o tej godzinie na szerokości geograficznej i w dniu startu mapy (Konfiguracja mapy)."
+ },
  "The surface it painted": {
   "de": "Die von ihm gemalte Oberfläche",
   "pl": "Powierzchnię, którą namalował"
+ },
+ "The surfaces are the same as the mask already has": {
+  "de": "Die Oberflächen sind dieselben, die die Maske schon hat",
+  "pl": "Powierzchnie są takie same jak w masce"
  },
  "The surfaces with their colours and materials, for Terrain Builder.": {
   "de": "Die Oberflächen mit Farben und Materialien, für Terrain Builder.",
@@ -7091,6 +7711,10 @@
   "de": "Das unter ihr geebnete Gelände",
   "pl": "Teren wyrównany pod nią"
  },
+ "The terrain size does not divide into the land grid (File > Project settings)": {
+  "de": "Die Geländegröße lässt sich nicht durch das Landraster teilen (Datei > Projekteinstellungen)",
+  "pl": "Rozmiar terenu nie dzieli się przez siatkę terenu (Plik > Ustawienia projektu)"
+ },
  "The texture could not be copied into the map": {
   "de": "Die Textur konnte nicht in die Karte kopiert werden",
   "pl": "Nie udało się skopiować tekstury do mapy"
@@ -7098,6 +7722,10 @@
  "The texture has to be on the work drive": {
   "de": "Die Textur muss auf dem Arbeitslaufwerk liegen",
   "pl": "Tekstura musi leżeć na dysku roboczym"
+ },
+ "The texture of the surface '{0}' is not on the work drive": {
+  "de": "Die Textur der Oberfläche '{0}' ist nicht auf dem Arbeitslaufwerk",
+  "pl": "Tekstury powierzchni '{0}' nie ma na dysku roboczym"
  },
  "The textures of the base world show its own terrain; a map of its own needs its own.": {
   "de": "Die Texturen der Basiswelt zeigen deren Gelände; eine eigene Karte braucht eigene.",
@@ -7139,9 +7767,25 @@
   "de": "Dann hinter diesem Ende auf die Karte klicken; Strg+Klick wählt das nähere Ende selbst.",
   "pl": "Potem kliknij na mapie za tym końcem; Ctrl+klik sam wybiera bliższy koniec."
  },
+ "There are no buildings here to dress": {
+  "de": "Hier gibt es keine Gebäude zum Ausstatten",
+  "pl": "Nie ma tu budynków do udekorowania"
+ },
+ "There are no roads to follow": {
+  "de": "Es gibt keine Straßen zum Folgen",
+  "pl": "Nie ma dróg, wzdłuż których można iść"
+ },
  "Thermal erosion": {
   "de": "Thermische Erosion",
   "pl": "Erozja termiczna"
+ },
+ "Things round buildings": {
+  "de": "Gegenstände um Gebäude",
+  "pl": "Przedmioty wokół budynków"
+ },
+ "Things round the buildings already on the map, chosen by the kind of building: woodpiles and bins at houses, pallets and barrels at works, sandbags and crates at military buildings, hay and logs at farms. Against the walls or standing free, never inside another building or on a road.": {
+  "de": "Gegenstände um die Gebäude, die schon auf der Karte stehen, nach Art des Gebäudes gewählt: Holzstapel und Tonnen an Häusern, Paletten und Fässer an Betrieben, Sandsäcke und Kisten an Militärgebäuden, Heu und Stämme auf Bauernhöfen. An den Wänden oder freistehend, nie in einem anderen Gebäude oder auf einer Straße.",
+  "pl": "Przedmioty wokół budynków, które już są na mapie, dobrane do rodzaju budynku: stosy drewna i kosze przy domach, palety i beczki przy zakładach, worki z piaskiem i skrzynie przy budynkach wojskowych, siano i kłody w gospodarstwach. Przy ścianach albo wolnostojące, nigdy w innym budynku ani na drodze."
  },
  "This file is copied as it is.": {
   "de": "Diese Datei wird unverändert kopiert.",
@@ -7195,6 +7839,10 @@
   "de": "Neigt die ausgewählten Objekte jetzt nach dem Boden darunter.",
   "pl": "Przechyla teraz zaznaczone obiekty zgodnie z terenem pod nimi."
  },
+ "Time of day": {
+  "de": "Tageszeit",
+  "pl": "Pora dnia"
+ },
  "Tint": {
   "de": "Tönung",
   "pl": "Odcień"
@@ -7239,6 +7887,10 @@
   "de": "Mast",
   "pl": "Słup"
  },
+ "Town": {
+  "de": "Stadt",
+  "pl": "Miasto"
+ },
  "Transform": {
   "de": "Transformation",
   "pl": "Transformacja"
@@ -7278,6 +7930,10 @@
  "Turn by 180° to open the other way": {
   "de": "Um 180° drehen, um zur anderen Seite zu öffnen",
   "pl": "Obróć o 180°, aby otwierała się w drugą stronę"
+ },
+ "Turn °": {
+  "de": "Drehung °",
+  "pl": "Obrót °"
  },
  "Turns what is copied about the source point, to lay fields or rows another way.": {
   "de": "Dreht das Kopierte um den Quellpunkt, um Felder oder Reihen anders zu legen.",
@@ -7395,6 +8051,10 @@
   "de": "Als Straßen- oder Objektlinie verwenden",
   "pl": "Użyj jako linii drogi lub obiektów"
  },
+ "Use legacy": {
+  "de": "Legacy verwenden",
+  "pl": "Użyj dziedziczenia"
+ },
  "Use selected": {
   "de": "Gewähltes verwenden",
   "pl": "Użyj wybranego"
@@ -7431,6 +8091,10 @@
   "de": "Nutzt die Einstellungen und die Deckkraft des Pinsels, im Modifikator seiner Striche.",
   "pl": "Używa ustawień i krycia pędzla, do modyfikatora, do którego trafiają jego pociągnięcia."
  },
+ "Uses the game's buildings of this kind from the work drive instead of the list above.": {
+  "de": "Verwendet die Gebäude des Spiels dieser Art vom Arbeitslaufwerk statt der Liste oben.",
+  "pl": "Używa budynków z gry tego rodzaju z dysku roboczego zamiast listy powyżej."
+ },
  "Value": {
   "de": "Value",
   "pl": "Value"
@@ -7442,6 +8106,18 @@
  "Vehicles": {
   "de": "Fahrzeuge",
   "pl": "Pojazdy"
+ },
+ "Verge from the middle of the road m": {
+  "de": "Bankett von der Straßenmitte m",
+  "pl": "Pobocze od środka drogi m"
+ },
+ "Verge surface": {
+  "de": "Oberfläche des Banketts",
+  "pl": "Powierzchnia pobocza"
+ },
+ "Verge width m": {
+  "de": "Breite des Banketts m",
+  "pl": "Szerokość pobocza m"
  },
  "Version": {
   "de": "Version",
@@ -7466,6 +8142,14 @@
  "View in a separate window": {
   "de": "Ansicht in eigenem Fenster",
   "pl": "Podgląd w osobnym oknie"
+ },
+ "View {0}": {
+  "de": "Ansicht {0}",
+  "pl": "Widok {0}"
+ },
+ "Village": {
+  "de": "Dorf",
+  "pl": "Wieś"
  },
  "Visibility": {
   "de": "Sichtbarkeit",
@@ -7499,6 +8183,18 @@
   "de": "Wasser",
   "pl": "Woda"
  },
+ "Water courses": {
+  "de": "Wasserläufe",
+  "pl": "Cieki wodne"
+ },
+ "Water courses from the terrain": {
+  "de": "Wasserläufe aus dem Gelände",
+  "pl": "Cieki wodne z terenu"
+ },
+ "Water flow": {
+  "de": "Wasserfluss",
+  "pl": "Przepływ wody"
+ },
  "Water height m": {
   "de": "Wasserhöhe m",
   "pl": "Wysokość wody m"
@@ -7515,6 +8211,10 @@
   "de": "Auch Wasserteile",
   "pl": "Także party wody"
  },
+ "Water under the sea level": {
+  "de": "Wasser unter dem Meeresspiegel",
+  "pl": "Woda poniżej poziomu morza"
+ },
  "Weaker brush": {
   "de": "Schwächerer Pinsel",
   "pl": "Słabszy pędzel"
@@ -7526,6 +8226,10 @@
  "Weather: overcast, fog, rain, wind, snowfall and storms, with their limits.": {
   "de": "Wetter: Bewölkung, Nebel, Regen, Wind, Schneefall und Gewitter mit ihren Grenzen.",
   "pl": "Pogoda: zachmurzenie, mgła, deszcz, wiatr, śnieg i burze wraz z limitami."
+ },
+ "Wetness": {
+  "de": "Feuchtigkeit",
+  "pl": "Wilgotność"
  },
  "What is not ticked stays on the map. All of it can be undone in one step.": {
   "de": "Was nicht angehakt ist, bleibt auf der Karte. Alles lässt sich in einem Schritt rückgängig machen.",
@@ -7575,6 +8279,10 @@
   "de": "Wo sich die Spielkarte öffnet; ohne dies die Mitte des Geländes.",
   "pl": "Gdzie otwiera się mapa w grze; bez tego środek terenu."
  },
+ "Where the sun stands that shades the hills: 0 north, 90 east.": {
+  "de": "Wo die Sonne steht, die die Hügel schattiert: 0 Norden, 90 Osten.",
+  "pl": "Skąd świeci słońce cieniujące wzgórza: 0 północ, 90 wschód."
+ },
  "Where the work drive, DayZ Tools and the game are; the editor reads models and builds the map with them.": {
   "de": "Wo das Arbeitslaufwerk, DayZ Tools und das Spiel liegen; damit liest der Editor Modelle und baut die Karte.",
   "pl": "Gdzie są dysk roboczy, DayZ Tools i gra; edytor czyta z nich modele i buduje mapę."
@@ -7587,9 +8295,17 @@
   "de": "Wo zwei Oberflächen der Maske aufeinandertreffen, zeigen sich zuerst die höheren Teile ihres Reliefs; höher macht die Grenze schärfer.",
   "pl": "Tam, gdzie stykają się dwie powierzchnie maski, najpierw przebijają wyższe części ich reliefu; wyżej daje ostrzejszą granicę."
  },
+ "Where water runs and gathers: 0 dry crests, 1 the wettest valley floors. The view shows it as Water flow.": {
+  "de": "Wo Wasser fließt und sich sammelt: 0 trockene Kämme, 1 die feuchtesten Talböden. Die Ansicht zeigt es als Wasserfluss.",
+  "pl": "Gdzie woda spływa i się zbiera: 0 suche grzbiety, 1 najwilgotniejsze dna dolin. Widok pokazuje to jako Przepływ wody."
+ },
  "Which parts of the economy start, load, respawn and save.": {
   "de": "Welche Teile der Wirtschaft starten, laden, neu spawnen und speichern.",
   "pl": "Które części ekonomii startują, wczytują, odradzają i zapisują."
+ },
+ "White": {
+  "de": "Weiß",
+  "pl": "Biały"
  },
  "Whole image": {
   "de": "Ganzes Bild",
@@ -7622,6 +8338,10 @@
  "Width": {
   "de": "Breite",
   "pl": "Szerokość"
+ },
+ "Width of the ragged, soft edge where one surface meets another.": {
+  "de": "Breite des ausgefransten, weichen Randes, wo eine Oberfläche auf eine andere trifft.",
+  "pl": "Szerokość postrzępionej, miękkiej krawędzi, gdzie jedna powierzchnia spotyka drugą."
  },
  "Window layout": {
   "de": "Fensteranordnung",
@@ -7675,6 +8395,10 @@
   "de": "Arbeitslaufwerk",
   "pl": "Dysk roboczy"
  },
+ "Works and sheds": {
+  "de": "Betriebe und Schuppen",
+  "pl": "Zakłady i szopy"
+ },
  "Works on": {
   "de": "Wirkt auf",
   "pl": "Działa na"
@@ -7702,6 +8426,10 @@
  "Wrecks": {
   "de": "Wracks",
   "pl": "Wraki"
+ },
+ "Wrecks and road decals": {
+  "de": "Wracks und Straßen-Decals",
+  "pl": "Wraki i decale na drogach"
  },
  "Write the newer WRP format with underground flag": {
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",
@@ -7731,9 +8459,25 @@
   "de": "X {0}  Z {1}  Höhe {2} m  Neigung {3}°  Oberfläche {4}",
   "pl": "X {0}  Z {1}  wysokość {2} m  spadek {3}°  powierzchnia {4}"
  },
+ "Yard round a building m": {
+  "de": "Hof um ein Gebäude m",
+  "pl": "Podwórko wokół budynku m"
+ },
+ "Yard surface": {
+  "de": "Oberfläche der Höfe",
+  "pl": "Powierzchnia podwórek"
+ },
+ "Yards and fences": {
+  "de": "Höfe und Zäune",
+  "pl": "Podwórka i płoty"
+ },
  "Yaw": {
   "de": "Gieren",
   "pl": "Obrót"
+ },
+ "Yellow": {
+  "de": "Gelb",
+  "pl": "Żółty"
  },
  "Yes": {
   "de": "Ja",
@@ -7802,6 +8546,10 @@
  "all": {
   "de": "alle",
   "pl": "wszystkie"
+ },
+ "area {0} m² ({1} ha)": {
+  "de": "Fläche {0} m² ({1} ha)",
+  "pl": "pole {0} m² ({1} ha)"
  },
  "areaflags.map could not be read": {
   "de": "areaflags.map konnte nicht gelesen werden",
@@ -7979,6 +8727,10 @@
   "de": "{0} Gebäude der Klasse {1} haben keinen Prototyp in mapgroupproto.xml",
   "pl": "{0} budynków klasy {1} nie ma prototypu w mapgroupproto.xml"
  },
+ "{0} buildings stand in other buildings": {
+  "de": "{0} Gebäude stehen in anderen Gebäuden",
+  "pl": "Budynki stojące w innych budynkach: {0}"
+ },
  "{0} cells": {
   "de": "{0} Zellen",
   "pl": "Komórki: {0}"
@@ -8031,6 +8783,10 @@
   "de": "{0} Keypoints gelesen",
   "pl": "Wczytano keypointów: {0}"
  },
+ "{0} m, {1} m along the ground, {2} m height": {
+  "de": "{0} m, {1} m über den Boden, {2} m Höhe",
+  "pl": "{0} m, {1} m po terenie, {2} m wysokości"
+ },
  "{0} made of {1} objects": {
   "de": "{0} aus {1} Objekten erstellt",
   "pl": "Utworzono {0} z {1} obiektów"
@@ -8055,9 +8811,21 @@
   "de": "{0} Objekte",
   "pl": "Obiekty: {0}"
  },
+ "{0} objects are wholly under the ground but not marked as underground": {
+  "de": "{0} Objekte liegen ganz unter dem Boden, sind aber nicht als unterirdisch markiert",
+  "pl": "Obiekty całkiem pod ziemią, ale nieoznaczone jako podziemne: {0}"
+ },
+ "{0} objects hang over the ground": {
+  "de": "{0} Objekte schweben über dem Boden",
+  "pl": "Obiekty wiszące nad ziemią: {0}"
+ },
  "{0} objects in the group": {
   "de": "{0} Objekte in der Gruppe",
   "pl": "{0} obiektów w grupie"
+ },
+ "{0} objects lie outside the map": {
+  "de": "{0} Objekte liegen außerhalb der Karte",
+  "pl": "Obiekty poza mapą: {0}"
  },
  "{0} objects made by generators were left as they are; change the generator's models instead.": {
   "de": "{0} von Generatoren erzeugte Objekte blieben unverändert; ändere stattdessen die Modelle des Generators.",
@@ -8067,6 +8835,10 @@
   "de": "{0} Objekte auf die Ebene {1} verschoben",
   "pl": "Przeniesiono obiekty ({0}) na warstwę {1}"
  },
+ "{0} objects of a model that is not on the work drive: {1}": {
+  "de": "{0} Objekte eines Modells, das nicht auf dem Arbeitslaufwerk ist: {1}",
+  "pl": "Obiekty modelu, którego nie ma na dysku roboczym ({0}): {1}"
+ },
  "{0} objects removed": {
   "de": "{0} Objekte entfernt",
   "pl": "Usunięto obiektów: {0}"
@@ -8074,6 +8846,10 @@
  "{0} objects selected": {
   "de": "{0} Objekte ausgewählt",
   "pl": "Zaznaczono obiektów: {0}"
+ },
+ "{0} objects stand twice in the same place": {
+  "de": "{0} Objekte stehen doppelt an derselben Stelle",
+  "pl": "Obiekty stojące podwójnie w tym samym miejscu: {0}"
  },
  "{0} objects will be imported": {
   "de": "{0} Objekte werden importiert",
@@ -8183,6 +8959,10 @@
   "de": "{0} Vorlagen aus {1} entfernt",
   "pl": "Usunięto {0} szablonów z {1}"
  },
+ "{0} texture tiles hold more surfaces than the project allows; the rarest are replaced in the build": {
+  "de": "{0} Texturkacheln haben mehr Oberflächen, als das Projekt erlaubt; die seltensten werden beim Bauen ersetzt",
+  "pl": "Kafle tekstur z większą liczbą powierzchni, niż pozwala projekt: {0}; najrzadsze zostaną zastąpione przy budowaniu"
+ },
  "{0} texture tiles use more than the surfaces allowed; they are marked in the 2D view and Project settings can fix them": {
   "de": "{0} Texturkacheln nutzen mehr Oberflächen als erlaubt; sie sind in der 2D-Ansicht markiert und die Projekteinstellungen können sie beheben",
   "pl": "{0} kafli tekstur ma więcej powierzchni niż wolno; są zaznaczone w widoku 2D, a ustawienia projektu mogą je poprawić"
@@ -8191,6 +8971,10 @@
   "de": "{0} Kacheln über dem Limit, in der 2D-Ansicht markiert",
   "pl": "Kafle ponad limit: {0}, zaznaczone w widoku 2D"
  },
+ "{0} trees or buildings stand in the sea": {
+  "de": "{0} Bäume oder Gebäude stehen im Meer",
+  "pl": "Drzewa lub budynki stojące w morzu: {0}"
+ },
  "{0} types changed": {
   "de": "{0} Typen geändert",
   "pl": "Zmieniono {0} typów"
@@ -8198,6 +8982,10 @@
  "{0} warnings": {
   "de": "{0} Warnungen",
   "pl": "Ostrzeżenia: {0}"
+ },
+ "{0} water courses added as lines": {
+  "de": "{0} Wasserläufe als Linien hinzugefügt",
+  "pl": "Dodano {0} cieków wodnych jako linie"
  },
  "{0} zones added": {
   "de": "{0} Zonen hinzugefügt",

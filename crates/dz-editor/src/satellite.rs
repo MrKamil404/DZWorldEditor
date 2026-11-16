@@ -103,11 +103,25 @@ pub struct SatTool {
     pub bake_blend: f32,
     /// The blending slider is being dragged.
     blending: bool,
+    /// A satellite made from the mask: its settings, whether it covers the whole map (or the
+    /// chosen shapes), and the metres a pixel of a new image covers when the project has none.
+    pub gen: dz_core::satgen::SatGenSettings,
+    /// The colour of each surface layer from above, by layer.
+    pub gen_colours: Vec<[u8; 3]>,
+    pub gen_whole: bool,
+    pub gen_mpp: f32,
+    /// Surfaces read from the satellite: the settings, whether over the whole map, and the
+    /// small copy of the image its preview is made from, with the revision it was made at.
+    pub classify: dz_core::satgen::SatClassify,
+    pub classify_whole: bool,
+    class_small: Option<(u64, Arc<RgbImage>)>,
+    class_preview: Option<(egui::TextureHandle, u64)>,
+    class_share: [f32; 8],
 }
 
 impl Default for SatTool {
     fn default() -> Self {
-        Self { brush: SatBrush::Clone, adjust: Adjust::default(), blur: 0.0, colour: [122, 104, 78], blend: BlendMode::Tint, fill_layer: None, correct_whole: true, correcting: None, feather: 3.0, line_width: 4.0, radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, aligned: true, anchor: None, turn: 0.0, scale: 1.0, match_colour: false, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_above_ground: true, bake_blend: 0.35, blending: false }
+        Self { brush: SatBrush::Clone, adjust: Adjust::default(), blur: 0.0, colour: [122, 104, 78], blend: BlendMode::Tint, fill_layer: None, correct_whole: true, correcting: None, feather: 3.0, line_width: 4.0, radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, aligned: true, anchor: None, turn: 0.0, scale: 1.0, match_colour: false, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_above_ground: true, bake_blend: 0.35, blending: false, gen: Default::default(), gen_colours: Vec::new(), gen_whole: true, gen_mpp: 1.0, classify: Default::default(), classify_whole: true, class_small: None, class_preview: None, class_share: [0.0; 8] }
     }
 }
 
@@ -605,11 +619,29 @@ fn adjust_swatch(app: &App, ui: &mut egui::Ui) {
     });
 }
 
+/// A brightness or contrast slider from -1 to 1; in the legacy mode it reads as Photoshop's
+/// numbers (`scale` at the ends).
+fn bc_slider(v: &mut f32, legacy: bool, scale: f64) -> egui::Slider<'_> {
+    let s = egui::Slider::new(v, -1.0..=1.0);
+    if legacy {
+        s.custom_formatter(move |v, _| format!("{:.0}", v * scale)).custom_parser(move |text| text.trim().parse::<f64>().ok().map(|v| v / scale))
+    } else {
+        s
+    }
+}
+
+/// The switch to Photoshop's legacy brightness and contrast; true when it was changed.
+fn legacy_box(ui: &mut egui::Ui, legacy: &mut bool) -> bool {
+    ui.checkbox(legacy, t("Use legacy")).on_hover_text(t("Brightness and contrast as in Photoshop's legacy mode: brightness moves every colour by the same amount, and full contrast leaves each channel either off or full.")).changed()
+}
+
 fn adjust_panel(app: &mut App, ui: &mut egui::Ui) {
     crate::panels::about(ui, &t("Paint on the map to make the satellite image there lighter or darker, or change its colours. Going over a place again in one stroke does not add up; a new stroke does."));
     let a = &mut app.sat.adjust;
-    row(ui, &t("Brightness"), |ui| { ui.add(egui::Slider::new(&mut a.brightness, -1.0..=1.0)); });
-    row(ui, &t("Contrast"), |ui| { ui.add(egui::Slider::new(&mut a.contrast, -1.0..=1.0)); });
+    let legacy = a.legacy;
+    row(ui, &t("Brightness"), |ui| { ui.add(bc_slider(&mut a.brightness, legacy, 150.0)); });
+    row(ui, &t("Contrast"), |ui| { ui.add(bc_slider(&mut a.contrast, legacy, 100.0)); });
+    legacy_box(ui, &mut a.legacy);
     row(ui, &t("Saturation"), |ui| { ui.add(egui::Slider::new(&mut a.saturation, -1.0..=1.0)); });
     row(ui, &t("Warmth"), |ui| { ui.add(egui::Slider::new(&mut a.warmth, -1.0..=1.0)).on_hover_text(t("Towards yellow to the right, towards blue to the left.")); });
     row(ui, &t("Hue"), |ui| { ui.add(egui::Slider::new(&mut a.hue, -180.0..=180.0).suffix("°")); });
@@ -670,13 +702,25 @@ fn fill_section(app: &mut App, ui: &mut egui::Ui) {
 fn chosen_shapes(app: &App) -> Option<(Vec<Vec<[f32; 2]>>, Vec<(Vec<[f32; 2]>, f32)>, f32, usize, usize)> {
     let d = app.doc.as_ref()?;
     let (w, h) = d.world.satellite.as_ref().map(|s| (s.width, s.height))?;
+    chosen_shapes_in(app, w, h)
+}
+
+/// The shapes chosen in `shapes_row`: those selected, or all of a shape layer.
+fn chosen_map_shapes(app: &App) -> Vec<&dz_core::shapes::MapShape> {
+    let Some(d) = app.doc.as_ref() else { return Vec::new() };
+    match app.sat.fill_layer {
+        Some(i) => d.world.shape_layers.get(i).map(|l| l.shapes.iter().collect()).unwrap_or_default(),
+        None => app.shape.selection.iter().filter_map(|(l, s)| d.world.shape_layers.get(*l)?.shapes.get(*s)).collect(),
+    }
+}
+
+/// As `chosen_shapes`, for an image of `w` × `h` pixels over the map.
+fn chosen_shapes_in(app: &App, w: usize, h: usize) -> Option<(Vec<Vec<[f32; 2]>>, Vec<(Vec<[f32; 2]>, f32)>, f32, usize, usize)> {
+    let d = app.doc.as_ref()?;
     let size = d.world.meta.size_m();
     let per_metre = w as f32 / size;
     let to_px = |p: &[f32; 2]| [p[0] * per_metre, (1.0 - p[1] / size) * h as f32];
-    let shapes: Vec<&dz_core::shapes::MapShape> = match app.sat.fill_layer {
-        Some(i) => d.world.shape_layers.get(i).map(|l| l.shapes.iter().collect()).unwrap_or_default(),
-        None => app.shape.selection.iter().filter_map(|(l, s)| d.world.shape_layers.get(*l)?.shapes.get(*s)).collect(),
-    };
+    let shapes = chosen_map_shapes(app);
     use dz_core::shapes::ShapeKind;
     let polygons: Vec<Vec<[f32; 2]>> = shapes.iter().filter(|s| s.kind == ShapeKind::Polygon).map(|s| s.points.iter().map(to_px).collect()).collect();
     let width = app.sat.line_width * per_metre;
@@ -711,17 +755,19 @@ fn correction_section(app: &mut App, ui: &mut egui::Ui) {
                 if app.sat.correcting.map(|e| e.0) != Some(id) { app.sat.correcting = Some((id, c.adjust)); }
                 let mut a = app.sat.correcting.map(|e| e.1).unwrap_or_default();
                 let mut apply = false;
-                let mut slider = |ui: &mut egui::Ui, label: String, v: &mut f32, range: std::ops::RangeInclusive<f32>, suffix: &str| {
+                let mut slider = |ui: &mut egui::Ui, label: String, s: egui::Slider| {
                     row(ui, &label, |ui| {
-                        let r = ui.add(egui::Slider::new(v, range).suffix(suffix));
+                        let r = ui.add(s);
                         apply |= r.drag_stopped() || (r.changed() && !r.dragged());
                     });
                 };
-                slider(ui, t("Brightness"), &mut a.brightness, -1.0..=1.0, "");
-                slider(ui, t("Contrast"), &mut a.contrast, -1.0..=1.0, "");
-                slider(ui, t("Saturation"), &mut a.saturation, -1.0..=1.0, "");
-                slider(ui, t("Warmth"), &mut a.warmth, -1.0..=1.0, "");
-                slider(ui, t("Hue"), &mut a.hue, -180.0..=180.0, "°");
+                let legacy = a.legacy;
+                slider(ui, t("Brightness"), bc_slider(&mut a.brightness, legacy, 150.0));
+                slider(ui, t("Contrast"), bc_slider(&mut a.contrast, legacy, 100.0));
+                slider(ui, t("Saturation"), egui::Slider::new(&mut a.saturation, -1.0..=1.0));
+                slider(ui, t("Warmth"), egui::Slider::new(&mut a.warmth, -1.0..=1.0));
+                slider(ui, t("Hue"), egui::Slider::new(&mut a.hue, -180.0..=180.0).suffix("°"));
+                apply |= legacy_box(ui, &mut a.legacy);
                 app.sat.correcting = Some((id, a));
                 ui.horizontal(|ui| {
                     if ui.small_button(t("Reset")).clicked() {
@@ -837,6 +883,282 @@ pub fn fill_shapes(app: &mut App) {
     });
 }
 
+/// Over the whole map, or over the shapes chosen as for fills.
+fn area_row(app: &mut App, ui: &mut egui::Ui, whole: bool, salt: &str) -> bool {
+    let mut whole = whole;
+    row(ui, &t("Over"), |ui| {
+        ui.selectable_value(&mut whole, true, t("Whole map"));
+        ui.selectable_value(&mut whole, false, t("Shapes"));
+    });
+    if !whole {
+        shapes_row(app, ui, salt);
+    }
+    whole
+}
+
+/// The settings of a satellite made from the surface mask, and the button that makes it.
+fn generate_section(app: &mut App, ui: &mut egui::Ui) {
+    section(ui, &crate::icons::with(crate::icons::MAGIC_WAND, &t("Satellite from the mask")), false, |ui| {
+        ui.weak(t("Paints the satellite image in the colours of the surfaces of the mask, with their pattern, soft edges between them and the shading of the hills. It is a modifier, so it can be hidden, blended or deleted."));
+        app.sat.gen_whole = area_row(app, ui, app.sat.gen_whole, "gen_shapes");
+        if !app.sat.gen_whole {
+            row(ui, &t("Soft edge m"), |ui| { ui.add(egui::Slider::new(&mut app.sat.feather, 0.0..=40.0)); });
+        }
+        let g = &mut app.sat.gen;
+        row(ui, &t("Texture size m"), |ui| { ui.add(egui::Slider::new(&mut g.texture_m, 1.0..=64.0).logarithmic(true)).on_hover_text(t("Metres one repeat of a surface texture covers.")); });
+        row(ui, &t("Texture pattern"), |ui| { ui.add(egui::Slider::new(&mut g.detail, 0.0..=1.0)).on_hover_text(t("How much of the light and dark pattern of the surface texture shows.")); });
+        row(ui, &t("Edge between surfaces m"), |ui| { ui.add(egui::Slider::new(&mut g.blend_m, 0.0..=20.0)).on_hover_text(t("Width of the ragged, soft edge where one surface meets another.")); });
+        row(ui, &t("Patches"), |ui| { ui.add(egui::Slider::new(&mut g.variation, 0.0..=0.6)).on_hover_text(t("Larger areas a little lighter or darker, as real ground is.")); });
+        row(ui, &t("Patch size m"), |ui| { ui.add(egui::Slider::new(&mut g.variation_m, 10.0..=1000.0).logarithmic(true)); });
+        row(ui, &t("Hill shading"), |ui| { ui.add(egui::Slider::new(&mut g.hillshade, 0.0..=1.0)); });
+        row(ui, &t("Sun from"), |ui| { ui.add(egui::Slider::new(&mut g.sun_deg, 0.0..=360.0).suffix("°")).on_hover_text(t("Where the sun stands that shades the hills: 0 north, 90 east.")); });
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut g.water, t("Water under the sea level"));
+            if g.water { ui.color_edit_button_srgb(&mut g.water_colour); }
+        });
+        row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        surface_colours(app, ui);
+        let has = app.doc.as_ref().is_some_and(|d| d.world.satellite.is_some());
+        if !has {
+            row(ui, &t("Metres a pixel"), |ui| { ui.add(egui::Slider::new(&mut app.sat.gen_mpp, 0.25..=4.0).logarithmic(true)).on_hover_text(t("The project has no satellite image yet: a new one is made at this resolution.")); });
+        }
+        if ui.button(crate::icons::with(crate::icons::MAGIC_WAND, &t("Make the satellite"))).clicked() {
+            generate_from_mask(app);
+        }
+    });
+}
+
+/// The colour of each surface from above, which the satellite is painted in.
+fn surface_colours(app: &mut App, ui: &mut egui::Ui) {
+    let Some(d) = app.doc.as_ref() else { return };
+    let names: Vec<String> = d.world.layers.iter().map(|l| l.name.clone()).collect();
+    sync_colours(app);
+    ui.collapsing(t("Colours of the surfaces"), |ui| {
+        ui.weak(t("The game takes the colour of the ground from the satellite image and only the pattern from the surface texture, so each surface is given its colour here."));
+        for (i, n) in names.iter().enumerate() {
+            row(ui, n, |ui| { ui.color_edit_button_srgb(&mut app.sat.gen_colours[i]); });
+        }
+        ui.horizontal_wrapped(|ui| {
+            if ui.small_button(t("Guess from the names")).clicked() {
+                app.sat.gen_colours = names.iter().map(|n| dz_core::satgen::ground_colour(n)).collect();
+            }
+            let has = app.doc.as_ref().is_some_and(|d| d.world.satellite.is_some());
+            if has && ui.small_button(t("Take from the satellite")).on_hover_text(t("Each surface takes the average colour the satellite image has where the mask holds it.")).clicked() {
+                if let Some(d) = app.doc.as_ref() {
+                    for (i, c) in dz_core::satgen::colours_from_satellite(&d.world, 512).into_iter().enumerate() {
+                        if let (Some(c), Some(to)) = (c, app.sat.gen_colours.get_mut(i)) { *to = c; }
+                    }
+                }
+            }
+        });
+    });
+}
+
+/// One colour for each surface layer: those known kept, new layers guessed from their names.
+fn sync_colours(app: &mut App) {
+    let Some(d) = app.doc.as_ref() else { return };
+    let layers = &d.world.layers;
+    if app.sat.gen_colours.len() > layers.len() {
+        app.sat.gen_colours.truncate(layers.len());
+    }
+    for l in &layers[app.sat.gen_colours.len()..] {
+        app.sat.gen_colours.push(dz_core::satgen::ground_colour(&l.name));
+    }
+}
+
+/// Makes a satellite modifier from the mask, in the background, as one step to undo. A project
+/// without a satellite image gets one first.
+pub fn generate_from_mask(app: &mut App) {
+    sync_colours(app);
+    let Some(d) = app.doc.as_ref() else { return };
+    let w = &d.world;
+    let (width, height) = match &w.satellite {
+        Some(s) => (s.width, s.height),
+        None => {
+            let side = ((w.meta.size_m() / app.sat.gen_mpp.max(0.05)).round() as usize).clamp(64, 32768);
+            (side, side)
+        }
+    };
+    let cover = if app.sat.gen_whole {
+        None
+    } else {
+        let Some((polygons, lines, per_metre, _, _)) = chosen_shapes_in(app, width, height) else { return };
+        if polygons.is_empty() && lines.is_empty() {
+            app.warn(t("Select polygons or lines in the Shapes tool, or choose a shape layer"));
+            return;
+        }
+        Some((polygons, lines, app.sat.feather * per_metre))
+    };
+    let lite = w.lite();
+    let layers: Vec<(String, [u8; 3])> = lite.layers.iter().zip(&app.sat.gen_colours).map(|(l, c)| (l.texture.clone(), *c)).collect();
+    let (root, settings) = (app.settings.tools.work_drive.clone(), app.sat.gen.clone());
+    let mpp = w.meta.size_m() / width as f32;
+    let label = t("Satellite from the mask");
+    app.spawn(label.clone(), move |job| {
+        job.stage("Reading the surface textures");
+        let side = settings.texture_side(mpp);
+        let looks: Vec<dz_core::satgen::LayerLook> = layers.iter().map(|(tex, colour)| {
+            let (rgba, _, _) = dz_core::satgen::layer_texture(&root, tex, *colour, 512);
+            dz_core::satgen::LayerLook::new(*colour, &rgba, 512, side)
+        }).collect();
+        job.stage("Painting the satellite");
+        let cover = cover.map(|(polygons, lines, feather)| dz_core::satgen::cover_tiles(&dz_core::satmod::shape_pixels(&polygons, &lines, feather, 1.0, width, height)));
+        let tiles = dz_core::satgen::from_mask(&lite, &looks, &settings, width, height, cover.as_ref(), job);
+        job.check()?;
+        Ok(Box::new(move |app: &mut App| {
+            let Some(d) = app.doc.as_mut() else { return };
+            if tiles.is_empty() {
+                app.warn(t("The shapes lie outside the satellite image"));
+                return;
+            }
+            let created = d.world.satellite.is_none();
+            if created {
+                d.world.satellite = Some(RgbImage::new(width, height, [110, 110, 100]));
+                d.dirty.satellite = true;
+                app.renderer.lock().unwrap().set_satellite(d.world.satellite.as_ref());
+            }
+            let before = d.world.sat.modifiers.clone();
+            let n = before.iter().filter(|m| m.kind == SatKind::Generated).count() + 1;
+            let id = d.world.sat.add(SatKind::Generated, tf("Satellite from the mask {0}", &[&n.to_string()]));
+            let touched = d.world.sat_add_tiles(id, tiles);
+            d.history.push(label, Change::Satellite(before));
+            app.sat.active = Some(id);
+            if let Some(r) = touched {
+                app.satellite_changed(r);
+            }
+            if created {
+                app.info(tf("A satellite image of {0} × {1} pixels was made for the project", &[&width.to_string(), &height.to_string()]));
+            }
+        }) as Finish)
+    });
+}
+
+/// Side of the copy of the satellite the preview of its classes is made from.
+const CLASS_PREVIEW: usize = 320;
+
+/// The settings of surfaces read from the satellite, with a preview of its colour classes.
+fn classify_section(app: &mut App, ui: &mut egui::Ui) {
+    section(ui, &crate::icons::with(crate::icons::PALETTE, &t("Surfaces from the satellite")), false, |ui| {
+        ui.weak(t("Brightness and contrast push the satellite image to a few strong colours, as Photoshop's legacy brightness and contrast does. Each colour that comes out can become a surface of the mask."));
+        let Some(sat) = app.doc.as_ref().and_then(|d| d.world.satellite.as_ref()) else {
+            ui.colored_label(crate::theme::WARN, t("The project has no satellite image"));
+            return;
+        };
+        // A small copy of the image, made again when the image changes.
+        if app.sat.class_small.as_ref().map(|s| s.0) != Some(app.sat.revision) {
+            app.sat.class_small = Some((app.sat.revision, Arc::new(sat.resized(CLASS_PREVIEW, CLASS_PREVIEW))));
+            app.sat.class_preview = None;
+        }
+        let c = &mut app.sat.classify;
+        let legacy = c.adjust.legacy;
+        row(ui, &t("Brightness"), |ui| { ui.add(bc_slider(&mut c.adjust.brightness, legacy, 150.0)); });
+        row(ui, &t("Contrast"), |ui| { ui.add(bc_slider(&mut c.adjust.contrast, legacy, 100.0)); });
+        legacy_box(ui, &mut c.adjust.legacy);
+        row(ui, &t("Smoothing"), |ui| { ui.add(egui::Slider::new(&mut c.smooth, 0..=6).suffix(" px")).on_hover_text(t("Takes away specks: each pixel of the mask takes the colour most pixels round it have.")); });
+        // The preview follows the settings.
+        let key = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            serde_json::to_string(&(&c.adjust, c.smooth)).unwrap_or_default().hash(&mut h);
+            app.sat.revision.hash(&mut h);
+            h.finish()
+        };
+        if app.sat.class_preview.as_ref().map(|p| p.1) != Some(key) {
+            if let Some((_, small)) = &app.sat.class_small {
+                let cls = dz_core::satgen::classes(small, &c.adjust, CLASS_PREVIEW, CLASS_PREVIEW);
+                let cls = dz_core::satgen::smooth_classes(&cls, CLASS_PREVIEW, CLASS_PREVIEW, c.smooth.min(2));
+                let mut share = [0.0f32; 8];
+                let mut rgba = Vec::with_capacity(cls.len() * 4);
+                for k in &cls {
+                    share[*k as usize] += 1.0 / cls.len() as f32;
+                    let col = dz_core::satgen::CLASS_COLOURS[*k as usize];
+                    rgba.extend([col[0], col[1], col[2], 255]);
+                }
+                app.sat.class_share = share;
+                let image = egui::ColorImage::from_rgba_unmultiplied([CLASS_PREVIEW, CLASS_PREVIEW], &rgba);
+                app.sat.class_preview = Some((ui.ctx().load_texture("sat_classes", image, egui::TextureOptions::NEAREST), key));
+            }
+        }
+        if let Some((tex, _)) = &app.sat.class_preview {
+            let side = ui.available_width().clamp(160.0, 320.0);
+            ui.image((tex.id(), egui::vec2(side, side)));
+        }
+        let layers: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
+        let leave = t("Leave as it is");
+        for k in 0..8 {
+            if app.sat.class_share[k] < 0.001 && app.sat.classify.surfaces[k].is_none() {
+                continue;
+            }
+            ui.horizontal(|ui| {
+                let col = dz_core::satgen::CLASS_COLOURS[k];
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 2.0, egui::Color32::from_rgb(col[0], col[1], col[2]));
+                ui.painter().rect_stroke(rect, 2.0, egui::Stroke::new(1.0_f32, egui::Color32::GRAY), egui::StrokeKind::Inside);
+                ui.label(format!("{} {:.0}%", t(dz_core::satgen::CLASS_NAMES[k]), app.sat.class_share[k] * 100.0));
+                let target = &mut app.sat.classify.surfaces[k];
+                let shown = target.and_then(|i| layers.get(i).cloned()).unwrap_or_else(|| leave.clone());
+                egui::ComboBox::from_id_salt(("sat_class", k)).selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
+                    ui.selectable_value(target, None, &leave);
+                    for (i, n) in layers.iter().enumerate() { ui.selectable_value(target, Some(i), n); }
+                });
+            });
+        }
+        app.sat.classify_whole = area_row(app, ui, app.sat.classify_whole, "classify_shapes");
+        if ui.button(crate::icons::with(crate::icons::PALETTE, &t("Paint the surfaces"))).clicked() {
+            classify_to_mask(app);
+        }
+    });
+}
+
+/// Paints the surfaces the colours of the satellite stand for into a mask modifier.
+pub fn classify_to_mask(app: &mut App) {
+    let Some(d) = app.doc.as_ref() else { return };
+    let w = &d.world;
+    let Some(sat) = &w.satellite else {
+        app.warn(t("The project has no satellite image"));
+        return;
+    };
+    if app.sat.classify.surfaces.iter().all(|s| s.is_none()) {
+        app.warn(t("Choose a surface for at least one colour"));
+        return;
+    }
+    let area = if app.sat.classify_whole {
+        None
+    } else {
+        let shapes: Vec<dz_core::shapes::MapShape> = chosen_map_shapes(app).into_iter().filter(|s| s.kind == dz_core::shapes::ShapeKind::Polygon).cloned().collect();
+        if shapes.is_empty() {
+            app.warn(t("Select polygons in the Shapes tool, or choose a shape layer"));
+            return;
+        }
+        Some(dz_core::shapes::PolygonIndex::new(&dz_core::shapes::ShapeLayer { name: String::new(), visible: true, shapes }))
+    };
+    let (mw, mh) = (w.mask.width, w.mask.height);
+    // The image at the size of the mask, each pixel the average of those under it.
+    let small = if sat.width == mw && sat.height == mh { sat.clone() } else { sat.resized(mw, mh) };
+    let lite = w.lite();
+    let settings = app.sat.classify.clone();
+    let label = t("Surfaces from the satellite");
+    app.spawn(label.clone(), move |job| {
+        job.stage("Sorting the colours of the satellite");
+        let cls = dz_core::satgen::classes(&small, &settings.adjust, mw, mh);
+        let cls = dz_core::satgen::smooth_classes(&cls, mw, mh, settings.smooth);
+        let test = area.as_ref().map(|a| move |x: f32, z: f32| a.contains(x, z));
+        let data = dz_core::satgen::mask_from_classes(&lite, &cls, &settings, test.as_ref().map(|f| f as &(dyn Fn(f32, f32) -> bool + Sync)));
+        Ok(Box::new(move |app: &mut App| {
+            let Some(d) = app.doc.as_ref() else { return };
+            if d.world.mask.data.len() != data.len() { return; }
+            let tiles = dz_core::maskmod::diff_tiles(&d.world.mask.data, &data, mw, mh, |_, _| false);
+            if tiles.is_empty() {
+                app.warn(t("The surfaces are the same as the mask already has"));
+                return;
+            }
+            let n = d.world.mask_mods.modifiers.iter().filter(|m| m.kind == dz_core::maskmod::MaskKind::Satellite).count() + 1;
+            crate::maskmods::store(app, None, dz_core::maskmod::MaskKind::Satellite, tf("Surfaces from the satellite {0}", &[&n.to_string()]), tiles);
+            app.info(label);
+        }) as Finish)
+    });
+}
+
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &crate::icons::with(crate::icons::PAINT_BRUSH, &t("Brush")), true, |ui| {
         row(ui, &t("Paints"), |ui| {
@@ -918,6 +1240,8 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         strokes_go_to(app, ui, SatKind::Clone);
     });
     correction_section(app, ui);
+    generate_section(app, ui);
+    classify_section(app, ui);
     section(ui, &crate::icons::with(crate::icons::STAMP, &t("Bake objects")), false, |ui| {
         ui.weak(t("Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted."));
         let selected = app.selection.len();

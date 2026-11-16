@@ -27,6 +27,8 @@ pub enum MaskKind {
     Paint,
     /// Strokes of the surface brush.
     Strokes,
+    /// Surfaces read from the colours of the satellite image; see `satgen`.
+    Satellite,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -91,6 +93,8 @@ impl MaskLayers {
                 MaskKind::Forest => 1,
                 MaskKind::Paint => 2,
                 MaskKind::Strokes => 3,
+                // Older versions read it as surface painting.
+                MaskKind::Satellite => 4,
             });
             b.push(m.enabled as u8);
             b.extend((m.name.len() as u32).to_le_bytes());
@@ -133,6 +137,7 @@ impl MaskLayers {
                 0 => MaskKind::UnderObjects,
                 1 => MaskKind::Forest,
                 3 => MaskKind::Strokes,
+                4 => MaskKind::Satellite,
                 _ => MaskKind::Paint,
             };
             let enabled = head[1] != 0;
