@@ -3439,6 +3439,10 @@
   "de": "Ebenen mit dieser Oberfläche:",
   "pl": "Warstwy z tą powierzchnią:"
  },
+ "Layers {0} have no surface of the game or the map; read the map's CfgSurfaces in Surfaces in the game": {
+  "de": "Die Ebenen {0} haben keine Oberfläche des Spiels oder der Karte; lies die CfgSurfaces der Karte unter Oberflächen im Spiel",
+  "pl": "Warstwy {0} nie mają powierzchni gry ani mapy; wczytaj CfgSurfaces mapy w sekcji Powierzchnie w grze"
+ },
  "Layers: {0}": {
   "de": "Ebenen: {0}",
   "pl": "Warstwy: {0}"
@@ -4262,6 +4266,10 @@
  "No": {
   "de": "Nein",
   "pl": "Nie"
+ },
+ "No config of the map's own surfaces was found. A map with layers of its own textures needs one: choose it, or the layers get the surface of the game whose files they match, if any.": {
+  "de": "Es wurde keine Konfiguration der eigenen Oberflächen der Karte gefunden. Eine Karte mit Ebenen aus eigenen Texturen braucht eine: wähle sie, sonst erhalten die Ebenen die Oberfläche des Spiels, deren Dateinamen passt, falls es eine gibt.",
+  "pl": "Nie znaleziono konfiguracji własnych powierzchni mapy. Mapa z warstwami z własnymi teksturami jej potrzebuje: wskaż ją, inaczej warstwy dostaną powierzchnię gry pasującą do nazwy pliku, jeśli taka jest."
  },
  "No conflicts: everything can be merged as it is.": {
   "de": "Keine Konflikte: alles kann so zusammengeführt werden.",
@@ -5278,6 +5286,10 @@
  "Random rotation of patches": {
   "de": "Zufällige Drehung der Flecken",
   "pl": "Losowy obrót plam"
+ },
+ "Read the map's CfgSurfaces...": {
+  "de": "CfgSurfaces der Karte lesen...",
+  "pl": "Wczytaj CfgSurfaces mapy..."
  },
  "Reading road types": {
   "de": "Straßentypen werden gelesen",
@@ -6467,6 +6479,10 @@
   "de": "Oberflächen im Spiel",
   "pl": "Powierzchnie w grze"
  },
+ "Surfaces of the map (CfgSurfaces)": {
+  "de": "Oberflächen der Karte (CfgSurfaces)",
+  "pl": "Powierzchnie mapy (CfgSurfaces)"
+ },
  "Surfaces per tile": {
   "de": "Oberflächen pro Kachel",
   "pl": "Powierzchnie na kafel"
@@ -6514,6 +6530,10 @@
  "Takes the surface under the cursor. Alt+click does the same.": {
   "de": "Übernimmt die Oberfläche unter dem Cursor. Alt+Klick tut dasselbe.",
   "pl": "Pobiera powierzchnię spod kursora. To samo robi Alt+klik."
+ },
+ "Takes the surfaces a config of the map defines (CfgSurfaces) into the project; they are written again on export.": {
+  "de": "Übernimmt die Oberflächen, die eine Konfiguration der Karte definiert (CfgSurfaces), ins Projekt; beim Export werden sie erneut geschrieben.",
+  "pl": "Przenosi do projektu powierzchnie zdefiniowane w konfiguracji mapy (CfgSurfaces); przy eksporcie są zapisywane ponownie."
  },
  "Team": {
   "de": "Team",
@@ -6746,6 +6766,10 @@
  "The colour over the light and shade of the image: the pattern stays.": {
   "de": "Die Farbe über Licht und Schatten des Bildes: das Muster bleibt.",
   "pl": "Kolor na światłocieniu obrazu: wzór zostaje."
+ },
+ "The config defines no surfaces": {
+  "de": "Die Konfiguration definiert keine Oberflächen",
+  "pl": "Konfiguracja nie definiuje żadnych powierzchni"
  },
  "The config is on the clipboard": {
   "de": "Die Config ist in der Zwischenablage",
@@ -8134,6 +8158,10 @@
  "{0} species, {1} areas, {2} zones in the project": {
   "de": "Im Projekt: {0} Arten, {1} Gebiete, {2} Zonen",
   "pl": "W projekcie: gatunki {0}, obszary {1}, strefy {2}"
+ },
+ "{0} surfaces of the map read from {1}": {
+  "de": "{0} Oberflächen der Karte aus {1} gelesen",
+  "pl": "Wczytano {0} powierzchni mapy z {1}"
  },
  "{0} templates added to {1}": {
   "de": "{0} Vorlagen zu {1} hinzugefügt",

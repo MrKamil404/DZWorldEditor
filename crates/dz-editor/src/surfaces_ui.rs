@@ -66,6 +66,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     let layer = doc.world.layers.get(app.paint.layer).cloned();
     let mut changed = false;
     let mut open_editor = None;
+    let mut read_cfg: Option<std::path::PathBuf> = None;
     section(ui, &icons::with(icons::FOOTPRINTS, &t("Surfaces in the game")), true, |ui| {
         if cat.surfaces.is_empty() {
             ui.colored_label(theme::WARN, t("No surfaces of the game were found on the work drive"));
@@ -160,6 +161,12 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
         });
+        if ui.button(icons::with(icons::FILE_ARROW_DOWN, &t("Read the map's CfgSurfaces..."))).on_hover_text(t("Takes the surfaces a config of the map defines (CfgSurfaces) into the project; they are written again on export.")).clicked() {
+            let root = app.settings.tools.work_drive.clone();
+            if let Some(f) = rfd::FileDialog::new().add_filter("Config", &["cpp", "hpp"]).set_directory(&root).pick_file() {
+                read_cfg = Some(f);
+            }
+        }
         crate::panels::about(ui, &t("New surfaces are written to surfaces/config.cpp of the map on export, with the footsteps of the surface they sound like."));
     });
     if let Some(i) = open_editor {
@@ -189,8 +196,18 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             app.surface_edit = None;
         }
     }
+    if let Some(f) = read_cfg {
+        match dz_core::import::read_surfaces_cfg(&mut doc.world, &f, &app.settings.tools.work_drive) {
+            Ok(0) => app.warn(t("The config defines no surfaces")),
+            Ok(n) => {
+                changed = true;
+                app.info(tf("{0} surfaces of the map read from {1}", &[&n.to_string(), &f.display().to_string()]));
+            }
+            Err(e) => app.error(format!("{e:#}")),
+        }
+    }
     if changed {
-        doc.history.revision += 1;
+        if let Some(d) = &mut app.doc { d.history.revision += 1; }
         app.reload_clutter();
     }
     if let Some(i) = add_layer {

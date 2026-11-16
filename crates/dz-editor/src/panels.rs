@@ -2242,6 +2242,10 @@ fn import_window(app: &mut App, ui: &mut egui::Ui, d: &mut ImportDialog, close: 
     path_choice(ui, &t("Mask"), &mut plan.mask, &scan.mask, file("Image", &["bmp", "png", "tif"]));
     path_choice(ui, &t("Surfaces (layers.cfg)"), &mut plan.layers_cfg, &scan.layers_cfg, file("layers.cfg", &["cfg"]));
     path_choice(ui, &t("Terrain holes (holes.cfg)"), &mut plan.holes_cfg, &scan.holes_cfg, file("holes.cfg", &["cfg"]));
+    path_choice(ui, &t("Surfaces of the map (CfgSurfaces)"), &mut plan.surfaces_cfg, &scan.surfaces_cfg, file("config.cpp", &["cpp", "hpp"]));
+    if plan.surfaces_cfg.is_none() {
+        ui.weak(t("No config of the map's own surfaces was found. A map with layers of its own textures needs one: choose it, or the layers get the surface of the game whose files they match, if any."));
+    }
     path_choice(ui, &t("Roads (TV4P)"), &mut plan.tv4p, &scan.tv4p, file("Terrain Builder", &["tv4p"]));
     ui.weak(if plan.asc.is_some() { t("Terrain comes from the heightmap.") } else if plan.wrp.is_some() { t("Terrain comes from the WRP.") } else { t("Choose a heightmap or a WRP.") });
     row(ui, &t("Surfaces per tile"), |ui| { ui.add(egui::Slider::new(&mut plan.max_tile_surfaces, 1..=6)); });
