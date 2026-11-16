@@ -163,9 +163,17 @@
   "de": "Eine neue Mission für die Karte wurde erstellt.",
   "pl": "Utworzono nową misję dla mapy."
  },
+ "A new mission with the economy of {0}: {1} infected zones at the key points of villages and towns. Vehicles, events and area flags are still to be placed on this map.": {
+  "de": "Neue Mission mit der Wirtschaft von {0}: {1} Infizierten-Zonen an den Key Points der Dörfer und Städte. Fahrzeuge, Events und Area Flags sind auf dieser Karte noch zu setzen.",
+  "pl": "Nowa misja z ekonomią {0}: {1} stref zombie w key pointach wsi i miast. Pojazdy, eventy i area flags trzeba jeszcze rozstawić na tej mapie."
+ },
  "A new surface for this texture": {
   "de": "Neue Oberfläche für diese Textur",
   "pl": "Nowa powierzchnia dla tej tekstury"
+ },
+ "A private key (.biprivatekey) made with DSUtils of DayZ Tools": {
+  "de": "Ein privater Schlüssel (.biprivatekey), erstellt mit DSUtils aus den DayZ Tools",
+  "pl": "Klucz prywatny (.biprivatekey) zrobiony w DSUtils z DayZ Tools"
  },
  "A project holds at most 255 surfaces": {
   "de": "Ein Projekt kann höchstens 255 Oberflächen haben",
@@ -1151,6 +1159,10 @@
   "de": "Pinselbilder wählen",
   "pl": "Wybierz obrazki pędzli"
  },
+ "Choose key...": {
+  "de": "Schlüssel wählen...",
+  "pl": "Wybierz klucz..."
+ },
  "Choose the event first.": {
   "de": "Wähle zuerst das Event.",
   "pl": "Najpierw wybierz event."
@@ -1951,6 +1963,10 @@
   "de": "Grabenbreite",
   "pl": "Szerokość rowu"
  },
+ "Do not sign": {
+  "de": "Nicht signieren",
+  "pl": "Nie podpisuj"
+ },
  "Double-click to open": {
   "de": "Doppelklick zum Öffnen",
   "pl": "Kliknij dwukrotnie, aby otworzyć"
@@ -2339,6 +2355,10 @@
   "de": "Events",
   "pl": "Eventy"
  },
+ "Every PBO gets its .bisign; {0} goes into Keys of the mod for servers.": {
+  "de": "Jedes PBO bekommt sein .bisign; {0} kommt für Server in Keys des Mods.",
+  "pl": "Każde PBO dostaje swój .bisign; {0} trafia do Keys moda dla serwerów."
+ },
  "Every building of the map that can hold loot, with its position and angle.": {
   "de": "Jedes Gebäude der Karte, das Beute haben kann, mit Position und Winkel.",
   "pl": "Każdy budynek mapy, który może mieć loot, z pozycją i kątem."
@@ -2346,6 +2366,10 @@
  "Every cluster object of the map, made by the economy tools.": {
   "de": "Jedes Clusterobjekt der Karte, erstellt von den Wirtschaftswerkzeugen.",
   "pl": "Każdy obiekt klastra na mapie, utworzony przez narzędzia ekonomii."
+ },
+ "Every file a server reads, with an empty economy.": {
+  "de": "Alle Dateien, die ein Server liest, mit leerer Wirtschaft.",
+  "pl": "Wszystkie pliki, które czyta serwer, z pustą ekonomią."
  },
  "Every item the economy spawns: nominal, min, lifetime, restock, flags, category, usage, value and tags.": {
   "de": "Jeder Gegenstand, den die Wirtschaft spawnt: nominal, min, lifetime, restock, Flags, Kategorie, usage, value und Tags.",
@@ -3255,6 +3279,10 @@
   "de": "Ihr Boden wird zu",
   "pl": "Jej teren dostaje"
  },
+ "Its loot, events and settings; loot in the buildings of this map and infected at its villages and towns.": {
+  "de": "Ihr Loot, Events und Einstellungen; Loot in den Gebäuden dieser Karte und Infizierte in ihren Dörfern und Städten.",
+  "pl": "Jej loot, eventy i ustawienia; loot w budynkach tej mapy i zombie w jej wsiach i miastach."
+ },
  "Its models ({0})": {
   "de": "Ihre Modelle ({0})",
   "pl": "Jej modele ({0})"
@@ -4163,6 +4191,10 @@
   "de": "Neue Mission für diese Karte",
   "pl": "Nowa misja dla tej mapy"
  },
+ "New mission with the economy of the game": {
+  "de": "Neue Mission mit der Wirtschaft des Spiels",
+  "pl": "Nowa misja z ekonomią gry"
+ },
  "New modifier": {
   "de": "Neuer Modifikator",
   "pl": "Nowy modyfikator"
@@ -4307,6 +4339,10 @@
   "de": "Keine Vorlagenbibliotheken im Projekt. Mit + Hinzufügen laden oder Terrain-Builder-Ebenen importieren.",
   "pl": "Brak bibliotek szablonów w projekcie. Wczytaj je przez + Dodaj albo zaimportuj warstwy Terrain Buildera."
  },
+ "No {0} next to the key: servers need the public key to let the mod in.": {
+  "de": "Kein {0} neben dem Schlüssel: Server brauchen den öffentlichen Schlüssel, um den Mod zuzulassen.",
+  "pl": "Brak {0} obok klucza: serwery potrzebują klucza publicznego, żeby wpuścić moda."
+ },
  "Noise": {
   "de": "Rauschen",
   "pl": "Szum"
@@ -4346,6 +4382,10 @@
  "Not merged: {0}": {
   "de": "Nicht zusammengeführt: {0}",
   "pl": "Nie scalono: {0}"
+ },
+ "Not signed": {
+  "de": "Nicht signiert",
+  "pl": "Bez podpisu"
  },
  "Nothing here": {
   "de": "Hier ist nichts",
@@ -6087,6 +6127,10 @@
   "de": "Nebeneinander",
   "pl": "Obok siebie"
  },
+ "Signing": {
+  "de": "Signieren",
+  "pl": "Podpisywanie"
+ },
  "Size": {
   "de": "Größe",
   "pl": "Rozmiar"
@@ -6726,6 +6770,10 @@
  "The elevation is then measured from sea level": {
   "de": "Die Höhe wird dann ab Meeresspiegel gemessen",
   "pl": "Wysokość jest wtedy liczona od poziomu morza"
+ },
+ "The file is not there": {
+  "de": "Die Datei ist nicht da",
+  "pl": "Tego pliku nie ma"
  },
  "The files of the mission agree with each other.": {
   "de": "Die Dateien der Mission stimmen überein.",

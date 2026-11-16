@@ -339,14 +339,16 @@ fn quoted(s: &str) -> String {
 }
 
 /// The settings of the world class the config sets itself, beyond those it always writes.
-fn world_overrides(cfg: &crate::world::MapConfig) -> String {
+fn world_overrides(cfg: &crate::world::MapConfig, own_ce: Option<String>) -> String {
     let mut out = String::new();
     let mut text = |key: &str, v: &str| {
         if !v.trim().is_empty() {
             out += &format!("\t\t{key}={};\n", quoted(v));
         }
     };
-    text("ceFiles", &cfg.ce_files);
+    // The map's own economy, when it has a mission and no other folder was named.
+    let ce = if cfg.ce_files.trim().is_empty() { own_ce.unwrap_or_default() } else { cfg.ce_files.clone() };
+    text("ceFiles", &ce);
     text("startTime", &cfg.start_time);
     text("startDate", &cfg.start_date);
     text("mapDisplayNameKey", &cfg.map_display_name_key);
@@ -463,7 +465,7 @@ pub fn world_config_text(w: &World, has_navmesh: bool) -> String {
     let grid = format!("{}{}{}", zoom(0, "0.15000001", "000"), zoom(1, "0.85000002", "00"), zoom(2, "1e+30", "0"));
     let extra_world = indented(&cfg.extra_world, "\t\t");
     let extra_file = indented(&cfg.extra_file, "");
-    let overrides = world_overrides(cfg);
+    let overrides = world_overrides(cfg, w.mission.is_some().then(|| ce_folder(id)));
     let scenes = character_scenes(id, &cfg.scenes);
     let world = format!(
 "class CfgPatches
@@ -530,6 +532,43 @@ class CfgWorldList
         cx = center[0], cz = center[1], lon = w.meta.longitude, lat = -w.meta.latitude,
     );
     world
+}
+
+/// The folder of the map's Central Economy on the work drive, as `ceFiles` names it.
+pub fn ce_folder(id: &str) -> String {
+    format!("{id}\\ce")
+}
+
+/// First line of the config of a `ce` folder this editor writes; one without it is the user's own
+/// and is left alone.
+const CE_MARK: &str = "// Central Economy of the map, written by DZ World Editor from the project's mission.";
+
+/// Writes the mission of the project as the map's Central Economy folder (`ce`), as the worlds
+/// of the game carry theirs: every file the economy reads, without `init.c` and persistence,
+/// with a config of its own so it packs as an addon. Returns whether there was one to write.
+pub fn write_ce(w: &World, target: &Path) -> Result<bool> {
+    let dir = target.join("ce");
+    let config = dir.join("config.cpp");
+    let ours = !dir.exists() || std::fs::read_to_string(&config).is_ok_and(|t| t.starts_with(CE_MARK));
+    let Some(m) = &w.mission else {
+        if ours && dir.exists() {
+            std::fs::remove_dir_all(&dir)?;
+        }
+        return Ok(false);
+    };
+    anyhow::ensure!(ours, "{} is not one this editor wrote; move it away to have the mission written there", dir.display());
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir)?;
+    }
+    let mut copy = (**m).clone();
+    copy.write(&dir, false, false)?;
+    for rel in ["init.c"] {
+        let _ = std::fs::remove_file(dir.join(rel));
+    }
+    let id = &w.meta.map_id;
+    let text = format!("{CE_MARK}\nclass CfgPatches\n{{\n\tclass {id}_CE\n\t{{\n\t\tunits[]={{}};\n\t\tweapons[]={{}};\n\t\trequiredVersion=0.1;\n\t\trequiredAddons[]={{\"DZ_Data\"}};\n\t}};\n}};\n");
+    atomic_write(&config, text.as_bytes())?;
+    Ok(true)
 }
 
 pub fn write_configs(w: &World, target: &Path, has_navmesh: bool) -> Result<()> {
@@ -641,6 +680,11 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
             report.warnings.push("No navmesh yet: AI will not walk until navmesh.nm is generated.".to_string());
         }
         write_configs(w, &target, nm)?;
+        match write_ce(w, &target) {
+            Ok(true) => job.log(format!("Mission written as the Central Economy of the map ({}).", ce_folder(&id))),
+            Ok(false) => {}
+            Err(e) => report.warnings.push(format!("{e:#}")),
+        }
         report.warnings.extend(crate::surfaces::check_layers(&opts.root, &id, &w.layers, &w.meta.build_folders));
         if crate::surfaces::write_config(&id, &w.meta.config.surfaces, &opts.root, &target)? {
             job.log(format!("{} surfaces of the map written to surfaces\\config.cpp.", w.meta.config.surfaces.len()));
@@ -798,6 +842,33 @@ mod tests {
         assert_eq!(cfg.matches('{').count(), cfg.matches('}').count());
         // Braces stay in pairs.
         assert_eq!(cfg.matches('{').count(), cfg.matches('}').count());
+    }
+
+    #[test]
+    fn the_mission_goes_out_as_the_maps_central_economy() {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("Ab", 64, 8.0), 10.0);
+        // Without a mission the base world's economy stays.
+        assert!(!world_config_text(&w, false).contains("ceFiles"));
+        assert!(!write_ce(&w, d.path()).unwrap());
+        w.mission = Some(Box::new(crate::mission::templates::new_mission(&w.meta)));
+        assert!(world_config_text(&w, false).contains("ceFiles=\"Ab\\ce\";"));
+        assert!(write_ce(&w, d.path()).unwrap());
+        let ce = d.path().join("ce");
+        assert!(ce.join("db/types.xml").is_file() && ce.join("cfgeconomycore.xml").is_file() && ce.join("areaflags.map").is_file());
+        assert!(!ce.join("init.c").exists());
+        assert!(std::fs::read_to_string(ce.join("config.cpp")).unwrap().contains("class Ab_CE"));
+        // A folder named elsewhere wins.
+        w.meta.config.ce_files = "Other\\ce".into();
+        assert!(world_config_text(&w, false).contains("ceFiles=\"Other\\ce\";"));
+        // Without the mission again, the folder goes; one the user made stays.
+        w.mission = None;
+        write_ce(&w, d.path()).unwrap();
+        assert!(!ce.exists());
+        std::fs::create_dir_all(&ce).unwrap();
+        std::fs::write(ce.join("config.cpp"), "class CfgPatches {};").unwrap();
+        w.mission = Some(Box::new(crate::mission::templates::new_mission(&w.meta)));
+        assert!(write_ce(&w, d.path()).is_err());
     }
 
     #[test]

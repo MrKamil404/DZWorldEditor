@@ -197,3 +197,29 @@ impl Mission {
         insert_child(self, "db/events.xml", &[], None, ce::EventRow::new_element(name)).into_iter().collect()
     }
 }
+
+#[test]
+fn a_mission_from_the_game_keeps_its_economy_and_gets_zones_of_this_map() {
+    let root = std::path::Path::new("P:/");
+    let ce = root.join("DZ/worlds/chernarusplus/ce");
+    if !ce.join("db/types.xml").is_file() {
+        return;
+    }
+    assert!(templates::game_economies(root).iter().any(|w| w == "chernarusplus"));
+    let kp = |name: &str, kind: &str, x: f32| crate::keypoints::KeyPoint { name: name.into(), kind: kind.into(), x, z: 500.0, ..Default::default() };
+    let points = vec![kp("Wioska", "NameVillage", 300.0), kp("Miasto", "NameCity", 700.0), kp("Gora", "Hill", 900.0)];
+    let (m, zones) = templates::from_game(&ce, &meta(), &points).unwrap();
+    assert_eq!(zones, 2);
+    assert_eq!(m.name, templates::mission_name(&meta()));
+    assert!(m.file("init.c").is_some());
+    // The economy stays: thousands of types and the building prototypes.
+    let types = m.xml("db/types.xml").unwrap().root.children_named("type").count();
+    assert!(types > 1000, "{types}");
+    assert!(m.xml("mapgroupproto.xml").unwrap().root.children_named("group").count() > 100);
+    // What stood on Chernarus is gone; the zones are those of this map.
+    assert_eq!(m.xml("mapgrouppos.xml").unwrap().root.children_named("group").count(), 0);
+    let file = m.territory_files().into_iter().find(|f| f.contains("zombie")).unwrap();
+    let all: Vec<_> = m.xml(&file).unwrap().root.children_named("territory").flat_map(|t| t.children_named("zone")).map(|z| (z.attr("name").unwrap().to_string(), z.attr("x").unwrap().to_string())).collect();
+    assert_eq!(all.len(), 2, "{all:?}");
+    assert!(all.iter().any(|(n, x)| n == "InfectedVillage" && x.starts_with("300")));
+}

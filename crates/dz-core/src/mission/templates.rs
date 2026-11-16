@@ -421,6 +421,45 @@ pub fn adapt(mut m: Mission, meta: &WorldMeta) -> Mission {
     m
 }
 
+/// The worlds of the game whose Central Economy is on the work drive (`DZ\worlds\<name>\ce`).
+pub fn game_economies(root: &std::path::Path) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(root.join("DZ").join("worlds")) else { return Vec::new() };
+    let mut out: Vec<String> = rd.flatten().filter(|e| e.path().join("ce").join("db").join("types.xml").is_file()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    out.sort();
+    out
+}
+
+/// A mission for the map with the whole economy of a world of the game (`ce`, its folder): its
+/// loot, events, prototypes and settings, without what stands on that world, with `init.c`,
+/// and with infected zones at the villages and towns of `keypoints`, in the territories that
+/// hold those of the game. Returns the mission and the zones it was given.
+pub fn from_game(ce: &std::path::Path, meta: &WorldMeta, keypoints: &[crate::keypoints::KeyPoint]) -> anyhow::Result<(Mission, usize)> {
+    let m = Mission::load(ce)?;
+    let zombies = m.territory_files().into_iter().find(|f| f.to_ascii_lowercase().contains("zombie"));
+    // Which territory holds which zones, before they are cleared.
+    let territory_of = |m: &Mission, name: &str| -> Option<usize> {
+        let d = m.xml(zombies.as_deref()?)?;
+        d.root.children_named("territory").position(|t| t.children_named("zone").any(|z| z.attr("name").is_some_and(|n| n.eq_ignore_ascii_case(name))))
+    };
+    let village = territory_of(&m, "InfectedVillage");
+    let city = territory_of(&m, "InfectedCity");
+    let mut m = adapt(m, meta);
+    if m.file("init.c").is_none() {
+        m.put("init.c", FileData::Text(TextDoc::new(INIT_C)));
+    }
+    let mut zones = 0;
+    if let Some(file) = &zombies {
+        for (kinds, name, territory, d) in [(&["NameVillage"][..], "InfectedVillage", village, [3, 5]), (&["NameCity", "NameCityCapital"][..], "InfectedCity", city, [6, 10])] {
+            let Some(t) = territory else { continue };
+            for z in super::gen::zones_from_keypoints(keypoints, kinds, name, d[0], d[1]) {
+                super::places::add_zone(&mut m, file, t, z);
+                zones += 1;
+            }
+        }
+    }
+    Ok((m, zones))
+}
+
 /// Whether a node is a comment, for tests.
 pub fn is_comment(n: &Node) -> bool {
     matches!(n, Node::Comment(_))

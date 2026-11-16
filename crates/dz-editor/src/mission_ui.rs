@@ -374,6 +374,39 @@ pub fn new_mission(app: &mut App) {
     app.info(t("A new mission was made for the map."));
 }
 
+/// Gives the project a mission with the economy of a world of the game, its loot in this
+/// map's buildings and its infected in this map's villages and towns.
+pub fn new_mission_from_game(app: &mut App, world: &str) {
+    let ce = app.settings.tools.work_drive.join("DZ").join("worlds").join(world).join("ce");
+    let Some(doc) = &app.doc else { return };
+    let (meta, points) = (doc.world.meta.clone(), doc.world.keypoints.clone());
+    match mission::templates::from_game(&ce, &meta, &points) {
+        Ok((m, zones)) => {
+            set_mission(app, Some(m), &t("New mission"));
+            make_groups(app);
+            app.info(tf("A new mission with the economy of {0}: {1} infected zones at the key points of villages and towns. Vehicles, events and area flags are still to be placed on this map.", &[world, &zones.to_string()]));
+        }
+        Err(e) => app.error(format!("{}: {e:#}", ce.display())),
+    }
+}
+
+/// Buttons that make a new mission: an empty one, or one with the economy of a game world.
+fn new_mission_buttons(app: &mut App, ui: &mut egui::Ui) {
+    if ui.button(icons::with(icons::FILE_PLUS, &t("New mission for this map"))).on_hover_text(t("Every file a server reads, with an empty economy.")).clicked() { new_mission(app); }
+    let worlds = mission::templates::game_economies(&app.settings.tools.work_drive);
+    if !worlds.is_empty() {
+        ui.menu_button(icons::with(icons::FILE_PLUS, &t("New mission with the economy of the game")), |ui| {
+            ui.weak(t("Its loot, events and settings; loot in the buildings of this map and infected at its villages and towns."));
+            for w in worlds {
+                if ui.button(&w).clicked() {
+                    ui.close_menu();
+                    new_mission_from_game(app, &w);
+                }
+            }
+        });
+    }
+}
+
 fn set_mission(app: &mut App, m: Option<Mission>, label: &str) {
     flush(app);
     let Some(doc) = &mut app.doc else { return };
@@ -442,7 +475,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             ui.label(t("The project has no server mission yet."));
             ui.weak(t("A mission holds the economy, spawns, territories and settings the server reads from mpmissions."));
             ui.add_space(4.0);
-            if ui.button(icons::with(icons::FILE_PLUS, &t("New mission for this map"))).clicked() { new_mission(app); }
+            new_mission_buttons(app, ui);
             if ui.button(icons::with(icons::FOLDER_OPEN, &t("Import a mission..."))).on_hover_text(t("Reads a mission folder as it is, for this map or another.")).clicked() { import(app, false); }
             if ui.button(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Adapt a mission of another map..."))).on_hover_text(t("Keeps the economy of the mission and drops what was placed on the other map: spawns, zones, areas, map groups and area flags.")).clicked() { import(app, true); }
         });
@@ -1609,7 +1642,7 @@ fn overview_tab(app: &mut App, ui: &mut egui::Ui) {
     if mission(app).is_none() {
         ui.label(t("The project has no server mission yet."));
         ui.horizontal(|ui| {
-            if ui.button(icons::with(icons::FILE_PLUS, &t("New mission for this map"))).clicked() { new_mission(app); }
+            new_mission_buttons(app, ui);
             if ui.button(icons::with(icons::FOLDER_OPEN, &t("Import a mission..."))).clicked() { import(app, false); }
             if ui.button(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Adapt a mission of another map..."))).clicked() { import(app, true); }
         });

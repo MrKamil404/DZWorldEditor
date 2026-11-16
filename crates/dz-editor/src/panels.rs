@@ -2051,6 +2051,43 @@ fn output_log(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
+/// The key the built PBOs are signed with.
+fn sign_key_row(app: &mut App, ui: &mut egui::Ui) {
+    ui.label(RichText::new(t("Signing")).strong());
+    let key = app.settings.tools.sign_key.clone();
+    let mut changed = false;
+    ui.horizontal_wrapped(|ui| {
+        if key.as_os_str().is_empty() {
+            ui.weak(t("Not signed"));
+        } else {
+            let ok = key.is_file();
+            ui.label(RichText::new(key.display().to_string()).color(if ok { theme::TEXT } else { theme::WARN })).on_hover_text(if ok { String::new() } else { t("The file is not there") });
+        }
+        if ui.button(t("Choose key...")).on_hover_text(t("A private key (.biprivatekey) made with DSUtils of DayZ Tools")).clicked() {
+            let start = key.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| app.settings.tools.dayz_tools.join("Bin").join("DsUtils"));
+            if let Some(f) = rfd::FileDialog::new().add_filter("BI private key", &["biprivatekey"]).set_directory(start).pick_file() {
+                app.settings.tools.sign_key = f;
+                changed = true;
+            }
+        }
+        if !key.as_os_str().is_empty() && ui.small_button("✖").on_hover_text(t("Do not sign")).clicked() {
+            app.settings.tools.sign_key = Default::default();
+            changed = true;
+        }
+    });
+    if !key.as_os_str().is_empty() {
+        let public = dz_core::build::public_key(&key);
+        if public.is_file() {
+            ui.weak(tf("Every PBO gets its .bisign; {0} goes into Keys of the mod for servers.", &[&public.file_name().unwrap_or_default().to_string_lossy()]));
+        } else {
+            ui.colored_label(theme::WARN, tf("No {0} next to the key: servers need the public key to let the mod in.", &[&public.file_name().unwrap_or_default().to_string_lossy()]));
+        }
+    }
+    if changed {
+        app.settings.save();
+    }
+}
+
 /// Folders of the work drive built into the map's mod besides the map: buildings and other
 /// content, each its own PBO.
 fn build_folders(app: &mut App, ui: &mut egui::Ui) {
@@ -2140,6 +2177,8 @@ fn build_tab(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.separator();
             build_folders(app, ui);
+            ui.separator();
+            sign_key_row(app, ui);
             ui.separator();
             ui.label(RichText::new(t("Playing")).strong());
             ui.checkbox(&mut app.settings.with_client, t("Start the game client too"));

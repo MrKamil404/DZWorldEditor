@@ -11,6 +11,9 @@ pub struct ToolPaths {
     pub work_drive: PathBuf,
     pub dayz_tools: PathBuf,
     pub dayz: PathBuf,
+    /// Private key (`.biprivatekey`) the built PBOs are signed with; empty leaves them unsigned.
+    #[serde(default)]
+    pub sign_key: PathBuf,
 }
 
 #[cfg(windows)]
@@ -68,6 +71,9 @@ pub fn detect() -> ToolPaths {
 }
 
 impl ToolPaths {
+    pub fn sign_tool(&self) -> PathBuf {
+        self.dayz_tools.join("Bin/DsUtils/DSSignFile.exe")
+    }
     pub fn addon_builder(&self) -> PathBuf {
         self.dayz_tools.join("Bin/AddonBuilder/AddonBuilder.exe")
     }
@@ -121,7 +127,7 @@ pub fn mod_folder(paths: &ToolPaths, id: &str) -> PathBuf {
 
 /// Folders of the export packed each into a PBO of its own; `surfaces` holds the map's own
 /// and changed surfaces (CfgSurfaces) when it has any.
-pub const MAP_PARTS: [&str; 4] = ["world", "data", "navmesh", "surfaces"];
+pub const MAP_PARTS: [&str; 5] = ["world", "data", "navmesh", "surfaces", "ce"];
 
 fn has_files(dir: &Path) -> bool {
     std::fs::read_dir(dir).is_ok_and(|mut d| d.next().is_some())
@@ -203,17 +209,19 @@ pub fn build_pbo(paths: &ToolPaths, id: &str, extra: &[BuildFolder], job: &Job) 
     std::fs::create_dir_all(&temp)?;
     // AddonBuilder only copies listed extensions.
     let include = temp.join("include.lst");
-    std::fs::write(&include, "*.paa;*.rvmat;*.wrp;*.nm;*.xml;*.bin;*.cfg;*.hpp;*.csv;*.json;*.txt;*.layout;*.emat;*.edds;*.ptc;*.bisurf;*.ogg;*.wss;*.lip;*.c")?;
+    std::fs::write(&include, "*.paa;*.rvmat;*.wrp;*.nm;*.xml;*.bin;*.cfg;*.hpp;*.csv;*.json;*.txt;*.layout;*.emat;*.edds;*.ptc;*.bisurf;*.ogg;*.wss;*.lip;*.c;*.map")?;
     // Earlier versions packed the whole map into one PBO, which would now load twice.
     let _ = std::fs::remove_file(target.join(format!("{id}.pbo")));
     let mut first = None;
+    let mut built: Vec<PathBuf> = Vec::new();
     for part in MAP_PARTS {
         let source = root.join(part);
         let pbo = target.join(format!("{part}.pbo"));
         if !has_files(&source) {
-            // Surfaces removed from the project must not stay in the mod.
-            if part == "surfaces" {
+            // Surfaces or a mission removed from the project must not stay in the mod.
+            if part == "surfaces" || part == "ce" {
                 let _ = std::fs::remove_file(&pbo);
+                remove_signatures(&pbo);
             }
             continue;
         }
@@ -223,6 +231,7 @@ pub fn build_pbo(paths: &ToolPaths, id: &str, extra: &[BuildFolder], job: &Job) 
         let code = addon_builder(paths, &source, &target, &format!("{id}\\{part}"), &temp, &include, job)?;
         ensure!(pbo.metadata().and_then(|m| m.modified()).is_ok_and(|t| t >= started), "AddonBuilder finished with code {code} and produced no new {part}.pbo; see the log above");
         job.log(format!("{} ({:.1} MB)", pbo.display(), pbo.metadata()?.len() as f64 / 1_048_576.0));
+        built.push(pbo.clone());
         first.get_or_insert(pbo);
     }
     let mut names: Vec<String> = MAP_PARTS.iter().map(|p| p.to_string()).collect();
@@ -253,8 +262,62 @@ pub fn build_pbo(paths: &ToolPaths, id: &str, extra: &[BuildFolder], job: &Job) 
             crate::pbo::pack(&source, &pbo, &prefix)?;
         }
         job.log(format!("{} ({:.1} MB)", pbo.display(), pbo.metadata()?.len() as f64 / 1_048_576.0));
+        built.push(pbo);
+    }
+    if !paths.sign_key.as_os_str().is_empty() {
+        sign(paths, id, &built, job)?;
     }
     first.context("Nothing to pack")
+}
+
+/// Signatures of a PBO by any key: `<file>.pbo.<key>.bisign`.
+fn remove_signatures(pbo: &Path) {
+    let (Some(dir), Some(name)) = (pbo.parent(), pbo.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase())) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        let f = e.file_name().to_string_lossy().to_ascii_lowercase();
+        if f.starts_with(&format!("{name}.")) && f.ends_with(".bisign") {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
+/// The public key (`.bikey`) of a private one: next to it, with the same name.
+pub fn public_key(private: &Path) -> PathBuf {
+    private.with_extension("bikey")
+}
+
+/// Signs the PBOs with the private key of the paths, as servers that check signatures want:
+/// each gets its `.bisign`, signatures by other keys go, and the public key is put into
+/// `Keys` of the mod for servers to take.
+pub fn sign(paths: &ToolPaths, id: &str, pbos: &[PathBuf], job: &Job) -> Result<()> {
+    let key = &paths.sign_key;
+    ensure!(key.extension().is_some_and(|e| e.eq_ignore_ascii_case("biprivatekey")) && key.is_file(), "The signing key {} is not a .biprivatekey file", key.display());
+    ensure!(paths.sign_tool().is_file(), "DSSignFile.exe not found in DayZ Tools (Bin\\DsUtils)");
+    job.stage(format!("Signing {} PBOs", pbos.len()));
+    for pbo in pbos {
+        remove_signatures(pbo);
+        let mut c = Command::new(paths.sign_tool());
+        c.current_dir(pbo.parent().unwrap_or(Path::new("."))).arg(key).arg(pbo);
+        let code = stream(c, job)?;
+        // Named after the authority inside the key, which is usually the key's file name.
+        let file = pbo.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let signed = pbo.parent().and_then(|d| std::fs::read_dir(d).ok()).is_some_and(|rd| rd.flatten().any(|e| {
+            let f = e.file_name().to_string_lossy().to_ascii_lowercase();
+            f.starts_with(&format!("{file}.")) && f.ends_with(".bisign")
+        }));
+        ensure!(code == 0 && signed, "DSSignFile finished with code {code} and wrote no signature for {}", pbo.display());
+    }
+    let public = public_key(key);
+    if public.is_file() {
+        let keys = mod_folder(paths, id).join("Keys");
+        std::fs::create_dir_all(&keys)?;
+        std::fs::copy(&public, keys.join(public.file_name().unwrap_or_default()))?;
+        job.log(format!("Signed with {}; its public key is in {}", key.display(), keys.display()));
+    } else {
+        job.log(format!("Signed with {}; no {} next to it to give servers", key.display(), public.display()));
+    }
+    Ok(())
 }
 
 /// Prepares `mpmissions/dayzOffline.<id>` from a vanilla mission with a spawn on the new map.
@@ -414,6 +477,28 @@ pub fn launch_navmesh(paths: &ToolPaths, id: &str, session_dir: &Path, job: &Job
 mod tests {
     use super::*;
     #[test]
+    fn signing_a_pbo_with_a_real_key() {
+        // DZ_SIGN_KEY: a .biprivatekey; DayZ Tools found as the editor finds them.
+        let Ok(key) = std::env::var("DZ_SIGN_KEY") else { return };
+        let d = tempfile::tempdir().unwrap();
+        let mut paths = detect();
+        paths.work_drive = d.path().to_path_buf();
+        paths.sign_key = key.into();
+        std::fs::create_dir_all(d.path().join("src")).unwrap();
+        std::fs::write(d.path().join("src/config.cpp"), "class CfgPatches { class T { units[]={}; }; };").unwrap();
+        let pbo = d.path().join("Mods/@T/Addons/t.pbo");
+        std::fs::create_dir_all(pbo.parent().unwrap()).unwrap();
+        crate::pbo::pack(&d.path().join("src"), &pbo, "T").unwrap();
+        // An old signature by another key goes.
+        std::fs::write(d.path().join("Mods/@T/Addons/t.pbo.Old.bisign"), b"x").unwrap();
+        sign(&paths, "T", &[pbo.clone()], &Job::default()).unwrap();
+        let names: Vec<String> = std::fs::read_dir(pbo.parent().unwrap()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        println!("{names:?}");
+        assert!(names.iter().any(|n| n.ends_with(".bisign")) && !names.iter().any(|n| n == "t.pbo.Old.bisign"));
+        assert!(std::fs::read_dir(d.path().join("Mods/@T/Keys")).unwrap().count() == 1);
+    }
+
+    #[test]
     fn extra_folders_get_names_and_are_found() {
         assert_eq!(BuildFolder::new("MyMap\\structures").pbo_name("MyMap"), "structures");
         assert_eq!(BuildFolder::new("mymap/structures/houses/").pbo_name("MyMap"), "structures_houses");
@@ -435,7 +520,7 @@ mod tests {
     }
     #[test]
     fn missing_tools_are_reported() {
-        let p = ToolPaths { work_drive: "Z:/nope".into(), dayz_tools: "Z:/x".into(), dayz: "Z:/y".into() };
+        let p = ToolPaths { work_drive: "Z:/nope".into(), dayz_tools: "Z:/x".into(), dayz: "Z:/y".into(), ..Default::default() };
         assert_eq!(p.check().len(), 3);
     }
     #[test]
