@@ -332,6 +332,13 @@ pub struct LogLine {
     pub level: u8,
 }
 
+/// The measuring tool.
+#[derive(Default)]
+pub struct Measure {
+    pub active: bool,
+    pub points: Vec<[f32; 2]>,
+}
+
 pub struct App {
     pub ctx: egui::Context,
     pub settings: Settings,
@@ -348,6 +355,11 @@ pub struct App {
     pub layer_averages: Vec<[u8; 3]>,
     /// The map check and its window.
     pub check: crate::map_check::MapCheck,
+    /// The measuring tool: on, and the points clicked.
+    pub measure: Measure,
+    /// The hour and cloud of the time of day of the lighting.
+    pub time_of_day: f32,
+    pub overcast: f32,
     /// The terrain the water flow shading was worked out for, and when.
     flow_key: u64,
     flow_at: Option<Instant>,
@@ -580,7 +592,7 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), measure: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,

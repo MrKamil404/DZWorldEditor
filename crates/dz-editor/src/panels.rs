@@ -211,7 +211,13 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 if ui.add(egui::Button::new(icons::with(icons::GEAR, &t("Settings..."))).shortcut_text(keys.text(Action::Settings))).clicked() { app.dialog = Dialog::Settings; ui.close_menu(); }
                 if ui.add(egui::Button::new(icons::with(icons::KEYBOARD, &t("Keyboard shortcuts..."))).shortcut_text(keys.text(Action::Shortcuts))).clicked() { app.dialog = Dialog::Shortcuts; ui.close_menu(); }
             });
-            ui.menu_button(t("View"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
+            ui.menu_button(t("View"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                if ui.add_enabled(app.doc.is_some(), egui::Button::new(icons::with(icons::RULER, &t("Measure"))).selected(app.measure.active)).on_hover_text(t("Clicks on the map measure lengths, the climb along them and the area they close.")).clicked() {
+                    app.measure = crate::app::Measure { active: !app.measure.active, points: Vec::new() };
+                    ui.close_menu();
+                }
+                saved_views_menu(app, ui);
+                ui.separator();
                 if ui.add_enabled(app.doc.is_some(), egui::Button::new(icons::with(icons::CORNERS_OUT, &t("Full screen"))).shortcut_text("F11")).on_hover_text(t("The view takes the whole screen; move the pointer to an edge for the panels.")).clicked() {
                     let on = !app.fullscreen;
                     set_fullscreen(app, ctx, on);
@@ -887,6 +893,41 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
     if app.place.brush {
         shortcuts(ui, |ui| brush_hints(app, ui, Some("Remove objects"), false, true, false));
     }
+}
+
+/// Places of the camera kept in the project, to go back to.
+fn saved_views_menu(app: &mut App, ui: &mut egui::Ui) {
+    ui.add_enabled_ui(app.doc.is_some(), |ui| ui.menu_button(icons::with(icons::BOOKMARKS, &t("Saved views")), |ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        if ui.button(icons::with(icons::BOOKMARK_SIMPLE, &t("Keep this view"))).clicked() {
+            if let Some(d) = app.doc.as_mut() {
+                let n = d.world.meta.views.len() + 1;
+                let c = &app.camera;
+                d.world.meta.views.push(dz_core::world::SavedView { name: tf("View {0}", &[&n.to_string()]), pos: c.pos, yaw: c.yaw, pitch: c.pitch });
+                d.history.revision += 1;
+            }
+            ui.close_menu();
+        }
+        let views = app.doc.as_ref().map(|d| d.world.meta.views.clone()).unwrap_or_default();
+        if !views.is_empty() { ui.separator(); }
+        let mut remove = None;
+        for (k, view) in views.iter().enumerate() {
+            ui.horizontal(|ui| {
+                if ui.button(&view.name).clicked() {
+                    app.camera.pos = view.pos;
+                    app.camera.yaw = view.yaw;
+                    app.camera.pitch = view.pitch;
+                    app.top_center = [view.pos[0], view.pos[2]];
+                    ui.close_menu();
+                }
+                if ui.small_button(icons::TRASH).on_hover_text(t("Delete")).clicked() { remove = Some(k); }
+            });
+        }
+        if let (Some(k), Some(d)) = (remove, app.doc.as_mut()) {
+            d.world.meta.views.remove(k);
+            d.history.revision += 1;
+        }
+    }));
 }
 
 fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {

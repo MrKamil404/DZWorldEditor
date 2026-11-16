@@ -30,9 +30,15 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 
 ![The split view](screenshots/split.jpg)
 
+**View > Measure** (ruler) measures on the map: each click adds a point, and the view shows the
+length on the map and along the ground, the climb from the first point to the last and, from three
+points, the area they close. Backspace takes the last point back, Esc or a right click ends.
+**View > Saved views** keeps places of the 3D camera in the project to go back to with a click.
+
 The bar at the top of each view chooses the shading (Lit, Satellite, Mask, Hillshade, Height,
 Slope, Water flow), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
-**Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
+**Lighting** also has **Time of day** and **Overcast**: the sun of that hour at the map's
+latitude and start date, weaker and with more fog under cloud. **Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
 (Shift+H), the land grid and texture tiles.
 
 `View > Full screen` (F11) gives the whole screen to the view; move the pointer to an edge for the

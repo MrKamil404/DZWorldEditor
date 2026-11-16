@@ -1427,6 +1427,10 @@
   "de": "Klicke auf die Karte, um es zu platzieren; es lässt sich auch auf die Karte ziehen.",
   "pl": "Kliknij na mapie, aby go postawić; można go też przeciągnąć na mapę."
  },
+ "Click on the map to start measuring": {
+  "de": "Klicke auf die Karte, um mit dem Messen zu beginnen",
+  "pl": "Kliknij na mapie, żeby zacząć mierzyć"
+ },
  "Click on the map where the line starts.": {
   "de": "Klicke auf die Karte, wo die Linie beginnt.",
   "pl": "Kliknij na mapie, gdzie zaczyna się linia."
@@ -1534,6 +1538,10 @@
  "Click: active layer (new objects go here). Ctrl+click: turn editing on or off.": {
   "de": "Klick: aktive Ebene (neue Objekte landen hier). Strg+Klick: Bearbeitung ein- oder ausschalten.",
   "pl": "Kliknięcie: aktywna warstwa (tu trafiają nowe obiekty). Ctrl+kliknięcie: włącza lub wyłącza edycję."
+ },
+ "Clicks on the map measure lengths, the climb along them and the area they close.": {
+  "de": "Klicks auf die Karte messen Längen, den Anstieg entlang und die Fläche, die sie umschließen.",
+  "pl": "Kliknięcia na mapie mierzą długości, różnicę wysokości i pole, które zamykają."
  },
  "Cliffs and rocks": {
   "de": "Klippen und Felsen",
@@ -3535,6 +3543,10 @@
   "de": "Gelegte Stücke behalten",
   "pl": "Zachowuj ułożone części"
  },
+ "Keep this view": {
+  "de": "Diese Ansicht merken",
+  "pl": "Zapisz ten widok"
+ },
  "Keeps the economy of the mission and drops what was placed on the other map: spawns, zones, areas, map groups and area flags.": {
   "de": "Behält die Wirtschaft der Mission und verwirft, was auf der anderen Karte platziert war: Spawns, Zonen, Gebiete, Kartengruppen und Gebietsflags.",
   "pl": "Zachowuje ekonomię misji i usuwa to, co było rozmieszczone na innej mapie: spawny, strefy, obszary, grupy mapy i flagi obszarów."
@@ -4110,6 +4122,14 @@
  "Me ({0})": {
   "de": "Ich ({0})",
   "pl": "Ja ({0})"
+ },
+ "Measure": {
+  "de": "Messen",
+  "pl": "Linijka"
+ },
+ "Measuring: a click adds a point, Backspace takes the last back, Esc or a right click ends": {
+  "de": "Messen: Ein Klick fügt einen Punkt hinzu, Rücktaste nimmt den letzten zurück, Esc oder Rechtsklick beendet",
+  "pl": "Mierzenie: kliknięcie dodaje punkt, Backspace cofa ostatni, Esc albo prawy przycisk kończy"
  },
  "Medium": {
   "de": "Mittel",
@@ -6083,6 +6103,10 @@
   "de": "In der Generatorbibliothek gespeichert",
   "pl": "Zapisano w bibliotece generatorów"
  },
+ "Saved views": {
+  "de": "Gespeicherte Ansichten",
+  "pl": "Zapisane widoki"
+ },
  "Saved {0}": {
   "de": "{0} gespeichert",
   "pl": "Zapisano {0}"
@@ -7539,6 +7563,10 @@
   "de": "Die Quelle behält ihren Abstand zum Pinsel von Strich zu Strich. Aus: jeder Strich beginnt wieder am Quellpunkt.",
   "pl": "Źródło zachowuje odległość od pędzla między pociągnięciami. Wyłączone: każde pociągnięcie zaczyna kopiować od punktu źródła."
  },
+ "The sun of that hour at the map's latitude and start date (Map config).": {
+  "de": "Die Sonne zu dieser Stunde am Breitengrad und Startdatum der Karte (Kartenkonfiguration).",
+  "pl": "Słońce o tej godzinie na szerokości geograficznej i w dniu startu mapy (Konfiguracja mapy)."
+ },
  "The surface it painted": {
   "de": "Die von ihm gemalte Oberfläche",
   "pl": "Powierzchnię, którą namalował"
@@ -7674,6 +7702,10 @@
  "Tilts the selected objects to the ground under them now.": {
   "de": "Neigt die ausgewählten Objekte jetzt nach dem Boden darunter.",
   "pl": "Przechyla teraz zaznaczone obiekty zgodnie z terenem pod nimi."
+ },
+ "Time of day": {
+  "de": "Tageszeit",
+  "pl": "Pora dnia"
  },
  "Tint": {
   "de": "Tönung",
@@ -7970,6 +8002,10 @@
  "View in a separate window": {
   "de": "Ansicht in eigenem Fenster",
   "pl": "Podgląd w osobnym oknie"
+ },
+ "View {0}": {
+  "de": "Ansicht {0}",
+  "pl": "Widok {0}"
  },
  "Village": {
   "de": "Dorf",
@@ -8363,6 +8399,10 @@
   "de": "alle",
   "pl": "wszystkie"
  },
+ "area {0} m² ({1} ha)": {
+  "de": "Fläche {0} m² ({1} ha)",
+  "pl": "pole {0} m² ({1} ha)"
+ },
  "areaflags.map could not be read": {
   "de": "areaflags.map konnte nicht gelesen werden",
   "pl": "Nie udało się odczytać areaflags.map"
@@ -8594,6 +8634,10 @@
  "{0} key points read": {
   "de": "{0} Keypoints gelesen",
   "pl": "Wczytano keypointów: {0}"
+ },
+ "{0} m, {1} m along the ground, {2} m height": {
+  "de": "{0} m, {1} m über den Boden, {2} m Höhe",
+  "pl": "{0} m, {1} m po terenie, {2} m wysokości"
  },
  "{0} made of {1} objects": {
   "de": "{0} aus {1} Objekten erstellt",

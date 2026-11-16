@@ -31,6 +31,31 @@ impl Lighting {
     pub const EVENING: Lighting = Lighting { azimuth: 268.0, elevation: 8.0, strength: 0.7, color: [1.0, 0.66, 0.42], ambient: 0.65, exposure: 1.0, fog: 1.6, shadow_range: 300.0 };
     pub const OVERCAST: Lighting = Lighting { azimuth: 200.0, elevation: 55.0, strength: 0.18, color: [0.95, 0.97, 1.0], ambient: 1.35, exposure: 1.0, fog: 2.2, shadow_range: 300.0 };
 
+    /// The light of an hour of a day of the year, at a latitude, under a share of cloud 0 to 1.
+    pub fn at(hour: f32, overcast: f32, latitude: f32, day: u32) -> Lighting {
+        let lat = latitude.to_radians();
+        // How far the sun stands north of the equator that day, and its angle from noon.
+        let decl = (23.44f32).to_radians() * (std::f32::consts::TAU * (284.0 + day as f32) / 365.0).sin();
+        let h = (15.0 * (hour - 12.0)).to_radians();
+        let elevation = (lat.sin() * decl.sin() + lat.cos() * decl.cos() * h.cos()).clamp(-1.0, 1.0).asin();
+        let azimuth = (h.sin()).atan2(h.cos() * lat.sin() - decl.tan() * lat.cos()).to_degrees() + 180.0;
+        let e = elevation.to_degrees();
+        // Low sun is warm and weak; cloud dims it, lifts the sky light and thickens the fog.
+        let low = (1.0 - e / 25.0).clamp(0.0, 1.0);
+        let up = ((e + 4.0) / 10.0).clamp(0.0, 1.0);
+        let o = overcast.clamp(0.0, 1.0);
+        Lighting {
+            azimuth: azimuth.rem_euclid(360.0),
+            elevation: e.max(-10.0),
+            strength: (0.92 - 0.25 * low) * up * (1.0 - 0.8 * o),
+            color: [1.0, 0.97 - 0.32 * low, 0.92 - 0.5 * low],
+            ambient: (0.35 + 0.65 * up) * (1.0 + 0.4 * o),
+            exposure: 1.0,
+            fog: 1.0 + 0.6 * low + 2.0 * o,
+            shadow_range: 300.0,
+        }
+    }
+
     pub fn sun_direction(&self) -> [f32; 3] {
         let (sa, ca) = self.azimuth.to_radians().sin_cos();
         let (se, ce) = self.elevation.to_radians().sin_cos();
@@ -241,5 +266,29 @@ impl Settings {
         self.recent.retain(|p| *p != dir);
         self.recent.insert(0, dir);
         self.recent.truncate(12);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_sun_stands_where_it_should() {
+        // Late August at 54° north: about 45° high at noon, in the south.
+        let noon = Lighting::at(12.0, 0.0, 54.0, 237);
+        assert!((noon.elevation - 45.5).abs() < 2.0, "{}", noon.elevation);
+        assert!((noon.azimuth - 180.0).abs() < 1.0, "{}", noon.azimuth);
+        // Low in the west in the evening, and weaker under cloud.
+        let evening = Lighting::at(18.5, 0.0, 54.0, 237);
+        assert!(evening.elevation < 15.0 && evening.azimuth > 250.0 && evening.azimuth < 300.0, "{} {}", evening.elevation, evening.azimuth);
+        assert!(Lighting::at(12.0, 1.0, 54.0, 237).strength < noon.strength * 0.5);
+    }
+
+    #[test]
+    fn start_dates_become_days_of_the_year() {
+        assert_eq!(crate::viewport::start_day("25/8/2015"), 237);
+        assert_eq!(crate::viewport::start_day("1/1/2020"), 1);
+        assert_eq!(crate::viewport::start_day(""), 237);
     }
 }

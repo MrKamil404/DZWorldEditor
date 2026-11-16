@@ -1777,6 +1777,10 @@ fn focus_selection(app: &mut App) {
 }
 
 fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View) {
+    if app.measure.active {
+        measure_input(app, ctx, resp, v);
+        return;
+    }
     // The merge of team work is writing the project; it is opened again afterwards.
     if app.team.merging() {
         return;
@@ -2904,10 +2908,88 @@ fn end_marker(painter: &egui::Painter, v: &View, world: &dz_core::world::World, 
     painter.text(at, egui::Align2::LEFT_TOP, text, font, Color32::WHITE);
 }
 
+/// The measuring tool: a click adds a point, Backspace takes the last back, Esc or a right
+/// click ends.
+fn measure_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &View) {
+    let Some(doc) = &app.doc else { return };
+    if ctx.input(|i| i.key_pressed(Key::Escape)) || resp.secondary_clicked() {
+        app.measure = Default::default();
+        app.status.clear();
+        return;
+    }
+    if ctx.input(|i| i.key_pressed(Key::Backspace)) {
+        app.measure.points.pop();
+    }
+    let Some(mouse) = resp.hover_pos() else { return };
+    let (o, d) = v.ray(mouse);
+    if resp.clicked() {
+        if let Some(h) = pick_terrain(&doc.world.height, o, d, v.ortho) {
+            app.measure.points.push([h[0], h[2]]);
+        }
+    }
+    app.status = t("Measuring: a click adds a point, Backspace takes the last back, Esc or a right click ends");
+}
+
+/// What the measured line says: its length on the map and along the ground, the climb, and the
+/// area it closes.
+pub fn measure_text(world: &dz_core::world::World, points: &[[f32; 2]]) -> String {
+    if points.len() < 2 {
+        return t("Click on the map to start measuring");
+    }
+    let (mut flat, mut ground) = (0.0f32, 0.0f32);
+    for s in points.windows(2) {
+        let d = (s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1]);
+        flat += d;
+        // Along the ground, in steps of about a metre.
+        let n = (d.ceil() as usize).clamp(1, 4000);
+        let mut prev = [s[0][0], world.height.sample(s[0][0], s[0][1]), s[0][1]];
+        for k in 1..=n {
+            let t = k as f32 / n as f32;
+            let p = [s[0][0] + (s[1][0] - s[0][0]) * t, 0.0, s[0][1] + (s[1][1] - s[0][1]) * t];
+            let p = [p[0], world.height.sample(p[0], p[2]), p[2]];
+            ground += ((p[0] - prev[0]).powi(2) + (p[1] - prev[1]).powi(2) + (p[2] - prev[2]).powi(2)).sqrt();
+            prev = p;
+        }
+    }
+    let (a, b) = (points[0], points[points.len() - 1]);
+    let climb = world.height.sample(b[0], b[1]) - world.height.sample(a[0], a[1]);
+    let mut text = tf("{0} m, {1} m along the ground, {2} m height", &[&format!("{flat:.1}"), &format!("{ground:.1}"), &format!("{climb:+.1}")]);
+    if points.len() >= 3 {
+        let mut area = 0.0f32;
+        for k in 0..points.len() {
+            let (p, q) = (points[k], points[(k + 1) % points.len()]);
+            area += p[0] * q[1] - q[0] * p[1];
+        }
+        let area = area.abs() * 0.5;
+        text.push_str(&format!("   {}", tf("area {0} m² ({1} ha)", &[&format!("{area:.0}"), &format!("{:.2}", area / 10_000.0)])));
+    }
+    text
+}
+
 fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     let painter = ui.painter_at(v.rect);
     let Some(doc) = &app.doc else { return };
     let world = &doc.world;
+    if app.measure.active {
+        let mut line = app.measure.points.clone();
+        if let Some(c) = app.cursor_ground.filter(|_| resp.hovered()) { line.push([c[0], c[2]]); }
+        if line.len() >= 3 {
+            let closing = [line[line.len() - 1], line[0]];
+            draw_polyline(&painter, v, world, &closing, Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 230, 80, 120)));
+        }
+        for (width, col) in [(3.5f32, Color32::BLACK), (1.8f32, Color32::from_rgb(255, 230, 80))] {
+            draw_polyline(&painter, v, world, &line, Stroke::new(width, col));
+        }
+        for p in &app.measure.points {
+            if let Some(c) = shape_screen(world, v, *p) { painter.circle_filled(c, 4.0, Color32::from_rgb(255, 230, 80)); }
+        }
+        if let (Some(last), Some(p)) = (app.measure.points.last(), line.last()) { segment_label(&painter, v, world, *last, *p, None); }
+        let text = measure_text(world, &line);
+        // Under the bar of the view, clear of the minimap.
+        let at = v.rect.center_top() + vec2(0.0, 44.0);
+        painter.text(at + vec2(1.0, 1.0), egui::Align2::CENTER_TOP, &text, egui::FontId::proportional(14.0), Color32::BLACK);
+        painter.text(at, egui::Align2::CENTER_TOP, &text, egui::FontId::proportional(14.0), Color32::from_rgb(255, 230, 80));
+    }
     // Where the clone brush copies from, as it moves with the cursor.
     if app.mode == Mode::Satellite && resp.hovered() {
         if let Some((s, r)) = app.cursor_ground.and_then(|c| crate::satellite::source_on_map(app, c[0], c[2])) {
@@ -3322,6 +3404,16 @@ fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         ui.separator();
+        // The sun of an hour of the map's day, at its latitude.
+        let (lat, day) = app.doc.as_ref().map(|d| (d.world.meta.latitude, start_day(&d.world.meta.config.start_date))).unwrap_or((50.0, 240));
+        let mut changed = false;
+        theme::row(ui, &t("Time of day"), |ui| { changed |= ui.add(egui::Slider::new(&mut app.time_of_day, 4.0..=21.0).custom_formatter(|v, _| format!("{}:{:02}", v as u32, ((v.fract()) * 60.0) as u32))).changed(); });
+        theme::row(ui, &t("Overcast"), |ui| { changed |= ui.add(egui::Slider::new(&mut app.overcast, 0.0..=1.0)).changed(); });
+        if changed {
+            *l = Lighting::at(app.time_of_day, app.overcast, lat, day);
+        }
+        ui.weak(t("The sun of that hour at the map's latitude and start date (Map config)."));
+        ui.separator();
         theme::row(ui, &t("Sun azimuth"), |ui| { ui.add(egui::Slider::new(&mut l.azimuth, 0.0..=360.0).suffix("°")); });
         theme::row(ui, &t("Sun elevation"), |ui| { ui.add(egui::Slider::new(&mut l.elevation, -10.0..=90.0).suffix("°")); });
         theme::row(ui, &t("Sun strength"), |ui| { ui.add(egui::Slider::new(&mut l.strength, 0.0..=2.0)); });
@@ -3335,6 +3427,18 @@ fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
             app.settings.lighting = Lighting::default();
         }
     });
+}
+
+/// The day of the year of a start date written as "25/8/2015"; the end of August without one.
+pub fn start_day(date: &str) -> u32 {
+    let parts: Vec<u32> = date.split('/').filter_map(|p| p.trim().parse().ok()).collect();
+    match parts.as_slice() {
+        [d, m, ..] if (1..=12).contains(m) => {
+            const BEFORE: [u32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+            BEFORE[*m as usize - 1] + d.clamp(&1, &31)
+        }
+        _ => 237,
+    }
 }
 
 /// The parallax and blending of the surfaces, from the relief in their alpha channel.
@@ -4315,6 +4419,14 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         // A correction over the whole image (first number -1) or the shapes of layer n, with
         // brightness, saturation and warmth; `satcorrectset b s w` changes the chosen one.
         "check" => crate::map_check::run(app, None),
+        // measure x z x z ...: the measuring tool with these points.
+        "measure" => app.measure = crate::app::Measure { active: true, points: nums.chunks(2).filter(|c| c.len() == 2).map(|c| [c[0], c[1]]).collect() },
+        // tod hour overcast: the lighting of that hour.
+        "tod" if nums.len() >= 2 => {
+            let (lat, day) = app.doc.as_ref().map(|d| (d.world.meta.latitude, start_day(&d.world.meta.config.start_date))).unwrap_or((50.0, 240));
+            (app.time_of_day, app.overcast) = (nums[0], nums[1]);
+            app.settings.lighting = crate::settings::Lighting::at(nums[0], nums[1], lat, day);
+        }
         // courses [wetness] [shortest m]
         "courses" => {
             if let Some(v) = nums.first() { app.shape.course_wetness = *v; }
