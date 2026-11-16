@@ -23,6 +23,8 @@ pub struct ViewCache {
     pub draw: ObjectDraw,
     eye: V3,
     forward: V3,
+    /// Field of view and shape of the view the list was made for.
+    lens: [f32; 2],
     rev: u64,
     selection_rev: u64,
     loaded: usize,
@@ -35,6 +37,9 @@ pub struct ViewCache {
     pub occluded: usize,
     /// Objects whose geometry hid others in the last view.
     pub occluders: usize,
+    /// The terrain horizon of the last view, with the terrain revision it was taken from:
+    /// a view that only turns keeps it.
+    horizon: Option<(u64, crate::occlusion::Horizon)>,
 }
 
 impl ViewCache {
@@ -470,6 +475,14 @@ const PROXY_RANGE: f32 = 150.0;
 
 const SELECT_TINT: [f32; 4] = [1.0, 0.55, 0.05, 1.0];
 
+/// Triangles of nearby buildings and rocks drawn on the CPU each time the 3D view's object
+/// list is rebuilt, to find what they hide.
+const OCCLUDER_TRIANGLES: usize = 120_000;
+/// How much wider than the 3D view its object list is made, in radians, and how far the
+/// camera may turn (as 2 - 2 cos of the angle) before the list is made again.
+const VIEW_MARGIN: f32 = 0.09;
+const TURN_REBUILD: f32 = 0.0027;
+
 /// Rebuilds the object draw list when something visible changed.
 fn prepare_objects(app: &mut App, v: &View, top: bool) -> ObjectDraw {
     prepare_objects_for(app, v, top, top as u8)
@@ -496,7 +509,10 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         let margin = v.rect.width().min(v.rect.height()) * v.mpp * 0.2;
         [cache.eye[0] - v.eye[0], cache.eye[2] - v.eye[2]].iter().any(|d| d.abs() > margin) || (cache.mpp - v.mpp).abs() > 0.06 * v.mpp
     } else {
-        shift > 4.0 || dot(sub(cache.forward, v.forward), sub(cache.forward, v.forward)) > 0.0006
+        // The list is made for a view a little wider than the real one, so it can turn a few
+        // degrees before the list has to be made again.
+        let turned = dot(sub(cache.forward, v.forward), sub(cache.forward, v.forward)) > TURN_REBUILD;
+        shift > 4.0 || turned || cache.lens != [v.tan_half_fov, v.aspect]
     };
     let loaded = renderer.stats.models as usize + renderer.impostor_layers.len();
     cache.frames_since += 1;
@@ -510,6 +526,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     cache.selection_rev = app.selection_rev;
     cache.eye = v.eye;
     cache.forward = v.forward;
+    cache.lens = [v.tan_half_fov, v.aspect];
     cache.mpp = v.mpp;
     cache.loaded = loaded;
     app.road_joins.update(&world.objects, |p| app.db.get(p));
@@ -519,7 +536,9 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         cache.tints.push(category_tint(&path));
         cache.infos.push(app.db.get(&path));
     }
-    let planes = v.planes();
+    // Perspective views are culled as if wider, as the list stays while the camera turns.
+    let wide = v.widened(VIEW_MARGIN);
+    let planes = wide.planes();
     let (hl, hh) = (doc.height_range[0] - 10.0, doc.height_range[1] + 80.0);
     let selection = &app.selection;
     let infos = &cache.infos;
@@ -536,6 +555,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     let mut shadow_triangles: i64 = 6_000_000;
     let mut occluded = 0usize;
     let mut occluders = 0usize;
+    let mut horizon_kept = None;
     if v.ortho && app.settings.top_models && v.mpp < 1.5 {
         // Close up the top view shows the models themselves from above, as a drone would.
         let half = (v.rect.width().max(v.rect.height()) * v.mpp * 0.75).max(10.0);
@@ -606,8 +626,15 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         // What hides what: the terrain by its horizon, and the solid geometry of the objects
         // drawn so far, nearest first. Not under the terrain, where it hides nothing.
         let occlusion = app.settings.occlusion && !app.camera_under && eye[1] > world.height.sample(eye[0], eye[2]);
-        let horizon = occlusion.then(|| crate::occlusion::Horizon::new(&world.height, eye, range));
-        let mut depth = occlusion.then(|| crate::occlusion::DepthBuffer::new(v, 256));
+        let height_rev = renderer.height_rev;
+        let mut horizon = match cache.horizon.take() {
+            Some((rev, h)) if occlusion && rev == height_rev && h.fits(&world.height, eye, range) => Some(h),
+            _ => occlusion.then(|| crate::occlusion::Horizon::new(&world.height, eye, range)),
+        };
+        let mut depth = occlusion.then(|| crate::occlusion::DepthBuffer::new(&wide, 256));
+        // Drawing occluders on the CPU is worth it only up to a point; past it the GPU is
+        // quicker at drawing what they would have hidden.
+        let mut occluder_triangles_left: usize = OCCLUDER_TRIANGLES;
         let mut order: Vec<(i32, i32, i32)> = Vec::with_capacity(((2 * cells + 1) * (2 * cells + 1)) as usize);
         for gz in kz - cells..=kz + cells {
             for gx in kx - cells..=kx + cells {
@@ -643,12 +670,34 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                     let (placed_m, y) = placed_matrix(o, &infos[o.model as usize], &world.height, y);
                     let (placed_m, at) = joins.apply(id, info, placed_m, [o.x, y, o.z]);
                     let (m0, m1) = (o.model, renderer.impostor_layers.get(&o.model));
+                    // Out of the view, it only casts its shadow into it.
+                    let (centre, reach) = if info.known {
+                        let mid = [(info.min[0] + info.max[0]) * 0.5, (info.min[1] + info.max[1]) * 0.5, (info.min[2] + info.max[2]) * 0.5];
+                        let c = std::array::from_fn::<f32, 3, _>(|k| at[k] + placed_m[0][k] * mid[0] + placed_m[1][k] * mid[1] + placed_m[2][k] * mid[2]);
+                        (c, dot(sub(info.max, info.min), sub(info.max, info.min)).sqrt() * 0.5 * o.scale + 1.0)
+                    } else {
+                        (at, 3.0)
+                    };
+                    if planes.iter().any(|p| p[0] * centre[0] + p[1] * centre[1] + p[2] * centre[2] + p[3] < -reach * (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt()) {
+                        if d < shadow_range && app.show_shadows {
+                            // The LOD it would cast with if it were seen: next to the camera a
+                            // coarse one would throw a blurred shadow into the view.
+                            let last = renderer.lod_count(m0).map_or(u8::MAX, |c| c.saturating_sub(1));
+                            let step = near * (size / 12.0).clamp(0.6, 3.0);
+                            let want = if d < step { 0 } else { ((d / step).log2().floor() as u8).saturating_add(1) }.min(12).min(last);
+                            if let Some((lod, n)) = renderer.best_lod(m0, want.saturating_add(1).min(last)).filter(|_| shadow_triangles > 0) {
+                                shadow_triangles -= n as i64;
+                                write_instance(shadow.entry((m0, lod)).or_default(), &placed_m, at, tint);
+                            }
+                        }
+                        continue;
+                    }
                     // Hidden behind the terrain or the objects before it: left out, though it
                     // may still cast a shadow onto what is seen. Selected objects always show.
                     if !sel && info.known {
                         let top = y + info.max[1] * o.scale;
                         let radius = (info.max[0] - info.min[0]).hypot(info.max[2] - info.min[2]) * 0.5 * o.scale;
-                        let behind_terrain = horizon.as_ref().is_some_and(|h| h.hides(o.x, o.z, top, radius));
+                        let behind_terrain = horizon.as_mut().is_some_and(|h| h.hides(&world.height, o.x, o.z, top, radius));
                         let behind_objects = !behind_terrain && depth.as_ref().is_some_and(|b| b.hides(&crate::occlusion::box_corners(info.min, info.max, &placed_m, at)));
                         if behind_terrain || behind_objects {
                             occluded += 1;
@@ -663,8 +712,11 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                         }
                     }
                     // A seen building or rock hides what is behind it by its own solid shape.
+                    // Only what covers a fair part of the view is worth drawing as an occluder.
                     if let (Some(buf), Some(tris)) = (depth.as_mut(), renderer.occluder(m0)) {
-                        if d < 600.0 && size >= 4.0 && !plants.get(m0 as usize).copied().unwrap_or(false) {
+                        let n = tris.len() / 3;
+                        if d < 600.0 && size >= 4.0 && size / d.max(1.0) > 0.04 && n <= occluder_triangles_left && !plants.get(m0 as usize).copied().unwrap_or(false) {
+                            occluder_triangles_left -= n;
                             buf.draw(tris, &placed_m, at);
                             occluders += 1;
                         }
@@ -736,6 +788,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                 }
             }
         }
+        horizon_kept = horizon.map(|h| (height_rev, h));
     }
     // The objects of the event groups of the mission, where the events would place them.
     let mut ghost_requests: Vec<(u32, u8)> = Vec::new();
@@ -923,6 +976,9 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     }
     cache.occluded = occluded;
     cache.occluders = occluders;
+    if let Some(h) = horizon_kept {
+        cache.horizon = Some(h);
+    }
     let draw = ObjectDraw { instances: Arc::new(flat), groups: Arc::new(groups), boxes: Arc::new(boxes), impostors: Arc::new(impostors), shadow_instances: Arc::new(shadow_flat), shadow_groups: Arc::new(shadow_groups) };
     cache.draw = draw.clone();
     drop(renderer);
@@ -2800,16 +2856,38 @@ fn shapes_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &V
     }
 }
 
+/// A line over the ground through map points. Long sides follow the terrain between their
+/// points, and a side seen only in part (passing behind the camera, or with both ends off
+/// screen) is still drawn where it shows.
 pub(crate) fn draw_polyline(painter: &egui::Painter, v: &View, world: &dz_core::world::World, points: &[[f32; 2]], stroke: Stroke) {
-    let mut prev: Option<Pos2> = None;
-    for p in points {
-        let q = v.project([p[0], world.height.sample(p[0], p[1]) + 0.3, p[1]]);
-        if let (Some(a), Some(b)) = (prev, q) {
-            if v.rect.expand(200.0).contains(a) || v.rect.expand(200.0).contains(b) {
-                painter.line_segment([a, b], stroke);
+    let ground = |x: f32, z: f32| [x, world.height.sample(x, z) + 0.3, z];
+    let area = v.rect.expand(stroke.width + 2.0);
+    let draw = |a: V3, b: V3| {
+        if let Some((p, q)) = v.segment(a, b) {
+            if Rect::from_two_pos(p, q).intersects(area) {
+                painter.line_segment([p, q], stroke);
             }
         }
-        prev = q;
+    };
+    for w in points.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let len = (b[0] - a[0]).hypot(b[1] - a[1]);
+        // Near the eye a side is split finely so it lies on the ground; far off, coarsely.
+        let pieces = if v.ortho || len < 1e-3 {
+            1
+        } else {
+            let t = (((v.eye[0] - a[0]) * (b[0] - a[0]) + (v.eye[2] - a[1]) * (b[1] - a[1])) / (len * len)).clamp(0.0, 1.0);
+            let (cx, cz) = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
+            let near = (v.eye[0] - cx).hypot(v.eye[2] - cz);
+            ((len / (near * 0.03).max(4.0)).ceil() as usize).clamp(1, 256)
+        };
+        let mut prev = ground(a[0], a[1]);
+        for k in 1..=pieces {
+            let s = k as f32 / pieces as f32;
+            let next = ground(a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s);
+            draw(prev, next);
+            prev = next;
+        }
     }
 }
 
@@ -2985,10 +3063,11 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
                 if let (Some(p), Some(q)) = (w[0], w[1]) { painter.line_segment([p, q], Stroke::new(1.0_f32, color)); }
             }
         }
-        if !(k.show || app.mode == Mode::KeyPoints) { continue; }
-        if let Some(s) = v.project([k.x, world.height.sample(k.x, k.z) + 1.0, k.z]) {
-            painter.circle_filled(s, if selected { 5.0 } else { 3.5 }, if selected { Color32::from_rgb(255, 210, 90) } else { Color32::from_rgb(120, 190, 255) });
-            painter.text(s + vec2(7.0, -2.0), egui::Align2::LEFT_CENTER, if k.text.is_empty() { &k.name } else { &k.text }, egui::FontId::proportional(11.0), Color32::WHITE);
+        // Those the game's map leaves out ("Show on map" off) still show here, dimmer.
+        let dim = if k.show || selected || app.mode == Mode::KeyPoints { 1.0 } else { 0.55 };
+        if let Some(s) = v.project([k.x, world.height.sample(k.x, k.z) + 1.0, k.z]).filter(|s| v.rect.expand(100.0).contains(*s)) {
+            painter.circle_filled(s, if selected { 5.0 } else { 3.5 }, if selected { Color32::from_rgb(255, 210, 90) } else { Color32::from_rgb(120, 190, 255).gamma_multiply(dim) });
+            painter.text(s + vec2(7.0, -2.0), egui::Align2::LEFT_CENTER, if k.text.is_empty() { &k.name } else { &k.text }, egui::FontId::proportional(11.0), Color32::WHITE.gamma_multiply(dim));
         }
     }
     if let Some(s) = v.project([world.meta.spawn[0], world.height.sample(world.meta.spawn[0], world.meta.spawn[1]) + 1.0, world.meta.spawn[1]]) {
@@ -4865,7 +4944,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "minizoom" => { app.minimap_zoom = nums.first().copied().unwrap_or(1.0).max(1.0); app.minimap_panned = false; }
         "viewstats" => {
             let d = &app.view3.draw;
-            eprintln!("VIEWSTATS {arg} occlusion={} frame_ms={:.1} models={} impostors={} shadow={} occluded={} occluders={}", app.settings.occlusion, app.frame_ms, d.instances.len() / 16, d.impostors.len() / 8, d.shadow_instances.len() / 16, app.view3.occluded, app.view3.occluders);
+            eprintln!("MEM {arg} {}", app.renderer.lock().unwrap().memory_report());
+            eprintln!("VIEWSTATS {arg} occlusion={} frame_ms={:.1} models={} impostors={} shadow={} occluded={} occluders={} gpu_mb={}", app.settings.occlusion, app.frame_ms, d.instances.len() / 16, d.impostors.len() / 8, d.shadow_instances.len() / 16, app.view3.occluded, app.view3.occluders, app.renderer.lock().unwrap().gpu_bytes() >> 20);
         }
         // The camera `arg2` metres from the first object whose model path holds `arg1`.
         "gotomodel" => {

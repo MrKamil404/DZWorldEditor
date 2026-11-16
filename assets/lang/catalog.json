@@ -659,6 +659,10 @@
   "de": "Ersteller",
   "pl": "Autorzy"
  },
+ "Auto": {
+  "de": "Automatisch",
+  "pl": "Automatycznie"
+ },
  "Autosave every": {
   "de": "Automatisch speichern alle",
   "pl": "Autozapis co"
@@ -3863,6 +3867,10 @@
   "de": "Mittel",
   "pl": "Średnie"
  },
+ "Memory for models": {
+  "de": "Speicher für Modelle",
+  "pl": "Pamięć na modele"
+ },
  "Merge": {
   "de": "Zusammenführen",
   "pl": "Scal"
@@ -3958,6 +3966,10 @@
  "Model names with their whole path": {
   "de": "Modellnamen mit vollem Pfad",
   "pl": "Nazwy modeli z pełną ścieżką"
+ },
+ "Models and textures not seen for a while are let go past this, and load again when the camera comes back. Less keeps the editor's memory down; more reloads less often.": {
+  "de": "Darüber hinaus werden Modelle und Texturen, die eine Weile nicht zu sehen waren, freigegeben und neu geladen, wenn die Kamera zurückkehrt. Weniger hält den Speicherbedarf des Editors klein; mehr lädt seltener neu.",
+  "pl": "Powyżej tej wartości modele i tekstury niewidoczne od jakiegoś czasu są zwalniane i wczytują się ponownie, gdy kamera do nich wróci. Mniej to mniejsze zużycie pamięci przez edytor; więcej to rzadsze doczytywanie."
  },
  "Models are laid side by side until they cover the whole shape.": {
   "de": "Die Modelle werden nebeneinander gelegt, bis sie die ganze Form bedecken.",

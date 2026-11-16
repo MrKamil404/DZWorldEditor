@@ -17,31 +17,47 @@ const TOP_MARGIN: f32 = 1.0;
 const DISTANT_MARGIN: f32 = 0.004;
 
 /// The steepest rise of the terrain from the eye, by direction and distance.
+///
+/// Directions are worked out the first time an object in them is tested, so only those
+/// the view looks along cost anything, and a view that only turns keeps what it has.
 pub struct Horizon {
     eye: [f32; 3],
+    range: f32,
     step: f32,
     steps: usize,
     /// `SECTORS × steps`: the steepest slope (rise over run) met up to each step.
     slope: Vec<f32>,
+    /// Which directions `slope` holds yet.
+    done: Vec<bool>,
 }
 
 impl Horizon {
     pub fn new(height: &Heightmap, eye: [f32; 3], range: f32) -> Self {
         let step = height.cell.clamp(2.0, 12.0);
         let steps = ((range / step).ceil() as usize).max(1);
-        let mut slope = vec![f32::NEG_INFINITY; SECTORS * steps];
-        for s in 0..SECTORS {
-            let a = s as f32 / SECTORS as f32 * std::f32::consts::TAU;
-            let (dx, dz) = (a.cos(), a.sin());
-            let mut best = f32::NEG_INFINITY;
-            for k in 0..steps {
-                let d = (k + 1) as f32 * step;
-                let h = height.sample(eye[0] + dx * d, eye[2] + dz * d);
-                best = best.max((h - eye[1]) / d);
-                slope[s * steps + k] = best;
-            }
+        Self { eye, range, step, steps, slope: vec![f32::NEG_INFINITY; SECTORS * steps], done: vec![false; SECTORS] }
+    }
+
+    /// True when this horizon was worked out from `eye` over `range` of `height`.
+    pub fn fits(&self, height: &Heightmap, eye: [f32; 3], range: f32) -> bool {
+        self.eye == eye && self.range == range && self.step == height.cell.clamp(2.0, 12.0)
+    }
+
+    fn fill(&mut self, height: &Heightmap, s: usize) {
+        if self.done[s] {
+            return;
         }
-        Self { eye, step, steps, slope }
+        self.done[s] = true;
+        let a = s as f32 / SECTORS as f32 * std::f32::consts::TAU;
+        let (dx, dz) = (a.cos(), a.sin());
+        let mut best = f32::NEG_INFINITY;
+        let row = &mut self.slope[s * self.steps..(s + 1) * self.steps];
+        for (k, cell) in row.iter_mut().enumerate() {
+            let d = (k + 1) as f32 * self.step;
+            let h = height.sample(self.eye[0] + dx * d, self.eye[2] + dz * d);
+            best = best.max((h - self.eye[1]) / d);
+            *cell = best;
+        }
     }
 
     fn sector(&self, angle: f32) -> usize {
@@ -50,7 +66,7 @@ impl Horizon {
 
     /// True when the terrain hides an object standing at (x, z), `top` high at its highest,
     /// `radius` wide round its middle.
-    pub fn hides(&self, x: f32, z: f32, top: f32, radius: f32) -> bool {
+    pub fn hides(&mut self, height: &Heightmap, x: f32, z: f32, top: f32, radius: f32) -> bool {
         let (dx, dz) = (x - self.eye[0], z - self.eye[2]);
         let d = (dx * dx + dz * dz).sqrt();
         // The near side of the object: terrain only hides what lies beyond it.
@@ -67,7 +83,11 @@ impl Horizon {
         let half = (radius / d.max(0.1)).min(1.0).asin() + std::f32::consts::TAU / SECTORS as f32;
         let (a, b) = (self.sector(centre - half), self.sector(centre + half));
         let span = if b >= a { b - a } else { b + SECTORS - a };
-        (0..=span).all(|i| self.slope[((a + i) % SECTORS) * self.steps + k] > rise)
+        (0..=span).all(|i| {
+            let s = (a + i) % SECTORS;
+            self.fill(height, s);
+            self.slope[s * self.steps + k] > rise
+        })
     }
 }
 
@@ -76,8 +96,8 @@ impl Horizon {
 pub struct DepthBuffer {
     w: usize,
     h: usize,
-    /// Distance from the eye along the view (clip w) of the nearest surface; infinity where
-    /// nothing has been drawn.
+    /// One over the distance from the eye along the view (clip w) of the nearest surface;
+    /// 0 where nothing has been drawn.
     depth: Vec<f32>,
     vp: [f32; 16],
     pub drawn: usize,
@@ -99,9 +119,9 @@ fn clip(vp: &[f32; 16], p: [f32; 3], w: usize, h: usize) -> Option<[f32; 3]> {
 
 impl DepthBuffer {
     pub fn new(view: &View, width: usize) -> Self {
-        let aspect = (view.rect.height() / view.rect.width().max(1.0)).clamp(0.2, 5.0);
+        let aspect = (1.0 / view.aspect.max(0.01)).clamp(0.2, 5.0);
         let h = ((width as f32 * aspect).round() as usize).max(8);
-        Self { w: width, h, depth: vec![f32::INFINITY; width * h], vp: view.vp, drawn: 0 }
+        Self { w: width, h, depth: vec![0.0; width * h], vp: view.vp, drawn: 0 }
     }
 
     /// Draws triangles given in model space, placed by `axes` and `at` as instances are.
@@ -150,7 +170,8 @@ impl DepthBuffer {
         self.drawn += 1;
     }
 
-    /// Fills the pixels whose centres the triangle covers with its depth, interpolated in 1/w.
+    /// Fills the pixels whose centres the triangle covers with its depth. The edge weights
+    /// and 1/w are linear across the screen, so each pixel only adds to them.
     fn triangle(&mut self, a: [f32; 3], b: [f32; 3], c: [f32; 3]) {
         let area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
         if area.abs() < 1e-6 {
@@ -160,25 +181,29 @@ impl DepthBuffer {
         let x1 = (a[0].max(b[0]).max(c[0]).ceil() as isize).min(self.w as isize - 1);
         let y0 = a[1].min(b[1]).min(c[1]).floor().max(0.0) as usize;
         let y1 = (a[1].max(b[1]).max(c[1]).ceil() as isize).min(self.h as isize - 1);
-        if x1 < 0 || y1 < 0 {
+        if x1 < x0 as isize || y1 < y0 as isize {
             return;
         }
-        let (iw_a, iw_b, iw_c) = (1.0 / a[2], 1.0 / b[2], 1.0 / c[2]);
+        let r = 1.0 / area;
+        // w = dx * px + dy * py + k for each of the two edge weights; the third is what is left.
+        let (w0x, w0y, w0k) = ((b[1] - c[1]) * r, (c[0] - b[0]) * r, (b[0] * c[1] - b[1] * c[0]) * r);
+        let (w1x, w1y, w1k) = ((c[1] - a[1]) * r, (a[0] - c[0]) * r, (c[0] * a[1] - c[1] * a[0]) * r);
+        let (ia, ib, ic) = (1.0 / a[2], 1.0 / b[2], 1.0 / c[2]);
+        let (ix, iy, ik) = (w0x * (ia - ic) + w1x * (ib - ic), w0y * (ia - ic) + w1y * (ib - ic), w0k * (ia - ic) + w1k * (ib - ic) + ic);
+        let px0 = x0 as f32 + 0.5;
         for y in y0..=y1 as usize {
             let py = y as f32 + 0.5;
-            for x in x0..=x1 as usize {
-                let px = x as f32 + 0.5;
-                let w0 = ((b[0] - px) * (c[1] - py) - (b[1] - py) * (c[0] - px)) / area;
-                let w1 = ((c[0] - px) * (a[1] - py) - (c[1] - py) * (a[0] - px)) / area;
-                let w2 = 1.0 - w0 - w1;
-                if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
-                    continue;
+            let mut w0 = w0x * px0 + w0y * py + w0k;
+            let mut w1 = w1x * px0 + w1y * py + w1k;
+            let mut iw = ix * px0 + iy * py + ik;
+            let row = &mut self.depth[y * self.w..(y + 1) * self.w];
+            for cell in &mut row[x0..=x1 as usize] {
+                if w0 >= 0.0 && w1 >= 0.0 && w0 + w1 <= 1.0 && iw > *cell {
+                    *cell = iw;
                 }
-                let d = 1.0 / (w0 * iw_a + w1 * iw_b + w2 * iw_c);
-                let cell = &mut self.depth[y * self.w + x];
-                if d < *cell {
-                    *cell = d;
-                }
+                w0 += w0x;
+                w1 += w1x;
+                iw += ix;
             }
         }
     }
@@ -204,7 +229,7 @@ impl DepthBuffer {
         }
         for y in ya..=yb as usize {
             for x in xa..=xb as usize {
-                if self.depth[y * self.w + x] >= near {
+                if self.depth[y * self.w + x] <= 1.0 / near {
                     return false;
                 }
             }
@@ -245,16 +270,19 @@ mod tests {
     #[test]
     fn a_ridge_hides_what_is_low_behind_it_but_not_what_rises_over_it() {
         let h = flat_with_ridge();
-        let hz = Horizon::new(&h, [100.0, 2.0, 256.0], 500.0);
+        let mut hz = Horizon::new(&h, [100.0, 2.0, 256.0], 500.0);
         // Behind the ridge and low: hidden. The line over the ridge top (38 m up in 92 m)
         // stands about 93 m high there, so 80 m is still hidden and 130 m shows over it.
-        assert!(hz.hides(320.0, 256.0, 5.0, 3.0));
-        assert!(hz.hides(320.0, 256.0, 80.0, 3.0));
-        assert!(!hz.hides(320.0, 256.0, 130.0, 3.0));
+        assert!(hz.hides(&h, 320.0, 256.0, 5.0, 3.0));
+        assert!(hz.hides(&h, 320.0, 256.0, 80.0, 3.0));
+        assert!(!hz.hides(&h, 320.0, 256.0, 130.0, 3.0));
         // In front of the ridge: always seen.
-        assert!(!hz.hides(150.0, 256.0, 1.0, 3.0));
+        assert!(!hz.hides(&h, 150.0, 256.0, 1.0, 3.0));
         // Away from the ridge, on the open side: seen.
-        assert!(!hz.hides(20.0, 256.0, 1.0, 3.0));
+        assert!(!hz.hides(&h, 20.0, 256.0, 1.0, 3.0));
+        // Only the directions tested were worked out.
+        assert!(hz.done.iter().filter(|d| **d).count() < SECTORS / 8);
+        assert!(hz.fits(&h, [100.0, 2.0, 256.0], 500.0) && !hz.fits(&h, [101.0, 2.0, 256.0], 500.0));
     }
 
     fn view() -> View {
@@ -296,6 +324,19 @@ mod tests {
         assert!(buf.hides(&behind));
         let in_front = box_corners([-1.0, 0.0, -1.0], [1.0, 3.0, 1.0], &IDENT, [3.0, 0.0, 15.0]);
         assert!(!buf.hides(&in_front));
+    }
+
+    /// The 3D view draws its occluders into a view a little wider than the one shown, so its
+    /// list stays right while the camera turns; what a wall hides stays hidden there.
+    #[test]
+    fn a_widened_view_still_hides_behind_a_wall() {
+        let v = view().widened(0.09);
+        let mut buf = DepthBuffer::new(&v, 256);
+        buf.draw(&wall(20.0, 15.0, 30.0), &IDENT, [0.0, 0.0, 0.0]);
+        let small = |x: f32, z: f32| box_corners([-1.0, 0.0, -1.0], [1.0, 3.0, 1.0], &IDENT, [x, 0.0, z]);
+        assert!(buf.hides(&small(0.0, 60.0)));
+        assert!(!buf.hides(&small(0.0, 20.0)));
+        assert!(!buf.hides(&small(40.0, 60.0)));
     }
 
     #[test]

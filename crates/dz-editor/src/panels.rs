@@ -2591,6 +2591,8 @@ fn settings_graphics(app: &mut App, ui: &mut egui::Ui) {
     ui.checkbox(&mut app.settings.occlusion, t("Leave out objects hidden behind the terrain or buildings")).on_hover_text(t("Objects behind a hill, or behind the solid walls of a building or rock, are not drawn. Glass, fences and leaves never hide anything."));
     settings_heading(ui, &t("Textures"));
     choice(ui, &t("Texture detail"), "texture_size", &mut app.settings.texture_size, &[(512, "512".into()), (1024, "1024".into()), (2048, "2048".into()), (4096, t("Full"))]);
+    choice(ui, &t("Memory for models"), "model_memory", &mut app.settings.model_memory, &[(0, t("Auto")), (1024, "1 GB".into()), (2048, "2 GB".into()), (4096, "4 GB".into()), (8192, "8 GB".into())]);
+    about(ui, &t("Models and textures not seen for a while are let go past this, and load again when the camera comes back. Less keeps the editor's memory down; more reloads less often."));
     choice(ui, &t("Texture filtering"), "anisotropy", &mut app.settings.anisotropy, &[(1, t("Off")), (2, "2x".into()), (4, "4x".into()), (8, "8x".into()), (16, "16x".into())]);
     slider(ui, &t("Surface parallax cm"), &mut app.settings.surface_parallax, 0.0..=15.0, false);
     slider(ui, &t("Surface blend by relief"), &mut app.settings.surface_blend, 0.0..=1.0, false);

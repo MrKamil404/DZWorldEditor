@@ -123,6 +123,30 @@ impl View {
         ))
     }
 
+    /// The part of the line from `a` to `b` in front of the eye, on screen, when any of it
+    /// is: a segment reaching behind the camera is cut where it passes the eye rather than
+    /// left out.
+    pub fn segment(&self, a: V3, b: V3) -> Option<(Pos2, Pos2)> {
+        const NEAR: f32 = 0.05;
+        let m = &self.vp;
+        let clip = |p: V3| [m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15]];
+        let (mut p, mut q) = (clip(a), clip(b));
+        if p[2] < NEAR && q[2] < NEAR {
+            return None;
+        }
+        let cut = |p: [f32; 3], q: [f32; 3]| {
+            let s = (NEAR - p[2]) / (q[2] - p[2]);
+            [p[0] + (q[0] - p[0]) * s, p[1] + (q[1] - p[1]) * s, NEAR]
+        };
+        if p[2] < NEAR {
+            p = cut(p, q);
+        } else if q[2] < NEAR {
+            q = cut(q, p);
+        }
+        let screen = |c: [f32; 3]| pos2(self.rect.left() + (c[0] / c[2] * 0.5 + 0.5) * self.rect.width(), self.rect.top() + (0.5 - c[1] / c[2] * 0.5) * self.rect.height());
+        Some((screen(p), screen(q)))
+    }
+
     /// World ray through a screen position.
     pub fn ray(&self, s: Pos2) -> (V3, V3) {
         let nx = (s.x - self.rect.left()) / self.rect.width() * 2.0 - 1.0;
@@ -137,6 +161,28 @@ impl View {
     }
 
     /// Frustum planes (a, b, c, d) with the inside positive.
+    /// The same perspective view, seeing `margin` radians further on every side: an object
+    /// list made for it stays right while the camera turns by less than that.
+    pub fn widened(&self, margin: f32) -> View {
+        if self.ortho {
+            return *self;
+        }
+        let limit = 89f32.to_radians();
+        let tv = (self.tan_half_fov.atan() + margin).min(limit).tan();
+        let th = ((self.tan_half_fov * self.aspect).atan() + margin).min(limit).tan();
+        let (f, r, u, e) = (self.forward, self.right, self.up, self.eye);
+        let (near, far) = (0.25f32, 80_000.0f32);
+        let (x, y) = (1.0 / th, 1.0 / tv);
+        let (a, b) = (-(far + near) / (far - near), -2.0 * far * near / (far - near));
+        let vp = [
+            x * r[0], y * u[0], a * -f[0], f[0],
+            x * r[1], y * u[1], a * -f[1], f[1],
+            x * r[2], y * u[2], a * -f[2], f[2],
+            -x * dot(r, e), -y * dot(u, e), a * dot(f, e) + b, -dot(f, e),
+        ];
+        View { vp, tan_half_fov: tv, aspect: th / tv, ..*self }
+    }
+
     pub fn planes(&self) -> [[f32; 4]; 6] {
         let m = &self.vp;
         let row = |i: usize| [m[i], m[4 + i], m[8 + i], m[12 + i]];
@@ -163,6 +209,39 @@ mod tests {
 
     fn rect() -> Rect {
         Rect::from_min_size(pos2(10.0, 20.0), Vec2::new(800.0, 600.0))
+    }
+
+    /// What is just outside the view is inside the widened one, and what is far outside stays out.
+    #[test]
+    fn a_widened_view_takes_in_a_margin_round_the_view() {
+        let cam = Camera { pos: [0.0, 10.0, 0.0], yaw: 0.3, pitch: -0.2, fov: 1.2, speed: 1.0 };
+        let v = View::perspective(&cam, rect(), 0.0);
+        let w = v.widened(0.09);
+        let inside = |planes: &[[f32; 4]; 6], p: V3| planes.iter().all(|q| q[0] * p[0] + q[1] * p[1] + q[2] * p[2] + q[3] >= 0.0);
+        let (pv, pw) = (v.planes(), w.planes());
+        // Along the right edge of the view and 3 degrees further, 100 m out.
+        let half = (v.tan_half_fov * v.aspect).atan();
+        for (angle, in_view, in_wide) in [(half - 0.02, true, true), (half + 0.05, false, true), (half + 0.2, false, false)] {
+            let d = add(mul(v.forward, angle.cos()), mul(v.right, angle.sin()));
+            let p = add(v.eye, mul(d, 100.0));
+            assert_eq!(inside(&pv, p), in_view, "{angle}");
+            assert_eq!(inside(&pw, p), in_wide, "{angle}");
+        }
+    }
+
+    /// A line from beside the camera to far ahead is cut at the eye and still drawn; one
+    /// wholly behind it is not.
+    #[test]
+    fn a_segment_reaching_behind_the_eye_is_cut_not_dropped() {
+        let cam = Camera { pos: [0.0, 10.0, 0.0], yaw: 0.0, pitch: 0.0, fov: 1.2, speed: 1.0 };
+        let v = View::perspective(&cam, rect(), 0.0);
+        let ahead = add(v.eye, mul(v.forward, 100.0));
+        let behind = add(v.eye, mul(v.forward, -50.0));
+        assert!(v.project(behind).is_none());
+        let (_, q) = v.segment(behind, ahead).expect("the part ahead shows");
+        let far = v.project(ahead).unwrap();
+        assert!((q - far).length() < 0.01);
+        assert!(v.segment(behind, add(behind, mul(v.right, 20.0))).is_none());
     }
 
     #[test]
