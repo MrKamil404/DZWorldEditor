@@ -31,7 +31,7 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 ![The split view](screenshots/split.jpg)
 
 The bar at the top of each view chooses the shading (Lit, Satellite, Mask, Hillshade, Height,
-Slope), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
+Slope, Water flow), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
 **Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
 (Shift+H), the land grid and texture tiles.
 
@@ -115,6 +115,11 @@ models with its own settings.
 Polygons, lines and points that generators work on, in layers. They can be imported from SHP and
 TV4S files and exported to SHP.
 
+**Water courses from the terrain** finds the lines along which water runs down the hills and adds
+them as a new shape layer, ready for the River or Stream generator. *Wetness* sets how much water
+must gather for a course to start, *Shortest* leaves out the short ones. The **Water flow** shading
+of the view shows the same: blue where water runs and gathers, darker where more of it does.
+
 ### 7 Key points
 
 ![Key points](screenshots/keypoints.jpg)
@@ -169,6 +174,11 @@ The Content Browser at the bottom holds:
 A generator is dropped on a shape, a road or the map (or select the shape first and double-click
 the generator). It appears in the outliner, where its settings can be changed and it can be run
 again.
+
+The rules of Surface painting and of the Scatter generator have **More conditions** besides height
+and slope: hollows and ridges (how far the ground lies below the ground round it), wetness (where
+water runs and gathers), and the distance to water and to roads, each with ragged edges if wanted.
+Moss in wet hollows, reeds along the water, dry grass on the crests, verges by the roads.
 
 | Generators | |
 | --- | --- |

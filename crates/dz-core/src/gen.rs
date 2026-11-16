@@ -445,12 +445,21 @@ pub struct PaintRule {
     pub noise_scale: f32,
     /// Share of the area the rule covers, 0..1.
     pub coverage: f32,
+    /// Hollows and ridges, where water gathers, distances to water and roads.
+    #[serde(default)]
+    pub conditions: crate::analysis::Conditions,
+}
+
+impl Default for PaintRule {
+    fn default() -> Self {
+        Self { layer: 0, min_height: -1000.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0, conditions: Default::default() }
+    }
 }
 
 /// Default rules using layer names, later rules win.
 pub fn default_paint_rules(w: &World) -> Vec<PaintRule> {
     let rule = |name: &str, h0: f32, h1: f32, s0: f32, s1: f32, n: f32, c: f32| {
-        w.layer_index(name).map(|layer| PaintRule { layer, min_height: h0, max_height: h1, min_slope: s0, max_slope: s1, noise_scale: n, coverage: c })
+        w.layer_index(name).map(|layer| PaintRule { layer, min_height: h0, max_height: h1, min_slope: s0, max_slope: s1, noise_scale: n, coverage: c, ..Default::default() })
     };
     [
         rule("grass1", -1000.0, 9000.0, 0.0, 90.0, 0.0, 1.0),
@@ -462,7 +471,18 @@ pub fn default_paint_rules(w: &World) -> Vec<PaintRule> {
     ].into_iter().flatten().collect()
 }
 
-pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, area: Option<&crate::shapes::PolygonIndex>, job: &Job) -> Vec<u8> {
+/// The maps the conditions of some rules need, or none.
+fn maps_for(w: &World, marks: &crate::analysis::Landmarks, conditions: &[&crate::analysis::Conditions], job: &Job) -> Option<crate::analysis::TerrainMaps> {
+    let needs = conditions.iter().fold(crate::analysis::Needs::default(), |n, c| n.or(c.needs()));
+    needs.any().then(|| {
+        job.stage("Reading the shape of the terrain");
+        crate::analysis::TerrainMaps::new(w, marks, needs, crate::analysis::HOLLOW_RADIUS)
+    })
+}
+
+pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, area: Option<&crate::shapes::PolygonIndex>, marks: &crate::analysis::Landmarks, job: &Job) -> Vec<u8> {
+    let maps = maps_for(w, marks, &rules.iter().map(|r| &r.conditions).collect::<Vec<_>>(), job).unwrap_or_default();
+    let edge = Perlin::new(seed ^ 0xed6e);
     let noise = Perlin::new(seed);
     let (mw, mh) = (w.mask.width, w.mask.height);
     let size = w.meta.size_m();
@@ -478,6 +498,9 @@ pub fn auto_paint(w: &World, rules: &[PaintRule], seed: u64, area: Option<&crate
             let (h, s) = (w.height.sample(wx, wz), w.height.slope(wx, wz));
             for r in rules {
                 if h < r.min_height || h > r.max_height || s < r.min_slope || s > r.max_slope {
+                    continue;
+                }
+                if !r.conditions.test(&maps, &edge, wx, wz) {
                     continue;
                 }
                 if r.noise_scale > 0.0 {
@@ -517,16 +540,20 @@ pub struct ScatterRule {
     pub scale_max: f32,
     pub align_to_slope: bool,
     pub seed: u64,
+    /// Hollows and ridges, where water gathers, distances to water and roads.
+    pub conditions: crate::analysis::Conditions,
 }
 
 impl Default for ScatterRule {
     fn default() -> Self {
-        Self { models: Vec::new(), preset: None, density: 40.0, min_distance: 3.0, min_slope: 0.0, max_slope: 35.0, min_height: 0.5, max_height: 9000.0, layers: Vec::new(), scale_min: 0.9, scale_max: 1.1, align_to_slope: false, seed: 1 }
+        Self { models: Vec::new(), preset: None, density: 40.0, min_distance: 3.0, min_slope: 0.0, max_slope: 35.0, min_height: 0.5, max_height: 9000.0, layers: Vec::new(), scale_min: 0.9, scale_max: 1.1, align_to_slope: false, seed: 1, conditions: Default::default() }
     }
 }
 
 /// Scatters objects inside polygons, or over the whole map without any.
-pub fn scatter(w: &mut World, rule: &ScatterRule, area: Option<&crate::shapes::PolygonIndex>, bounds: [f32; 4], job: &Job) -> Result<Vec<Obj>> {
+pub fn scatter(w: &mut World, rule: &ScatterRule, area: Option<&crate::shapes::PolygonIndex>, bounds: [f32; 4], marks: &crate::analysis::Landmarks, job: &Job) -> Result<Vec<Obj>> {
+    let maps = maps_for(w, marks, &[&rule.conditions], job).unwrap_or_default();
+    let edge = Perlin::new(rule.seed ^ 0xed6e);
     let total: f32 = rule.models.iter().map(|m| m.1).sum();
     if rule.models.is_empty() || total <= 0.0 {
         bail!("Choose at least one model");
@@ -564,6 +591,9 @@ pub fn scatter(w: &mut World, rule: &ScatterRule, area: Option<&crate::shapes::P
             continue;
         }
         if !layers.is_empty() && !layers.contains(&(w.mask.sample(x, z, size) as usize)) {
+            continue;
+        }
+        if !rule.conditions.test(&maps, &edge, x, z) {
             continue;
         }
         let key = ((x / cell).floor() as i32, (z / cell).floor() as i32);
@@ -3361,10 +3391,10 @@ mod tests {
         for j in 0..256 { for i in 128..256 { w.base.set(i, j, 100.0 + (i - 128) as f32 * 8.0); } }
         w.recompose(None);
         let rules = vec![
-            PaintRule { layer: 1, min_height: -100.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 },
-            PaintRule { layer: 6, min_height: -100.0, max_height: 9000.0, min_slope: 30.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 },
+            PaintRule { layer: 1, min_height: -100.0, ..Default::default() },
+            PaintRule { layer: 6, min_height: -100.0, min_slope: 30.0, ..Default::default() },
         ];
-        let out = auto_paint(&w, &rules, 1, None, &Job::default());
+        let out = auto_paint(&w, &rules, 1, None, &Default::default(), &Job::default());
         let px = w.mask.width;
         assert_eq!(out[px * px / 2 + px / 4], 1);
         assert_eq!(out[px * px / 2 + px * 3 / 4], 6);

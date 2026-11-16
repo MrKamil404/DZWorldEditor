@@ -74,11 +74,15 @@ pub struct ShapePanel {
     pub keypoint_moving: bool,
     /// Clicks on the map add key points.
     pub keypoint_adding: bool,
+    /// Water courses from the terrain: how wet a place must be to start one, and the shortest
+    /// kept, in metres.
+    pub course_wetness: f32,
+    pub course_length: f32,
 }
 
 impl Default for ShapePanel {
     fn default() -> Self {
-        Self { keypoint: None, keypoints_before: None, keypoint_filter: String::new(), keypoint_moving: false, keypoint_adding: false, tool: ShapeTool::Edit, points: Vec::new(), selection: BTreeSet::new(), vertex: None, boxing: None, move_from: None, drag_before: None }
+        Self { keypoint: None, keypoints_before: None, keypoint_filter: String::new(), keypoint_moving: false, keypoint_adding: false, tool: ShapeTool::Edit, points: Vec::new(), selection: BTreeSet::new(), vertex: None, boxing: None, move_from: None, drag_before: None, course_wetness: 0.62, course_length: 300.0 }
     }
 }
 
@@ -342,6 +346,9 @@ pub struct App {
     pub surfaces: Vec<String>,
     layer_rx: Option<Receiver<models::LayerTexture>>,
     pub layer_averages: Vec<[u8; 3]>,
+    /// The terrain the water flow shading was worked out for, and when.
+    flow_key: u64,
+    flow_at: Option<Instant>,
     /// Small pictures of the surface textures, for the layer tiles of the Paint panel.
     pub layer_thumbs: Vec<Option<egui::TextureHandle>>,
     pub road_catalog: Arc<Vec<dayz_road_tool::roads::CatalogPart>>,
@@ -571,7 +578,7 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), layer_thumbs: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
@@ -1181,7 +1188,41 @@ impl App {
         self.task = Some(Task { title, job, rx });
     }
 
+    /// Works out where water flows again when a view shows it and the terrain has changed,
+    /// at most every second and a half, so sculpting stays smooth.
+    fn keep_flow(&mut self) {
+        use crate::render::Shading;
+        if self.shading3 != Shading::Flow && self.shading2 != Shading::Flow {
+            return;
+        }
+        let Some(d) = &self.doc else { return };
+        let h = &d.world.height;
+        let key = {
+            use std::hash::{Hash, Hasher};
+            let mut s = std::collections::hash_map::DefaultHasher::new();
+            (h.cols, h.rows, d.world.meta.sea_level.to_bits()).hash(&mut s);
+            let step = (h.data.len() / 8192).max(1);
+            for v in h.data.iter().step_by(step) {
+                v.to_bits().hash(&mut s);
+            }
+            s.finish()
+        };
+        if key == self.flow_key || self.flow_at.is_some_and(|t| t.elapsed() < Duration::from_millis(1500)) {
+            if key != self.flow_key {
+                self.ctx.request_repaint_after(Duration::from_millis(1500));
+            }
+            return;
+        }
+        let small = dz_core::analysis::downsample(h, 1024);
+        let wet = dz_core::analysis::wetness(&small, d.world.meta.sea_level);
+        let data = wet.iter().map(|v| (v * 255.0).round() as u8).collect();
+        self.renderer.lock().unwrap().set_flow(small.cols, small.rows, data);
+        self.flow_key = key;
+        self.flow_at = Some(Instant::now());
+    }
+
     pub fn tick(&mut self) {
+        self.keep_flow();
         let mut messages = Vec::new();
         let mut finished = None;
         if let Some(task) = &self.task {
@@ -2343,6 +2384,34 @@ impl App {
         layer.shapes.push(MapShape { kind, points, attributes: Vec::new() });
         self.shape.selection = BTreeSet::from([(w.active_shape_layer, layer.shapes.len() - 1)]);
         doc.history.push(t("Add shape"), Change::Shapes(previous));
+    }
+
+    /// Adds the water courses of the terrain as lines of a new shape layer, as one undo step.
+    pub fn find_water_courses(&mut self) {
+        let Some(d) = &self.doc else { return };
+        let small = dz_core::analysis::downsample(&d.world.height, dz_core::analysis::MAX_SIDE);
+        let sea = d.world.meta.sea_level;
+        let (wetness, length) = (self.shape.course_wetness, self.shape.course_length);
+        self.spawn(t("Water courses from the terrain"), move |job| {
+            job.stage("Working out where water runs");
+            let wet = dz_core::analysis::wetness(&small, sea);
+            let lines = dz_core::analysis::water_courses(&small, &wet, sea, wetness, length);
+            Ok(Box::new(move |app: &mut App| {
+                if lines.is_empty() {
+                    app.warn(t("No water course is long enough: lower the wetness or the shortest length"));
+                    return;
+                }
+                let Some(doc) = &mut app.doc else { return };
+                let previous = doc.world.shape_layers.clone();
+                let shapes: Vec<MapShape> = lines.into_iter().map(|points| MapShape { kind: dz_core::shapes::ShapeKind::Polyline, points, attributes: Vec::new() }).collect();
+                let n = shapes.len();
+                doc.world.shape_layers.push(ShapeLayer { name: t("Water courses"), visible: true, shapes });
+                doc.world.active_shape_layer = doc.world.shape_layers.len() - 1;
+                app.shape.selection.clear();
+                doc.history.push(t("Water courses from the terrain"), Change::Shapes(previous));
+                app.info(tf("{0} water courses added as lines", &[&n.to_string()]));
+            }) as Finish)
+        });
     }
 
     /// Removes the selected vertex, or the selected shapes.

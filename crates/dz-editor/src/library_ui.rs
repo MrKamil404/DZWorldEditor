@@ -210,6 +210,40 @@ fn range_row(ui: &mut egui::Ui, label: String, lo: &mut f32, hi: &mut f32, range
     if *hi < *lo { *hi = *lo; }
 }
 
+/// The conditions of a rule beyond height and slope, each switched on with its box.
+fn conditions_ui(ui: &mut egui::Ui, c: &mut dz_core::analysis::Conditions) {
+    let open = !c.is_empty();
+    egui::CollapsingHeader::new(t("More conditions")).id_salt("conditions").default_open(open).show(ui, |ui| {
+        let range = |ui: &mut egui::Ui, label: String, hint: String, v: &mut Option<[f32; 2]>, default: [f32; 2], bounds: std::ops::RangeInclusive<f32>, speed: f64| {
+            let mut on = v.is_some();
+            ui.checkbox(&mut on, &label).on_hover_text(hint);
+            match (on, v.is_some()) {
+                (true, false) => *v = Some(default),
+                (false, true) => *v = None,
+                _ => {}
+            }
+            if let Some(r) = v {
+                let (mut lo, mut hi) = (r[0], r[1]);
+                range_row(ui, String::new(), &mut lo, &mut hi, bounds, speed);
+                *r = [lo, hi];
+            }
+        };
+        range(ui, t("Hollows and ridges m"), t("How far the ground lies below the ground round it: above 0 in hollows and valleys, below 0 on ridges and crests."), &mut c.hollow, [1.0, 50.0], -50.0..=50.0, 0.1);
+        range(ui, t("Wetness"), t("Where water runs and gathers: 0 dry crests, 1 the wettest valley floors. The view shows it as Water flow."), &mut c.wetness, [0.6, 1.0], 0.0..=1.0, 0.01);
+        range(ui, t("Distance to water m"), t("From the sea, ponds and river models."), &mut c.water_dist, [0.0, 30.0], 0.0..=5000.0, 1.0);
+        range(ui, t("Distance to roads m"), t("From the centre lines of the roads."), &mut c.road_dist, [0.0, 20.0], 0.0..=5000.0, 1.0);
+        if !c.is_empty() {
+            number(ui, t("Ragged edges m"), &mut c.edge_noise, 0.0..=50.0);
+        }
+    });
+}
+
+/// The water and roads of the world, when one of the conditions asks how far they are.
+fn landmarks<'a>(world: &World, conditions: impl IntoIterator<Item = &'a dz_core::analysis::Conditions>) -> dz_core::analysis::Landmarks {
+    let needs = conditions.into_iter().fold(dz_core::analysis::Needs::default(), |n, c| n.or(c.needs()));
+    if needs.water || needs.roads { dz_core::analysis::Landmarks::of(world) } else { Default::default() }
+}
+
 fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> bool {
     let mut sample = false;
     match kind {
@@ -430,12 +464,13 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                         range_row(ui, t("Slope °"), &mut r.min_slope, &mut r.max_slope, 0.0..=90.0, 0.5);
                         number(ui, t("Blotch size m"), &mut r.noise_scale, 0.0..=2000.0);
                         number(ui, t("Coverage"), &mut r.coverage, 0.0..=1.0);
+                        conditions_ui(ui, &mut r.conditions);
                     });
                 });
             }
             if let Some(i) = remove { rules.remove(i); }
             if ui.button(format!("+ {}", t("Add rule"))).clicked() {
-                rules.push(gen::PaintRule { layer: 0, min_height: -1000.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 });
+                rules.push(gen::PaintRule::default());
             }
         }
         GeneratorKind::Settlement(s) => {
@@ -613,6 +648,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     }
                 }
             });
+            conditions_ui(ui, &mut s.conditions);
         }
         GeneratorKind::River(g) => {
             number(ui, t("Width"), &mut g.width, 2.0..=120.0);
@@ -1468,9 +1504,10 @@ pub fn run_generator(app: &mut App, id: u64) {
         GeneratorKind::SurfacePaint { rules, seed } => {
             let index = (!polygons.is_empty()).then(|| dz_core::shapes::PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: polygons }));
             let name = label.clone();
+            let marks = landmarks(world, rules.iter().map(|r| &r.conditions));
             app.spawn(label, move |job| {
                 let mut w = lite;
-                w.mask.data = gen::auto_paint(&w, &rules, seed as u64, index.as_ref(), job);
+                w.mask.data = gen::auto_paint(&w, &rules, seed as u64, index.as_ref(), &marks, job);
                 dz_core::mask_limit::enforce(&mut w);
                 let data = w.mask.data;
                 Ok(Box::new(move |a: &mut App| {
@@ -1550,8 +1587,9 @@ pub fn run_generator(app: &mut App, id: u64) {
             for p in polygons.iter().flat_map(|x| &x.points) {
                 bounds = [bounds[0].min(p[0]), bounds[1].min(p[1]), bounds[2].max(p[0]), bounds[3].max(p[1])];
             }
+            let marks = landmarks(world, [&rule.conditions]);
             app.spawn(label, move |job| {
-                let objects = gen::scatter(&mut lite, &rule, index.as_ref(), bounds, job)?;
+                let objects = gen::scatter(&mut lite, &rule, index.as_ref(), bounds, &marks, job)?;
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
             });

@@ -4148,7 +4148,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 gen::generate_terrain(&mut w.base, &params, job);
                 w.recompose(None);
                 let rules = gen::default_paint_rules(&w);
-                w.mask.data = gen::auto_paint(&w, &rules, 1, None, job);
+                w.mask.data = gen::auto_paint(&w, &rules, 1, None, &Default::default(), job);
                 Ok(Box::new(move |a: &mut App| a.open_world(w, None)) as Finish)
             });
         }
@@ -4314,6 +4314,12 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         // A correction over the whole image (first number -1) or the shapes of layer n, with
         // brightness, saturation and warmth; `satcorrectset b s w` changes the chosen one.
+        // courses [wetness] [shortest m]
+        "courses" => {
+            if let Some(v) = nums.first() { app.shape.course_wetness = *v; }
+            if let Some(v) = nums.get(1) { app.shape.course_length = *v; }
+            app.find_water_courses();
+        }
         // satgen [shape layer, -1 for the whole map] [hill shading] [patches]
         "satgen" => {
             app.sat.gen_whole = nums.first().is_none_or(|v| *v < 0.0);

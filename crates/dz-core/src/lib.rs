@@ -3,6 +3,7 @@
 /// Starts the job log lines that are warnings.
 pub const WARN_MARK: &str = "\u{1}warn:";
 
+pub mod analysis;
 pub mod assets;
 pub mod build;
 pub mod clutter;

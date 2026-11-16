@@ -913,6 +913,14 @@ fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
         }
     });
     section(ui, &icons::with(icons::POLYGON, &t("Selected shape")), true, |ui| shape_details(app, ui));
+    section(ui, &icons::with(icons::WAVES, &t("Water courses from the terrain")), false, |ui| {
+        ui.weak(t("Lines along which water runs down the terrain, in a new shape layer: drop the River or Stream generator on them. The Water flow shading of the view shows the same."));
+        row(ui, &t("Wetness"), |ui| { ui.add(egui::Slider::new(&mut app.shape.course_wetness, 0.3..=0.95)).on_hover_text(t("How much water must gather for a course to start: higher gives fewer, larger ones.")); });
+        row(ui, &t("Shortest m"), |ui| { ui.add(egui::Slider::new(&mut app.shape.course_length, 20.0..=5000.0).logarithmic(true)); });
+        if ui.button(icons::with(icons::WAVES, &t("Find water courses"))).clicked() {
+            app.find_water_courses();
+        }
+    });
     section(ui, &icons::with(icons::FOLDER_OPEN, &t("Files")), false, |ui| {
         ui.horizontal(|ui| {
             if ui.button(t("Import...")).on_hover_text("SHP, TV4S").clicked() { app.import_shapes(); }

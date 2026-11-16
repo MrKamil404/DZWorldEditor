@@ -1987,6 +1987,14 @@
   "de": "Entfernung in Metern vom Spieler, in der nichts aufgeräumt wird.",
   "pl": "Odległość w metrach od gracza, w której nic nie jest sprzątane."
  },
+ "Distance to roads m": {
+  "de": "Abstand zu Straßen m",
+  "pl": "Odległość od dróg m"
+ },
+ "Distance to water m": {
+  "de": "Abstand zu Wasser m",
+  "pl": "Odległość od wody m"
+ },
  "Distances": {
   "de": "Entfernungen",
   "pl": "Odległości"
@@ -2599,6 +2607,10 @@
   "de": "Bis zur Höhe auffüllen",
   "pl": "Nasyp do poziomu"
  },
+ "Find water courses": {
+  "de": "Wasserläufe finden",
+  "pl": "Znajdź cieki wodne"
+ },
  "Finds the road through the clicked points within the grade limits, around water and forbidden areas, with bridges. Off: road parts follow the clicked line.": {
   "de": "Sucht die Straße durch die geklickten Punkte innerhalb der Steigung, um Wasser und Sperrgebiete herum, mit Brücken. Aus: Teile folgen der geklickten Linie.",
   "pl": "Szuka drogi przez kliknięte punkty w granicach nachylenia, omijając wodę i obszary zakazane, z mostami. Wyłączone: części drogi idą po klikniętej linii."
@@ -2815,9 +2827,17 @@
   "de": "Von der Kamera",
   "pl": "Z kamery"
  },
+ "From the centre lines of the roads.": {
+  "de": "Von den Mittellinien der Straßen.",
+  "pl": "Od osi dróg."
+ },
  "From the project species": {
   "de": "Aus den Arten des Projekts",
   "pl": "Z gatunków projektu"
+ },
+ "From the sea, ponds and river models.": {
+  "de": "Vom Meer, von Teichen und Flussmodellen.",
+  "pl": "Od morza, stawów i modeli rzek."
  },
  "From the selected objects ({0})": {
   "de": "Aus den ausgewählten Objekten ({0})",
@@ -3143,6 +3163,10 @@
   "de": "Taste halten, um Objekte zu malen.",
   "pl": "Przytrzymaj przycisk, aby malować obiekty."
  },
+ "Hollows and ridges m": {
+  "de": "Senken und Kämme m",
+  "pl": "Zagłębienia i grzbiety m"
+ },
  "How deep the relief in the alpha channel of the surface textures looks close up; 0 leaves them flat.": {
   "de": "Wie tief das Relief im Alphakanal der Oberflächentexturen aus der Nähe wirkt; 0 lässt sie flach.",
   "pl": "Jak głęboki z bliska wydaje się relief z kanału alfa tekstur powierzchni; 0 zostawia je płaskie."
@@ -3154,6 +3178,10 @@
  "How far the baked objects fade into the satellite image under them.": {
   "de": "Wie stark die eingebrannten Objekte in das Satellitenbild darunter übergehen.",
   "pl": "Jak mocno wypalone obiekty wtapiają się w satkę pod nimi."
+ },
+ "How far the ground lies below the ground round it: above 0 in hollows and valleys, below 0 on ridges and crests.": {
+  "de": "Wie tief der Boden unter dem Boden ringsum liegt: über 0 in Senken und Tälern, unter 0 auf Kämmen und Graten.",
+  "pl": "Jak nisko teren leży względem terenu wokół: powyżej 0 w zagłębieniach i dolinach, poniżej 0 na grzbietach i szczytach."
  },
  "How far the swell runs up the shore and back; the game's MaxWave is 0.25 m.": {
   "de": "Wie weit die Dünung den Strand hinauf- und zurückläuft; MaxWave des Spiels ist 0,25 m.",
@@ -3174,6 +3202,10 @@
  "How much of the texture's own pattern shows over its average colour.": {
   "de": "Wie viel vom eigenen Muster der Textur über ihrer Durchschnittsfarbe zu sehen ist.",
   "pl": "Ile własnego wzoru tekstury widać na jej średnim kolorze."
+ },
+ "How much water must gather for a course to start: higher gives fewer, larger ones.": {
+  "de": "Wie viel Wasser sich sammeln muss, damit ein Lauf beginnt: höher ergibt weniger, größere.",
+  "pl": "Ile wody musi się zebrać, żeby zaczął się ciek: wyżej daje mniej, ale większych."
  },
  "How well someone lying, kneeling and standing on it is seen": {
   "de": "Wie gut man liegend, kniend und stehend darauf gesehen wird",
@@ -3630,6 +3662,10 @@
  "Line: Sparse Cluster": {
   "de": "Linie: Lockere Gruppen",
   "pl": "Linia: Rzadkie skupiska"
+ },
+ "Lines along which water runs down the terrain, in a new shape layer: drop the River or Stream generator on them. The Water flow shading of the view shows the same.": {
+  "de": "Linien, entlang derer Wasser das Gelände hinabläuft, in einer neuen Formebene: Ziehe den Fluss- oder Bach-Generator darauf. Die Schattierung Wasserfluss der Ansicht zeigt dasselbe.",
+  "pl": "Linie, którymi woda spływa po terenie, w nowej warstwie kształtów: upuść na nie generator Rzeki albo Strumienia. Cieniowanie Przepływ wody w widoku pokazuje to samo."
  },
  "Lines at the end of the file": {
   "de": "Zeilen am Ende der Datei",
@@ -4099,6 +4135,10 @@
   "de": "Mehr",
   "pl": "Więcej"
  },
+ "More conditions": {
+  "de": "Weitere Bedingungen",
+  "pl": "Więcej warunków"
+ },
  "More presets in shapes": {
   "de": "Weitere Presets in Formen",
   "pl": "Kolejne presety w kształtach"
@@ -4442,6 +4482,10 @@
  "No template libraries in the project. Load them with + Add, or import Terrain Builder layers.": {
   "de": "Keine Vorlagenbibliotheken im Projekt. Mit + Hinzufügen laden oder Terrain-Builder-Ebenen importieren.",
   "pl": "Brak bibliotek szablonów w projekcie. Wczytaj je przez + Dodaj albo zaimportuj warstwy Terrain Buildera."
+ },
+ "No water course is long enough: lower the wetness or the shortest length": {
+  "de": "Kein Wasserlauf ist lang genug: Senke die Feuchtigkeit oder die kürzeste Länge",
+  "pl": "Żaden ciek nie jest wystarczająco długi: obniż wilgotność albo najkrótszą długość"
  },
  "No {0} next to the key: servers need the public key to let the mod in.": {
   "de": "Kein {0} neben dem Schlüssel: Server brauchen den öffentlichen Schlüssel, um den Mod zuzulassen.",
@@ -5355,6 +5399,10 @@
   "de": "Radius",
   "pl": "Promień"
  },
+ "Ragged edges m": {
+  "de": "Ausgefranste Ränder m",
+  "pl": "Postrzępione krawędzie m"
+ },
  "Rain": {
   "de": "Regen",
   "pl": "Deszcz"
@@ -6206,6 +6254,10 @@
  "Shortcuts": {
   "de": "Tastenkürzel",
   "pl": "Skróty"
+ },
+ "Shortest m": {
+  "de": "Kürzester m",
+  "pl": "Najkrótszy m"
  },
  "Shoulder": {
   "de": "Bankett",
@@ -7663,6 +7715,18 @@
   "de": "Wasser",
   "pl": "Woda"
  },
+ "Water courses": {
+  "de": "Wasserläufe",
+  "pl": "Cieki wodne"
+ },
+ "Water courses from the terrain": {
+  "de": "Wasserläufe aus dem Gelände",
+  "pl": "Cieki wodne z terenu"
+ },
+ "Water flow": {
+  "de": "Wasserfluss",
+  "pl": "Przepływ wody"
+ },
  "Water height m": {
   "de": "Wasserhöhe m",
   "pl": "Wysokość wody m"
@@ -7694,6 +7758,10 @@
  "Weather: overcast, fog, rain, wind, snowfall and storms, with their limits.": {
   "de": "Wetter: Bewölkung, Nebel, Regen, Wind, Schneefall und Gewitter mit ihren Grenzen.",
   "pl": "Pogoda: zachmurzenie, mgła, deszcz, wiatr, śnieg i burze wraz z limitami."
+ },
+ "Wetness": {
+  "de": "Feuchtigkeit",
+  "pl": "Wilgotność"
  },
  "What is not ticked stays on the map. All of it can be undone in one step.": {
   "de": "Was nicht angehakt ist, bleibt auf der Karte. Alles lässt sich in einem Schritt rückgängig machen.",
@@ -7758,6 +7826,10 @@
  "Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper.": {
   "de": "Wo zwei Oberflächen der Maske aufeinandertreffen, zeigen sich zuerst die höheren Teile ihres Reliefs; höher macht die Grenze schärfer.",
   "pl": "Tam, gdzie stykają się dwie powierzchnie maski, najpierw przebijają wyższe części ich reliefu; wyżej daje ostrzejszą granicę."
+ },
+ "Where water runs and gathers: 0 dry crests, 1 the wettest valley floors. The view shows it as Water flow.": {
+  "de": "Wo Wasser fließt und sich sammelt: 0 trockene Kämme, 1 die feuchtesten Talböden. Die Ansicht zeigt es als Wasserfluss.",
+  "pl": "Gdzie woda spływa i się zbiera: 0 suche grzbiety, 1 najwilgotniejsze dna dolin. Widok pokazuje to jako Przepływ wody."
  },
  "Which parts of the economy start, load, respawn and save.": {
   "de": "Welche Teile der Wirtschaft starten, laden, neu spawnen und speichern.",
@@ -8382,6 +8454,10 @@
  "{0} warnings": {
   "de": "{0} Warnungen",
   "pl": "Ostrzeżenia: {0}"
+ },
+ "{0} water courses added as lines": {
+  "de": "{0} Wasserläufe als Linien hinzugefügt",
+  "pl": "Dodano {0} cieków wodnych jako linie"
  },
  "{0} zones added": {
   "de": "{0} Zonen hinzugefügt",

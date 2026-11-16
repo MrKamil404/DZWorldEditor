@@ -993,7 +993,7 @@ impl Library {
 
 /// The generators every installation starts with; they cannot be changed, only copied.
 pub fn built_in_generators() -> Vec<GeneratorPreset> {
-    let rule = PaintRule { layer: 0, min_height: -1000.0, max_height: 9000.0, min_slope: 0.0, max_slope: 90.0, noise_scale: 0.0, coverage: 1.0 };
+    let rule = PaintRule::default();
     let make = |id, name: &str, kind| GeneratorPreset { id, name: name.to_string(), folder: BUILT_IN.to_string(), kind };
     vec![
         make(1, "Forest", GeneratorKind::Forest(Box::default())),
