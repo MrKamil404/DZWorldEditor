@@ -1,4 +1,8 @@
 //! Core of DZ World Editor: no UI code lives here.
+
+/// Starts the job log lines that are warnings.
+pub const WARN_MARK: &str = "\u{1}warn:";
+
 pub mod assets;
 pub mod build;
 pub mod clutter;
@@ -67,6 +71,10 @@ impl Job {
     }
     pub fn log(&self, line: impl Into<String>) {
         self.inner.log.lock().unwrap().push(line.into());
+    }
+    /// A line the log marks as a warning.
+    pub fn warn(&self, line: impl Into<String>) {
+        self.log(format!("{WARN_MARK}{}", line.into()));
     }
     pub fn take_log(&self) -> Vec<String> {
         std::mem::take(&mut *self.inner.log.lock().unwrap())

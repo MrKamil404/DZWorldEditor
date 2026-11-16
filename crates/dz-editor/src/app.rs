@@ -238,7 +238,7 @@ pub struct NewProject {
 }
 
 /// (terrain vertices, cell size in metres)
-pub const SIZE_PRESETS: [(u32, f32); 9] = [(1024, 5.0), (1024, 10.0), (2048, 2.5), (2048, 5.0), (2048, 6.25), (2048, 7.5), (4096, 2.5), (4096, 3.75), (8192, 1.875)];
+pub const SIZE_PRESETS: [(u32, f32); 11] = [(1024, 5.0), (1024, 10.0), (2048, 2.5), (2048, 5.0), (2048, 6.25), (2048, 7.5), (4096, 2.5), (4096, 3.75), (8192, 1.875), (4096, 5.0), (8192, 2.5)];
 
 pub type Finish = Box<dyn FnOnce(&mut App) + Send>;
 
@@ -1193,7 +1193,10 @@ impl App {
             }
         }
         for m in messages {
-            self.log.push(LogLine { text: m, level: 0 });
+            match m.strip_prefix(dz_core::WARN_MARK) {
+                Some(w) => self.log.push(LogLine { text: w.to_string(), level: 1 }),
+                None => self.log.push(LogLine { text: m, level: 0 }),
+            }
         }
         if let Some((r, title)) = finished {
             self.task = None;
@@ -2774,8 +2777,7 @@ impl App {
     pub fn import_tv4p(&mut self) {
         let Some(f) = rfd::FileDialog::new().add_filter("TV4P", &["tv4p"]).pick_file() else { return };
         self.import_into_project(t("Import TV4P roads"), move |w, _, _| {
-            dz_core::import::import_tv4p(&f, w, Some(0))?;
-            Ok(Vec::new())
+            Ok(dz_core::import::import_tv4p_report(&f, w, Some(0))?.1)
         });
     }
 

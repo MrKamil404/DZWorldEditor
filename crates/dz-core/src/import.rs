@@ -8,7 +8,7 @@ use crate::wrp::Wrp;
 use crate::Job;
 use anyhow::{bail, ensure, Context, Result};
 use rayon::prelude::*;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 pub fn read_asc(path: &Path) -> Result<crate::terrain::AscGrid> {
@@ -785,8 +785,13 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
         job.stage("Placing roads");
         // A built world already holds the road parts as objects.
         let layer = (!plan.objects_from_wrp).then(|| w.add_object_layer("Roads"));
-        match import_tv4p(p, &mut w, layer) {
-            Ok(n) => job.log(format!("{}: {n} roads", p.display())),
+        match import_tv4p_report(p, &mut w, layer) {
+            Ok((n, notes)) => {
+                job.log(format!("{}: {n} roads", p.display()));
+                for note in notes {
+                    job.warn(note);
+                }
+            }
             Err(e) => job.log(format!("{}: {e:#}", p.display())),
         }
     }
@@ -819,6 +824,17 @@ pub fn import_folder(root: &Path, assets: &AssetIndex, db: &ModelDb, job: &Job) 
 
 /// Road parts lying on a line that no route owns.
 pub fn parts_along(w: &World, points: &[[f32; 2]]) -> Vec<u32> {
+    parts_along_in(w, points, &BTreeSet::new())
+}
+
+/// The file name of a model, lower case: how road parts are known whatever their folder.
+fn model_file(path: &str) -> String {
+    path.rsplit(['\\', '/']).next().unwrap_or(path).to_ascii_lowercase()
+}
+
+/// Road parts lying on a line that no route owns: models in a `roads\parts` folder, or any
+/// of `files` (file names, lower case), the parts the roads of a project are made of.
+fn parts_along_in(w: &World, points: &[[f32; 2]], files: &BTreeSet<String>) -> Vec<u32> {
     let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
     for p in points {
         (x0, z0, x1, z1) = (x0.min(p[0]), z0.min(p[1]), x1.max(p[0]), z1.max(p[1]));
@@ -831,7 +847,8 @@ pub fn parts_along(w: &World, points: &[[f32; 2]]) -> Vec<u32> {
     let taken: std::collections::BTreeSet<u32> = w.routes.iter().flat_map(|r| r.objects.iter().copied()).collect();
     let mut ids = Vec::new();
     w.objects.for_each_in(x0 - 3.0, z0 - 3.0, x1 + 3.0, z1 + 3.0, |id, o| {
-        if !taken.contains(&id) && w.objects.model_path(o).contains("\\roads\\parts\\") && distance(o.x, o.z) < 1.5 {
+        let path = w.objects.model_path(o);
+        if !taken.contains(&id) && (path.contains("\\roads\\parts\\") || files.contains(&model_file(path))) && distance(o.x, o.z) < 1.5 {
             ids.push(id);
         }
     });
@@ -903,12 +920,41 @@ pub fn adopt_old_lines(w: &mut World, lines: Vec<MapLine>) {
 /// placed as objects on it; without, the routes take over parts already on the map.
 /// Returns the number of routes.
 pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usize> {
+    import_tv4p_report(path, w, layer).map(|r| r.0)
+}
+
+/// [`import_tv4p`], with what went wrong: parts whose models were not found, and parts of the
+/// map no route took over.
+pub fn import_tv4p_report(path: &Path, w: &mut World, layer: Option<u16>) -> Result<(usize, Vec<String>)> {
     use dayz_road_tool::{geometry::Library, tv4p};
     let mut lib = Library::new(PathBuf::from("P:\\dz\\structures\\roads\\parts"));
     let project = tv4p::load(path, &mut lib)?;
+    let mut n = 0;
+    let mut notes = Vec::new();
+    // The parts the roads are made of, wherever their files are.
+    let files: BTreeSet<String> = project.roads.iter().flat_map(|r| r.models.iter()).map(|m| model_file(m)).filter(|f| !f.is_empty()).collect();
+    // Roads over a built map: the offset of the project's frame is where its parts meet the
+    // parts standing on the map, whatever easting and northing the map was given.
+    if layer.is_none() {
+        if let Some((x, y, k, of)) = road_frame_offset(&project, w, &files) {
+            if (x - w.meta.easting).abs() > 0.5 || (y - w.meta.northing).abs() > 0.5 {
+                notes.push(format!("The roads of the project lie {:.1} m east and {:.1} m north of where the easting {} and northing {} put them, by {k} of {of} parts that match the map; easting {x:.2} and northing {y:.2} are used.", x - w.meta.easting, y - w.meta.northing, w.meta.easting, w.meta.northing));
+                (w.meta.easting, w.meta.northing) = (x, y);
+            }
+        }
+    }
     let (ex, ey) = (w.meta.easting, w.meta.northing);
     crate::keypoints::merge(w, crate::keypoints::parse_tv4p(&std::fs::read(path)?, [ex, ey]));
-    let mut n = 0;
+    let troubled: Vec<_> = project.roads.iter().filter(|r| !r.shape.warnings.is_empty()).collect();
+    if !troubled.is_empty() {
+        notes.push(format!("{} of {} roads could not be followed to their end; their lines and parts stop there:", troubled.len(), project.roads.len()));
+        for r in troubled.iter().take(20) {
+            notes.push(format!("  Road {}: {}", r.id, r.shape.warnings.join("; ")));
+        }
+        if troubled.len() > 20 {
+            notes.push(format!("  ... and {} more", troubled.len() - 20));
+        }
+    }
     for road in &project.roads {
         let lines: Vec<Vec<[f32; 2]>> = road.shape.lines.iter().map(|l| l.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect()).collect();
         let mut placed = Vec::with_capacity(road.shape.placements.len());
@@ -950,16 +996,64 @@ pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usi
         let family = dayz_road_tool::road_colors::family(family_model).to_ascii_lowercase();
         for (k, (points, mut objects)) in chains.into_iter().enumerate() {
             if layer.is_none() {
-                objects = crossroad_objects(w, parts_along(w, &points));
+                objects = crossroad_objects(w, parts_along_in(w, &points, &files));
             } else if !matched && k == 0 {
                 objects = placed.clone();
             }
             let name = if many { format!("Road {} ({})", road.id, k + 1) } else { format!("Road {}", road.id) };
+            if objects.is_empty() {
+                notes.push(format!("{name}: no road parts of the map lie along it"));
+            }
             w.routes.push(road_route(name, family.clone(), points, objects));
             n += 1;
         }
     }
-    Ok(n)
+    if layer.is_none() {
+        // Parts of the roads standing on the map that no route took over.
+        let owned: BTreeSet<u32> = w.routes.iter().flat_map(|r| r.objects.iter().copied()).collect();
+        let left = w.objects.iter().filter(|(id, o)| !owned.contains(id) && files.contains(&model_file(w.objects.model_path(o))) && !dayz_road_tool::roads::is_crossroad_name(w.objects.model_path(o))).count();
+        if left > 0 {
+            notes.push(format!("{left} road parts of the map lie off the roads of the project and stay plain objects; is the project the one the map was built from?"));
+        }
+    }
+    Ok((n, notes))
+}
+
+/// The easting and northing that put the parts of a project's roads on the same parts standing
+/// on the map: the offset most of them agree on. Returns it with how many parts agree, out of
+/// how many were tried; `None` when too few do.
+fn road_frame_offset(project: &dayz_road_tool::tv4p::Project, w: &World, files: &BTreeSet<String>) -> Option<(f64, f64, usize, usize)> {
+    let mut standing: HashMap<String, Vec<[f64; 2]>> = HashMap::new();
+    for (_, o) in w.objects.iter() {
+        let f = model_file(w.objects.model_path(o));
+        if files.contains(&f) {
+            standing.entry(f).or_default().push([o.x as f64, o.z as f64]);
+        }
+    }
+    if standing.is_empty() {
+        return None;
+    }
+    // Votes for offsets in 2 m bins; each part votes once per bin.
+    let mut votes: HashMap<(i64, i64), (usize, f64, f64)> = HashMap::new();
+    let mut tried = 0;
+    let placements = project.roads.iter().flat_map(|r| r.shape.placements.iter());
+    for (file, _, at) in placements.take(4000) {
+        let Some(list) = standing.get(&model_file(&file.to_string_lossy())) else { continue };
+        tried += 1;
+        let mut seen = std::collections::HashSet::new();
+        for p in list.iter().take(5000) {
+            let d = [at[0] - p[0], at[1] - p[1]];
+            let bin = ((d[0] / 2.0).round() as i64, (d[1] / 2.0).round() as i64);
+            if seen.insert(bin) {
+                let v = votes.entry(bin).or_default();
+                (v.0, v.1, v.2) = (v.0 + 1, v.1 + d[0], v.2 + d[1]);
+            }
+        }
+    }
+    let (_, (k, sx, sy)) = votes.into_iter().max_by_key(|(_, v)| v.0)?;
+    // Eastings are whole metres; the parts differ from them only by how they were measured.
+    let snap = |v: f64| if (v - v.round()).abs() < 0.25 { v.round() } else { v };
+    (k >= 5 && k * 3 >= tried).then(|| (snap(sx / k as f64), snap(sy / k as f64), k, tried))
 }
 
 /// Objects of a DayZForests project: its side file, or an exported object list.
@@ -1280,6 +1374,78 @@ mod tests {
         println!("p50 {} p90 {} p99 {} close {} of those yaw>1deg {} examples {:?}", all[all.len() / 2].0, all[all.len() * 9 / 10].0, all[all.len() * 99 / 100].0, close.len(), close.iter().filter(|a| a.1 > 1.0).count(), close.iter().filter(|a| a.1 > 1.0).take(4).collect::<Vec<_>>());
         println!("not matched {:?}", misses.iter().take(8).collect::<Vec<_>>());
         assert!(found as f32 > parts as f32 * 0.8);
+    }
+
+    #[test]
+    fn road_parts_in_a_folder_of_their_own_are_found_by_their_files() {
+        let mut w = World::new(WorldMeta::new("R", 256, 8.0), 0.0);
+        let own = w.objects.intern("hrp\\drogi\\asfalt2\\asf2_6.p3d");
+        let other = w.objects.intern("hrp\\drogi\\plot.p3d");
+        for x in [10.0, 16.0, 22.0] {
+            w.objects.insert(Obj { x, z: 50.0, elevation: 0.0, yaw: 90.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: own, flags: 0 });
+        }
+        w.objects.insert(Obj { x: 12.0, z: 50.2, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: other, flags: 0 });
+        let line = [[7.0, 50.0], [25.0, 50.0]];
+        // By folder alone they are not road parts; the project names their files.
+        assert!(parts_along(&w, &line).is_empty());
+        let files: BTreeSet<String> = ["asf2_6.p3d".to_string()].into();
+        assert_eq!(parts_along_in(&w, &line, &files).len(), 3);
+        assert_eq!(model_file("P:\\HRP\\Drogi\\ASF2_6.p3d"), "asf2_6.p3d");
+    }
+
+    /// Roads of a project laid over its built world, as an import of the WRP with the project.
+    #[test]
+    #[ignore]
+    fn diag_roads_over_built_world() {
+        let tv = std::env::var("DZ_TV4P").unwrap_or("P:/DolinaBobru_Source/dolinabobru.tv4p".into());
+        let wp = std::env::var("DZ_WRP").unwrap_or("P:/DolinaBobru/world/dolinabobru.wrp".into());
+        let root = Path::new(&wp).parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+        {
+            let mut lib = dayz_road_tool::geometry::Library::new(PathBuf::from("P:\\dz\\structures\\roads\\parts"));
+            let p = dayz_road_tool::tv4p::load(Path::new(&tv), &mut lib).unwrap();
+            for r in p.roads.iter().take(3) {
+                println!("road {} key {:?} parts {:?} placements {} lines {} warnings {:?}", r.id, r.model, &r.models[..r.models.len().min(4)], r.shape.placements.len(), r.shape.lines.len(), r.shape.warnings);
+            }
+            println!("roads with warnings: {}", p.roads.iter().filter(|r| !r.shape.warnings.is_empty()).count());
+        }
+        let scan = scan_folder(Path::new(&tv).parent().unwrap());
+        let mut plan = ImportPlan::from_scan(Path::new(&tv).parent().unwrap(), &scan);
+        plan.wrp = Some(PathBuf::from(&wp));
+        plan.tv4p = Some(PathBuf::from(&tv));
+        if std::env::var("DZ_NO_ASC").is_ok() { plan.asc = None; }
+        println!("plan objects_from_wrp {} asc {:?}", plan.objects_from_wrp, plan.asc);
+        let db = ModelDb::new(&root);
+        let w = import_plan(&plan, &AssetIndex::default(), &db, &Job::default()).unwrap();
+        println!("meta easting {} northing {} size {}", w.meta.easting, w.meta.northing, w.meta.size_m());
+        let parts: Vec<u32> = w.objects.iter().filter(|(_, o)| w.objects.model_path(o).contains("\\roads\\parts\\")).map(|(i, _)| i).collect();
+        let owned: std::collections::BTreeSet<u32> = w.routes.iter().flat_map(|r| r.objects.iter().copied()).collect();
+        println!("routes {} road parts {} owned {}", w.routes.len(), parts.len(), owned.len());
+        let mut far = 0;
+        for id in &parts {
+            let o = w.objects.get(*id).unwrap();
+            let d = w.routes.iter().flat_map(|r| r.centerline.windows(2)).map(|s| {
+                let (dx, dz) = (s[1][0] - s[0][0], s[1][1] - s[0][1]);
+                let k = (((o.x - s[0][0]) * dx + (o.z - s[0][1]) * dz) / (dx * dx + dz * dz).max(1e-3)).clamp(0.0, 1.0);
+                ((s[0][0] + dx * k - o.x).powi(2) + (s[0][1] + dz * k - o.z).powi(2)).sqrt()
+            }).fold(f32::MAX, f32::min);
+            if d > 3.0 { far += 1; if far < 6 { println!("far part {} at {} {} d {d}", w.objects.model_path(o), o.x, o.z); } }
+        }
+        println!("parts farther than 3 m from any route: {far}");
+        let mut models: BTreeMap<String, usize> = BTreeMap::new();
+        for id in &parts { *models.entry(w.objects.model_path(w.objects.get(*id).unwrap()).to_string()).or_default() += 1; }
+        println!("part models {:?}", models.iter().take(12).collect::<Vec<_>>());
+        // With a wrong frame the offset is found from the parts.
+        let mut w = w;
+        w.routes.clear();
+        (w.meta.easting, w.meta.northing) = (150_000.0, 1234.0);
+        let (n, notes) = import_tv4p_report(Path::new(&tv), &mut w, None).unwrap();
+        let owned: std::collections::BTreeSet<u32> = w.routes.iter().flat_map(|r| r.objects.iter().copied()).collect();
+        println!("wrong frame: routes {n} owned {} easting {} northing {} notes {} {:?}", owned.len(), w.meta.easting, w.meta.northing, notes.len(), notes.iter().take(3).collect::<Vec<_>>());
+        for r in w.routes.iter().filter(|r| r.objects.is_empty()).take(3) {
+            let len: f32 = r.centerline.windows(2).map(|s| (s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1])).sum();
+            println!("empty route {} points {} length {len}", r.name, r.centerline.len());
+        }
+        assert!(owned.len() > 2000);
     }
 
     /// How the elevation of scaled objects relates to the built world.
