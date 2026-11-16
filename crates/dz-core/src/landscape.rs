@@ -448,7 +448,48 @@ pub struct RoadsideGen {
     pub signs: ObjectSet,
     pub sign_spacing: f32,
     pub both_sides: bool,
+    /// Which roads it follows when it works on the whole map.
+    pub follow: Follow,
+    /// A row of posts on one side (telegraph poles, lamps): one every `post_spacing` metres
+    /// (0 for none), `post_offset` from the middle, turned so their own x axis points at the
+    /// line, and `post_turn` degrees more.
+    pub posts: ObjectSet,
+    pub post_spacing: f32,
+    pub post_offset: f32,
+    pub post_turn: f32,
+    /// Stops (stations, bus stops): a building every `stop_spacing` metres (0 for none),
+    /// `stop_offset` from the middle with its own +z side to the line (and `stop_turn` degrees
+    /// more), and a platform of `platform` pieces laid along the line `platform_offset` from
+    /// its middle, `platform_length` metres long.
+    pub stops: ObjectSet,
+    pub stop_spacing: f32,
+    pub stop_offset: f32,
+    pub stop_turn: f32,
+    pub platform: Vec<(String, f32)>,
+    pub platform_offset: f32,
+    pub platform_length: f32,
     pub seed: u64,
+}
+
+/// The roads a generator on the whole map follows.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Follow {
+    #[default]
+    Roads,
+    Rails,
+    All,
+}
+
+impl Follow {
+    /// Whether a road of `family` is followed.
+    pub fn takes(self, family: &str) -> bool {
+        let rail = dayz_road_tool::rails::is_track_family(family);
+        match self {
+            Follow::Roads => !rail,
+            Follow::Rails => rail,
+            Follow::All => true,
+        }
+    }
 }
 
 impl Default for RoadsideGen {
@@ -459,8 +500,35 @@ impl Default for RoadsideGen {
             verge: String::new(), offset: 6.0, verge_width: 3.0,
             plants: ObjectSet { models: bushes, scale_min: 0.8, scale_max: 1.2, ..Default::default() }, plant_density: 6.0, plant_band: 8.0,
             signs: ObjectSet { models: signs, scale_min: 1.0, scale_max: 1.0, random_yaw: false, ..Default::default() }, sign_spacing: 600.0,
-            both_sides: true, seed: 1,
+            both_sides: true, follow: Follow::Roads,
+            posts: ObjectSet { random_yaw: false, scale_min: 1.0, scale_max: 1.0, ..Default::default() }, post_spacing: 0.0, post_offset: 7.0, post_turn: 0.0,
+            stops: ObjectSet { models: vec![("dz\\structures\\residential\\bus\\busstop_village.p3d".to_string(), 1.0)], random_yaw: false, scale_min: 1.0, scale_max: 1.0, ..Default::default() },
+            stop_spacing: 0.0, stop_offset: 9.0, stop_turn: 0.0, platform: Vec::new(), platform_offset: 0.0, platform_length: 0.0,
+            seed: 1,
         }
+    }
+}
+
+impl RoadsideGen {
+    /// The surroundings of a railway: a ballast verge, bushes, signals, a row of telegraph
+    /// poles, and now and then a small station with its platform.
+    pub fn railway() -> Self {
+        let m = |name: &str| (format!("dz\\structures\\rail\\{name}.p3d"), 1.0);
+        let fixed = |models: Vec<(String, f32)>| ObjectSet { models, random_yaw: false, scale_min: 1.0, scale_max: 1.0, ..Default::default() };
+        Self {
+            verge: String::new(), offset: 3.6, verge_width: 3.2, follow: Follow::Rails,
+            plant_density: 3.0, plant_band: 10.0,
+            signs: fixed(vec![m("misc\\rail_signals")]), sign_spacing: 900.0,
+            posts: fixed(vec![m("misc\\rail_polet")]), post_spacing: 50.0, post_offset: 6.0, post_turn: 0.0,
+            stops: fixed(vec![m("houses\\rail_station_small")]), stop_spacing: 4000.0, stop_offset: 13.0, stop_turn: 0.0,
+            platform: vec![m("misc\\rail_platform_segment")], platform_offset: 3.8, platform_length: 60.0,
+            ..Self::default()
+        }
+    }
+    /// The surface of the verge: the one chosen, or for a railway one named like gravel.
+    pub fn verge_layer(&self, w: &World) -> Option<u8> {
+        let guesses: &[&str] = if self.follow == Follow::Rails { &["gravel", "ballast"] } else { &[] };
+        find_layer(w, &self.verge, guesses)
     }
 }
 
@@ -487,7 +555,7 @@ fn walk(line: &[[f32; 2]], step: f32, mut f: impl FnMut([f32; 2], [f32; 2], f32)
 
 /// The verges of the lines painted.
 pub fn roadside_mask(w: &World, g: &RoadsideGen, lines: &[Vec<[f32; 2]>]) -> Vec<u8> {
-    let Some(verge) = (!g.verge.is_empty()).then(|| w.layer_index(&g.verge)).flatten().map(|i| i as u8) else { return w.mask.data.clone() };
+    let Some(verge) = g.verge_layer(w) else { return w.mask.data.clone() };
     let (mw, mh) = (w.mask.width, w.mask.height);
     let size = w.meta.size_m();
     let mut out = w.mask.data.clone();
@@ -519,7 +587,7 @@ pub fn roadside_mask(w: &World, g: &RoadsideGen, lines: &[Vec<[f32; 2]>]) -> Vec
 
 /// Bushes and signs along the lines; nothing is put where another road runs closer than the
 /// verge.
-pub fn roadside_objects(w: &mut World, g: &RoadsideGen, lines: &[Vec<[f32; 2]>], roads: &[Vec<[f32; 2]>]) -> Result<Vec<Obj>> {
+pub fn roadside_objects(w: &mut World, db: &crate::model_info::ModelDb, g: &RoadsideGen, lines: &[Vec<[f32; 2]>], roads: &[Vec<[f32; 2]>]) -> Result<Vec<Obj>> {
     let mut rng = StdRng::seed_from_u64(g.seed);
     let mut out = Vec::new();
     let near_road = |x: f32, z: f32, clear: f32| {
@@ -575,6 +643,52 @@ pub fn roadside_objects(w: &mut World, g: &RoadsideGen, lines: &[Vec<[f32; 2]>],
                 let yaw = dir[0].atan2(dir[1]).to_degrees() + if side > 0.0 { 180.0 } else { 0.0 };
                 let model = picker.model(&mut rng);
                 out.push(picker.object(w, &mut rng, model, x, z, Some(yaw)));
+            }
+        }
+    }
+    let heading = |dir: [f32; 2]| dir[0].atan2(dir[1]).to_degrees();
+    if g.post_spacing > 0.0 && (!g.posts.models.is_empty() || g.posts.preset.is_some()) {
+        let picker = Picker::new(w, &g.posts)?;
+        for line in lines {
+            let mut points = Vec::new();
+            walk(line, g.post_spacing, |p, dir, _| points.push((p, dir)));
+            for (p, dir) in points {
+                // On the right of the line, their x axis towards it.
+                let (x, z) = (p[0] + dir[1] * g.post_offset, p[1] - dir[0] * g.post_offset);
+                if !inside(x, z) || near_road(x, z, g.post_offset - 0.5) {
+                    continue;
+                }
+                let model = picker.model(&mut rng);
+                out.push(picker.object(w, &mut rng, model, x, z, Some(heading(dir) + 180.0 + g.post_turn)));
+            }
+        }
+    }
+    if g.stop_spacing > 0.0 && (!g.stops.models.is_empty() || g.stops.preset.is_some()) {
+        let picker = Picker::new(w, &g.stops)?;
+        let platform = crate::library::FenceGen { resolved: g.platform.clone(), ..Default::default() };
+        for line in lines {
+            let mut points = Vec::new();
+            walk(line, g.stop_spacing, |p, dir, along| points.push((p, dir, along)));
+            for (k, (p, dir, along)) in points.into_iter().enumerate() {
+                if along < g.stop_spacing * 0.5 {
+                    continue;
+                }
+                let side = sides[k % sides.len()];
+                let (nx, nz) = (dir[1] * side, -dir[0] * side);
+                let (x, z) = (p[0] + nx * g.stop_offset, p[1] + nz * g.stop_offset);
+                // On flat enough ground, away from other roads.
+                if !inside(x, z) || w.height.slope(x, z) > 12.0 || near_road(x, z, g.stop_offset - 1.0) {
+                    continue;
+                }
+                // Its x axis along the line, its +z side towards it.
+                let yaw = (-dir[1]).atan2(dir[0]).to_degrees() + if side > 0.0 { 0.0 } else { 180.0 } + g.stop_turn;
+                let model = picker.model(&mut rng);
+                out.push(picker.object(w, &mut rng, model, x, z, Some(yaw)));
+                if !g.platform.is_empty() && g.platform_length > 0.0 {
+                    let half = g.platform_length * 0.5;
+                    let at = |t: f32| [p[0] + dir[0] * t + nx * g.platform_offset, p[1] + dir[1] * t + nz * g.platform_offset];
+                    out.extend(crate::gen::fence_objects(w, db, &[at(-half), at(half)], &platform));
+                }
             }
         }
     }
@@ -654,6 +768,23 @@ mod tests {
     }
 
     #[test]
+    fn a_railway_gets_poles_in_a_row_and_a_station() {
+        let mut w = world();
+        let track = vec![[100.0, 0.0], [100.0, 256.0]];
+        let db = crate::model_info::ModelDb::new(std::env::temp_dir());
+        let g = RoadsideGen { plant_density: 0.0, sign_spacing: 0.0, stop_spacing: 120.0, ..RoadsideGen::railway() };
+        let objects = roadside_objects(&mut w, &db, &g, std::slice::from_ref(&track), &[]).unwrap();
+        let pole = w.objects.intern("dz\\structures\\rail\\misc\\rail_polet.p3d");
+        let poles: Vec<_> = objects.iter().filter(|o| o.model == pole).collect();
+        assert!(poles.len() >= 4, "{}", poles.len());
+        // All on one side, in a row.
+        assert!(poles.iter().all(|o| (o.x - 106.0).abs() < 0.01), "{:?}", poles.iter().map(|o| o.x).collect::<Vec<_>>());
+        let station = w.objects.intern("dz\\structures\\rail\\houses\\rail_station_small.p3d");
+        assert!(objects.iter().any(|o| o.model == station && (o.x - 100.0).abs() > 12.0));
+        assert!(Follow::Rails.takes("rail") || !Follow::Rails.takes("asf1"));
+    }
+
+    #[test]
     fn verges_and_bushes_follow_the_road() {
         let mut w = world();
         let road = vec![[50.0, 10.0], [50.0, 240.0]];
@@ -662,7 +793,8 @@ mod tests {
         assert_eq!(mask_at(&w, &m, 56.0, 128.0), 1);
         assert_eq!(mask_at(&w, &m, 44.0, 128.0), 1);
         assert_eq!(mask_at(&w, &m, 50.0, 128.0), 0);
-        let objects = roadside_objects(&mut w, &g, std::slice::from_ref(&road), std::slice::from_ref(&road)).unwrap();
+        let db = crate::model_info::ModelDb::new(std::env::temp_dir());
+        let objects = roadside_objects(&mut w, &db, &g, std::slice::from_ref(&road), std::slice::from_ref(&road)).unwrap();
         assert!(objects.len() > 10);
         assert!(objects.iter().all(|o| (o.x - 50.0).abs() >= 8.9 && (o.x - 50.0).abs() <= 17.1), "beyond the verge");
     }

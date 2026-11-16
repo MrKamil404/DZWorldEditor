@@ -83,6 +83,10 @@
   "de": "Eine Sicherung entsteht nur, wenn sich das Projekt geändert hat. Unveränderte Dateien werden zwischen Sicherungen geteilt und belegen keinen zusätzlichen Platz.",
   "pl": "Kopia powstaje tylko wtedy, gdy projekt się zmienił. Niezmienione pliki są współdzielone między kopiami, więc nie zajmują dodatkowego miejsca."
  },
+ "A building beside the line, its front towards it, with a platform laid along the line.": {
+  "de": "Ein Gebäude neben der Linie, mit der Vorderseite zu ihr, und ein Bahnsteig entlang der Linie.",
+  "pl": "Budynek obok linii, frontem do niej, z peronem ułożonym wzdłuż linii."
+ },
  "A built-in generator. Duplicate it to make your own version, or drop it on the map.": {
   "de": "Eingebauter Generator. Dupliziere ihn für eine eigene Version oder lege ihn auf der Karte ab.",
   "pl": "Generator wbudowany. Zduplikuj go, aby zrobić własną wersję, albo upuść na mapę."
@@ -854,6 +858,10 @@
  "Blur": {
   "de": "Weichzeichnen",
   "pl": "Rozmycie"
+ },
+ "Both": {
+  "de": "Beide",
+  "pl": "Oba"
  },
  "Both height changes are added together.": {
   "de": "Beide Höhenänderungen werden addiert.",
@@ -2667,6 +2675,10 @@
   "de": "Bauernhof",
   "pl": "Gospodarstwo"
  },
+ "Farms": {
+  "de": "Bauernhöfe",
+  "pl": "Gospodarstwa"
+ },
  "Feature size": {
   "de": "Formgröße",
   "pl": "Rozmiar form"
@@ -2927,6 +2939,10 @@
   "de": "Bilder pro Sekunde",
   "pl": "Klatki na sekundę"
  },
+ "Free ones up to m from the walls": {
+  "de": "Freistehende bis m von den Wänden",
+  "pl": "Wolnostojące do m od ścian"
+ },
  "Friction": {
   "de": "Reibung",
   "pl": "Tarcie"
@@ -2946,6 +2962,10 @@
  "From the centre lines of the roads.": {
   "de": "Von den Mittellinien der Straßen.",
   "pl": "Od osi dróg."
+ },
+ "From the middle m": {
+  "de": "Von der Mitte m",
+  "pl": "Od środka m"
  },
  "From the project species": {
   "de": "Aus den Arten des Projekts",
@@ -3183,6 +3203,10 @@
   "de": "Aus den Namen raten",
   "pl": "Zgadnij z nazw"
  },
+ "Half the road width m": {
+  "de": "Halbe Straßenbreite m",
+  "pl": "Połowa szerokości drogi m"
+ },
  "Hardness": {
   "de": "Härte",
   "pl": "Twardość"
@@ -3290,6 +3314,10 @@
  "Hollows and ridges m": {
   "de": "Senken und Kämme m",
   "pl": "Zagłębienia i grzbiety m"
+ },
+ "Houses": {
+  "de": "Häuser",
+  "pl": "Domy"
  },
  "How deep the relief in the alpha channel of the surface textures looks close up; 0 leaves them flat.": {
   "de": "Wie tief das Relief im Alphakanal der Oberflächentexturen aus der Nähe wirkt; 0 lässt sie flach.",
@@ -3535,6 +3563,10 @@
   "de": "Baumfrei halten",
   "pl": "Bez drzew"
  },
+ "Keep from roads m": {
+  "de": "Abstand zu Straßen m",
+  "pl": "Odstęp od dróg m"
+ },
  "Keep mine": {
   "de": "Meine behalten",
   "pl": "Zostaw moje"
@@ -3594,6 +3626,10 @@
  "Landscape": {
   "de": "Landschaft",
   "pl": "Krajobraz"
+ },
+ "Lane from the middle m": {
+  "de": "Fahrspur von der Mitte m",
+  "pl": "Pas ruchu od środka m"
  },
  "Language": {
   "de": "Sprache",
@@ -4191,6 +4227,10 @@
   "de": "Militär",
   "pl": "Wojsko"
  },
+ "Military buildings": {
+  "de": "Militärgebäude",
+  "pl": "Budynki wojskowe"
+ },
  "Min": {
   "de": "Min",
   "pl": "Min"
@@ -4310,6 +4350,10 @@
  "Most animals alive at once.": {
   "de": "Höchstzahl gleichzeitig lebender Tiere.",
   "pl": "Najwięcej zwierząt naraz."
+ },
+ "Most cars in a jam": {
+  "de": "Höchstens Autos im Stau",
+  "pl": "Najwięcej aut w korku"
  },
  "Most damage of spawned loot, 0..1.": {
   "de": "Größter Schaden gespawnter Beute, 0..1.",
@@ -4879,6 +4923,10 @@
   "de": "Auf die ganze Karte",
   "pl": "Na całą mapę"
  },
+ "On the whole map it follows": {
+  "de": "Auf der ganzen Karte folgt er",
+  "pl": "Na całej mapie idzie wzdłuż"
+ },
  "On: changing a point fits the route again only from that point on; the pieces before it stay as they are. Off: the whole route is fitted again.": {
   "de": "An: Wird ein Punkt geändert, wird die Route erst ab diesem Punkt neu eingepasst; die Stücke davor bleiben. Aus: Die ganze Route wird neu eingepasst.",
   "pl": "Włączone: zmiana punktu dopasowuje trasę od nowa dopiero od tego punktu; części przed nim zostają bez zmian. Wyłączone: cała trasa jest dopasowywana od nowa."
@@ -4926,6 +4974,10 @@
  "Only layers marked for export": {
   "de": "Nur zum Export markierte Ebenen",
   "pl": "Tylko warstwy oznaczone do eksportu"
+ },
+ "Only on paved roads": {
+  "de": "Nur auf befestigten Straßen",
+  "pl": "Tylko na drogach utwardzonych"
  },
  "Only on satellite colours": {
   "de": "Nur auf Satellitenfarben",
@@ -5247,9 +5299,17 @@
   "de": "Pro 100 m",
   "pl": "Na 100 m"
  },
+ "Per building": {
+  "de": "Pro Gebäude",
+  "pl": "Na budynek"
+ },
  "Per hectare": {
   "de": "Pro Hektar",
   "pl": "Na hektar"
+ },
+ "Per km": {
+  "de": "Pro km",
+  "pl": "Na km"
  },
  "Percent of the loot spawned again after a restart.": {
   "de": "Prozent der Beute, die nach einem Neustart wieder spawnt.",
@@ -5395,6 +5455,10 @@
   "de": "Setzt ein Modell in gleichen Abständen entlang einer geklickten Linie, einmalig. Die Linien-Generatoren tun dasselbe mit mehr Optionen und lassen sich erneut ausführen.",
   "pl": "Stawia jeden model w równych odstępach wzdłuż klikniętej linii, jednorazowo. Generatory liniowe robią to samo z większą liczbą opcji i można je uruchomić ponownie."
  },
+ "Places per km": {
+  "de": "Stellen pro km",
+  "pl": "Miejsc na km"
+ },
  "Places the main menu shows behind the character. Set one from where the 3D camera stands and looks; without any the base world's are used.": {
   "de": "Orte, die das Hauptmenü hinter der Figur zeigt. Setze einen von dort, wo die 3D-Kamera steht und hinsieht; ohne werden die der Basiswelt genutzt.",
   "pl": "Miejsca, które menu główne pokazuje za postacią. Ustaw je z miejsca, gdzie stoi i patrzy kamera 3D; bez nich używane są sceny świata bazowego."
@@ -5402,6 +5466,10 @@
  "Places the preset {0}": {
   "de": "Setzt die Vorlage {0}",
   "pl": "Stawia preset {0}"
+ },
+ "Places with wrecks along roads: a jam of cars in a lane, a crash, or a car left on the verge, with stains under them; and cracks, patches and tyre marks on the road. Drop it on a road, or on the map for all roads.": {
+  "de": "Stellen mit Wracks entlang der Straßen: ein Stau auf einer Spur, ein Unfall oder ein am Bankett zurückgelassenes Auto, mit Flecken darunter; dazu Risse, Flicken und Reifenspuren auf der Straße. Ziehe ihn auf eine Straße oder auf die Karte für alle Straßen.",
+  "pl": "Miejsca z wrakami wzdłuż dróg: korek aut na pasie, kolizja albo auto porzucone na poboczu, z plamami pod nimi; do tego pęknięcia, łaty i ślady opon na drodze. Upuść go na drogę albo na mapę dla wszystkich dróg."
  },
  "Places {0}": {
   "de": "Setzt {0}",
@@ -5426,6 +5494,18 @@
  "Plants grow (0 or 1)": {
   "de": "Pflanzen wachsen (0 oder 1)",
   "pl": "Rośliny rosną (0 lub 1)"
+ },
+ "Platform from the middle m": {
+  "de": "Bahnsteig von der Mitte m",
+  "pl": "Peron od środka m"
+ },
+ "Platform length m": {
+  "de": "Bahnsteiglänge m",
+  "pl": "Długość peronu m"
+ },
+ "Platform pieces": {
+  "de": "Bahnsteigteile",
+  "pl": "Elementy peronu"
  },
  "Play": {
   "de": "Starten",
@@ -5490,6 +5570,10 @@
  "Positions of dirt piles; usually empty.": {
   "de": "Positionen von Erdhaufen; meist leer.",
   "pl": "Pozycje kopców ziemi; zwykle pusty."
+ },
+ "Posts in a row": {
+  "de": "Pfosten in einer Reihe",
+  "pl": "Słupy w rzędzie"
  },
  "Power line": {
   "de": "Stromleitung",
@@ -5594,6 +5678,14 @@
  "Ragged edges m": {
   "de": "Ausgefranste Ränder m",
   "pl": "Postrzępione krawędzie m"
+ },
+ "Railway surroundings": {
+  "de": "Bahnumfeld",
+  "pl": "Otoczenie kolei"
+ },
+ "Railways": {
+  "de": "Bahnstrecken",
+  "pl": "Tory"
  },
  "Rain": {
   "de": "Regen",
@@ -5870,6 +5962,10 @@
  "Road catalog...": {
   "de": "Straßenkatalog...",
   "pl": "Katalog dróg..."
+ },
+ "Road decals": {
+  "de": "Straßen-Decals",
+  "pl": "Decale na drodze"
  },
  "Road ends": {
   "de": "Straßenenden",
@@ -6439,9 +6535,25 @@
   "de": "Formen (SHP, TV4S)...",
   "pl": "Kształty (SHP, TV4S)..."
  },
+ "Share against the walls": {
+  "de": "Anteil an den Wänden",
+  "pl": "Udział przy ścianach"
+ },
+ "Share of crashes": {
+  "de": "Anteil der Unfälle",
+  "pl": "Udział kolizji"
+ },
+ "Share of jams": {
+  "de": "Anteil der Staus",
+  "pl": "Udział korków"
+ },
  "Share of plots fenced": {
   "de": "Anteil eingezäunter Grundstücke",
   "pl": "Udział ogrodzonych działek"
+ },
+ "Share of wrecks": {
+  "de": "Anteil der Wracks",
+  "pl": "Udział wraków"
  },
  "Share the room evenly": {
   "de": "Platz gleich aufteilen",
@@ -6671,6 +6783,10 @@
   "de": "Quadrat",
   "pl": "Kwadrat"
  },
+ "Stains under wrecks": {
+  "de": "Flecken unter Wracks",
+  "pl": "Plamy pod wrakami"
+ },
  "Stand upright": {
   "de": "Aufrecht stehen",
   "pl": "Stoi prosto"
@@ -6726,6 +6842,10 @@
  "Stop": {
   "de": "Stoppen",
   "pl": "Zatrzymaj"
+ },
+ "Stops and stations": {
+  "de": "Haltestellen und Bahnhöfe",
+  "pl": "Przystanki i stacje"
  },
  "Straight and at full size": {
   "de": "Gerade und in voller Größe",
@@ -7002,6 +7122,10 @@
  "Team work...": {
   "de": "Teamarbeit...",
   "pl": "Praca zespołowa..."
+ },
+ "Telegraph poles, lamps: on the right of the line, turned towards it.": {
+  "de": "Telegrafenmasten, Lampen: rechts der Linie, zu ihr gedreht.",
+  "pl": "Słupy telegraficzne, latarnie: po prawej stronie linii, zwrócone do niej."
  },
  "Template libraries": {
   "de": "Vorlagenbibliotheken",
@@ -7643,6 +7767,10 @@
   "de": "Dann hinter diesem Ende auf die Karte klicken; Strg+Klick wählt das nähere Ende selbst.",
   "pl": "Potem kliknij na mapie za tym końcem; Ctrl+klik sam wybiera bliższy koniec."
  },
+ "There are no buildings here to dress": {
+  "de": "Hier gibt es keine Gebäude zum Ausstatten",
+  "pl": "Nie ma tu budynków do udekorowania"
+ },
  "There are no roads to follow": {
   "de": "Es gibt keine Straßen zum Folgen",
   "pl": "Nie ma dróg, wzdłuż których można iść"
@@ -7650,6 +7778,14 @@
  "Thermal erosion": {
   "de": "Thermische Erosion",
   "pl": "Erozja termiczna"
+ },
+ "Things round buildings": {
+  "de": "Gegenstände um Gebäude",
+  "pl": "Przedmioty wokół budynków"
+ },
+ "Things round the buildings already on the map, chosen by the kind of building: woodpiles and bins at houses, pallets and barrels at works, sandbags and crates at military buildings, hay and logs at farms. Against the walls or standing free, never inside another building or on a road.": {
+  "de": "Gegenstände um die Gebäude, die schon auf der Karte stehen, nach Art des Gebäudes gewählt: Holzstapel und Tonnen an Häusern, Paletten und Fässer an Betrieben, Sandsäcke und Kisten an Militärgebäuden, Heu und Stämme auf Bauernhöfen. An den Wänden oder freistehend, nie in einem anderen Gebäude oder auf einer Straße.",
+  "pl": "Przedmioty wokół budynków, które już są na mapie, dobrane do rodzaju budynku: stosy drewna i kosze przy domach, palety i beczki przy zakładach, worki z piaskiem i skrzynie przy budynkach wojskowych, siano i kłody w gospodarstwach. Przy ścianach albo wolnostojące, nigdy w innym budynku ani na drodze."
  },
  "This file is copied as it is.": {
   "de": "Diese Datei wird unverändert kopiert.",
@@ -7794,6 +7930,10 @@
  "Turn by 180° to open the other way": {
   "de": "Um 180° drehen, um zur anderen Seite zu öffnen",
   "pl": "Obróć o 180°, aby otwierała się w drugą stronę"
+ },
+ "Turn °": {
+  "de": "Drehung °",
+  "pl": "Obrót °"
  },
  "Turns what is copied about the source point, to lay fields or rows another way.": {
   "de": "Dreht das Kopierte um den Quellpunkt, um Felder oder Reihen anders zu legen.",
@@ -8255,6 +8395,10 @@
   "de": "Arbeitslaufwerk",
   "pl": "Dysk roboczy"
  },
+ "Works and sheds": {
+  "de": "Betriebe und Schuppen",
+  "pl": "Zakłady i szopy"
+ },
  "Works on": {
   "de": "Wirkt auf",
   "pl": "Działa na"
@@ -8282,6 +8426,10 @@
  "Wrecks": {
   "de": "Wracks",
   "pl": "Wraki"
+ },
+ "Wrecks and road decals": {
+  "de": "Wracks und Straßen-Decals",
+  "pl": "Wraki i decale na drogach"
  },
  "Write the newer WRP format with underground flag": {
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",

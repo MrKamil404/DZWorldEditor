@@ -270,7 +270,7 @@ fn check_objects(w: &World, db: &ModelDb, job: &Job) -> Vec<Issue> {
 
 /// Whether a model is a house or hall that should not stand in another: large enough, and not
 /// one of the props, piles, ruins, piers and walls that are made to be set into others.
-fn is_house(path: &str, info: &crate::model_info::ModelInfo) -> bool {
+pub fn is_house(path: &str, info: &crate::model_info::ModelInfo) -> bool {
     let p = path.to_ascii_lowercase();
     const PROPS: [&str; 20] = ["misc", "garbage", "rubble", "ruins", "pier", "harbour", "platform", "proxy", "tank", "pipe", "wall", "bridge", "decal", "furniture", "signs", "power", "mound", "underground", "stairs", "pile"];
     if PROPS.iter().any(|k| p.contains(k)) {
@@ -281,7 +281,7 @@ fn is_house(path: &str, info: &crate::model_info::ModelInfo) -> bool {
 }
 
 /// Whether the rotated footprint of an object, grown by `margin` metres, holds a point.
-fn contains(o: &crate::objects::Obj, info: &crate::model_info::ModelInfo, at: [f32; 2], margin: f32) -> bool {
+pub fn contains(o: &crate::objects::Obj, info: &crate::model_info::ModelInfo, at: [f32; 2], margin: f32) -> bool {
     let (s, c) = o.yaw.to_radians().sin_cos();
     let (dx, dz) = (at[0] - o.x, at[1] - o.z);
     // Into the object's own axes.

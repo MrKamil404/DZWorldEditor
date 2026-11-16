@@ -194,7 +194,8 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
 | Terrain | Terrain shape, hydraulic and thermal erosion, terraces, terrain along a line |
 | Surfaces and clean-up | Rule-based surface painting, removing objects by category or name |
 | Landscape | Coast, cliffs and rocks, fields |
-| Along roads | Road verges with bushes and signs |
+| Along roads | Road verges with bushes and signs, railway surroundings, wrecks and road decals |
+| Round buildings | Things round the buildings already on the map |
 
 * **Coast** paints beaches by the water and sand on the shallow sea floor (a layer named like sand,
   or else gravel), rock on steep shores, lays stones along the water and can lay the beaches to a
@@ -204,7 +205,18 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
 * **Fields** cuts polygons into strips of fields with balks between them, each strip sown with one
   of the chosen surfaces, and lays hay bales along them.
 * **Road verges** follows roads or lines: a verge surface, bushes beyond it and now and then a
-  sign. Dropped on the map, it follows every road.
+  sign, a row of posts (poles, lamps) and stops with a platform. Dropped on the map, it follows
+  every road, every railway or both.
+* **Railway surroundings** is the same generator set up for tracks: a gravel ballast verge,
+  bushes, signals, a row of telegraph poles and now and then a small station with its platform.
+* **Wrecks and road decals** puts places with wrecks along roads: a jam of cars in a lane, a crash
+  of two or three, or a car left on the verge, with oil stains under them, and cracks, patches and
+  tyre marks on paved roads.
+* **Things round buildings** dresses the buildings already on the map by their kind: woodpiles,
+  bins and kennels at houses, pallets, barrels and tyres at works, sandbags and crates at military
+  buildings, hay and logs at farms. Some stand against the walls, along them, the others free
+  nearby; none inside another building or on a road. The game's models do not say where their
+  doors are, so a thing can end up in front of one: move it, or run again with another seed.
 * **Settlement** can take the game's buildings of a village, town, farm, industrial area or
   military base from the work drive, gives each building a yard with its own surface, and fences
   some of the plots, leaving the side to the street open.

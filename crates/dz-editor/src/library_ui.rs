@@ -819,10 +819,77 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 number(ui, t("One every m (0 = none)"), &mut g.sign_spacing, 0.0..=3000.0);
                 objects_ui(ui, &mut g.signs, cx);
             });
+            group(ui, t("Posts in a row"), false, |ui| {
+                ui.weak(t("Telegraph poles, lamps: on the right of the line, turned towards it."));
+                number(ui, t("One every m (0 = none)"), &mut g.post_spacing, 0.0..=500.0);
+                number(ui, t("From the middle m"), &mut g.post_offset, 0.0..=60.0);
+                number(ui, t("Turn °"), &mut g.post_turn, -180.0..=180.0);
+                objects_ui(ui, &mut g.posts, cx);
+            });
+            group(ui, t("Stops and stations"), false, |ui| {
+                ui.weak(t("A building beside the line, its front towards it, with a platform laid along the line."));
+                number(ui, t("One every m (0 = none)"), &mut g.stop_spacing, 0.0..=20000.0);
+                number(ui, t("From the middle m"), &mut g.stop_offset, 0.0..=80.0);
+                number(ui, t("Turn °"), &mut g.stop_turn, -180.0..=180.0);
+                objects_ui(ui, &mut g.stops, cx);
+                ui.weak(t("Platform pieces"));
+                models_list(ui, &mut g.platform, cx);
+                number(ui, t("Platform from the middle m"), &mut g.platform_offset, 0.0..=40.0);
+                number(ui, t("Platform length m"), &mut g.platform_length, 0.0..=400.0);
+            });
+            follow_row(ui, &mut g.follow);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::Wrecks(g) => {
+            ui.weak(t("Places with wrecks along roads: a jam of cars in a lane, a crash, or a car left on the verge, with stains under them; and cracks, patches and tyre marks on the road. Drop it on a road, or on the map for all roads."));
+            number(ui, t("Places per km"), &mut g.scenes_per_km, 0.0..=20.0);
+            number(ui, t("Share of jams"), &mut g.jam_share, 0.0..=1.0);
+            number(ui, t("Share of crashes"), &mut g.crash_share, 0.0..=1.0);
+            row(ui, &t("Most cars in a jam"), |ui| { ui.add(egui::Slider::new(&mut g.jam_max, 3..=20)); });
+            number(ui, t("Lane from the middle m"), &mut g.lane, 0.0..=10.0);
+            number(ui, t("Half the road width m"), &mut g.road_half, 1.0..=15.0);
+            group(ui, t("Wrecks"), false, |ui| objects_ui(ui, &mut g.wrecks, cx));
+            group(ui, t("Stains under wrecks"), false, |ui| {
+                number(ui, t("Share of wrecks"), &mut g.under_share, 0.0..=1.0);
+                models_list(ui, &mut g.under, cx);
+            });
+            group(ui, t("Road decals"), false, |ui| {
+                number(ui, t("Per km"), &mut g.decals_per_km, 0.0..=200.0);
+                ui.checkbox(&mut g.decals_paved_only, t("Only on paved roads"));
+                objects_ui(ui, &mut g.decals, cx);
+            });
+            follow_row(ui, &mut g.follow);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::Dressing(g) => {
+            ui.weak(t("Things round the buildings already on the map, chosen by the kind of building: woodpiles and bins at houses, pallets and barrels at works, sandbags and crates at military buildings, hay and logs at farms. Against the walls or standing free, never inside another building or on a road."));
+            ui.horizontal(|ui| {
+                ui.label(t("Per building"));
+                ui.add(egui::DragValue::new(&mut g.min_count).range(0..=20).prefix(format!("{} ", t("from"))));
+                ui.add(egui::DragValue::new(&mut g.max_count).range(0..=30).prefix(format!("{} ", t("to"))));
+            });
+            if g.max_count < g.min_count { g.max_count = g.min_count; }
+            number(ui, t("Share against the walls"), &mut g.against_wall, 0.0..=1.0);
+            number(ui, t("Free ones up to m from the walls"), &mut g.max_distance, 0.7..=20.0);
+            number(ui, t("Keep from roads m"), &mut g.keep_from_roads, 0.0..=30.0);
+            group(ui, t("Houses"), false, |ui| objects_ui(ui, &mut g.residential, cx));
+            group(ui, t("Works and sheds"), false, |ui| objects_ui(ui, &mut g.industrial, cx));
+            group(ui, t("Military buildings"), false, |ui| objects_ui(ui, &mut g.military, cx));
+            group(ui, t("Farms"), false, |ui| objects_ui(ui, &mut g.farm, cx));
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
         }
     }
     sample
+}
+
+/// Which roads a generator on the whole map follows.
+fn follow_row(ui: &mut egui::Ui, follow: &mut dz_core::landscape::Follow) {
+    use dz_core::landscape::Follow;
+    row(ui, &t("On the whole map it follows"), |ui| {
+        ui.selectable_value(follow, Follow::Roads, t("Roads"));
+        ui.selectable_value(follow, Follow::Rails, t("Railways"));
+        ui.selectable_value(follow, Follow::All, t("Both"));
+    });
 }
 
 /// A surface layer by name, or none ("chosen by name" when the generator can guess one).
@@ -859,6 +926,8 @@ pub(crate) fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::Cliffs(_) => ("K", Color32::from_rgb(110, 108, 100)),
         GeneratorKind::Fields(_) => ("F", Color32::from_rgb(150, 130, 60)),
         GeneratorKind::Roadside(_) => ("V", Color32::from_rgb(90, 110, 70)),
+        GeneratorKind::Wrecks(_) => ("W", Color32::from_rgb(120, 70, 50)),
+        GeneratorKind::Dressing(_) => ("D", Color32::from_rgb(110, 90, 70)),
     }
 }
 
@@ -901,11 +970,13 @@ pub(crate) fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
         GeneratorKind::Coast(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
         GeneratorKind::Fields(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
         GeneratorKind::Roadside(g) => g.plants.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Wrecks(g) => g.wrecks.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Dressing(g) => g.residential.first_model(&app.library.objects).map(str::to_string),
         _ => None,
     };
     match model {
         Some(m) => Preview::Model(ObjectStore::normalize_path(&m)),
-        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_)) => Preview::Nothing,
+        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_)) => Preview::Nothing,
         None => {
             let key = match kind {
                 GeneratorKind::Terrain(p) => format!("terrain {p:?}"),
@@ -1415,6 +1486,8 @@ pub(crate) fn resolve_target(app: &App, kind: &GeneratorKind, drop: Option<Dropp
         (TargetKind::Point, _, Some(d)) => GenTarget::Point(d.at),
         (TargetKind::Point, _, None) => { let s = doc.world.meta.size_m(); GenTarget::Point([s * 0.5, s * 0.5]) }
         (TargetKind::Area | TargetKind::Map | TargetKind::Any, _, _) => GenTarget::Map,
+        // Those that dress roads follow all roads of their kind on the whole map.
+        (TargetKind::Line, _, _) if matches!(kind, GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_)) => GenTarget::Map,
         (TargetKind::Line, _, _) => return Err(t("Drop this generator on a line or a road, or select one first")),
     })
 }
@@ -1819,11 +1892,12 @@ pub fn run_generator(app: &mut App, id: u64) {
                 }) as Finish)
             });
         }
+        kind @ (GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_)) => run_dressing(app, id, label, kind, &g_target, polygons, lines),
         GeneratorKind::Roadside(mut g) => {
             g.plants = g.plants.resolved(&presets);
             g.signs = g.signs.resolved(&presets);
-            // On the map it follows every road.
-            let lines = if g_target_is_map(&g_target) { world.routes.iter().map(|r| r.centerline.clone()).filter(|l| l.len() > 1).collect() } else { lines };
+            // On the map it follows every road of its kind.
+            let lines = if g_target_is_map(&g_target) { roads_of(world, g.follow) } else { lines };
             if lines.is_empty() {
                 app.warn(t("There are no roads to follow"));
                 return;
@@ -1831,7 +1905,7 @@ pub fn run_generator(app: &mut App, id: u64) {
             let roads: Vec<Vec<[f32; 2]>> = world.routes.iter().map(|r| r.centerline.clone()).collect();
             app.spawn(label.clone(), move |_| {
                 let data = dz_core::landscape::roadside_mask(&lite, &g, &lines);
-                let objects = dz_core::landscape::roadside_objects(&mut lite, &g, &lines, &roads)?;
+                let objects = dz_core::landscape::roadside_objects(&mut lite, &db, &g, &lines, &roads)?;
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| {
                     store_generated(a, id, models, objects);
@@ -1842,8 +1916,64 @@ pub fn run_generator(app: &mut App, id: u64) {
     }
 }
 
+/// The centre lines of the roads of `follow`'s kind.
+fn roads_of(world: &World, follow: dz_core::landscape::Follow) -> Vec<Vec<[f32; 2]>> {
+    world.routes.iter().filter(|r| follow.takes(&r.family)).map(|r| r.centerline.clone()).filter(|l| l.len() > 1).collect()
+}
+
 fn g_target_is_map(t: &GenTarget) -> bool {
     *t == GenTarget::Map
+}
+
+/// Runs the generators that dress roads and buildings already on the map.
+fn run_dressing(app: &mut App, id: u64, label: String, kind: GeneratorKind, target: &GenTarget, polygons: Vec<MapShape>, lines: Vec<Vec<[f32; 2]>>) {
+    let Some(doc) = &app.doc else { return };
+    let world = &doc.world;
+    let mut lite = world.lite();
+    let db = app.db.clone();
+    let presets = app.library.objects.clone();
+    match kind {
+        GeneratorKind::Wrecks(mut g) => {
+            g.wrecks = g.wrecks.resolved(&presets);
+            g.decals = g.decals.resolved(&presets);
+            // Which of the lines are paved roads: those of a route by its kind, drawn lines are.
+            let (lines, paved): (Vec<Vec<[f32; 2]>>, Vec<bool>) = match target {
+                GenTarget::Map => world.routes.iter().filter(|r| g.follow.takes(&r.family) && r.centerline.len() > 1).map(|r| (r.centerline.clone(), dz_core::dressing::is_paved(&r.family))).unzip(),
+                GenTarget::Route(id) => world.routes.iter().filter(|r| r.id == *id).map(|r| (r.centerline.clone(), dz_core::dressing::is_paved(&r.family))).unzip(),
+                _ => { let n = lines.len(); (lines, vec![true; n]) }
+            };
+            if lines.is_empty() {
+                app.warn(t("There are no roads to follow"));
+                return;
+            }
+            app.spawn(label, move |job| {
+                let objects = dz_core::dressing::wreck_objects(&mut lite, &g, &lines, &paved, job)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
+            });
+        }
+        GeneratorKind::Dressing(mut g) => {
+            for s in [&mut g.residential, &mut g.industrial, &mut g.military, &mut g.farm] {
+                *s = s.resolved(&presets);
+            }
+            let (area, _) = area_bounds(&polygons, world.meta.size_m());
+            let buildings = dz_core::dressing::buildings(world, &db, area.as_ref());
+            if buildings.is_empty() {
+                app.warn(t("There are no buildings here to dress"));
+                return;
+            }
+            // What stands already, besides trees and what this generator made last time.
+            let own: std::collections::HashSet<u32> = world.generators.iter().find(|x| x.id == id).map(|x| x.objects.iter().copied().collect()).unwrap_or_default();
+            let taken: Vec<[f32; 2]> = world.objects.iter().filter(|(i, o)| !own.contains(i) && dz_core::world::object_group(world.objects.model_path(o)) != Some(0)).map(|(_, o)| [o.x, o.z]).collect();
+            let roads = roads_of(world, dz_core::landscape::Follow::All);
+            app.spawn(label, move |job| {
+                let objects = dz_core::dressing::dress_objects(&mut lite, &db, &g, &buildings, &taken, &roads, job)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
+            });
+        }
+        _ => {}
+    }
 }
 
 /// What a generator changed in the mask becomes its mask modifier, replacing its earlier run.
