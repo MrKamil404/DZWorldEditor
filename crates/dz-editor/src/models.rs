@@ -224,11 +224,22 @@ impl ModelLoader {
     }
 }
 
-/// Rivers, ponds and streams; not the beds under them or buildings named after water.
-pub fn is_decal_model(path: &str) -> bool {
-    path.contains("\\decals\\") || path.rsplit('\\').next().is_some_and(|f| f.starts_with("decal_"))
+/// Decals laid on the ground: models named after decals (`Decal_*`, `Wreck_Decal_Small1`,
+/// `ShellCrater2_Decal`, ...) that lie flat. Signs and wall decals stand upright and stay models.
+pub fn is_decal_model(path: &str, info: &dz_core::model_info::ModelInfo) -> bool {
+    let file = path.rsplit('\\').next().unwrap_or(path).to_ascii_lowercase();
+    let named = path.to_ascii_lowercase().contains("\\decals\\") || file.contains("decal");
+    if !named {
+        return false;
+    }
+    if !info.known {
+        return !path.to_ascii_lowercase().contains("\\signs\\") && !file.starts_with("sign_");
+    }
+    let (dx, dy, dz) = (info.max[0] - info.min[0], info.max[1] - info.min[1], info.max[2] - info.min[2]);
+    dy <= 0.25 && dx.min(dz) >= dy * 3.0
 }
 
+/// Rivers, ponds and streams; not the beds under them or buildings named after water.
 pub fn is_water_model(path: &str) -> bool {
     dz_core::objects::is_water_model(path)
 }
@@ -262,7 +273,7 @@ fn load(db: &ModelDb, path: &str, key: (u32, u8), cache: &dayz_road_tool::mesh3d
         mesh.conform = true;
     }
     // Decals are drawn flat on what is under them, with their edges faded out.
-    if is_decal_model(path) {
+    if is_decal_model(path, &info) {
         tessellate(&mut mesh, 2.0);
         mesh.conform = true;
         mesh.decal = true;

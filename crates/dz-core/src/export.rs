@@ -577,7 +577,7 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
     let mut cell_mats: HashMap<(u32, u32), u16> = HashMap::new();
     if opts.layers || opts.world {
         job.stage(format!("Generating {} terrain tiles", report.tiles));
-        let layer_tex: Vec<(String, String)> = w.layers.iter().map(|l| (nopx_of(&opts.root, &l.texture), l.texture.to_ascii_lowercase())).collect();
+        let layer_tex: Vec<(String, String)> = w.layers.iter().map(|l| (crate::layer_material::nopx_of_material(&opts.root, &l.material).map(|n| n.to_ascii_lowercase()).unwrap_or_else(|| nopx_of(&opts.root, &l.texture)), l.texture.to_ascii_lowercase())).collect();
         // Stale layer files of an earlier export would end up in the PBO.
         if opts.layers {
             if let Ok(rd) = std::fs::read_dir(&layers_dir) {
@@ -641,6 +641,10 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
             report.warnings.push("No navmesh yet: AI will not walk until navmesh.nm is generated.".to_string());
         }
         write_configs(w, &target, nm)?;
+        report.warnings.extend(crate::surfaces::check_layers(&opts.root, &id, &w.layers, &w.meta.build_folders));
+        if crate::surfaces::write_config(&id, &w.meta.config.surfaces, &opts.root, &target)? {
+            job.log(format!("{} surfaces of the map written to surfaces\\config.cpp.", w.meta.config.surfaces.len()));
+        }
     }
     if opts.source {
         job.stage("Writing Terrain Builder source files");

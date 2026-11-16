@@ -109,7 +109,7 @@ pub fn stamp_under_objects(app: &mut App) {
     let mut stamps: Vec<(Stamp, String, bool, f32)> = Vec::new();
     let mut add = |o: &dz_core::objects::Obj| {
         let path = w.objects.model_path(o);
-        if !w.object_visible(o) || path.contains("\\roads\\parts\\") || crate::models::is_water_model(path) || crate::models::is_decal_model(path) {
+        if !w.object_visible(o) || path.contains("\\roads\\parts\\") || crate::models::is_water_model(path) || crate::models::is_decal_model(path, &app.db.get(path)) {
             return;
         }
         let plant = crate::viewport::is_plant(path);

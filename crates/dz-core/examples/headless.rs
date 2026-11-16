@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     let r = export::run(&w, &db, &export::ExportOptions { root: paths.work_drive.clone(), layers: true, world: true, config: true, source: false }, &job)?;
     println!("export {:?} in {:?}", r, t.elapsed());
     let t = Instant::now();
-    let res = build::build_pbo(&paths, &w.meta.map_id, &job);
+    let res = build::build_pbo(&paths, &w.meta.map_id, &w.meta.build_folders, &job);
     for l in job.take_log() { println!("{l}"); }
     println!("{:?} in {:?}", res, t.elapsed());
     Ok(())

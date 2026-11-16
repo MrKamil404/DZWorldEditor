@@ -319,6 +319,8 @@ pub enum Dialog {
     Export(Option<crate::exporting::Part>),
     Delete(crate::deleting::Plan),
     Confirm { text: String, action: fn(&mut App) },
+    /// Removing a surface layer: which, and the layer its ground becomes.
+    DeleteLayer { layer: usize, into: usize },
 }
 
 pub struct LogLine {
@@ -360,7 +362,16 @@ pub struct App {
     pub show_proxies: bool,
     pub proxies: crate::proxies::Proxies,
     pub show_shadows: bool,
-    pub clutter_db: dz_core::clutter::ClutterDb,
+    /// The surfaces of the game (CfgSurfaces and their grass).
+    pub surface_catalog: Arc<dz_core::surfaces::SurfaceCatalog>,
+    /// The footsteps of the game's surfaces, read in the background.
+    pub step_sounds: Arc<std::sync::OnceLock<dz_core::surfaces::StepSounds>>,
+    /// The map surface open in the surface editor.
+    pub surface_edit: Option<usize>,
+    /// The material of a layer open for editing.
+    pub material_edit: Option<crate::material_ui::MaterialEdit>,
+    /// Where the last click picked an object, so a click there again picks the one under it.
+    pub last_click: Option<eframe::egui::Pos2>,
     /// Per layer: (index in `clutter_models`, cumulative probability, scale min, scale max).
     pub clutter_layers: Vec<Vec<(u32, f32, f32, f32)>>,
     pub clutter_models: Vec<String>,
@@ -417,6 +428,8 @@ pub struct App {
     pub view2: ViewCache,
     /// What the minimap draws of the objects.
     pub view_mini: ViewCache,
+    /// How road parts that nearly meet are drawn stretched to close the gap.
+    pub road_joins: crate::road_joins::RoadJoins,
     pub impostor_fits: HashMap<u32, [f32; 3]>,
     /// Texture size and anisotropy the loaded models were made with.
     applied_graphics: (u32, u32),
@@ -549,14 +562,19 @@ impl App {
         let thumbs = Thumbnails::new(db.clone(), data_dir().join("thumbnails"), ctx.clone());
         let surfaces = models::scan_surfaces(&root);
         let camera_speed = settings.camera_speed;
-        let clutter_db = dz_core::clutter::ClutterDb::load(&root);
+        let surface_catalog = Arc::new(dz_core::surfaces::SurfaceCatalog::load(&root));
+        let step_sounds: Arc<std::sync::OnceLock<dz_core::surfaces::StepSounds>> = Default::default();
+        {
+            let (cell, root) = (step_sounds.clone(), root.clone());
+            std::thread::spawn(move || { let _ = cell.set(dz_core::surfaces::StepSounds::load(&root)); });
+        }
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
             doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
-            shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, clutter_db, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
+            shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, road_guard: (u64::MAX, 0), hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false, into_modifier: true, target: None },
@@ -564,7 +582,7 @@ impl App {
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None, live_keep: true }, live: Default::default(), road_parts: Default::default(),
             stroke: None, mask_stroke: None, mask_mod_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
-            top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(),
+            top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, shape_open: BTreeSet::new(),
@@ -1340,20 +1358,35 @@ impl App {
         self.renderer.lock().unwrap().set_palette(colors, avg);
     }
 
-    pub fn reload_layer_textures(&mut self) {
+    /// Ground clutter of each surface layer, as the game would grow it: from the map's own
+    /// surfaces, then those of the game.
+    pub fn reload_clutter(&mut self) {
         let Some(doc) = &self.doc else { return };
-        // Ground clutter of each surface, as the game configures it.
-        let mut models: Vec<String> = Vec::new();
+        let cat = &self.surface_catalog;
+        let own = &doc.world.meta.config.surfaces;
+        // Models keep their index: the loaded meshes are found by it.
+        let mut models: Vec<String> = std::mem::take(&mut self.clutter_models);
         self.clutter_layers = doc.world.layers.iter().map(|l| {
-            self.clutter_db.for_texture(&l.texture).into_iter().map(|e| {
-                let i = models.iter().position(|m| *m == e.model).unwrap_or_else(|| {
-                    models.push(e.model.clone());
+            let mut sum = 0.0;
+            dz_core::surfaces::clutter_of(&l.texture, own, cat).into_iter().filter_map(|(name, p)| {
+                sum += p;
+                let kind = cat.clutter_kind(&name)?;
+                let i = models.iter().position(|m| *m == kind.model).unwrap_or_else(|| {
+                    models.push(kind.model.clone());
                     models.len() - 1
                 });
-                (i as u32, e.threshold, e.scale_min, e.scale_max)
+                Some((i as u32, sum, kind.scale[0], kind.scale[1]))
             }).collect()
         }).collect();
         self.clutter_models = models;
+        for v in [&mut self.view3, &mut self.view2, &mut self.view_mini] {
+            v.invalidate();
+        }
+    }
+
+    pub fn reload_layer_textures(&mut self) {
+        self.reload_clutter();
+        let Some(doc) = &self.doc else { return };
         let list: Vec<_> = doc.world.layers.iter().enumerate().take(64).map(|(i, l)| (i, l.texture.clone(), l.material.clone(), l.color)).collect();
         self.layer_rx = Some(models::load_layer_textures(self.settings.tools.work_drive.clone(), list, self.ctx.clone()));
     }
@@ -2791,7 +2824,7 @@ impl App {
         self.spawn(if run { t("Building and starting map") } else { t("Building map") }, move |job| {
             let report = dz_core::export::run(&w, &db, &opts, job)?;
             let id = w.meta.map_id.clone();
-            dz_core::build::build_pbo(&paths, &id, job)?;
+            dz_core::build::build_pbo(&paths, &id, &w.meta.build_folders, job)?;
             let session = if run {
                 match &w.mission {
                     // The mission of the project, when it has one.

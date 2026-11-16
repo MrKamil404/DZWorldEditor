@@ -37,6 +37,13 @@ pub struct ViewCache {
     pub occluders: usize,
 }
 
+impl ViewCache {
+    /// Makes the next frame rebuild the draw list.
+    pub fn invalidate(&mut self) {
+        self.toggles = None;
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Handle {
     Plane,
@@ -73,6 +80,9 @@ pub struct ObjectDrag {
     stepped: bool,
     /// The modifier keys that chose what the drag does.
     mods: egui::Modifiers,
+    /// The axis a turn goes about, chosen with X, Y and Z while it goes as in Blender:
+    /// 0 X, 1 Y (up, the default), 2 Z; and whether it is the object's own axis.
+    spin_axis: (u8, bool),
 }
 
 /// Scripted input for automatic checks (`DZWE_AUTO`).
@@ -300,7 +310,12 @@ fn ray_in_model(o: &V3, d: &V3, ob: &Obj, ground: f32) -> (V3, V3) {
 }
 
 fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
-    let doc = app.doc.as_ref()?;
+    pick_hits(app, v, s, false).first().copied()
+}
+
+/// The objects under the cursor, nearest first; with `all` false only the nearest is looked for.
+fn pick_hits(app: &App, v: &View, s: Pos2, all: bool) -> Vec<u32> {
+    let Some(doc) = app.doc.as_ref() else { return Vec::new() };
     let (o, d) = v.ray(s);
     // A hole lets the ray through to what is underneath.
     let ground_hit = pick_terrain(&doc.world.height, o, d, v.ortho).filter(|p| !doc.world.is_hole(p[0], p[2]));
@@ -329,7 +344,7 @@ fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
                     }
                     let path = world.objects.model_path(ob);
                     let info = app.db.get(path);
-                    if path.contains(r"\roads\parts\") || crate::models::is_decal_model(path) {
+                    if path.contains(r"\roads\parts\") || crate::models::is_decal_model(path, &info) {
                         // Road parts bend over the terrain, so they are found where the ray
                         // meets the ground, not at the height of their origin.
                         let Some(g) = ground_hit else { continue };
@@ -350,18 +365,18 @@ fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
     }
     candidates.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
     let mut best: Option<(f32, u32)> = None;
+    let mut hits: Vec<(f32, u32)> = Vec::new();
     for (h, id, flat) in candidates.into_iter().take(400) {
-        if best.is_some_and(|b| h >= b.0) {
+        if !all && best.is_some_and(|b| h >= b.0) {
             break;
         }
         let Some(ob) = world.objects.get(id) else { continue };
         let hit = match app.pick_meshes.get(&ob.model) {
-            Some(mesh) if flat => {
-                let g = ground_hit?;
+            Some(mesh) if flat => ground_hit.and_then(|g| {
                 let (lo, _) = ray_in_model(&g, &d, ob, g[1]);
                 // Straight down through the part at the point under the cursor.
                 ray_mesh(mesh, [lo[0], 1000.0, lo[2]], [0.0, -1.0, 0.0]).map(|_| h)
-            }
+            }),
             Some(mesh) => {
                 let (lo, ld) = ray_in_model(&o, &d, ob, ObjectStore::origin_y(ob, &world.height));
                 ray_mesh(mesh, lo, ld)
@@ -370,12 +385,23 @@ fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
             None => Some(h),
         };
         if let Some(t) = hit {
+            hits.push((t, id));
             if best.is_none_or(|b| t < b.0) {
                 best = Some((t, id));
             }
         }
     }
-    best.map(|b| b.1)
+    if !all {
+        return best.map(|b| b.1).into_iter().collect();
+    }
+    hits.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut ids: Vec<u32> = Vec::new();
+    for (_, id) in hits {
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    ids
 }
 
 pub(crate) fn is_plant(path: &str) -> bool {
@@ -486,6 +512,8 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     cache.forward = v.forward;
     cache.mpp = v.mpp;
     cache.loaded = loaded;
+    app.road_joins.update(&world.objects, |p| app.db.get(p));
+    let joins = &app.road_joins;
     while cache.infos.len() < world.objects.models.len() {
         let path = world.objects.models[cache.infos.len()].path.clone();
         cache.tints.push(category_tint(&path));
@@ -526,12 +554,13 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
             if px >= 3.0 {
                 let tint = if sel { SELECT_TINT } else { [1.0, 1.0, 1.0, 0.0] };
                 let (placed_m, y) = placed_matrix(o, info, &world.height, y);
+                let (placed_m, at) = joins.apply(id, info, placed_m, [o.x, y, o.z]);
                 let m0 = o.model;
                 let last = renderer.lod_count(m0).map_or(u8::MAX, |c| c.saturating_sub(1));
                 let want = if px > 400.0 { 0 } else { (((400.0 / px).log2().floor() as u8).saturating_add(1)).min(12).min(last) };
                 if let Some((lod, n)) = renderer.best_lod(m0, want).filter(|_| triangles_left > 0) {
                     triangles_left -= n as i64;
-                    write_instance(instances.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                    write_instance(instances.entry((m0, lod)).or_default(), &placed_m, at, tint);
                     if lod != want {
                         requests.push((m0, want));
                     }
@@ -612,6 +641,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                     let sel = selection.contains(&id);
                     let tint = if sel { SELECT_TINT } else { [1.0, 1.0, 1.0, 0.0] };
                     let (placed_m, y) = placed_matrix(o, &infos[o.model as usize], &world.height, y);
+                    let (placed_m, at) = joins.apply(id, info, placed_m, [o.x, y, o.z]);
                     let (m0, m1) = (o.model, renderer.impostor_layers.get(&o.model));
                     // Hidden behind the terrain or the objects before it: left out, though it
                     // may still cast a shadow onto what is seen. Selected objects always show.
@@ -619,14 +649,14 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                         let top = y + info.max[1] * o.scale;
                         let radius = (info.max[0] - info.min[0]).hypot(info.max[2] - info.min[2]) * 0.5 * o.scale;
                         let behind_terrain = horizon.as_ref().is_some_and(|h| h.hides(o.x, o.z, top, radius));
-                        let behind_objects = !behind_terrain && depth.as_ref().is_some_and(|b| b.hides(&crate::occlusion::box_corners(info.min, info.max, &placed_m, [o.x, y, o.z])));
+                        let behind_objects = !behind_terrain && depth.as_ref().is_some_and(|b| b.hides(&crate::occlusion::box_corners(info.min, info.max, &placed_m, at)));
                         if behind_terrain || behind_objects {
                             occluded += 1;
                             if d < shadow_range && app.show_shadows {
                                 let last = renderer.lod_count(m0).map_or(u8::MAX, |c| c.saturating_sub(1));
                                 if let Some((lod, n)) = renderer.best_lod(m0, last).filter(|_| shadow_triangles > 0) {
                                     shadow_triangles -= n as i64;
-                                    write_instance(shadow.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                                    write_instance(shadow.entry((m0, lod)).or_default(), &placed_m, at, tint);
                                 }
                             }
                             continue;
@@ -635,7 +665,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                     // A seen building or rock hides what is behind it by its own solid shape.
                     if let (Some(buf), Some(tris)) = (depth.as_mut(), renderer.occluder(m0)) {
                         if d < 600.0 && size >= 4.0 && !plants.get(m0 as usize).copied().unwrap_or(false) {
-                            buf.draw(tris, &placed_m, [o.x, y, o.z]);
+                            buf.draw(tris, &placed_m, at);
                             occluders += 1;
                         }
                     }
@@ -652,12 +682,12 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                             } else {
                                 no_billboard_left -= n as i64;
                             }
-                            write_instance(instances.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                            write_instance(instances.entry((m0, lod)).or_default(), &placed_m, at, tint);
                             // What the building holds, as the game shows it close up.
                             if show_proxies && d < PROXY_RANGE {
                                 if let Some(list) = app.proxies.get(&world.objects.models[m0 as usize].path, &app.db, &app.ctx) {
                                     for p in list.iter() {
-                                        let (axes, at) = crate::proxies::place(&placed_m, [o.x, y, o.z], p);
+                                        let (axes, at) = crate::proxies::place(&placed_m, at, p);
                                         let id = PROXY_BASE + p.model;
                                         let want = if d < 40.0 { 0 } else if d < 90.0 { 1 } else { 2 }.min(renderer.lod_count(id).map_or(u8::MAX, |c| c.saturating_sub(1)));
                                         match renderer.best_lod(id, want).filter(|_| triangles_left > 0) {
@@ -674,7 +704,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                             if d < shadow_range {
                                 // Shadows are cast by the next coarser LOD when it is there.
                                 let caster = renderer.best_lod(m0, want.saturating_add(1).min(last)).map_or(lod, |l| l.0);
-                                write_instance(shadow.entry((m0, caster)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                                write_instance(shadow.entry((m0, caster)).or_default(), &placed_m, at, tint);
                             }
                             if lod != want {
                                 requests.push((m0, want));
@@ -692,7 +722,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                     if d < shadow_range && app.show_shadows {
                         if let Some((lod, n)) = renderer.best_lod(m0, want).filter(|_| shadow_triangles > 0) {
                             shadow_triangles -= n as i64;
-                            write_instance(shadow.entry((m0, lod)).or_default(), &placed_m, [o.x, y, o.z], tint);
+                            write_instance(shadow.entry((m0, lod)).or_default(), &placed_m, at, tint);
                         }
                     }
                     if let Some(layer) = m1 {
@@ -1265,6 +1295,35 @@ fn turn(v: V3, axis: V3, angle: f32) -> V3 {
     add(add(mul(v, c), mul(cr, s)), mul(axis, dot(axis, v) * (1.0 - c)))
 }
 
+/// Turns objects from where they were (`before`) by `angle` about `axis` through `pivot`, as
+/// one: each about the axis, several about their common middle. Returns the terrain that
+/// attached modifiers changed.
+fn turn_objects(world: &mut dz_core::world::World, before: &[(u32, Obj)], pivot: V3, axis: V3, angle: f32) -> Option<dz_core::terrain::Rect> {
+    let mut area: Option<dz_core::terrain::Rect> = None;
+    let mut updates = Vec::new();
+    for (id, b) in before {
+        let mut o = *b;
+        let m = rotation(b.yaw, b.pitch, b.roll, 1.0);
+        let rows = [turn(m[0], axis, angle), turn(m[1], axis, angle), turn(m[2], axis, angle)];
+        let (yaw, pitch, roll, _) = dz_core::objects::angles(&rows);
+        (o.yaw, o.pitch, o.roll) = (yaw, pitch, roll);
+        // Several objects turn about their common middle.
+        let rel = [b.x - pivot[0], ObjectStore::origin_y(b, &world.height) - pivot[1], b.z - pivot[2]];
+        let moved = turn(rel, axis, angle);
+        o.x = pivot[0] + moved[0];
+        o.z = pivot[2] + moved[2];
+        o.elevation = b.elevation + (moved[1] - rel[1]);
+        updates.push((*id, o));
+    }
+    for (id, o) in updates {
+        world.objects.update(id, o);
+        if let Some(r) = world.sync_attached(id) {
+            area = Some(area.map_or(r, |a| a.union(r)));
+        }
+    }
+    area
+}
+
 fn gizmo_size(v: &View, p: V3) -> f32 {
     if v.ortho {
         v.mpp * 90.0
@@ -1449,6 +1508,23 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
         Handle::Spin => {
             dyaw = delta.x * 0.5;
             if angle_snap || drag.stepped { dyaw = (dyaw / step).round() * step; }
+            let (k, local) = drag.spin_axis;
+            if k != 1 || local {
+                // About another axis, as Blender turns after X, Y or Z.
+                let axis = match (local, drag.before.first()) {
+                    (true, Some((_, b))) => norm(rotation(b.yaw, b.pitch, b.roll, 1.0)[k as usize]),
+                    _ => [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]][k as usize],
+                };
+                // Turned with the mouse to the right the way yaw turns (clockwise from above).
+                let angle = if k == 1 { -dyaw } else { dyaw }.to_radians();
+                area = turn_objects(world, &drag.before, drag.pivot, axis, angle);
+                doc.dirty.objects = true;
+                app.drag = Some(drag);
+                if let Some(r) = area {
+                    app.height_changed(r);
+                }
+                return;
+            }
         }
         Handle::X | Handle::Y | Handle::Z => {
             let along = delta.dot(drag.axis.0) * drag.axis.2;
@@ -1471,28 +1547,7 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
             }
             let mut deg = a.to_degrees();
             if snap || angle_snap { deg = (deg / step).round() * step; }
-            let angle = deg.to_radians();
-            let mut updates = Vec::new();
-            for (id, b) in &drag.before {
-                let mut o = *b;
-                let m = rotation(b.yaw, b.pitch, b.roll, 1.0);
-                let rows = [turn(m[0], axis, angle), turn(m[1], axis, angle), turn(m[2], axis, angle)];
-                let (yaw, pitch, roll, _) = dz_core::objects::angles(&rows);
-                (o.yaw, o.pitch, o.roll) = (yaw, pitch, roll);
-                // Several objects turn about their common middle.
-                let rel = [b.x - drag.pivot[0], ObjectStore::origin_y(b, &world.height) - drag.pivot[1], b.z - drag.pivot[2]];
-                let moved = turn(rel, axis, angle);
-                o.x = drag.pivot[0] + moved[0];
-                o.z = drag.pivot[2] + moved[2];
-                o.elevation = b.elevation + (moved[1] - rel[1]);
-                updates.push((*id, o));
-            }
-            for (id, o) in updates {
-                world.objects.update(id, o);
-                if let Some(r) = world.sync_attached(id) {
-                    area = Some(area.map_or(r, |a| a.union(r)));
-                }
-            }
+            area = turn_objects(world, &drag.before, drag.pivot, axis, deg.to_radians());
             doc.dirty.objects = true;
             app.drag = Some(drag);
             if let Some(r) = area {
@@ -1929,7 +1984,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let grab = hit.map(|h| [p[0] - h[0], p[2] - h[2]]).unwrap_or([0.0, 0.0]);
-                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE });
+                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false) });
                         return;
                     }
                 }
@@ -1943,20 +1998,22 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     let doc = app.doc.as_ref().unwrap();
                     let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                     let handle = if scale { Handle::Scale } else { Handle::Spin };
-                    app.drag = Some(ObjectDrag { toggle: None, started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0], virt: None, click: Some((mouse, modifiers.shift || modifiers.ctrl)), stepped, mods: modifiers });
+                    app.drag = Some(ObjectDrag { toggle: None, started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0], virt: None, click: Some((mouse, modifiers.shift || modifiers.ctrl)), stepped, mods: modifiers, spin_axis: (1, false) });
                     return;
                 }
                 // Held by its shape, an object slides over the ground; one not yet selected is
                 // picked first, as a click would.
                 if app.settings.drag_by_body && !modifiers.shift && !modifiers.ctrl {
                     if let (Some(id), Some(h)) = (pick_object(app, v, mouse), hit) {
+                        // A click on the one object already picked goes on to the one under it.
+                        let again = (app.selection.len() == 1 && app.selection.contains(&id)).then_some((mouse, false));
                         if !app.selection.contains(&id) {
                             finish_selection(app, v, mouse, mouse, false);
                         }
                         if let (true, Some(p)) = (app.selection.contains(&id), selection_pivot(app)) {
                             let doc = app.doc.as_ref().unwrap();
                             let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
-                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE });
+                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] , virt: None, click: again, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false) });
                             return;
                         }
                     }
@@ -1967,12 +2024,21 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let handle = if modifiers.shift { Handle::Spin } else { Handle::Scale };
-                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE });
+                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false) });
                         return;
                     }
                 }
                 app.box_select = Some((mouse, mouse, modifiers.shift || modifiers.ctrl));
                 app.lasso_points = if app.settings.lasso { vec![mouse] } else { Vec::new() };
+            }
+            let whole = app.whole.is_some();
+            if let Some(d) = app.drag.as_mut().filter(|d| d.handle == Handle::Spin && !whole) {
+                for (key, k) in [(egui::Key::X, 0u8), (egui::Key::Y, 1), (egui::Key::Z, 2)] {
+                    if ctx.input(|i| i.key_pressed(key)) {
+                        // Again on the same axis: the object's own one, then back.
+                        d.spin_axis = if d.spin_axis.0 == k { (k, !d.spin_axis.1) } else { (k, false) };
+                    }
+                }
             }
             if app.drag.as_ref().is_some_and(|d| d.stepped) {
                 let wheel = ctx.input(|i| i.raw_scroll_delta.y + i.raw_scroll_delta.x);
@@ -2055,6 +2121,9 @@ fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
 /// Selects what is in the box from `a` to `b`, or within `outline` when one is drawn.
 fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool, outline: Option<&[Pos2]>) {
     app.leave_browser();
+    // The one object picked before, for a click on the same spot to go to the one under it.
+    let only = (app.selection.len() == 1).then(|| app.selection.iter().next().copied()).flatten();
+    let again = app.last_click.take().is_some_and(|p| (p - b).length() < 6.0);
     if !add_mode {
         app.selection.clear();
         app.selected_modifier = None;
@@ -2068,7 +2137,17 @@ fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool
             app.shape.selection.clear();
             app.shape.vertex = None;
         }
-        let picked = pick_object(app, v, b);
+        let picked = match (only, again && !add_mode) {
+            (Some(prev), true) => {
+                let hits = pick_hits(app, v, b, true);
+                match hits.iter().position(|id| *id == prev) {
+                    Some(k) => hits.get((k + 1) % hits.len()).copied(),
+                    None => hits.first().copied(),
+                }
+            }
+            _ => pick_object(app, v, b),
+        };
+        app.last_click = Some(b);
         let whole = if app.select_whole && !add_mode { whole_at(app, v, b, picked) } else { None };
         if let Some((target, ids)) = whole {
             app.selection.extend(ids);
@@ -3300,7 +3379,17 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         if let Some((id, b)) = d.before.first() {
             let now = app.doc.as_ref().and_then(|doc| doc.world.objects.get(*id)).map_or(b.yaw, |o| o.yaw);
             let turned = ((now - b.yaw + 540.0).rem_euclid(360.0)) - 180.0;
-            let text = if d.stepped { tf("{0}°  ·  step {1}° (wheel)", &[&format!("{turned:.1}"), &format!("{}", app.settings.angle_step)]) } else { format!("{turned:.1}°") };
+            let mut text = if d.stepped { tf("{0}°  ·  step {1}° (wheel)", &[&format!("{turned:.1}"), &format!("{}", app.settings.angle_step)]) } else { format!("{turned:.1}°") };
+            if d.spin_axis != (1, false) {
+                let name = ["X", "Y", "Z"][d.spin_axis.0 as usize];
+                let seen = d.virt.map_or(m, |v| v.0);
+                let mut deg = (seen - d.start).x * 0.5;
+                if d.stepped { deg = (deg / app.settings.angle_step.max(0.1)).round() * app.settings.angle_step.max(0.1); }
+                let about = if d.spin_axis.1 { tf("about the object's {0}", &[name]) } else { tf("about {0}", &[name]) };
+                text = format!("{deg:.1}°  {about}");
+            } else if app.whole.is_none() {
+                text += &format!("   {}", t("X Y Z: other axis"));
+            }
             ui.painter_at(rect).text(m + vec2(16.0, -16.0), egui::Align2::LEFT_BOTTOM, text, egui::FontId::proportional(13.0), Color32::WHITE);
         }
     }
@@ -4416,7 +4505,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     d.world.sync_attached(*id);
                 }
                 let pivot = before.first().map(|(_, o)| [o.x, 0.0, o.z]).unwrap_or([0.0; 3]);
-                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE });
+                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false) });
                 let _ = end_object_drag(app);
             }
         }

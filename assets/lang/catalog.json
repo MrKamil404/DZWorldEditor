@@ -7,6 +7,10 @@
   "de": "(jede Oberfläche)",
   "pl": "(dowolna powierzchnia)"
  },
+ "(as the base)": {
+  "de": "(wie die Basis)",
+  "pl": "(jak bazowa)"
+ },
  "(from the base world)": {
   "de": "(aus der Basiswelt)",
   "pl": "(ze świata bazowego)"
@@ -67,6 +71,10 @@
   "de": "3D-Ansicht",
   "pl": "Widok 3D"
  },
+ "A PAA, or an image (PNG, TGA, JPG) that is converted, brought to sides of powers of two": {
+  "de": "Ein PAA oder ein Bild (PNG, TGA, JPG), das umgewandelt und auf Zweierpotenzen gebracht wird",
+  "pl": "PAA albo obraz (PNG, TGA, JPG), który zostanie przekonwertowany i przeskalowany do boków będących potęgą dwójki"
+ },
  "A Terrain Builder template library (.tml) of the project, with the models selected in the browser.": {
   "de": "Eine Terrain-Builder-Vorlagenbibliothek (.tml) des Projekts, mit den im Browser ausgewählten Modellen.",
   "pl": "Biblioteka szablonów Terrain Buildera (.tml) projektu, z modelami zaznaczonymi w przeglądarce."
@@ -102,6 +110,10 @@
  "A colour texture (_ca or _co) of the map's own surface on the work drive": {
   "de": "Eine Farbtextur (_ca oder _co) einer eigenen Oberfläche der Karte auf dem Arbeitslaufwerk",
   "pl": "Tekstura koloru (_ca lub _co) własnej powierzchni mapy na dysku roboczym"
+ },
+ "A colour texture (_ca or _co) of the map's own surface, from anywhere: it is copied into the map's folder with its relief and material": {
+  "de": "Eine Farbtextur (_ca oder _co) einer eigenen Oberfläche, von überall: sie wird mit Relief und Material in den Ordner der Karte kopiert",
+  "pl": "Tekstura koloru (_ca lub _co) własnej powierzchni, z dowolnego miejsca: zostanie skopiowana do folderu mapy razem z reliefem i materiałem"
  },
  "A contaminated area around each selected shape of the Shapes mode.": {
   "de": "Ein verseuchtes Gebiet um jede in Formen ausgewählte Form.",
@@ -151,6 +163,10 @@
   "de": "Eine neue Mission für die Karte wurde erstellt.",
   "pl": "Utworzono nową misję dla mapy."
  },
+ "A new surface for this texture": {
+  "de": "Neue Oberfläche für diese Textur",
+  "pl": "Nowa powierzchnia dla tej tekstury"
+ },
  "A project holds at most 255 surfaces": {
   "de": "Ein Projekt kann höchstens 255 Oberflächen haben",
   "pl": "Projekt może mieć najwyżej 255 powierzchni"
@@ -158,6 +174,10 @@
  "A quality sets everything below; changing any of it makes it Custom.": {
   "de": "Eine Qualitätsstufe stellt alles darunter ein; jede Änderung macht daraus Benutzerdefiniert.",
   "pl": "Jakość ustawia wszystko poniżej; zmiana czegokolwiek przełącza na Własne."
+ },
+ "A ready _nopx texture, or an image of one": {
+  "de": "Eine fertige _nopx-Textur oder ein Bild davon",
+  "pl": "Gotowa tekstura _nopx albo jej obraz"
  },
  "A road begun or ended by a free arm of a crossroad starts from that arm.": {
   "de": "Eine Straße, die an einem freien Arm einer Kreuzung beginnt oder endet, geht von diesem Arm aus.",
@@ -215,6 +235,10 @@
   "de": "Datei hinzufügen...",
   "pl": "Dodaj plik..."
  },
+ "Add a layer with a texture...": {
+  "de": "Ebene mit einer Textur hinzufügen...",
+  "pl": "Dodaj warstwę z tekstury..."
+ },
  "Add a scene from the camera": {
   "de": "Szene von der Kamera hinzufügen",
   "pl": "Dodaj scenę z kamery"
@@ -259,9 +283,17 @@
   "de": "Datei hinzufügen",
   "pl": "Dodaj plik"
  },
+ "Add folder...": {
+  "de": "Ordner hinzufügen...",
+  "pl": "Dodaj folder..."
+ },
  "Add generator": {
   "de": "Generator hinzufügen",
   "pl": "Dodaj generator"
+ },
+ "Add grass": {
+  "de": "Gras hinzufügen",
+  "pl": "Dodaj trawę"
  },
  "Add key point": {
   "de": "Keypoint hinzufügen",
@@ -439,6 +471,10 @@
   "de": "Entlang der Linie",
   "pl": "Po linii"
  },
+ "Also built into the mod": {
+  "de": "Zusätzlich in den Mod gebaut",
+  "pl": "Budowane też do moda"
+ },
  "Also the generator {0} that made it": {
   "de": "Auch den Generator {0}, der ihn erzeugt hat",
   "pl": "Także generator {0}, który go utworzył"
@@ -583,6 +619,10 @@
   "de": "Wie vorgeschlagen",
   "pl": "Jak proponowane"
  },
+ "As the base ({0} kinds)": {
+  "de": "Wie die Basis ({0} Arten)",
+  "pl": "Jak bazowa ({0} rodzajów)"
+ },
  "Assigned in the asset browser, with the right mouse button on a model or a folder. The surface above is for the other models.": {
   "de": "Wird im Asset-Browser mit der rechten Maustaste auf einem Modell oder Ordner zugewiesen. Die Oberfläche oben gilt für die übrigen Modelle.",
   "pl": "Przypisuje się ją w przeglądarce assetów prawym przyciskiem na modelu lub folderze. Powierzchnia powyżej dotyczy pozostałych modeli."
@@ -598,6 +638,10 @@
  "Attempts per type and pass to respawn loot.": {
   "de": "Versuche pro Typ und Durchlauf, Beute neu zu spawnen.",
   "pl": "Próby odrodzenia lootu na typ i przebieg."
+ },
+ "Audibility": {
+  "de": "Hörbarkeit",
+  "pl": "Słyszalność"
  },
  "Author": {
   "de": "Autor",
@@ -687,6 +731,10 @@
   "de": "Grundhöhe",
   "pl": "Wysokość bazowa"
  },
+ "Based on": {
+  "de": "Basiert auf",
+  "pl": "Na bazie"
+ },
  "Before every merge the project is copied to .team/before-merge.": {
   "de": "Vor jedem Zusammenführen wird das Projekt nach .team/before-merge kopiert.",
   "pl": "Przed każdym scaleniem projekt jest kopiowany do .team/before-merge."
@@ -714,6 +762,10 @@
  "Bigger brush": {
   "de": "Größerer Pinsel",
   "pl": "Większy pędzel"
+ },
+ "Binarise": {
+  "de": "Binarisieren",
+  "pl": "Binaryzuj"
  },
  "Blend": {
   "de": "Übergang",
@@ -770,6 +822,10 @@
  "Bottom": {
   "de": "Unten",
   "pl": "Dół"
+ },
+ "Bounciness": {
+  "de": "Rückprall",
+  "pl": "Odbijanie"
  },
  "Box": {
   "de": "Rechteck",
@@ -839,6 +895,10 @@
   "de": "Straße bauen",
   "pl": "Zbuduj drogę"
  },
+ "Build this folder": {
+  "de": "Diesen Ordner bauen",
+  "pl": "Buduj ten folder"
+ },
  "Building and starting map": {
   "de": "Karte wird erstellt und gestartet",
   "pl": "Budowanie i uruchamianie mapy"
@@ -891,6 +951,10 @@
   "de": "Eingebaut",
   "pl": "Wbudowane"
  },
+ "Bullet impact": {
+  "de": "Einschlag",
+  "pl": "Trafienie pocisku"
+ },
  "Bushes": {
   "de": "Büsche",
   "pl": "Krzewy"
@@ -918,6 +982,10 @@
  "Camera below the terrain": {
   "de": "Kamera unter dem Gelände",
   "pl": "Kamera pod terenem"
+ },
+ "Can be dug (0 or 1)": {
+  "de": "Grabbar (0 oder 1)",
+  "pl": "Można kopać (0 lub 1)"
  },
  "Cancel": {
   "de": "Abbrechen",
@@ -950,6 +1018,14 @@
  "Chance per node %": {
   "de": "Chance pro Knoten %",
   "pl": "Szansa na węzeł %"
+ },
+ "Change a surface of the game": {
+  "de": "Oberfläche des Spiels ändern",
+  "pl": "Zmień powierzchnię gry"
+ },
+ "Change it for this map": {
+  "de": "Für diese Karte ändern",
+  "pl": "Zmień ją dla tej mapy"
  },
  "Change the pieces at the": {
   "de": "Teile ändern am",
@@ -1014,6 +1090,10 @@
  "Choose a Terrain Builder or built map folder": {
   "de": "Terrain-Builder- oder Kartenordner wählen",
   "pl": "Wybierz folder Terrain Buildera lub zbudowanej mapy"
+ },
+ "Choose a file...": {
+  "de": "Datei wählen...",
+  "pl": "Wybierz plik..."
  },
  "Choose a folder for the project": {
   "de": "Projektordner wählen",
@@ -1379,6 +1459,10 @@
   "de": "Farbe",
   "pl": "Kolor"
  },
+ "Colour (_ca)": {
+  "de": "Farbe (_ca)",
+  "pl": "Kolor (_ca)"
+ },
  "Colour brush": {
   "de": "Farbpinsel",
   "pl": "Pędzel koloru"
@@ -1394,6 +1478,10 @@
  "Colour correction {0}": {
   "de": "Farbkorrektur {0}",
   "pl": "Korekta kolorów {0}"
+ },
+ "Colour texture": {
+  "de": "Farbtextur",
+  "pl": "Tekstura koloru"
  },
  "Configuration": {
   "de": "Konfiguration",
@@ -1435,6 +1523,14 @@
   "de": "Kopiert einen anderen Teil des Bildes oder eines Fotos auf die Karte.",
   "pl": "Kopiuje inną część obrazu albo wczytanego zdjęcia na mapę."
  },
+ "Copies the texture into the map's folder, adds it as a layer and names the surface after it": {
+  "de": "Kopiert die Textur in den Ordner der Karte, fügt sie als Ebene hinzu und benennt die Oberfläche danach",
+  "pl": "Kopiuje teksturę do folderu mapy, dodaje ją jako warstwę i nazywa po niej powierzchnię"
+ },
+ "Copies the textures and the material into the map's folder of surfaces; the layer then uses the copies": {
+  "de": "Kopiert Texturen und Material in den Oberflächenordner der Karte; die Ebene nutzt dann die Kopien",
+  "pl": "Kopiuje tekstury i materiał do folderu powierzchni mapy; warstwa używa potem kopii"
+ },
  "Copies the whole project to the team folder, for someone who joins.": {
   "de": "Kopiert das ganze Projekt in den Teamordner, für jemanden, der dazukommt.",
   "pl": "Kopiuje cały projekt do folderu zespołu, dla osoby, która dołącza."
@@ -1474,6 +1570,10 @@
  "Copy the selection to the cursor": {
   "de": "Auswahl an den Cursor kopieren",
   "pl": "Kopia zaznaczenia pod kursor"
+ },
+ "Copy the textures into the map": {
+  "de": "Texturen in die Karte kopieren",
+  "pl": "Skopiuj tekstury do mapy"
  },
  "Copying from here": {
   "de": "Kopiere von hier",
@@ -1567,6 +1667,10 @@
   "de": "DZ_Data und das Addon der Basiswelt sind immer dabei.",
   "pl": "DZ_Data i addon świata bazowego są zawsze dodane."
  },
+ "Damage to shoes": {
+  "de": "Schaden an Schuhen",
+  "pl": "Niszczenie butów"
+ },
  "Darken": {
   "de": "Abdunkeln",
   "pl": "Przyciemnij"
@@ -1627,6 +1731,10 @@
   "de": "Standardanordnung",
   "pl": "Domyślny układ"
  },
+ "Deflection": {
+  "de": "Ablenkung",
+  "pl": "Rykoszety"
+ },
  "Delete": {
   "de": "Löschen",
   "pl": "Usuń"
@@ -1671,6 +1779,10 @@
   "de": "Ebene löschen, Objekte behalten",
   "pl": "Usuń warstwę, zachowaj obiekty"
  },
+ "Delete layer...": {
+  "de": "Ebene löschen...",
+  "pl": "Usuń warstwę..."
+ },
  "Delete mask modifier": {
   "de": "Masken-Modifikator löschen",
   "pl": "Usunięcie modyfikatora maski"
@@ -1706,6 +1818,10 @@
  "Delete the generator {0} too": {
   "de": "Auch den Generator {0} löschen",
   "pl": "Usuń także generator {0}"
+ },
+ "Delete the layer {0}?": {
+  "de": "Ebene {0} löschen?",
+  "pl": "Usunąć warstwę {0}?"
  },
  "Delete the modifier; what it covered comes back": {
   "de": "Modifikator löschen; das Überdeckte kehrt zurück",
@@ -1782,6 +1898,10 @@
  "Diamond": {
   "de": "Raute",
   "pl": "Romb"
+ },
+ "Diffuse": {
+  "de": "Diffus",
+  "pl": "Rozproszone (diffuse)"
  },
  "Discard the changes": {
   "de": "Änderungen verwerfen",
@@ -1963,6 +2083,10 @@
   "de": "Dynamische Events: Fahrzeuge, Wracks, Tiere, Infizierte und ihre Kinder.",
   "pl": "Dynamiczne eventy: pojazdy, wraki, zwierzęta, zarażeni i ich dzieci."
  },
+ "Each folder becomes a PBO of its own, with its path on the work drive as the prefix, so models keep the paths the map uses.": {
+  "de": "Jeder Ordner wird ein eigenes PBO mit seinem Pfad auf dem Arbeitslaufwerk als Präfix, damit Modelle die Pfade behalten, die die Karte nutzt.",
+  "pl": "Każdy folder staje się osobnym PBO z prefiksem równym jego ścieżce na dysku roboczym, więc modele zachowują ścieżki, których używa mapa."
+ },
  "Each leaves a gap in the fence with its own object, or two leaves of a gate.": {
   "de": "Jede lässt eine Lücke im Zaun mit eigenem Objekt oder zwei Torflügeln.",
   "pl": "Każda zostawia w płocie przerwę z własnym obiektem albo dwoma skrzydłami bramy."
@@ -2119,6 +2243,10 @@
   "de": "Dämme und Einschnitte",
   "pl": "Nasypy i wykopy"
  },
+ "Emissive": {
+  "de": "Emission",
+  "pl": "Emisja"
+ },
  "Empty. Drag models here to make templates of them.": {
   "de": "Leer. Modelle hierher ziehen, um Vorlagen daraus zu machen.",
   "pl": "Pusto. Przeciągnij tu modele, aby zrobić z nich szablony."
@@ -2242,6 +2370,10 @@
  "Everyone works on their own copy of the map. At the end of the day one person sends their changes, the other merges them and sends the result back.": {
   "de": "Jeder arbeitet an seiner eigenen Kopie der Karte. Am Ende des Tages sendet eine Person ihre Änderungen, die andere führt sie zusammen und sendet das Ergebnis zurück.",
   "pl": "Każdy pracuje na własnej kopii mapy. Na koniec dnia jedna osoba wysyła swoje zmiany, druga je scala i odsyła wynik."
+ },
+ "Everything not set here comes from this surface of the game.": {
+  "de": "Alles, was hier nicht gesetzt ist, kommt von dieser Oberfläche des Spiels.",
+  "pl": "Wszystko, czego tu nie ustawisz, pochodzi z tej powierzchni gry."
  },
  "Everywhere except these colours": {
   "de": "Überall außer diesen Farben",
@@ -2455,6 +2587,10 @@
   "de": "Flags",
   "pl": "Flagi"
  },
+ "Flat": {
+  "de": "Flach",
+  "pl": "Płaski"
+ },
  "Flatten": {
   "de": "Einebnen",
   "pl": "Wyrównaj"
@@ -2523,6 +2659,14 @@
   "de": "Der Neigung folgen",
   "pl": "Podążaj za nachyleniem"
  },
+ "Footstep group (soundEnviron)": {
+  "de": "Schrittgruppe (soundEnviron)",
+  "pl": "Grupa kroków (soundEnviron)"
+ },
+ "Footsteps": {
+  "de": "Schritte",
+  "pl": "Kroki"
+ },
  "For a new map: the server writes these files into its storage folder on the next start. Remove the calls once they are written.": {
   "de": "Für eine neue Karte: Der Server schreibt diese Dateien beim nächsten Start in seinen storage-Ordner. Entferne die Aufrufe, sobald sie geschrieben sind.",
   "pl": "Dla nowej mapy: serwer zapisze te pliki w folderze storage przy następnym starcie. Usuń wywołania, gdy pliki powstaną."
@@ -2538,6 +2682,10 @@
  "Forbidden areas": {
   "de": "Sperrgebiete",
   "pl": "Obszary zakazane"
+ },
+ "Forced diffuse": {
+  "de": "Erzwungen diffus",
+  "pl": "Wymuszone rozproszone"
  },
  "Forest": {
   "de": "Wald",
@@ -2583,9 +2731,17 @@
   "de": "Bilder pro Sekunde",
   "pl": "Klatki na sekundę"
  },
+ "Friction": {
+  "de": "Reibung",
+  "pl": "Tarcie"
+ },
  "From a file...": {
   "de": "Aus einer Datei...",
   "pl": "Z pliku..."
+ },
+ "From a normal map (_nohq or an image) and, if you choose one next, a height map; cancel the second for none": {
+  "de": "Aus einer Normal Map (_nohq oder ein Bild) und, wenn als Nächstes gewählt, einer Höhenkarte; den zweiten Dialog abbrechen für keine",
+  "pl": "Z normal mapy (_nohq albo obraz) i, jeśli wybierzesz ją w drugim oknie, mapy wysokości; anuluj drugie okno, by jej nie użyć"
  },
  "From the camera": {
   "de": "Von der Kamera",
@@ -2827,6 +2983,10 @@
   "de": "Höhe m",
   "pl": "Wysokość m"
  },
+ "Height map (lighter is higher) - cancel for none": {
+  "de": "Höhenkarte (heller ist höher) - abbrechen für keine",
+  "pl": "Mapa wysokości (jaśniej = wyżej) - anuluj, by pominąć"
+ },
  "Height of the driving surface above sea level. The road on both banks rises or falls to it.": {
   "de": "Höhe der Fahrbahn über dem Meeresspiegel. Die Straße an beiden Ufern steigt oder fällt zu ihr.",
   "pl": "Wysokość jezdni nad poziomem morza. Droga na obu brzegach wznosi się lub opada do niej."
@@ -2891,6 +3051,10 @@
   "de": "Schummerung",
   "pl": "Cieniowanie"
  },
+ "Hit sound": {
+  "de": "Aufprallgeräusch",
+  "pl": "Dźwięk uderzenia"
+ },
  "Hold the button to paint objects, Ctrl to remove them.": {
   "de": "Taste halten, um Objekte zu setzen, mit Strg zum Entfernen.",
   "pl": "Przytrzymaj przycisk, aby malować obiekty, z Ctrl, aby je usuwać."
@@ -2918,6 +3082,14 @@
  "How large the copy comes out against the source: to fit a picture of another resolution, or to make fields larger or smaller.": {
   "de": "Wie groß die Kopie gegenüber der Quelle wird: für ein Bild anderer Auflösung oder um Felder größer oder kleiner zu machen.",
   "pl": "Jak duża wychodzi kopia względem źródła: aby dopasować obraz o innej rozdzielczości albo powiększyć lub zmniejszyć pola."
+ },
+ "How many times the textures repeat in their uv space (aside and up of both stages)": {
+  "de": "Wie oft sich die Texturen in ihrem UV-Raum wiederholen (aside und up beider Stages)",
+  "pl": "Ile razy tekstury powtarzają się w swoim UV (aside i up obu stage'y)"
+ },
+ "How well someone lying, kneeling and standing on it is seen": {
+  "de": "Wie gut man liegend, kniend und stehend darauf gesehen wird",
+  "pl": "Jak dobrze widać na niej kogoś leżącego, klęczącego i stojącego"
  },
  "Hue": {
   "de": "Farbton",
@@ -3043,6 +3215,10 @@
   "de": "Abstand",
   "pl": "Odstęp"
  },
+ "Into the map's folder of surfaces, which the build packs": {
+  "de": "In den Oberflächenordner der Karte, den der Build packt",
+  "pl": "Do folderu powierzchni mapy, który pakuje build"
+ },
  "Intro (cutscenes)": {
   "de": "Intro (cutscenes)",
   "pl": "Intro (cutscenes)"
@@ -3075,9 +3251,25 @@
   "de": "Seine Generatoren und Presets kehren in ihre Gruppe zurück.",
   "pl": "Jego generatory i presety wracają do swojej grupy."
  },
+ "Its ground becomes": {
+  "de": "Ihr Boden wird zu",
+  "pl": "Jej teren dostaje"
+ },
  "Its models ({0})": {
   "de": "Ihre Modelle ({0})",
   "pl": "Jej modele ({0})"
+ },
+ "Its own": {
+  "de": "Eigenes",
+  "pl": "Własna"
+ },
+ "Its sounds are copied into {0} step sound tables (walking, running, animals...).": {
+  "de": "Ihre Geräusche werden in {0} Schritttabellen kopiert (Gehen, Laufen, Tiere...).",
+  "pl": "Jej dźwięki trafią do {0} tabel kroków (chód, bieg, zwierzęta...)."
+ },
+ "Its textures, relief, repeats and lighting (.rvmat)": {
+  "de": "Texturen, Relief, Wiederholung und Beleuchtung (.rvmat)",
+  "pl": "Tekstury, relief, powtarzanie i oświetlenie (.rvmat)"
  },
  "Jagged edge m": {
   "de": "Unregelmäßiger Rand m",
@@ -3203,9 +3395,25 @@
   "de": "Ebene ohne Besitzer",
   "pl": "Warstwa bez właściciela"
  },
+ "Layer {0}": {
+  "de": "Ebene {0}",
+  "pl": "Warstwa {0}"
+ },
  "Layers": {
   "de": "Ebenen",
   "pl": "Warstwy"
+ },
+ "Layers whose colour texture's file name starts with this get the surface (my_grass for my_grass_ca.paa).": {
+  "de": "Ebenen, deren Farbtextur so beginnt, bekommen die Oberfläche (my_grass für my_grass_ca.paa).",
+  "pl": "Warstwy, których nazwa pliku tekstury koloru zaczyna się od tego, dostają tę powierzchnię (my_grass dla my_grass_ca.paa)."
+ },
+ "Layers with this surface:": {
+  "de": "Ebenen mit dieser Oberfläche:",
+  "pl": "Warstwy z tą powierzchnią:"
+ },
+ "Layers: {0}": {
+  "de": "Ebenen: {0}",
+  "pl": "Warstwy: {0}"
  },
  "Lays the brush over whole shapes at once: inside polygons, along lines as a band. Fields, clearings, field tracks.": {
   "de": "Trägt den Pinsel auf ganze Formen auf einmal auf: innerhalb von Polygonen, entlang von Linien als Band. Felder, Lichtungen, Feldwege.",
@@ -3379,6 +3587,10 @@
   "de": "Längengrad",
   "pl": "Długość geogr."
  },
+ "Look": {
+  "de": "Aussehen",
+  "pl": "Wygląd"
+ },
  "Look again": {
   "de": "Erneut nachsehen",
   "pl": "Sprawdź ponownie"
@@ -3439,6 +3651,10 @@
   "de": "Preset daraus machen",
   "pl": "Zrób z nich preset"
  },
+ "Make a surface for this layer": {
+  "de": "Oberfläche für diese Ebene anlegen",
+  "pl": "Utwórz powierzchnię dla tej warstwy"
+ },
  "Make backups automatically": {
   "de": "Sicherungen automatisch erstellen",
   "pl": "Twórz kopie automatycznie"
@@ -3446,6 +3662,10 @@
  "Make editable route": {
   "de": "In bearbeitbare Route umwandeln",
   "pl": "Zamień na edytowalną trasę"
+ },
+ "Make from a normal map...": {
+  "de": "Aus Normal Map erstellen...",
+  "pl": "Zrób z normal mapy..."
  },
  "Make it": {
   "de": "Erstellen",
@@ -3470,6 +3690,10 @@
  "Make terraces": {
   "de": "Terrassen erzeugen",
   "pl": "Utwórz tarasy"
+ },
+ "Make the map's own copy": {
+  "de": "Eigene Kopie der Karte anlegen",
+  "pl": "Zrób kopię dla mapy"
  },
  "Makes env/<name>.xml and adds it to cfgenvironment.xml.": {
   "de": "Erstellt env/<Name>.xml und trägt sie in cfgenvironment.xml ein.",
@@ -3550,6 +3774,14 @@
  "Match the colour": {
   "de": "Farbe angleichen",
   "pl": "Dopasuj kolor"
+ },
+ "Material of {0}": {
+  "de": "Material von {0}",
+  "pl": "Materiał {0}"
+ },
+ "Material...": {
+  "de": "Material...",
+  "pl": "Materiał..."
  },
  "Max height": {
   "de": "Max. Höhe",
@@ -3959,6 +4191,14 @@
   "de": "Neue Straße",
   "pl": "Nowa droga"
  },
+ "New surface": {
+  "de": "Neue Oberfläche",
+  "pl": "Nowa powierzchnia"
+ },
+ "New surfaces are written to surfaces/config.cpp of the map on export, with the footsteps of the surface they sound like.": {
+  "de": "Neue Oberflächen werden beim Export in surfaces/config.cpp der Karte geschrieben, mit den Schritten der gewählten Oberfläche.",
+  "pl": "Nowe powierzchnie trafiają przy eksporcie do surfaces/config.cpp mapy, z dźwiękami kroków wybranej powierzchni."
+ },
  "New template library": {
   "de": "Neue Vorlagenbibliothek",
   "pl": "Nowa biblioteka szablonów"
@@ -4003,6 +4243,10 @@
   "de": "In dieser Datei gibt es keine Keypoints",
   "pl": "W tym pliku nie ma keypointów"
  },
+ "No layer of the project has a texture named like this.": {
+  "de": "Keine Ebene des Projekts hat eine so benannte Textur.",
+  "pl": "Żadna warstwa projektu nie ma tak nazwanej tekstury."
+ },
  "No model found for {0} classes": {
   "de": "Kein Modell für {0} Klassen gefunden",
   "pl": "Nie znaleziono modelu dla {0} klas"
@@ -4031,6 +4275,10 @@
   "de": "Keine Versionshinweise",
   "pl": "Brak opisu zmian"
  },
+ "No relief": {
+  "de": "Kein Relief",
+  "pl": "Bez reliefu"
+ },
  "No road parts lie along this line": {
   "de": "Entlang dieser Linie liegen keine Straßenteile",
   "pl": "Wzdłuż tej linii nie ma części drogi"
@@ -4042,6 +4290,10 @@
  "No source point yet": {
   "de": "Noch kein Quellpunkt",
   "pl": "Nie wybrano punktu źródłowego"
+ },
+ "No surface of the game is named like this texture: in the game it has no grass, and the sounds and physics of the default ground.": {
+  "de": "Keine Oberfläche des Spiels passt zu dieser Textur: im Spiel hat sie kein Gras und die Geräusche und Physik des Standardbodens.",
+  "pl": "Żadna powierzchnia gry nie pasuje do nazwy tej tekstury: w grze nie ma na niej trawy, a dźwięki i fizyka są domyślne."
  },
  "No surfaces of the game were found on the work drive": {
   "de": "Auf dem Arbeitslaufwerk wurden keine Oberflächen des Spiels gefunden",
@@ -4082,6 +4334,10 @@
  "Noon": {
   "de": "Mittag",
   "pl": "Południe"
+ },
+ "Normal map (_nohq)": {
+  "de": "Normal Map (_nohq)",
+  "pl": "Normal mapa (_nohq)"
  },
  "Not in cfglimitsdefinition.xml": {
   "de": "Nicht in cfglimitsdefinition.xml",
@@ -4206,6 +4462,10 @@
  "Off leaves the weather to the game.": {
   "de": "Aus überlässt das Wetter dem Spiel.",
   "pl": "Wyłączone zostawia pogodę grze."
+ },
+ "Off packs the files as they are, for models that are binarised already": {
+  "de": "Aus packt die Dateien wie sie sind, für bereits binarisierte Modelle",
+  "pl": "Wyłączone pakuje pliki bez zmian, dla modeli już zbinaryzowanych"
  },
  "Off starts the economy of the server afresh.": {
   "de": "Aus startet die Wirtschaft des Servers neu.",
@@ -4547,6 +4807,10 @@
   "de": "Malt {0} (L{1})",
   "pl": "Maluje {0} (L{1})"
  },
+ "Parallax": {
+  "de": "Parallax",
+  "pl": "Parallax"
+ },
  "Part removed": {
   "de": "Entfernter Anteil",
   "pl": "Usuwana część"
@@ -4611,6 +4875,10 @@
   "de": "Perspektive",
   "pl": "Perspektywa"
  },
+ "Physics and sounds": {
+  "de": "Physik und Geräusche",
+  "pl": "Fizyka i dźwięki"
+ },
  "Pick a file.": {
   "de": "Wähle eine Datei.",
   "pl": "Wybierz plik."
@@ -4654,6 +4922,10 @@
  "Pitch": {
   "de": "Neigung",
   "pl": "Pochylenie"
+ },
+ "Pixel shader": {
+  "de": "Pixel-Shader",
+  "pl": "Pixel shader"
  },
  "Place": {
   "de": "Platzieren",
@@ -4754,6 +5026,10 @@
  "Plains": {
   "de": "Ebenen",
   "pl": "Równiny"
+ },
+ "Plants grow (0 or 1)": {
+  "de": "Pflanzen wachsen (0 oder 1)",
+  "pl": "Rośliny rosną (0 lub 1)"
  },
  "Play": {
   "de": "Starten",
@@ -4975,6 +5251,10 @@
   "de": "Klassen der Configs werden gelesen...",
   "pl": "Wczytywanie klas z configów..."
  },
+ "Reading the sound tables of the game...": {
+  "de": "Schritttabellen des Spiels werden gelesen...",
+  "pl": "Wczytywanie tabel dźwięków gry..."
+ },
  "Reads a mission folder as it is, for this map or another.": {
   "de": "Liest einen Missionsordner unverändert, für diese oder eine andere Karte.",
   "pl": "Wczytuje folder misji bez zmian, dla tej lub innej mapy."
@@ -4991,6 +5271,14 @@
   "de": "Release-Seite",
   "pl": "Strona wydania"
  },
+ "Relief (_nopx): a normal map with the height in its alpha": {
+  "de": "Relief (_nopx): eine Normal Map mit der Höhe im Alpha",
+  "pl": "Relief (_nopx): normal mapa z wysokością w kanale alfa"
+ },
+ "Relief texture": {
+  "de": "Relieftextur",
+  "pl": "Tekstura reliefu"
+ },
  "Reload from TV4P": {
   "de": "Aus TV4P neu laden",
   "pl": "Wczytaj ponownie z TV4P"
@@ -5006,6 +5294,10 @@
  "Remove file": {
   "de": "Datei entfernen",
   "pl": "Usuń plik"
+ },
+ "Remove from the list": {
+  "de": "Aus der Liste entfernen",
+  "pl": "Usuń z listy"
  },
  "Remove from this folder": {
   "de": "Aus diesem Ordner entfernen",
@@ -5046,6 +5338,10 @@
  "Rename": {
   "de": "Umbenennen",
   "pl": "Zmień nazwę"
+ },
+ "Repeats": {
+  "de": "Wiederholungen",
+  "pl": "Powtórzenia"
  },
  "Replace model": {
   "de": "Modell ersetzen",
@@ -5115,9 +5411,17 @@
   "de": "Umkehren",
   "pl": "Odwróć"
  },
+ "Revert": {
+  "de": "Zurücksetzen",
+  "pl": "Cofnij zmiany"
+ },
  "Right": {
   "de": "Rechts",
   "pl": "W prawo"
+ },
+ "Right click: colour and material of the surface": {
+  "de": "Rechtsklick: Farbe und Material der Oberfläche",
+  "pl": "Prawy klik: kolor i materiał powierzchni"
  },
  "Right click: colour of the surface": {
   "de": "Rechtsklick: Farbe der Oberfläche",
@@ -5358,6 +5662,10 @@
  "Save...": {
   "de": "Speichern...",
   "pl": "Zapisz..."
+ },
+ "Saved as typed here; changing a field above writes the text anew.": {
+  "de": "Wird so gespeichert wie hier getippt; eine Änderung oben schreibt den Text neu.",
+  "pl": "Zapisywany tak, jak go wpiszesz; zmiana pola powyżej generuje tekst od nowa."
  },
  "Saved in the generator library": {
   "de": "In der Generatorbibliothek gespeichert",
@@ -5619,6 +5927,10 @@
   "de": "Setzen",
   "pl": "Ustaw"
  },
+ "Set for this surface; off keeps the value of the base": {
+  "de": "Für diese Oberfläche setzen; aus behält den Wert der Basis",
+  "pl": "Ustaw dla tej powierzchni; wyłączone zostawia wartość bazowej"
+ },
  "Set how the brush changes the colours first": {
   "de": "Lege zuerst fest, wie der Pinsel die Farben ändert",
   "pl": "Najpierw ustaw, jak pędzel ma zmieniać kolory"
@@ -5835,6 +6147,10 @@
   "de": "Jemand anderes...",
   "pl": "Ktoś inny..."
  },
+ "Sounds like": {
+  "de": "Klingt wie",
+  "pl": "Brzmi jak"
+ },
  "Source code on GitHub": {
   "de": "Quellcode auf GitHub",
   "pl": "Kod źródłowy na GitHubie"
@@ -5866,6 +6182,14 @@
  "Spawns of event {0}, which the event files do not define": {
   "de": "Spawns des Events {0}, das die Eventdateien nicht definieren",
   "pl": "Spawny eventu {0}, którego nie definiują pliki eventów"
+ },
+ "Specular": {
+  "de": "Glanz",
+  "pl": "Połysk"
+ },
+ "Specular power": {
+  "de": "Glanzstärke",
+  "pl": "Moc połysku"
  },
  "Split view": {
   "de": "Geteilte Ansicht",
@@ -6011,6 +6335,14 @@
   "de": "Oberflächenmaske",
   "pl": "Maska nawierzchni"
  },
+ "Surface of the game {0}": {
+  "de": "Oberfläche des Spiels {0}",
+  "pl": "Powierzchnia gry {0}"
+ },
+ "Surface of the map {0}, based on {1}": {
+  "de": "Oberfläche der Karte {0}, auf Basis von {1}",
+  "pl": "Powierzchnia mapy {0}, na bazie {1}"
+ },
  "Surface painting": {
   "de": "Oberflächen malen",
   "pl": "Malowanie powierzchni"
@@ -6086,6 +6418,10 @@
  "Surfaces and vegetation": {
   "de": "Oberflächen und Bewuchs",
   "pl": "Powierzchnie i roślinność"
+ },
+ "Surfaces in the game": {
+  "de": "Oberflächen im Spiel",
+  "pl": "Powierzchnie w grze"
  },
  "Surfaces per tile": {
   "de": "Oberflächen pro Kachel",
@@ -6299,6 +6635,10 @@
   "de": "Text",
   "pl": "Tekst"
  },
+ "Text of the .rvmat": {
+  "de": "Text der .rvmat",
+  "pl": "Tekst pliku .rvmat"
+ },
  "Texture detail": {
   "de": "Texturdetails",
   "pl": "Szczegółowość tekstur"
@@ -6314,6 +6654,18 @@
  "Textures": {
   "de": "Texturen",
   "pl": "Tekstury"
+ },
+ "Textures and images": {
+  "de": "Texturen und Bilder",
+  "pl": "Tekstury i obrazy"
+ },
+ "Textures named": {
+  "de": "Texturen namens",
+  "pl": "Tekstury o nazwie"
+ },
+ "That surface has no footsteps in the sound tables of the game; pick another.": {
+  "de": "Diese Oberfläche hat keine Schritte in den Tabellen des Spiels; wähle eine andere.",
+  "pl": "Ta powierzchnia nie ma kroków w tabelach dźwięków gry; wybierz inną."
  },
  "The Output Log tab, with errors and warnings marked.": {
   "de": "Der Reiter Ausgabeprotokoll, mit markierten Fehlern und Warnungen.",
@@ -6338,6 +6690,10 @@
  "The brush will not add a surface to a tile that already has as many as the project allows.": {
   "de": "Der Pinsel fügt einer Kachel keine Oberfläche hinzu, wenn das Limit des Projekts erreicht ist.",
   "pl": "Pędzel nie doda powierzchni do kafla, który ma już tyle, ile pozwala projekt."
+ },
+ "The class of the game is written again with these changes; they apply wherever the map's mod is loaded.": {
+  "de": "Die Klasse des Spiels wird mit diesen Änderungen neu geschrieben; sie gelten überall, wo der Mod der Karte geladen ist.",
+  "pl": "Klasa gry jest zapisywana ponownie z tymi zmianami; obowiązują wszędzie, gdzie wczytany jest mod mapy."
  },
  "The colour itself, covering what is under it.": {
   "de": "Die Farbe selbst, die darunterliegendes verdeckt.",
@@ -6374,6 +6730,14 @@
  "The files of the mission agree with each other.": {
   "de": "Die Dateien der Mission stimmen überein.",
   "pl": "Pliki misji są ze sobą zgodne."
+ },
+ "The folder has to be on the work drive": {
+  "de": "Der Ordner muss auf dem Arbeitslaufwerk liegen",
+  "pl": "Folder musi być na dysku roboczym"
+ },
+ "The folder is not on the work drive": {
+  "de": "Der Ordner ist nicht auf dem Arbeitslaufwerk",
+  "pl": "Folderu nie ma na dysku roboczym"
  },
  "The forest has no surface to paint under its trees: choose one in the generator": {
   "de": "Der Wald hat keine Oberfläche für den Boden unter den Bäumen: im Generator eine wählen",
@@ -6418,6 +6782,10 @@
  "The layer of {0}. Click to work on it anyway.": {
   "de": "Ebene von {0}. Klicken, um trotzdem daran zu arbeiten.",
   "pl": "Warstwa należąca do: {0}. Kliknij, aby mimo to na niej pracować."
+ },
+ "The map has no surfaces of its own.": {
+  "de": "Die Karte hat keine eigenen Oberflächen.",
+  "pl": "Mapa nie ma własnych powierzchni."
  },
  "The map has no town or village key points.": {
   "de": "Die Karte hat keine Stadt- oder Dorf-Schlüsselpunkte.",
@@ -6507,6 +6875,14 @@
   "de": "Die Objekte des Prefabs als Objekte eines statischen Events wie eines Konvois, um seine Mitte; setze die Spawns der Gruppe mit dem Werkzeug Event-Spawn.",
   "pl": "Obiekty prefabu jako obiekty eventu statycznego, np. konwoju, wokół jego środka; spawny grupy rozmieść narzędziem Spawn eventu."
  },
+ "The odds add up to {0}; over 1 the last kinds never grow.": {
+  "de": "Die Anteile ergeben {0}; über 1 wachsen die letzten Arten nie.",
+  "pl": "Szanse sumują się do {0}; powyżej 1 ostatnie rodzaje nigdy nie wyrosną."
+ },
+ "The odds add up to {0}; the rest of the ground stays bare.": {
+  "de": "Die Anteile ergeben {0}; der Rest des Bodens bleibt kahl.",
+  "pl": "Szanse sumują się do {0}; reszta ziemi zostaje goła."
+ },
  "The open end of the route was not found among its models, so the whole route is fitted again": {
   "de": "Das offene Ende der Route wurde unter ihren Modellen nicht gefunden, daher wird die ganze Route neu eingepasst",
   "pl": "Nie znaleziono otwartego końca trasy wśród jej modeli, więc dopasowywana jest cała trasa"
@@ -6558,6 +6934,10 @@
  "The release has no .exe to download": {
   "de": "Das Release enthält keine .exe zum Herunterladen",
   "pl": "Wydanie nie zawiera pliku .exe do pobrania"
+ },
+ "The removal itself cannot be undone; earlier steps still can. The files of its texture stay on the disk.": {
+  "de": "Das Löschen selbst lässt sich nicht rückgängig machen, frühere Schritte schon. Die Texturdateien bleiben auf der Platte.",
+  "pl": "Samego usunięcia nie da się cofnąć, wcześniejsze kroki tak. Pliki tekstury zostają na dysku."
  },
  "The river runs from the first point of the line to the last.": {
   "de": "Der Fluss fließt vom ersten zum letzten Punkt der Linie.",
@@ -6627,6 +7007,10 @@
   "de": "Das unter ihr geebnete Gelände",
   "pl": "Teren wyrównany pod nią"
  },
+ "The texture could not be copied into the map": {
+  "de": "Die Textur konnte nicht in die Karte kopiert werden",
+  "pl": "Nie udało się skopiować tekstury do mapy"
+ },
  "The texture has to be on the work drive": {
   "de": "Die Textur muss auf dem Arbeitslaufwerk liegen",
   "pl": "Tekstura musi leżeć na dysku roboczym"
@@ -6686,6 +7070,10 @@
  "This map's ce folder": {
   "de": "ce-Ordner dieser Karte",
   "pl": "Folder ce tej mapy"
+ },
+ "This material is not in the map's folder: the game's and other mods' files are not changed here.": {
+  "de": "Dieses Material liegt nicht im Ordner der Karte: Dateien des Spiels und anderer Mods werden hier nicht geändert.",
+  "pl": "Ten materiał nie jest w folderze mapy: plików gry ani innych modów tu nie zmieniamy."
  },
  "This preset has no models yet": {
   "de": "Dieses Preset hat noch keine Modelle",
@@ -6955,6 +7343,10 @@
   "de": "Value",
   "pl": "Value"
  },
+ "Vehicle surface": {
+  "de": "Fahrzeugoberfläche",
+  "pl": "Powierzchnia dla pojazdów"
+ },
  "Vehicles": {
   "de": "Fahrzeuge",
   "pl": "Pojazdy"
@@ -6967,6 +7359,10 @@
   "de": "Version {0} ist verfügbar",
   "pl": "Dostępna wersja {0}"
  },
+ "Vertex shader": {
+  "de": "Vertex-Shader",
+  "pl": "Vertex shader"
+ },
  "Very high": {
   "de": "Sehr hoch",
   "pl": "Bardzo wysokie"
@@ -6978,6 +7374,10 @@
  "View in a separate window": {
   "de": "Ansicht in eigenem Fenster",
   "pl": "Podgląd w osobnym oknie"
+ },
+ "Visibility": {
+  "de": "Sichtbarkeit",
+  "pl": "Widoczność"
  },
  "Visible": {
   "de": "Sichtbar",
@@ -7042,6 +7442,10 @@
  "What to remove": {
   "de": "Was entfernt wird",
   "pl": "Co usuwać"
+ },
+ "Wheel dust": {
+  "de": "Radstaub",
+  "pl": "Pył spod kół"
  },
  "Wheel: brush size": {
   "de": "Rad: Pinselgröße",
@@ -7211,6 +7615,10 @@
   "de": "Neueres WRP-Format mit Untergrund-Flag schreiben",
   "pl": "Zapisuj nowszy format WRP z flagą podziemia"
  },
+ "Writes the class of the game again in the map's config, with the changes: everywhere the mod is loaded.": {
+  "de": "Schreibt die Klasse des Spiels mit den Änderungen in die Konfiguration der Karte: überall, wo der Mod geladen ist.",
+  "pl": "Zapisuje klasę gry ponownie w configu mapy, ze zmianami: wszędzie, gdzie mod jest wczytany."
+ },
  "Writes the terrain, surfaces, objects and config the PBO is made of.": {
   "de": "Schreibt Gelände, Oberflächen, Objekte und Konfiguration, aus denen die PBO besteht.",
   "pl": "Zapisuje teren, powierzchnie, obiekty i config, z których powstaje PBO."
@@ -7222,6 +7630,10 @@
  "Written as they are; locations come from the key points.": {
   "de": "So geschrieben, wie sie sind; Orte kommen aus den Keypoints.",
   "pl": "Zapisywane tak, jak są; lokacje biorą się z keypointów."
+ },
+ "X Y Z: other axis": {
+  "de": "X Y Z: andere Achse",
+  "pl": "X Y Z: inna oś"
  },
  "X {0}  Z {1}  height {2} m  slope {3}°  surface {4}": {
   "de": "X {0}  Z {1}  Höhe {2} m  Neigung {3}°  Oberfläche {4}",
@@ -7283,6 +7695,18 @@
   "de": "Verkleinern",
   "pl": "Oddal"
  },
+ "_smdi and _nohq are not used by the terrain: only the colour and the relief are.": {
+  "de": "_smdi und _nohq nutzt das Terrain nicht: nur Farbe und Relief.",
+  "pl": "Teren nie używa _smdi ani _nohq: tylko koloru i reliefu."
+ },
+ "about the object's {0}": {
+  "de": "um die {0}-Achse des Objekts",
+  "pl": "wokół osi {0} obiektu"
+ },
+ "about {0}": {
+  "de": "um {0}",
+  "pl": "wokół osi {0}"
+ },
  "all": {
   "de": "alle",
   "pl": "wszystkie"
@@ -7330,6 +7754,10 @@
  "cfglimitsdefinition.xml has {0} flags; the layer holds {1}.": {
   "de": "cfglimitsdefinition.xml hat {0} Flags; die Ebene fasst {1}.",
   "pl": "cfglimitsdefinition.xml ma {0} flag; warstwa mieści {1}."
+ },
+ "changed": {
+  "de": "geändert",
+  "pl": "zmieniona"
  },
  "click": {
   "de": "Klick",
@@ -7558,6 +7986,14 @@
  "{0} objects will be imported": {
   "de": "{0} Objekte werden importiert",
   "pl": "Obiekty do wczytania: {0}"
+ },
+ "{0} of the game": {
+  "de": "{0} des Spiels",
+  "pl": "{0} z gry"
+ },
+ "{0} of the game, changed for this map": {
+  "de": "{0} des Spiels, für diese Karte geändert",
+  "pl": "{0} z gry, zmieniona dla tej mapy"
  },
  "{0} of {1}": {
   "de": "{0} von {1}",

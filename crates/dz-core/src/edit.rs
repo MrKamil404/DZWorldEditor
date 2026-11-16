@@ -333,7 +333,32 @@ impl Default for History {
         Self { undo: Vec::new(), redo: Vec::new(), budget: 2 * 1024 * 1024 * 1024, revision: 0, saved_revision: 0 }
     }
 }
+impl Change {
+    /// Gives the surfaces this step keeps of the mask new numbers.
+    fn remap_mask(&mut self, f: &dyn Fn(u8) -> u8) {
+        match self {
+            Change::Mask(s) => s.tiles.values_mut().for_each(|t| t.iter_mut().for_each(|v| *v = f(*v))),
+            Change::WholeMask(v) => v.iter_mut().for_each(|x| *x = f(*x)),
+            Change::MaskMods(list) => {
+                for m in list {
+                    m.tiles.values_mut().for_each(|t| std::sync::Arc::make_mut(t).iter_mut().for_each(|v| *v = f(*v)));
+                }
+            }
+            Change::Group(g) => g.iter_mut().for_each(|c| c.remap_mask(f)),
+            _ => {}
+        }
+    }
+}
+
 impl History {
+    /// Gives the surfaces in every step new numbers, as when a surface layer is removed, so
+    /// what was done before can still be undone. The project becomes unsaved.
+    pub fn remap_mask(&mut self, f: &dyn Fn(u8) -> u8) {
+        for (_, c) in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            c.remap_mask(f);
+        }
+        self.revision += 1;
+    }
     pub fn dirty(&self) -> bool {
         self.revision != self.saved_revision
     }
@@ -559,6 +584,22 @@ mod tests {
 
     fn world() -> World {
         World::new(WorldMeta::new("T", 256, 8.0), 100.0)
+    }
+    #[test]
+    fn steps_before_a_removed_layer_still_undo() {
+        let mut w = world();
+        w.layers = (0..3).map(|k| crate::world::SurfaceLayer { name: format!("l{k}"), texture: String::new(), material: String::new(), color: [0; 3] }).collect();
+        w.mask.data.iter_mut().for_each(|v| *v = 2);
+        // Painted layer 1 over all of it, then layer 0 is removed, its ground going to layer 2.
+        let mut h = History::default();
+        h.push("paint", Change::WholeMask(w.mask.data.clone()));
+        w.mask.data.iter_mut().for_each(|v| *v = 1);
+        assert!(w.remove_surface_layer(0, 2));
+        h.remap_mask(&crate::maskmod::layer_remap(0, 2));
+        assert!(w.mask.data.iter().all(|v| *v == 0));
+        // Undoing the painting brings back what was there: layer 2 then, layer 1 now.
+        h.undo(&mut w);
+        assert!(w.mask.data.iter().all(|v| *v == 1));
     }
     #[test]
     fn undoing_a_move_brings_the_ground_under_the_object_back() {

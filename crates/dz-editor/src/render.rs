@@ -436,6 +436,7 @@ layout(location=5) in vec4 i_r2;
 layout(location=6) in vec4 i_tint;
 uniform mat4 u_vp;
 uniform int u_conform;
+uniform float u_decal_lift;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
@@ -456,7 +457,12 @@ void main(){
   v_world = vec3(dot(i_r0, p), dot(i_r1, p), dot(i_r2, p));
   if (u_conform != 0) {
     float ground = texture(u_height, (v_world.xz / u_cell + 0.5) / u_size).r;
-    v_world.y = ground + (v_world.y - i_r1.w) + 0.05 + distance(v_world, u_eye) * 0.0008;
+    // Decals lie on the ground whatever tilt the object was given: only their own height
+    // above their origin is kept. Road parts keep the slope they were laid with.
+    // A decal raised above the ground stays raised; at the same height the smaller lies on top.
+    float raised = max(i_r1.w - texture(u_height, (vec2(i_r0.w, i_r2.w) / u_cell + 0.5) / u_size).r, 0.0);
+    float above = u_conform == 2 ? a_pos.y * length(vec3(i_r0.y, i_r1.y, i_r2.y)) + raised + u_decal_lift : v_world.y - i_r1.w;
+    v_world.y = ground + above + 0.05 + distance(v_world, u_eye) * 0.0008;
   }
   vec4 n = vec4(a_normal, 0.0);
   v_n = normalize(vec3(dot(i_r0, n), dot(i_r1, n), dot(i_r2, n)));
@@ -1104,6 +1110,9 @@ struct Model {
     passes: u8,
     triangles: u32,
     conform: bool,
+    decal: bool,
+    /// How far over the ground a decal is drawn besides its own height: more for smaller ones.
+    decal_lift: f32,
     water: bool,
 }
 
@@ -1404,8 +1413,22 @@ impl Renderer {
         self.uploads.push(Upload::Holes { width: cols as i32, height: rows as i32, data });
     }
     pub fn update_mask(&mut self, m: &dz_core::terrain::MaskMap, r: Rect) {
-        if m.width.max(m.height) > 16384 {
-            self.set_mask(m);
+        // A mask over 16k is shown at a fraction of its size: only the changed part of that is sent.
+        let f = m.width.max(m.height).div_ceil(16384).max(1);
+        if f > 1 {
+            let (w, h) = (m.width / f, m.height / f);
+            if w == 0 || h == 0 {
+                return;
+            }
+            let (x0, y0) = ((r.x0 / f).min(w - 1), (r.y0 / f).min(h - 1));
+            let (x1, y1) = ((r.x1 / f).min(w - 1), (r.y1 / f).min(h - 1));
+            let mut data = Vec::with_capacity((x1 - x0 + 1) * (y1 - y0 + 1));
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    data.push(m.at(x * f, y * f));
+                }
+            }
+            self.uploads.push(Upload::MaskRect { x: x0 as i32, y: y0 as i32, w: (x1 - x0 + 1) as i32, h: (y1 - y0 + 1) as i32, data });
             return;
         }
         let mut data = Vec::with_capacity(r.width() * r.height());
@@ -1996,7 +2019,18 @@ impl Renderer {
         }
         let passes = batch_pass.iter().fold(0, |a, b| a | b);
         let triangles = m.indices.len() as u32 / 3;
-        self.models.insert(m.key, Model { vao, vbo, ebo, batches, batch_pass, batch_inv, passes, triangles, conform: m.conform, water: m.water });
+        let decal_lift = if m.decal {
+            let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
+            for v in m.vertices.chunks_exact(10) {
+                lo = [lo[0].min(v[0]), lo[1].min(v[2])];
+                hi = [hi[0].max(v[0]), hi[1].max(v[2])];
+            }
+            let size = (hi[0] - lo[0]).max(hi[1] - lo[1]).max(0.0);
+            0.04 * (1.0 - (size / 30.0).clamp(0.0, 1.0))
+        } else {
+            0.0
+        };
+        self.models.insert(m.key, Model { vao, vbo, ebo, batches, batch_pass, batch_inv, passes, triangles, conform: m.conform, decal: m.decal, decal_lift, water: m.water });
         Ok(())
     }
 
@@ -2320,6 +2354,7 @@ impl Renderer {
         gl.bind_texture(glow::TEXTURE_2D, Some(height));
         gl.active_texture(glow::TEXTURE0);
         let conform_u = u(mesh_prog, "u_conform");
+        let decal_lift_u = u(mesh_prog, "u_decal_lift");
         gl.uniform_1_i32(conform_u.as_ref(), 0);
         let textured = u(mesh_prog, "u_textured");
         if !f.objects.groups.is_empty() {
@@ -2366,7 +2401,8 @@ impl Renderer {
                     }
                     gl.bind_vertex_array(Some(m.vao));
                     Self::bind_mesh_instances(gl, buffer, *first);
-                    gl.uniform_1_i32(conform_u.as_ref(), m.conform as i32);
+                    gl.uniform_1_i32(conform_u.as_ref(), if m.decal { 2 } else { m.conform as i32 });
+                    gl.uniform_1_f32(decal_lift_u.as_ref(), m.decal_lift);
                     for (((start, n, tex, mat), batch_pass), flip) in m.batches.iter().zip(&m.batch_pass).zip(&m.batch_inv) {
                         if *batch_pass != pass {
                             continue;

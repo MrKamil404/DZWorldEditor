@@ -618,7 +618,13 @@ fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
 /// The surface layers as tiles: the texture of the surface, its mask colour in the corner and
 /// its name, as the Content Browser shows assets with a surface.
 fn layer_list(app: &mut App, ui: &mut egui::Ui) {
+    let root = app.settings.tools.work_drive.clone();
+    let mut copy_in = None;
+    let mut material = None;
+    let mut delete = None;
     let Some(doc) = &mut app.doc else { return };
+    let id = doc.world.meta.map_id.clone();
+    let layers = doc.world.layers.len();
     let side = 64.0;
     let mut changed = false;
     let mut chosen = None;
@@ -650,12 +656,25 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
                 p.text(badge.center(), egui::Align2::CENTER_CENTER, format!("L{i:02}"), egui::FontId::proportional(10.0), Color32::WHITE);
                 let short: String = if l.name.chars().count() > 11 { l.name.chars().take(10).chain(['…']).collect() } else { l.name.clone() };
                 p.text(pos2(rect.center().x, rect.bottom() - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::TEXT);
-                let resp = resp.on_hover_text(format!("{}\n{}\n{}", l.name, l.texture, t("Right click: colour of the surface")));
+                let resp = resp.on_hover_text(format!("{}\n{}\n{}\n{}", l.name, l.texture, l.material, t("Right click: colour and material of the surface")));
                 if resp.clicked() {
                     chosen = Some(i);
                 }
                 resp.context_menu(|ui| {
                     ui.label(RichText::new(&l.name).strong());
+                    if ui.button(icons::with(icons::PAINT_BRUSH, &t("Material..."))).on_hover_text(t("Its textures, relief, repeats and lighting (.rvmat)")).clicked() {
+                        material = Some(i);
+                        ui.close_menu();
+                    }
+                    if ui.add_enabled(layers > 1, egui::Button::new(icons::with(icons::TRASH, &t("Delete layer...")))).clicked() {
+                        delete = Some(i);
+                        ui.close_menu();
+                    }
+                    let lower = l.texture.to_ascii_lowercase();
+                    if !lower.starts_with("dz\\") && !lower.starts_with(&format!("{}\\", id.to_ascii_lowercase())) && ui.button(t("Copy the textures into the map")).on_hover_text(t("Into the map's folder of surfaces, which the build packs")).clicked() {
+                        copy_in = Some(i);
+                        ui.close_menu();
+                    }
                     ui.horizontal(|ui| {
                         ui.label(t("Mask colour"));
                         if ui.color_edit_button_srgb(&mut l.color).changed() { changed = true; }
@@ -665,6 +684,25 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
         });
     });
     if let Some(i) = chosen { app.paint.layer = i; }
+    if let Some(i) = copy_in {
+        let source = root.join(doc.world.layers[i].texture.replace('\\', "/"));
+        match dz_core::surfaces::import_layer_texture(&root, &id, &source) {
+            Ok((texture, material)) => {
+                let l = &mut doc.world.layers[i];
+                (l.texture, l.material) = (texture, material);
+                changed = true;
+                app.reload_layer_textures();
+            }
+            Err(e) => app.error(format!("{}: {e:#}", t("The texture could not be copied into the map"))),
+        }
+    }
+    if let Some(i) = material {
+        crate::material_ui::open(app, i);
+    }
+    if let Some(i) = delete {
+        app.dialog = Dialog::DeleteLayer { layer: i, into: if i == 0 { 1 } else { 0 } };
+    }
+    let Some(doc) = &mut app.doc else { return };
     if changed {
         doc.history.revision += 1;
         app.push_palette();
@@ -695,26 +733,44 @@ fn add_layer_menu(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         ui.separator();
-        if ui.button(t("From a file...")).on_hover_text(t("A colour texture (_ca or _co) of the map's own surface on the work drive")).clicked() {
+        if ui.button(t("From a file...")).on_hover_text(t("A colour texture (_ca or _co) of the map's own surface, from anywhere: it is copied into the map's folder with its relief and material")).clicked() {
             ui.close_menu();
             let root = app.settings.tools.work_drive.clone();
-            if let Some(f) = rfd::FileDialog::new().add_filter("PAA", &["paa"]).set_directory(&root).pick_file() {
-                match f.strip_prefix(&root) {
-                    Ok(rel) => {
-                        let texture = rel.to_string_lossy().replace('/', "\\").to_ascii_lowercase();
-                        let file = texture.rsplit('\\').next().unwrap_or(&texture).to_string();
-                        let name = file.trim_end_matches(".paa").trim_end_matches("_ca").trim_end_matches("_co").to_string();
-                        let material = texture.trim_end_matches(".paa").trim_end_matches("_ca").trim_end_matches("_co").to_string() + ".rvmat";
-                        add_surface_layer(app, name, texture, material);
-                    }
-                    Err(_) => app.warn(t("The texture has to be on the work drive")),
-                }
+            if let Some(f) = rfd::FileDialog::new().add_filter(t("Textures and images"), &["paa", "png", "tga", "jpg", "jpeg", "bmp", "tif"]).set_directory(&root).pick_file() {
+                add_texture_layer(app, &f);
             }
         }
     });
 }
 
-fn add_surface_layer(app: &mut App, name: String, texture: String, material: String) {
+/// Adds a layer of a colour texture chosen anywhere: those of the game stay where they are,
+/// others are copied into the map's folder of surfaces with their material. Returns the
+/// layer's texture.
+pub(crate) fn add_texture_layer(app: &mut App, file: &std::path::Path) -> Option<String> {
+    let root = app.settings.tools.work_drive.clone();
+    let id = app.doc.as_ref()?.world.meta.map_id.clone();
+    let vanilla = file.strip_prefix(&root).ok().filter(|r| r.components().next().is_some_and(|c| c.as_os_str().eq_ignore_ascii_case("dz")));
+    let (texture, material) = match vanilla {
+        Some(rel) => {
+            let texture = rel.to_string_lossy().replace('/', "\\").to_ascii_lowercase();
+            let stem = dz_core::surfaces::layer_stem(&texture);
+            let dir = texture.rsplit_once('\\').map_or(String::new(), |d| format!("{}\\", d.0));
+            (texture, format!("{dir}{stem}.rvmat"))
+        }
+        None => match dz_core::surfaces::import_layer_texture(&root, &id, file) {
+            Ok(v) => v,
+            Err(e) => {
+                app.error(format!("{}: {e:#}", t("The texture could not be copied into the map")));
+                return None;
+            }
+        },
+    };
+    let name = dz_core::surfaces::layer_stem(&texture);
+    add_surface_layer(app, name, texture.clone(), material);
+    Some(texture)
+}
+
+pub(crate) fn add_surface_layer(app: &mut App, name: String, texture: String, material: String) {
     let Some(d) = &mut app.doc else { return };
     let n = d.world.layers.len();
     if n >= 255 {
@@ -764,9 +820,15 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::STACK, &t("Surface layers")), true, |ui| {
         layer_list(app, ui);
         ui.add_space(4.0);
-        add_layer_menu(app, ui);
+        ui.horizontal_wrapped(|ui| {
+            add_layer_menu(app, ui);
+            if app.doc.as_ref().is_some_and(|d| app.paint.layer < d.world.layers.len()) && ui.button(icons::with(icons::PAINT_BRUSH, &t("Material..."))).on_hover_text(t("Its textures, relief, repeats and lighting (.rvmat)")).clicked() {
+                crate::material_ui::open(app, app.paint.layer);
+            }
+        });
         about(ui, &t("The brush will not add a surface to a tile that already has as many as the project allows."));
     });
+    crate::surfaces_ui::panel(app, ui);
     crate::maskmods::panel(app, ui);
     shortcuts(ui, |ui| {
         let pick = app.settings.keys.hold(Hold::Pick).name().to_string();
@@ -1989,6 +2051,57 @@ fn output_log(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
+/// Folders of the work drive built into the map's mod besides the map: buildings and other
+/// content, each its own PBO.
+fn build_folders(app: &mut App, ui: &mut egui::Ui) {
+    use dz_core::build::BuildFolder;
+    let root = app.settings.tools.work_drive.clone();
+    let Some(doc) = &mut app.doc else { return };
+    let id = doc.world.meta.map_id.clone();
+    ui.label(RichText::new(t("Also built into the mod")).strong());
+    let before = doc.world.meta.build_folders.clone();
+    let list = &mut doc.world.meta.build_folders;
+    // Folders in the map's folder not listed yet, offered switched off.
+    for f in dz_core::build::mod_folders(&root, &id) {
+        if !list.iter().any(|b| b.folder.eq_ignore_ascii_case(&f)) {
+            list.push(BuildFolder { enabled: false, ..BuildFolder::new(&f) });
+        }
+    }
+    let mut remove = None;
+    let mut warn = None;
+    for (i, b) in list.iter_mut().enumerate() {
+        ui.push_id(("build_folder", i), |ui| ui.horizontal(|ui| {
+            ui.checkbox(&mut b.enabled, "").on_hover_text(t("Build this folder"));
+            let missing = !root.join(&b.folder).is_dir();
+            let text = format!("{}.pbo  ←  {}", b.pbo_name(&id), b.folder);
+            ui.add(egui::Label::new(if missing { RichText::new(text).color(theme::WARN) } else { RichText::new(text) }).truncate()).on_hover_text(if missing { t("The folder is not on the work drive") } else { b.folder.clone() });
+            ui.checkbox(&mut b.binarize, t("Binarise")).on_hover_text(t("Off packs the files as they are, for models that are binarised already"));
+            if ui.small_button("✖").on_hover_text(t("Remove from the list")).clicked() { remove = Some(i); }
+        }));
+    }
+    if let Some(i) = remove { list.remove(i); }
+    if ui.button(format!("+ {}", t("Add folder..."))).clicked() {
+        for dir in rfd::FileDialog::new().set_title(t("Add folder...")).set_directory(&root).pick_folders().unwrap_or_default() {
+            match dir.strip_prefix(&root) {
+                Ok(rel) => {
+                    let f = BuildFolder::new(&rel.to_string_lossy());
+                    if !f.folder.is_empty() && !list.iter().any(|b| b.folder.eq_ignore_ascii_case(&f.folder)) { list.push(f); }
+                }
+                Err(_) => warn = Some(t("The folder has to be on the work drive")),
+            }
+        }
+    }
+    about(ui, &t("Each folder becomes a PBO of its own, with its path on the work drive as the prefix, so models keep the paths the map uses."));
+    if doc.world.meta.build_folders != before {
+        // Folders only offered, not chosen, do not count as a change.
+        let chosen = |l: &[BuildFolder]| l.iter().filter(|b| b.enabled || !b.binarize).cloned().collect::<Vec<_>>();
+        if chosen(&doc.world.meta.build_folders) != chosen(&before) || doc.world.meta.build_folders.len() < before.len() {
+            doc.history.revision += 1;
+        }
+    }
+    if let Some(w) = warn { app.warn(w); }
+}
+
 fn build_tab(app: &mut App, ui: &mut egui::Ui) {
     ui.columns(2, |c| {
         let ui = &mut c[0];
@@ -2025,6 +2138,8 @@ fn build_tab(app: &mut App, ui: &mut egui::Ui) {
                     if ui.button(icons::with(icons::FOLDER_OPEN, &t("Open map folder"))).clicked() { app.open_folder(&folder); }
                 }
             });
+            ui.separator();
+            build_folders(app, ui);
             ui.separator();
             ui.label(RichText::new(t("Playing")).strong());
             ui.checkbox(&mut app.settings.with_client, t("Start the game client too"));
@@ -2159,6 +2274,7 @@ fn import_window(app: &mut App, ui: &mut egui::Ui, d: &mut ImportDialog, close: 
 }
 
 fn dialogs(app: &mut App, ctx: &egui::Context) {
+    crate::material_ui::window(app, ctx);
     let mut dialog = std::mem::replace(&mut app.dialog, Dialog::None);
     let mut open = true;
     let mut close = false;
@@ -2235,10 +2351,58 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
                 });
             });
         }
+        Dialog::DeleteLayer { layer, into } => {
+            let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
+            let (layer, mut into_now) = (*layer, *into);
+            let mut confirmed = false;
+            if layer >= names.len() || names.len() < 2 {
+                close = true;
+            } else {
+                egui::Window::new(t("Delete layer")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).open(&mut open).show(ctx, |ui| {
+                    ui.label(RichText::new(tf("Delete the layer {0}?", &[&names[layer]])).strong());
+                    row(ui, &t("Its ground becomes"), |ui| {
+                        egui::ComboBox::from_id_salt("delete_layer_into").selected_text(names[into_now].clone()).show_ui(ui, |ui| {
+                            for (k, n) in names.iter().enumerate().filter(|(k, _)| *k != layer) {
+                                ui.selectable_value(&mut into_now, k, n);
+                            }
+                        });
+                    });
+                    ui.colored_label(theme::WARN, t("The removal itself cannot be undone; earlier steps still can. The files of its texture stay on the disk."));
+                    ui.horizontal(|ui| {
+                        if ui.button(icons::with(icons::TRASH, &t("Delete"))).clicked() { confirmed = true; close = true; }
+                        if ui.button(t("Cancel")).clicked() { close = true; }
+                    });
+                });
+            }
+            *into = into_now;
+            if confirmed {
+                delete_layer(app, layer, into_now);
+            }
+        }
     }
     if open && !close && matches!(app.dialog, Dialog::None) {
         app.dialog = dialog;
     }
+}
+
+/// Removes surface layer `layer`, its ground becoming layer `into`.
+fn delete_layer(app: &mut App, layer: usize, into: usize) {
+    let Some(doc) = &mut app.doc else { return };
+    if !doc.world.remove_surface_layer(layer, into) {
+        return;
+    }
+    doc.history.remap_mask(&dz_core::maskmod::layer_remap(layer, into));
+    let shift = |i: usize| if i == layer { if into > layer { into - 1 } else { into } } else if i > layer { i - 1 } else { i };
+    app.paint.layer = shift(app.paint.layer);
+    app.paint.only_on = app.paint.only_on.filter(|i| *i != layer).map(shift);
+    if app.material_edit.as_ref().is_some_and(|m| m.layer >= layer) {
+        app.material_edit = None;
+    }
+    if layer < app.layer_thumbs.len() { app.layer_thumbs.remove(layer); }
+    if layer < app.layer_averages.len() { app.layer_averages.remove(layer); }
+    app.whole_mask_changed();
+    app.push_palette();
+    app.reload_layer_textures();
 }
 
 /// The pages of the settings window.
@@ -2672,7 +2836,7 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                 });
                 ui.add_space(6.0);
                 ui.separator();
-                if ui.button(icons::with(icons::ARROW_COUNTER_CLOCKWISE, &t("Back to the defaults"))).on_hover_text(t("Clears every setting of this window, so the values of the base world apply again.")).clicked() { m.config = Default::default(); }
+                if ui.button(icons::with(icons::ARROW_COUNTER_CLOCKWISE, &t("Back to the defaults"))).on_hover_text(t("Clears every setting of this window, so the values of the base world apply again.")).clicked() { m.config = dz_core::world::MapConfig { surfaces: std::mem::take(&mut m.config.surfaces), ..Default::default() }; }
             });
             let ui = &mut cols[1];
             ui.horizontal(|ui| {

@@ -344,7 +344,7 @@ pub fn bake(app: &mut App) {
         if crate::models::is_water_model(path) {
             return water;
         }
-        !crate::models::is_decal_model(path) && (plants || !crate::viewport::is_plant(path))
+        !crate::models::is_decal_model(path, &app.db.get(path)) && (plants || !crate::viewport::is_plant(path))
     };
     let mut objects = Vec::new();
     let mut add = |o: &dz_core::objects::Obj| {

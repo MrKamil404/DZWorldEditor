@@ -49,6 +49,9 @@ pub struct WorldMeta {
     /// What the world config (CfgWorlds) of the map says beyond what the project gives it.
     #[serde(default)]
     pub config: MapConfig,
+    /// Folders of the work drive built into the map's mod besides the map itself.
+    #[serde(default)]
+    pub build_folders: Vec<crate::build::BuildFolder>,
 }
 
 /// The world class of the game a map builds on: its class, and the addon that brings it.
@@ -128,6 +131,8 @@ pub struct MapConfig {
     pub full_detail_dist: Option<f32>,
     pub min_trees_in_forest_square: Option<u32>,
     pub min_rocks_in_rock_square: Option<u32>,
+    /// The map's own surfaces and its changes to those of the game (CfgSurfaces).
+    pub surfaces: Vec<crate::surfaces::MapSurface>,
 }
 
 /// A place of the main menu: the camera stands at `position` (x, z, height over the ground)
@@ -162,6 +167,7 @@ impl Default for MapConfig {
             outside_satellite: String::new(), outside_synth: None, outside_texture: String::new(), outside_nopx: String::new(),
             mid_detail_texture: String::new(), terrain_normal_texture: String::new(), ocean_material: String::new(),
             clutter_grid: None, clutter_dist: None, no_detail_dist: None, full_detail_dist: None, min_trees_in_forest_square: None, min_rocks_in_rock_square: None,
+            surfaces: Vec::new(),
         }
     }
 }
@@ -172,7 +178,7 @@ impl WorldMeta {
         let map_id = if map_id.is_empty() { "NewMap".to_string() } else { map_id };
         let side = size as f32 * cell;
         Self {
-            max_tile_surfaces: 6, name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
+            max_tile_surfaces: 6, build_folders: Vec::new(), name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
             sea_level: 0.0, easting: 200000.0, northing: 0.0, tile_px: 512, cells_per_tile: 8,
             spawn: [side / 2.0, side / 2.0], latitude: 54.0, longitude: 23.0, write_underground_flag: true, config: MapConfig::default(),
         }

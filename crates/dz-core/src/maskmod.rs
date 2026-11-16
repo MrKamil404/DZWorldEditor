@@ -163,7 +163,33 @@ fn union(a: Option<Rect>, b: Rect) -> Option<Rect> {
     Some(a.map_or(b, |a| a.union(b)))
 }
 
+/// How the surface numbers of a mask change when layer `index` goes and its ground becomes
+/// layer `into`: the layers after it move down by one.
+pub fn layer_remap(index: usize, into: usize) -> impl Fn(u8) -> u8 + Copy + Send + Sync {
+    let (i, to) = (index as u8, if into > index { into - 1 } else { into } as u8);
+    move |v: u8| if v == NONE { v } else if v == i { to } else if v > i { v - 1 } else { v }
+}
+
 impl World {
+    /// Removes surface layer `index`: what was painted with it becomes layer `into`, and the
+    /// layers after it move down by one, in the mask and in its modifiers alike.
+    pub fn remove_surface_layer(&mut self, index: usize, into: usize) -> bool {
+        let n = self.layers.len();
+        if n < 2 || index >= n || into >= n || into == index {
+            return false;
+        }
+        let map = layer_remap(index, into);
+        use rayon::prelude::*;
+        self.mask.data.par_chunks_mut(1 << 16).for_each(|c| c.iter_mut().for_each(|v| *v = map(*v)));
+        let fix = |t: &mut Tile| Arc::make_mut(t).iter_mut().for_each(|v| *v = map(*v));
+        self.mask_mods.base.values_mut().for_each(fix);
+        for m in &mut self.mask_mods.modifiers {
+            m.tiles.values_mut().for_each(fix);
+        }
+        self.layers.remove(index);
+        true
+    }
+
     /// The mask as painted, without what the modifiers lay over it.
     pub fn mask_original(&self) -> crate::terrain::MaskMap {
         let mut m = self.mask.clone();
@@ -586,6 +612,22 @@ mod tests {
         w.mask_erase_into(id, [15.0, 20.5], 10.0);
         assert!(w.mask_mods.modifiers[0].tiles.is_empty());
         assert_eq!(at(&w, 18, 20), 1);
+    }
+
+    #[test]
+    fn removing_a_layer_moves_its_pixels_and_those_after_it() {
+        let mut w = world();
+        w.layers = (0..4).map(|k| crate::world::SurfaceLayer { name: format!("l{k}"), texture: String::new(), material: String::new(), color: [0; 3] }).collect();
+        for (k, v) in w.mask.data.iter_mut().enumerate() {
+            *v = (k % 4) as u8;
+        }
+        let before = w.mask.data.clone();
+        assert!(!w.remove_surface_layer(1, 1));
+        assert!(w.remove_surface_layer(1, 3));
+        assert_eq!(w.layers.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), ["l0", "l2", "l3"]);
+        for (a, b) in before.iter().zip(&w.mask.data) {
+            assert_eq!(*b, [0, 2, 1, 2][*a as usize]);
+        }
     }
 
     #[test]

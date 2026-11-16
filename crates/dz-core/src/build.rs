@@ -119,17 +119,81 @@ pub fn mod_folder(paths: &ToolPaths, id: &str) -> PathBuf {
     paths.work_drive.join("Mods").join(format!("@{id}"))
 }
 
-/// Folders of a map the export writes; each becomes a PBO of its own.
-const MAP_PARTS: [&str; 3] = ["world", "data", "navmesh"];
+/// Folders of the export packed each into a PBO of its own; `surfaces` holds the map's own
+/// and changed surfaces (CfgSurfaces) when it has any.
+pub const MAP_PARTS: [&str; 4] = ["world", "data", "navmesh", "surfaces"];
 
 fn has_files(dir: &Path) -> bool {
     std::fs::read_dir(dir).is_ok_and(|mut d| d.next().is_some())
 }
 
+/// A folder of the work drive packed with the map into a PBO of its own: buildings and other
+/// content of the map's mod.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct BuildFolder {
+    /// Relative to the work drive, e.g. `MyMap\structures`; it is also the PBO prefix.
+    pub folder: String,
+    pub enabled: bool,
+    /// Binarised with AddonBuilder (models, configs); off packs the files as they are, for
+    /// models that are binarised already.
+    pub binarize: bool,
+}
+
+impl BuildFolder {
+    pub fn new(folder: &str) -> Self {
+        Self { folder: normalize(folder), enabled: true, binarize: true }
+    }
+    /// The PBO's file name without `.pbo`: the part after the map's folder, or the whole path.
+    pub fn pbo_name(&self, id: &str) -> String {
+        let f = normalize(&self.folder);
+        let inside = f.len() > id.len() + 1 && f[..id.len()].eq_ignore_ascii_case(id) && f.as_bytes()[id.len()] == b'\\';
+        let name = if inside { &f[id.len() + 1..] } else { &f[..] };
+        name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect()
+    }
+}
+
+fn normalize(folder: &str) -> String {
+    folder.trim().replace('/', "\\").trim_matches('\\').to_string()
+}
+
+/// Folders inside `P:\<id>` that the export does not write, which may hold buildings and other
+/// content of the mod, as `<id>\<folder>`.
+pub fn mod_folders(work_drive: &Path, id: &str) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(work_drive.join(id)) else { return Vec::new() };
+    let mut out: Vec<String> = rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| !n.starts_with('.') && !MAP_PARTS.iter().any(|p| p.eq_ignore_ascii_case(n)) && !n.eq_ignore_ascii_case("source"))
+        .map(|n| format!("{id}\\{n}"))
+        .collect();
+    out.sort_by_key(|n| n.to_ascii_lowercase());
+    out
+}
+
+/// Runs AddonBuilder on `source`, writing its PBO into `out`.
+fn addon_builder(paths: &ToolPaths, source: &Path, out: &Path, prefix: &str, temp: &Path, include: &Path, job: &Job) -> Result<i32> {
+    let mut c = Command::new(paths.addon_builder());
+    c.current_dir(&paths.work_drive)
+        .arg(source)
+        .arg(out)
+        .arg(format!("-prefix={prefix}"))
+        .arg(format!("-temp={}", temp.display()))
+        .arg(format!("-project={}", paths.work_drive.display()))
+        .arg(format!("-include={}", include.display()))
+        .arg("-clear");
+    let code = stream(c, job)?;
+    if job.cancelled() {
+        bail!("Cancelled");
+    }
+    Ok(code)
+}
+
 /// Binarises what the export wrote in `P:\<id>` with AddonBuilder, one PBO per folder, into
-/// `P:\Mods\@<id>\Addons`. Anything else in `P:\<id>` belongs to the mod and is
-/// left alone: AddonBuilder crashes on models that are binarised already.
-pub fn build_pbo(paths: &ToolPaths, id: &str, job: &Job) -> Result<PathBuf> {
+/// `P:\Mods\@<id>\Addons`, then the folders of `extra` that are switched on. Anything else in
+/// `P:\<id>` is left alone.
+pub fn build_pbo(paths: &ToolPaths, id: &str, extra: &[BuildFolder], job: &Job) -> Result<PathBuf> {
     ensure!(paths.addon_builder().is_file(), "AddonBuilder.exe not found");
     let root = paths.work_drive.join(id);
     ensure!(root.join("world").is_dir(), "Export the map first: {} does not exist", root.join("world").display());
@@ -139,35 +203,56 @@ pub fn build_pbo(paths: &ToolPaths, id: &str, job: &Job) -> Result<PathBuf> {
     std::fs::create_dir_all(&temp)?;
     // AddonBuilder only copies listed extensions.
     let include = temp.join("include.lst");
-    std::fs::write(&include, "*.paa;*.rvmat;*.wrp;*.nm;*.xml;*.bin;*.cfg;*.hpp;*.csv;*.json;*.txt;*.layout;*.emat;*.edds;*.ptc;*.bisurf")?;
+    std::fs::write(&include, "*.paa;*.rvmat;*.wrp;*.nm;*.xml;*.bin;*.cfg;*.hpp;*.csv;*.json;*.txt;*.layout;*.emat;*.edds;*.ptc;*.bisurf;*.ogg;*.wss;*.lip;*.c")?;
     // Earlier versions packed the whole map into one PBO, which would now load twice.
     let _ = std::fs::remove_file(target.join(format!("{id}.pbo")));
     let mut first = None;
     for part in MAP_PARTS {
         let source = root.join(part);
+        let pbo = target.join(format!("{part}.pbo"));
         if !has_files(&source) {
+            // Surfaces removed from the project must not stay in the mod.
+            if part == "surfaces" {
+                let _ = std::fs::remove_file(&pbo);
+            }
             continue;
         }
-        let pbo = target.join(format!("{part}.pbo"));
         // A failed build must leave the last good PBO in place.
         let started = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
         job.stage(format!("Binarising {part} with AddonBuilder"));
-        let mut c = Command::new(paths.addon_builder());
-        c.current_dir(&paths.work_drive)
-            .arg(&source)
-            .arg(&target)
-            .arg(format!("-prefix={id}\\{part}"))
-            .arg(format!("-temp={}", temp.display()))
-            .arg(format!("-project={}", paths.work_drive.display()))
-            .arg(format!("-include={}", include.display()))
-            .arg("-clear");
-        let code = stream(c, job)?;
-        if job.cancelled() {
-            bail!("Cancelled");
-        }
+        let code = addon_builder(paths, &source, &target, &format!("{id}\\{part}"), &temp, &include, job)?;
         ensure!(pbo.metadata().and_then(|m| m.modified()).is_ok_and(|t| t >= started), "AddonBuilder finished with code {code} and produced no new {part}.pbo; see the log above");
         job.log(format!("{} ({:.1} MB)", pbo.display(), pbo.metadata()?.len() as f64 / 1_048_576.0));
         first.get_or_insert(pbo);
+    }
+    let mut names: Vec<String> = MAP_PARTS.iter().map(|p| p.to_string()).collect();
+    for f in extra.iter().filter(|f| f.enabled && !normalize(&f.folder).is_empty()) {
+        let prefix = normalize(&f.folder);
+        let source = paths.work_drive.join(&prefix);
+        if !has_files(&source) {
+            job.log(format!("Skipped {}: the folder is empty or missing", source.display()));
+            continue;
+        }
+        let name = f.pbo_name(id);
+        ensure!(!names.iter().any(|n| n.eq_ignore_ascii_case(&name)), "Two folders would both be packed as {name}.pbo; rename one of them");
+        names.push(name.clone());
+        let pbo = target.join(format!("{name}.pbo"));
+        if f.binarize {
+            // Built apart, so a folder named like a part of the map cannot overwrite it.
+            let out = temp.join("out");
+            let _ = std::fs::remove_dir_all(&out);
+            std::fs::create_dir_all(&out)?;
+            job.stage(format!("Binarising {prefix} with AddonBuilder"));
+            let code = addon_builder(paths, &source, &out, &prefix, &temp, &include, job)?;
+            let made = std::fs::read_dir(&out)?.flatten().map(|e| e.path()).find(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("pbo")));
+            let made = made.with_context(|| format!("AddonBuilder finished with code {code} and produced no PBO of {prefix}; see the log above"))?;
+            std::fs::copy(&made, &pbo)?;
+            let _ = std::fs::remove_dir_all(&out);
+        } else {
+            job.stage(format!("Packing {prefix}"));
+            crate::pbo::pack(&source, &pbo, &prefix)?;
+        }
+        job.log(format!("{} ({:.1} MB)", pbo.display(), pbo.metadata()?.len() as f64 / 1_048_576.0));
     }
     first.context("Nothing to pack")
 }
@@ -328,6 +413,18 @@ pub fn launch_navmesh(paths: &ToolPaths, id: &str, session_dir: &Path, job: &Job
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn extra_folders_get_names_and_are_found() {
+        assert_eq!(BuildFolder::new("MyMap\\structures").pbo_name("MyMap"), "structures");
+        assert_eq!(BuildFolder::new("mymap/structures/houses/").pbo_name("MyMap"), "structures_houses");
+        assert_eq!(BuildFolder::new("\\OtherMod\\buildings").pbo_name("MyMap"), "OtherMod_buildings");
+        assert_eq!(BuildFolder::new("MyMapX\\data").pbo_name("MyMap"), "MyMapX_data");
+        let d = tempfile::tempdir().unwrap();
+        for f in ["MyMap/world", "MyMap/structures", "MyMap/navmesh", "MyMap/Props"] {
+            std::fs::create_dir_all(d.path().join(f)).unwrap();
+        }
+        assert_eq!(mod_folders(d.path(), "MyMap"), vec!["MyMap\\Props".to_string(), "MyMap\\structures".to_string()]);
+    }
     #[test]
     fn spawn_points_contain_the_position() {
         let d = tempfile::tempdir().unwrap();
