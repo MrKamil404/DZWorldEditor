@@ -1114,6 +1114,12 @@ struct Model {
     /// How far over the ground a decal is drawn besides its own height: more for smaller ones.
     decal_lift: f32,
     water: bool,
+    /// Names of the shared textures it holds a share of.
+    textures: Vec<String>,
+    /// Bytes of its vertex and index buffers.
+    bytes: usize,
+    /// When it was last drawn, in seconds of the renderer's clock.
+    used: f32,
 }
 
 /// Draw list of one view.
@@ -1304,11 +1310,26 @@ pub struct Renderer {
     shadow_light: Option<[f32; 16]>,
     /// GPU textures by name, shared between models, with their inverted channels.
     shared: HashMap<String, (glow::Texture, [f32; 4])>,
+    /// Models holding each shared texture, its size in bytes and its largest side in pixels.
+    shared_use: HashMap<String, (u32, usize, u32)>,
+    /// Bytes of models and textures on the card, and how much of that is allowed before
+    /// what has not been drawn for a while is let go.
+    gpu_bytes: usize,
+    /// What the card allows by itself, and what the settings ask for instead (0 for that).
+    gpu_auto: usize,
+    pub model_memory: usize,
+    /// Seconds since the renderer started, and when it last looked for what to let go.
+    clock: Option<std::time::Instant>,
+    last_trim: f32,
+    /// Models let go since the loader was last told, so it loads them again when wanted.
+    pub evicted: Vec<(u32, u8)>,
     /// Visual LODs of each model, known once one of them has loaded.
     lod_counts: HashMap<u32, u8>,
     /// The opaque triangles of models that hide what is behind them, from the coarsest LOD
     /// loaded: (LOD, corners of the triangles in model space).
     occluders: HashMap<u32, (u8, Arc<Vec<[f32; 3]>>)>,
+    /// Goes up whenever the terrain's heights change.
+    pub height_rev: u64,
     /// Anisotropic filtering of object and surface textures; below 2 is off.
     pub anisotropy: f32,
     /// Side of the shadow map in pixels; 0 takes the default.
@@ -1336,6 +1357,27 @@ pub struct Stats {
 /// Texture unit of material slot `k` (units 0, 1 and 12 hold colour, heights and shadows).
 fn material_unit(k: u32) -> u32 {
     if k <= 10 { 1 + k } else { 2 + k }
+}
+
+/// Bytes of models and textures kept on the card by default: a quarter of the card's own
+/// memory where the driver tells it, from 1 to 3 GB, 1.5 GB otherwise. Drivers keep a copy
+/// of much of it in the program's own memory, so more would mostly cost memory.
+unsafe fn model_budget(gl: &glow::Context) -> usize {
+    const GB: usize = 1 << 30;
+    let ext = gl.supported_extensions();
+    let kb = if ext.contains("GL_NVX_gpu_memory_info") {
+        // GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX
+        gl.get_parameter_i32(0x9047)
+    } else if ext.contains("GL_ATI_meminfo") {
+        // TEXTURE_FREE_MEMORY_ATI: free memory first, in kB.
+        let mut v = [0i32; 4];
+        gl.get_parameter_i32_slice(0x87FC, &mut v);
+        v[0]
+    } else {
+        0
+    };
+    while gl.get_error() != glow::NO_ERROR {}
+    if kb > 0 { (kb as usize * 1024 / 4).clamp(GB, 3 * GB) } else { GB * 3 / 2 }
 }
 
 unsafe fn compile(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Program, String> {
@@ -1375,10 +1417,12 @@ unsafe fn set_filter(gl: &glow::Context, target: u32, min: u32, mag: u32, wrap: 
 impl Renderer {
     pub fn reset_terrain(&mut self, h: &Heightmap) {
         self.uploads.retain(|u| matches!(u, Upload::Palette { .. } | Upload::Layer { .. }));
+        self.height_rev += 1;
         self.uploads.push(Upload::ClearModels);
         self.uploads.push(Upload::Reset { cols: h.cols as i32, rows: h.rows as i32, cell: h.cell, data: h.data.clone() });
     }
     pub fn update_height(&mut self, h: &Heightmap, r: Rect) {
+        self.height_rev += 1;
         let mut data = Vec::with_capacity(r.width() * r.height());
         for j in r.y0..=r.y1 {
             data.extend_from_slice(&h.data[j * h.cols + r.x0..=j * h.cols + r.x1]);
@@ -1554,6 +1598,9 @@ impl Renderer {
             return Ok(());
         }
         self.max_tex = gl.get_parameter_i32(glow::MAX_TEXTURE_SIZE);
+        if self.gpu_auto == 0 {
+            self.gpu_auto = model_budget(gl);
+        }
         self.programs = Some(Programs {
             terrain: compile(gl, TERRAIN_VS, TERRAIN_FS)?,
             water: compile(gl, WATER_VS, WATER_FS)?,
@@ -1721,6 +1768,9 @@ impl Renderer {
 
     unsafe fn process_uploads(&mut self, gl: &glow::Context) -> Result<(), String> {
         gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+        // Models stream in for a few milliseconds a frame, so the interface stays smooth and
+        // what the workers have loaded does not wait long in memory.
+        let started = std::time::Instant::now();
         let mut meshes_this_frame = 0;
         let mut rest = Vec::new();
         for u in std::mem::take(&mut self.uploads) {
@@ -1842,6 +1892,9 @@ impl Renderer {
                     for (_, (t, _)) in self.shared.drain() {
                         gl.delete_texture(t);
                     }
+                    self.shared_use.clear();
+                    self.gpu_bytes = 0;
+                    self.evicted.clear();
                     self.lod_counts.clear();
                     self.occluders.clear();
                     self.impostor_layers.clear();
@@ -1849,7 +1902,7 @@ impl Renderer {
                 }
                 Upload::Mesh(m) => {
                     // A few per frame keep the interface smooth while models stream in.
-                    if meshes_this_frame >= 2 {
+                    if meshes_this_frame >= 2 && started.elapsed().as_secs_f32() > 0.006 {
                         rest.push(Upload::Mesh(m));
                         continue;
                     }
@@ -1890,52 +1943,81 @@ impl Renderer {
         gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
         gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytes(&m.indices), glow::STATIC_DRAW);
         let mut textures: Vec<(glow::Texture, [f32; 4])> = Vec::with_capacity(m.textures.len());
+        let mut held: Vec<String> = Vec::with_capacity(m.textures.len());
         for (i, (name, w, h, rgba)) in m.textures.iter().enumerate() {
-            let t = match self.shared.get(name) {
-                Some(t) => *t,
-                None => {
-                    let t = gl.create_texture()?;
-                    gl.bind_texture(glow::TEXTURE_2D, Some(t));
-                    let mut inv = [0.0f32; 4];
-                    match m.raw.get(i).and_then(|r| r.as_ref()) {
-                        Some(raw) => {
-                            // The file's own DXT mipmaps go to the card as they are.
-                            let format = if raw.dxt5 { glow::COMPRESSED_RGBA_S3TC_DXT5_EXT } else { glow::COMPRESSED_RGBA_S3TC_DXT1_EXT };
-                            for (level, (w, h, data)) in raw.mips.iter().enumerate() {
-                                gl.compressed_tex_image_2d(glow::TEXTURE_2D, level as i32, format as i32, *w as i32, *h as i32, 0, data.len() as i32, data);
-                            }
-                            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAX_LEVEL, raw.mips.len() as i32 - 1);
-                            // Channels are rearranged when sampled; an inverted one is left to the shader.
-                            for (target, param, channel) in [(1, glow::TEXTURE_SWIZZLE_R, 0), (2, glow::TEXTURE_SWIZZLE_G, 1), (3, glow::TEXTURE_SWIZZLE_B, 2), (0, glow::TEXTURE_SWIZZLE_A, 3)] {
-                                let source = raw.swizzle[target];
-                                let from = match source {
-                                    0 | 4 => glow::ALPHA,
-                                    1 | 5 => glow::RED,
-                                    2 | 6 => glow::GREEN,
-                                    3 | 7 => glow::BLUE,
-                                    _ => glow::ONE,
-                                };
-                                gl.tex_parameter_i32(glow::TEXTURE_2D, param, from as i32);
-                                if (4..8).contains(&source) {
-                                    inv[channel] = 1.0;
-                                }
-                            }
-                            set_filter(gl, glow::TEXTURE_2D, if raw.mips.len() > 1 { glow::LINEAR_MIPMAP_LINEAR } else { glow::LINEAR }, glow::LINEAR, glow::REPEAT);
-                        }
-                        None => {
-                            gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, *w as i32, *h as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(rgba)));
-                            gl.generate_mipmap(glow::TEXTURE_2D);
-                            set_filter(gl, glow::TEXTURE_2D, glow::LINEAR_MIPMAP_LINEAR, glow::LINEAR, glow::REPEAT);
-                        }
-                    }
-                    if self.anisotropy >= 2.0 {
-                        gl.tex_parameter_f32(glow::TEXTURE_2D, glow::TEXTURE_MAX_ANISOTROPY, self.anisotropy.min(16.0));
-                    }
-                    self.shared.insert(name.clone(), (t, inv));
-                    (t, inv)
+            if !held.contains(name) {
+                held.push(name.clone());
+            }
+            let raw = m.raw.get(i).and_then(|r| r.as_ref());
+            // Far LODs bring their textures smaller; a nearer one brings them larger, and the
+            // texture every model of that name shares is filled again at the larger size.
+            let side = raw.and_then(|r| r.mips.first()).map_or((*w).max(*h), |m| m.0.max(m.1));
+            let have = self.shared.get(name).copied();
+            let had = self.shared_use.get(name).map(|u| (u.1, u.2));
+            if let (Some(t), Some((_, had_side))) = (have, had) {
+                if had_side >= side {
+                    textures.push(t);
+                    continue;
                 }
+            }
+            let t = match have {
+                Some(t) => t.0,
+                None => gl.create_texture()?,
             };
-            textures.push(t);
+            gl.bind_texture(glow::TEXTURE_2D, Some(t));
+            let mut inv = [0.0f32; 4];
+            match raw {
+                Some(raw) => {
+                    // The file's own DXT mipmaps go to the card as they are.
+                    let format = if raw.dxt5 { glow::COMPRESSED_RGBA_S3TC_DXT5_EXT } else { glow::COMPRESSED_RGBA_S3TC_DXT1_EXT };
+                    for (level, (w, h, data)) in raw.mips.iter().enumerate() {
+                        gl.compressed_tex_image_2d(glow::TEXTURE_2D, level as i32, format as i32, *w as i32, *h as i32, 0, data.len() as i32, data);
+                    }
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAX_LEVEL, raw.mips.len() as i32 - 1);
+                    // Channels are rearranged when sampled; an inverted one is left to the shader.
+                    for (target, param, channel) in [(1, glow::TEXTURE_SWIZZLE_R, 0), (2, glow::TEXTURE_SWIZZLE_G, 1), (3, glow::TEXTURE_SWIZZLE_B, 2), (0, glow::TEXTURE_SWIZZLE_A, 3)] {
+                        let source = raw.swizzle[target];
+                        let from = match source {
+                            0 | 4 => glow::ALPHA,
+                            1 | 5 => glow::RED,
+                            2 | 6 => glow::GREEN,
+                            3 | 7 => glow::BLUE,
+                            _ => glow::ONE,
+                        };
+                        gl.tex_parameter_i32(glow::TEXTURE_2D, param, from as i32);
+                        if (4..8).contains(&source) {
+                            inv[channel] = 1.0;
+                        }
+                    }
+                    set_filter(gl, glow::TEXTURE_2D, if raw.mips.len() > 1 { glow::LINEAR_MIPMAP_LINEAR } else { glow::LINEAR }, glow::LINEAR, glow::REPEAT);
+                }
+                None => {
+                    gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, *w as i32, *h as i32, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(rgba)));
+                    gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAX_LEVEL, 1000);
+                    gl.generate_mipmap(glow::TEXTURE_2D);
+                    set_filter(gl, glow::TEXTURE_2D, glow::LINEAR_MIPMAP_LINEAR, glow::LINEAR, glow::REPEAT);
+                }
+            }
+            if self.anisotropy >= 2.0 {
+                gl.tex_parameter_f32(glow::TEXTURE_2D, glow::TEXTURE_MAX_ANISOTROPY, self.anisotropy.min(16.0));
+            }
+            let size = match raw {
+                Some(raw) => raw.mips.iter().map(|(_, _, d)| d.len()).sum(),
+                None => *w as usize * *h as usize * 16 / 3,
+            };
+            let refs = match self.shared_use.get(name) {
+                Some(u) => {
+                    self.gpu_bytes = self.gpu_bytes.saturating_sub(u.1);
+                    u.0
+                }
+                None => 0,
+            };
+            self.shared_use.insert(name.clone(), (refs, size, side));
+            self.gpu_bytes += size;
+            // Models holding the texture keep its inverted channels; they are the same file's.
+            let inv = have.map_or(inv, |h| h.1);
+            self.shared.insert(name.clone(), (t, inv));
+            textures.push((t, inv));
         }
         let fallback = match self.fallback {
             Some(f) => f,
@@ -2030,8 +2112,83 @@ impl Renderer {
         } else {
             0.0
         };
-        self.models.insert(m.key, Model { vao, vbo, ebo, batches, batch_pass, batch_inv, passes, triangles, conform: m.conform, decal: m.decal, decal_lift, water: m.water });
+        for name in &held {
+            if let Some(u) = self.shared_use.get_mut(name) {
+                u.0 += 1;
+            }
+        }
+        let size = m.vertices.len() * 4 + m.indices.len() * 4;
+        self.gpu_bytes += size;
+        let used = self.now();
+        self.models.insert(m.key, Model { vao, vbo, ebo, batches, batch_pass, batch_inv, passes, triangles, conform: m.conform, decal: m.decal, decal_lift, water: m.water, textures: held, bytes: size, used });
         Ok(())
+    }
+
+    fn now(&mut self) -> f32 {
+        self.clock.get_or_insert_with(std::time::Instant::now).elapsed().as_secs_f32()
+    }
+
+    /// Marks the models of a draw list as just drawn.
+    fn touch(&mut self, groups: &[((u32, u8), u32, u32)]) {
+        let now = self.now();
+        for (key, _, _) in groups {
+            if let Some(m) = self.models.get_mut(key) {
+                m.used = now;
+            }
+        }
+    }
+
+    /// Bytes of models and textures on the card.
+    pub fn gpu_bytes(&self) -> usize {
+        self.gpu_bytes
+    }
+    /// What the card holds, for the test scripts.
+    pub fn memory_report(&self) -> String {
+        let tex: usize = self.shared_use.values().map(|u| u.1).sum();
+        let buffers: usize = self.models.values().map(|m| m.bytes).sum();
+        format!("textures={} tex_mb={} models={} buf_mb={} uploads={}", self.shared_use.len(), tex >> 20, self.models.len(), buffers >> 20, self.uploads.len())
+    }
+
+    /// Lets go of the models no view has drawn for a while, longest unused first, and of the
+    /// textures only they held, while more is on the card than the budget allows. They load
+    /// again when the camera comes back to them.
+    unsafe fn trim(&mut self, gl: &glow::Context) {
+        /// What was drawn this recently stays, whatever the budget.
+        const KEEP_SECONDS: f32 = 8.0;
+        let now = self.now();
+        let budget = if self.model_memory > 0 { self.model_memory } else { self.gpu_auto };
+        if now - self.last_trim < 0.5 || budget == 0 || self.gpu_bytes <= budget {
+            return;
+        }
+        self.last_trim = now;
+        // A little at a time: letting go of much at once stalls the driver for a frame.
+        const MODELS_AT_ONCE: usize = 48;
+        let goal = budget / 10 * 9;
+        let mut old: Vec<((u32, u8), f32)> = self.models.iter().filter(|(_, m)| now - m.used > KEEP_SECONDS).map(|(k, m)| (*k, m.used)).collect();
+        old.sort_by(|a, b| a.1.total_cmp(&b.1));
+        for (key, _) in old.into_iter().take(MODELS_AT_ONCE) {
+            if self.gpu_bytes <= goal {
+                break;
+            }
+            let Some(m) = self.models.remove(&key) else { continue };
+            gl.delete_vertex_array(m.vao);
+            gl.delete_buffer(m.vbo);
+            gl.delete_buffer(m.ebo);
+            self.gpu_bytes = self.gpu_bytes.saturating_sub(m.bytes);
+            for name in &m.textures {
+                let Some(u) = self.shared_use.get_mut(name) else { continue };
+                u.0 = u.0.saturating_sub(1);
+                if u.0 == 0 {
+                    let size = u.1;
+                    self.shared_use.remove(name);
+                    if let Some((t, _)) = self.shared.remove(name) {
+                        gl.delete_texture(t);
+                    }
+                    self.gpu_bytes = self.gpu_bytes.saturating_sub(size);
+                }
+            }
+            self.evicted.push(key);
+        }
     }
 
     /// The off-screen image of a view, made anew when the view changes size.
@@ -2188,6 +2345,9 @@ impl Renderer {
         let (terrain, water, mesh_prog, impostor_prog, sky, post, ao_prog) = (p.terrain, p.water, p.mesh, p.impostor, p.sky, p.post, p.occlusion);
         // Where the interface is being drawn; the view goes back there when it is finished.
         let screen = gl.get_parameter_framebuffer(glow::DRAW_FRAMEBUFFER_BINDING);
+        self.touch(&f.objects.groups);
+        self.touch(&f.objects.shadow_groups);
+        self.trim(gl);
         let mut stats = Stats { models: self.models.len() as u32, ..Default::default() };
         let active_light = f.light.filter(|_| !f.objects.shadow_groups.is_empty());
         self.shadow_valid = false;

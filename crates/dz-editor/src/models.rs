@@ -101,6 +101,13 @@ fn impostor_mips(base: Vec<u8>, side: usize) -> Vec<(usize, Vec<u8>)> {
     levels
 }
 
+/// Largest side of the textures loaded with LOD `lod`. Each LOD is drawn from twice as far
+/// as the one before it, so half the pixels show the same; the card holds the larger ones
+/// only for the models near the camera.
+pub fn lod_texture_limit(limit: u32, lod: u8) -> u32 {
+    (limit >> lod.min(3)).max(limit.min(256))
+}
+
 fn from_model3d(mesh: &model3d::ModelMesh, center: [f32; 3], key: (u32, u8), with_impostor: bool) -> MeshData {
     let mut vertices = Vec::with_capacity(mesh.vertices.len() * 10);
     for v in &mesh.vertices {
@@ -182,7 +189,7 @@ impl ModelLoader {
                     let _ = tx.send((job.generation, None, job.key));
                     continue;
                 }
-                let result = load(&db, &job.path, job.key, &cache, limit.load(std::sync::atomic::Ordering::Relaxed));
+                let result = load(&db, &job.path, job.key, &cache, lod_texture_limit(limit.load(std::sync::atomic::Ordering::Relaxed), job.key.1));
                 let _: Result<(), _> = tx.send((job.generation, result, job.key));
                 ctx.request_repaint();
             });
@@ -204,6 +211,10 @@ impl ModelLoader {
             self.pending += 1;
             self.queue.push(Job { key, path: path.to_string(), generation: self.generation.load(std::sync::atomic::Ordering::Relaxed) });
         }
+    }
+    /// Lets a model let go of by the renderer be asked for again.
+    pub fn forget(&mut self, key: (u32, u8)) {
+        self.state.remove(&key);
     }
     pub fn poll(&mut self, mut f: impl FnMut(MeshData)) {
         let current = self.generation.load(std::sync::atomic::Ordering::Relaxed);
@@ -336,6 +347,15 @@ mod tests {
         assert!(is_water_model(r"dz\water\ponds\pond_50x50.p3d"));
         assert!(!is_water_model(r"dz\water\streambed\streambed_moss_long_snake.p3d"));
         assert!(!is_water_model(r"dz\structures\industrial\farms\farm_watertower_small.p3d"));
+    }
+    #[test]
+    fn far_lods_load_smaller_textures() {
+        assert_eq!(lod_texture_limit(4096, 0), 4096);
+        assert_eq!(lod_texture_limit(4096, 1), 2048);
+        assert_eq!(lod_texture_limit(4096, 3), 512);
+        assert_eq!(lod_texture_limit(4096, 9), 512);
+        assert_eq!(lod_texture_limit(512, 3), 256);
+        assert_eq!(lod_texture_limit(128, 2), 128);
     }
     #[test]
     fn tessellation_limits_edges_and_keeps_batches() {

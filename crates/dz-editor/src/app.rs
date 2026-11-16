@@ -1262,8 +1262,17 @@ impl App {
                 self.renderer.lock().unwrap().clear_models();
             }
         }
-        self.renderer.lock().unwrap().shadow_size = self.settings.shadow_map as i32;
+        {
+            let mut r = self.renderer.lock().unwrap();
+            r.shadow_size = self.settings.shadow_map as i32;
+            r.model_memory = self.settings.model_memory as usize * (1 << 20);
+        }
         self.proxies.poll();
+        // Models the renderer let go of may be asked for again.
+        let evicted = std::mem::take(&mut self.renderer.lock().unwrap().evicted);
+        for key in evicted {
+            self.loader.forget(key);
+        }
         // Models arriving from the workers.
         {
             let (renderer, fits, picks) = (self.renderer.clone(), &mut self.impostor_fits, &mut self.pick_meshes);
