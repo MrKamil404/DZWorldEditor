@@ -1770,6 +1770,13 @@ impl App {
         (!objects.is_empty()).then(|| dz_core::library::Prefab::from_objects(0, String::new(), &objects, &doc.world.height))
     }
 
+    /// After an import: layers whose textures no surface of the game or the map stands for.
+    pub fn warn_layers_without_surface(&mut self, missing: &[String]) {
+        if !missing.is_empty() {
+            self.warn(tf("Layers {0} have no surface of the game or the map; read the map's CfgSurfaces in Surfaces in the game", &[&missing.join(", ")]));
+        }
+    }
+
     /// Whether a mode is offered: those of experimental features only when they are turned on.
     pub fn mode_enabled(&self, m: Mode) -> bool {
         m != Mode::Mission || self.settings.experimental
@@ -2290,10 +2297,12 @@ impl App {
         self.spawn(t("Importing map"), move |job| {
             let mut w = dz_core::import::import_plan(&plan, &assets, &db, job)?;
             translate_object_groups(&mut w);
+            let missing = dz_core::import::layers_without_surface(&w, db.root());
             Ok(Box::new(move |app: &mut App| {
                 // Tiles over the surface limit are marked in the top view straight away.
                 let over = dz_core::mask_limit::scan(&w);
                 app.open_world(w, None);
+                app.warn_layers_without_surface(&missing);
                 if !over.is_empty() {
                     app.warn(tf("{0} texture tiles use more than the surfaces allowed; they are marked in the 2D view and Project settings can fix them", &[&over.len().to_string()]));
                     app.tile_issues = over;
@@ -2655,7 +2664,18 @@ impl App {
         self.spawn(t("Importing WRP"), move |job| {
             let mut w = dz_core::import::import_wrp(&f, None, &db, job)?;
             translate_object_groups(&mut w);
-            Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
+            // The map's own surfaces, from its folder (the one holding `world`).
+            if let Some(cfg) = f.parent().and_then(|p| p.parent()).filter(|m| m.parent().is_some()).and_then(|m| dz_core::import::find_surfaces_cfg(m).into_iter().next()) {
+                match dz_core::import::read_surfaces_cfg(&mut w, &cfg, db.root()) {
+                    Ok(n) => job.log(format!("{}: {n} surfaces of the map", cfg.display())),
+                    Err(e) => job.log(format!("{}: {e:#}", cfg.display())),
+                }
+            }
+            let missing = dz_core::import::layers_without_surface(&w, db.root());
+            Ok(Box::new(move |app: &mut App| {
+                app.open_world(w, None);
+                app.warn_layers_without_surface(&missing);
+            }) as Finish)
         });
     }
 
@@ -2665,7 +2685,18 @@ impl App {
         self.spawn(t("Importing WRP"), move |job| {
             let mut w = dz_core::import::import_wrp(&f, None, &db, job)?;
             translate_object_groups(&mut w);
-            Ok(Box::new(move |app: &mut App| app.open_world(w, None)) as Finish)
+            // The map's own surfaces, from its folder (the one holding `world`).
+            if let Some(cfg) = f.parent().and_then(|p| p.parent()).filter(|m| m.parent().is_some()).and_then(|m| dz_core::import::find_surfaces_cfg(m).into_iter().next()) {
+                match dz_core::import::read_surfaces_cfg(&mut w, &cfg, db.root()) {
+                    Ok(n) => job.log(format!("{}: {n} surfaces of the map", cfg.display())),
+                    Err(e) => job.log(format!("{}: {e:#}", cfg.display())),
+                }
+            }
+            let missing = dz_core::import::layers_without_surface(&w, db.root());
+            Ok(Box::new(move |app: &mut App| {
+                app.open_world(w, None);
+                app.warn_layers_without_surface(&missing);
+            }) as Finish)
         });
     }
 

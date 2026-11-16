@@ -638,6 +638,98 @@ pub fn write_config(map_id: &str, own: &[MapSurface], root: &Path, target: &Path
     }
 }
 
+// ---------------------------------------------------------------- a map's own CfgSurfaces
+
+/// Whether a config text defines surfaces.
+pub fn defines_surfaces(text: &str) -> bool {
+    text.to_ascii_lowercase().contains("cfgsurfaces")
+}
+
+/// The surfaces a map's config (`CfgSurfaces`, with `CfgSurfaceCharacters` beside it) defines,
+/// as surfaces of the project: a class the game already has changes that surface, any other is
+/// a new one. A class inheriting another class of the same config takes its fields, so each
+/// new surface is based on a class from outside it. New surfaces make their footsteps like the
+/// game's surface that sounds most alike, as the map's own step sound tables cannot be kept.
+pub fn map_surfaces_from_config(text: &str, cat: &SurfaceCatalog) -> Vec<MapSurface> {
+    let root = parse(text);
+    let Some(list) = root.class("CfgSurfaces") else { return Vec::new() };
+    // `class X;` only names a class defined elsewhere.
+    let defined: Vec<&Node> = list.classes.iter().filter(|c| c.parent.is_some() || !c.values.is_empty() || !c.classes.is_empty()).collect();
+    let own = |name: &str| defined.iter().copied().find(|c| c.name.eq_ignore_ascii_case(name));
+    let characters = root.class("CfgSurfaceCharacters");
+    let mut out = Vec::new();
+    for c in &defined {
+        // The fields of the chain of classes of this config, the nearest last.
+        let mut chain = vec![*c];
+        let mut base = c.parent.clone().unwrap_or_default();
+        while let Some(p) = own(&base).filter(|p| !chain.iter().any(|x| x.name.eq_ignore_ascii_case(&p.name))) {
+            chain.push(p);
+            base = p.parent.clone().unwrap_or_default();
+        }
+        let mut props: BTreeMap<String, String> = BTreeMap::new();
+        let mut visible = None;
+        for n in chain.iter().rev() {
+            for (k, v) in &n.values {
+                if let Value::Text(t) = v {
+                    props.insert(k.clone(), t.clone());
+                }
+            }
+            if let Some(v) = n.class("Visible") {
+                let old: [f32; 3] = visible.unwrap_or([1.0; 3]);
+                let f = |k: &str, d: f32| v.text(k).and_then(|t| t.parse().ok()).unwrap_or(d);
+                visible = Some([f("prone", old[0]), f("kneel", old[1]), f("stand", old[2])]);
+            }
+        }
+        let files = props.remove("files").map(|f| f.split('*').next().unwrap_or("").trim().to_ascii_lowercase()).unwrap_or_default();
+        // Grass of a character of this config comes along as the surface's own.
+        let clutter = props.get("character").and_then(|ch| characters?.class(ch)).map(|ch| {
+            let odds: Vec<f32> = ch.list("probability").iter().filter_map(|v| v.trim().parse().ok()).collect();
+            ch.list("names").into_iter().zip(odds).map(|(name, probability)| ClutterPick { name, probability }).collect::<Vec<_>>()
+        });
+        if clutter.is_some() {
+            props.remove("character");
+        }
+        let replaces = cat.get(&c.name).is_some();
+        let sounds = if replaces { String::new() } else { sounding_like(&props, cat) };
+        out.push(MapSurface {
+            name: if replaces { String::new() } else { c.name.clone() },
+            files: if replaces && cat.get(&c.name).is_some_and(|g| g.files == files) { String::new() } else { files },
+            base: if replaces { c.name.clone() } else { base },
+            replaces,
+            props,
+            visible,
+            clutter,
+            sounds,
+        });
+    }
+    out
+}
+
+/// The terrain surface of the game whose sound and feel are most like `props`.
+fn sounding_like(props: &BTreeMap<String, String>, cat: &SurfaceCatalog) -> String {
+    let keys = [("soundEnviron", 4), ("soundHit", 2), ("vpSurface", 2), ("impact", 1), ("character", 1)];
+    let value = |m: &BTreeMap<String, String>, k: &str| m.iter().find(|(x, _)| x.eq_ignore_ascii_case(k)).map(|(_, v)| v.trim().trim_matches('"').to_ascii_lowercase());
+    cat.terrain_surfaces()
+        .map(|g| (keys.iter().filter(|(k, _)| value(props, k).is_some_and(|v| Some(v) == value(&g.props, k))).map(|(_, w)| *w).sum::<i32>(), g))
+        .filter(|(score, _)| *score > 0)
+        .max_by_key(|(score, g)| (*score, std::cmp::Reverse(g.class.to_ascii_lowercase())))
+        .map(|(_, g)| g.class.clone())
+        .unwrap_or_default()
+}
+
+/// Merges surfaces read from a map's config into the project's: one with the class of a
+/// surface already there takes its place.
+pub fn merge_surfaces(own: &mut Vec<MapSurface>, read: Vec<MapSurface>) -> usize {
+    let n = read.len();
+    for s in read {
+        match own.iter_mut().find(|o| o.class().eq_ignore_ascii_case(s.class())) {
+            Some(old) => *old = s,
+            None => own.push(s),
+        }
+    }
+    n
+}
+
 // ---------------------------------------------------------------- the textures of layers
 
 /// Where the map keeps the textures of its own surfaces, relative to the work drive.
@@ -778,6 +870,60 @@ pub fn check_layers(root: &Path, map_id: &str, layers: &[crate::world::SurfaceLa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_maps_own_cfgsurfaces_become_surfaces_of_the_project() {
+        let mut cat = SurfaceCatalog::default();
+        cat.add_config(r#"class CfgPatches { class DZ_Surfaces {}; };
+class CfgSurfaces {
+    class DZ_SurfacesExt { };
+    class cp_concrete1: DZ_SurfacesExt { files = "cp_concrete1*"; soundEnviron = "road"; soundHit = "hard_ground"; vpSurface = "Asphalt"; character = "cp_concrete_grass"; };
+    class cp_grass: DZ_SurfacesExt { files = "cp_grass*"; soundEnviron = "grass"; character = "cp_grass_char"; };
+};"#);
+        let text = r#"class CfgPatches { class my_surfaces { requiredAddons[] = {"DZ_Data"}; }; };
+class CfgSurfaces
+{
+    class DZ_SurfacesInt;
+    class DZ_SurfacesExt;
+    class utes_concrete: DZ_SurfacesExt
+    {
+        files = "utes_concrete*";
+        rough = 0.01;
+        soundEnviron = "road";
+        soundHit = "hard_ground";
+        vpSurface = "Asphalt";
+        character = "cp_concrete_grass";
+        class Visible { prone = 0.5; };
+    };
+    class utes_concrete_dark: utes_concrete { files = "utes_dark*"; dust = 0.2; character = "utes_dark_grass"; };
+    class cp_grass: DZ_SurfacesExt { files = "cp_grass*"; rough = 0.2; };
+};
+class CfgSurfaceCharacters
+{
+    class utes_dark_grass { probability[] = {0.4, 0.1}; names[] = {"GrassTall", "Flowers"}; };
+};"#;
+        assert!(defines_surfaces(text));
+        let read = map_surfaces_from_config(text, &cat);
+        assert_eq!(read.len(), 3, "{read:?}");
+        let concrete = &read[0];
+        assert_eq!((concrete.name.as_str(), concrete.files.as_str(), concrete.base.as_str(), concrete.replaces), ("utes_concrete", "utes_concrete", "DZ_SurfacesExt", false));
+        assert_eq!(concrete.props.get("character").map(String::as_str), Some("cp_concrete_grass"));
+        assert_eq!(concrete.visible, Some([0.5, 1.0, 1.0]));
+        assert_eq!(concrete.sounds, "cp_concrete1", "sounds like the game's concrete");
+        // Inherits the fields of its parent in the same config, based on the parent's base.
+        let dark = &read[1];
+        assert_eq!((dark.base.as_str(), dark.files.as_str()), ("DZ_SurfacesExt", "utes_dark"));
+        assert_eq!(dark.props.get("rough").map(String::as_str), Some("0.01"));
+        assert_eq!(dark.props.get("dust").map(String::as_str), Some("0.2"));
+        assert_eq!(dark.clutter.as_ref().map(|c| c.iter().map(|p| (p.name.as_str(), p.probability)).collect::<Vec<_>>()), Some(vec![("GrassTall", 0.4), ("Flowers", 0.1)]));
+        // A class of the game is changed, keeping its files.
+        let grass = &read[2];
+        assert!(grass.replaces && grass.base == "cp_grass" && grass.files.is_empty(), "{grass:?}");
+        let mut own = vec![MapSurface { name: "utes_concrete".into(), base: "x".into(), ..Default::default() }];
+        assert_eq!(merge_surfaces(&mut own, read), 3);
+        assert_eq!(own.len(), 3);
+        assert_eq!(own[0].base, "DZ_SurfacesExt");
+    }
 
     #[test]
     fn a_texture_from_anywhere_comes_into_the_map_with_a_material() {

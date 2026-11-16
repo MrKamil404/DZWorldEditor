@@ -186,6 +186,8 @@ pub struct FolderScan {
     pub libraries: Vec<PathBuf>,
     pub layers: Vec<LayerFile>,
     pub shapes: Vec<ShapeFile>,
+    /// Configs of the map that define surfaces (`CfgSurfaces`).
+    pub surfaces_cfg: Vec<PathBuf>,
 }
 
 /// A shape layer found on disk.
@@ -231,6 +233,12 @@ fn walk(root: &Path, s: &mut FolderScan, found: &mut HashMap<PathBuf, (usize, u6
                 &mut s.tv4p
             } else if name.ends_with(".tml") {
                 &mut s.libraries
+            } else if (name.ends_with(".cpp") || name.ends_with(".hpp")) && e.metadata().is_ok_and(|m| m.len() < 4 << 20) {
+                // A config of the map's own surfaces.
+                match std::fs::read(&p) {
+                    Ok(b) if crate::surfaces::defines_surfaces(&String::from_utf8_lossy(&b)) => &mut s.surfaces_cfg,
+                    _ => continue,
+                }
             } else if name.ends_with(".tv4s") || name.ends_with(".shp") {
                 if let Some(f) = ShapeFile::read(&p) {
                     s.shapes.push(f);
@@ -303,6 +311,29 @@ fn choose_heightmap(s: &mut FolderScan) {
     }
 }
 
+/// Configs below `dir` that define surfaces (`CfgSurfaces`), nearest first.
+pub fn find_surfaces_cfg(dir: &Path) -> Vec<PathBuf> {
+    let mut s = FolderScan::default();
+    let mut found = HashMap::new();
+    walk(dir, &mut s, &mut found);
+    s.surfaces_cfg.sort_by_key(|p| found.get(p).map_or(usize::MAX, |f| f.0));
+    s.surfaces_cfg
+}
+
+/// Reads the surfaces a map's config defines into the project. Returns how many.
+pub fn read_surfaces_cfg(w: &mut World, path: &Path, root: &Path) -> Result<usize> {
+    let text = String::from_utf8_lossy(&std::fs::read(path).with_context(|| format!("{}", path.display()))?).into_owned();
+    let cat = crate::surfaces::SurfaceCatalog::load(root);
+    let read = crate::surfaces::map_surfaces_from_config(&text, &cat);
+    Ok(crate::surfaces::merge_surfaces(&mut w.meta.config.surfaces, read))
+}
+
+/// Names of the layers whose textures get no surface, neither the game's nor the map's own.
+pub fn layers_without_surface(w: &World, root: &Path) -> Vec<String> {
+    let cat = crate::surfaces::SurfaceCatalog::load(root);
+    w.layers.iter().filter(|l| matches!(crate::surfaces::surface_of(&l.texture, &w.meta.config.surfaces, &cat), (None, None))).map(|l| l.name.clone()).collect()
+}
+
 /// Looks through a project folder (or the folder of a `.tv4p`). Files may be anywhere below
 /// it: they are recognised by content and name, not by where the program expects them.
 pub fn scan_folder(root: &Path) -> FolderScan {
@@ -342,6 +373,7 @@ pub fn scan_folder(root: &Path) -> FolderScan {
                 let mut other = FolderScan::default();
                 walk(&built, &mut other, &mut found);
                 s.wrp = other.wrp;
+                s.surfaces_cfg.extend(other.surfaces_cfg);
                 s.tile_dir = s.tile_dir.take().or(other.tile_dir);
             }
         }
@@ -354,9 +386,15 @@ pub fn scan_folder(root: &Path) -> FolderScan {
         let in_built = built.iter().flat_map(|b| [b.join("world").join("holes.cfg"), b.join("holes.cfg")]);
         s.holes_cfg = beside_wrp.chain(in_built).filter(|p| p.is_file()).take(1).collect();
     }
+    // The surfaces of a built map are in its own folder, the one holding `world\x.wrp`.
+    if s.surfaces_cfg.is_empty() {
+        if let Some(map) = s.wrp.first().and_then(|w| w.parent()?.parent()).filter(|m| !root.starts_with(m) && m.parent().is_some()) {
+            s.surfaces_cfg.extend(find_surfaces_cfg(map));
+        }
+    }
     // Closest to the root first, then the largest.
     let rank = |p: &PathBuf| found.get(p).map(|(d, n)| (*d, std::cmp::Reverse(*n))).unwrap_or((usize::MAX, std::cmp::Reverse(0)));
-    for list in [&mut s.wrp, &mut s.asc, &mut s.satellite, &mut s.mask, &mut s.layers_cfg, &mut s.holes_cfg, &mut s.tv4p] {
+    for list in [&mut s.wrp, &mut s.asc, &mut s.satellite, &mut s.mask, &mut s.layers_cfg, &mut s.holes_cfg, &mut s.tv4p, &mut s.surfaces_cfg] {
         list.sort_by_key(rank);
     }
     choose_heightmap(&mut s);
@@ -387,6 +425,8 @@ pub struct ImportPlan {
     pub mask: Option<PathBuf>,
     pub layers_cfg: Option<PathBuf>,
     pub holes_cfg: Option<PathBuf>,
+    /// The map's own surfaces (`CfgSurfaces`), taken into the project and its build.
+    pub surfaces_cfg: Option<PathBuf>,
     pub tv4p: Option<PathBuf>,
     pub libraries: Vec<PathBuf>,
     pub layers: Vec<LayerFile>,
@@ -420,6 +460,7 @@ impl ImportPlan {
             satellite: scan.satellite.first().filter(|_| source).cloned(),
             mask: scan.mask.first().filter(|_| source).cloned(),
             layers_cfg: scan.layers_cfg.first().cloned(),
+            surfaces_cfg: scan.surfaces_cfg.first().cloned(),
             holes_cfg: scan.holes_cfg.first().cloned(),
             tv4p: scan.tv4p.first().cloned(),
             libraries: scan.libraries.clone(),
@@ -778,6 +819,16 @@ pub fn import_plan(plan: &ImportPlan, assets: &AssetIndex, db: &ModelDb, job: &J
             o.set_layer(layer);
             w.objects.insert(o);
         }
+    }
+    if let Some(p) = &plan.surfaces_cfg {
+        match read_surfaces_cfg(&mut w, p, db.root()) {
+            Ok(n) => job.log(format!("{}: {n} surfaces of the map", p.display())),
+            Err(e) => job.log(format!("{}: {e:#}", p.display())),
+        }
+    }
+    let missing = layers_without_surface(&w, db.root());
+    if !missing.is_empty() {
+        job.log(format!("Layers with no surface of the game or the map: {}", missing.join(", ")));
     }
     w.road_project = plan.tv4p.clone();
     w.template_libraries = plan.libraries.clone();

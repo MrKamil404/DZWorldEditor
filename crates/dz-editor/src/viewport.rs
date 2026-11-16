@@ -3998,6 +3998,15 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "wait" => app.autoscript.as_mut().unwrap().wait = arg.parse().unwrap_or(10),
         "open" => app.open_project(arg.into()),
         "importscan" => app.scan_for_import(arg.into()),
+        // The project's own surfaces and the layers that get none.
+        "surfinfo" => {
+            if let Some(d) = &app.doc {
+                for s in &d.world.meta.config.surfaces {
+                    eprintln!("SURFACE {} files={} base={} replaces={} sounds={} props={} clutter={:?}", s.class(), s.files, s.base, s.replaces, s.sounds, s.props.len(), s.clutter.as_ref().map(|c| c.len()));
+                }
+                eprintln!("SURFACE missing {:?}", dz_core::import::layers_without_surface(&d.world, &app.settings.tools.work_drive));
+            }
+        }
         "importgo" => {
             if let crate::app::Dialog::Import(d) = std::mem::replace(&mut app.dialog, crate::app::Dialog::None) {
                 app.run_import(d.plan);

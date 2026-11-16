@@ -111,7 +111,13 @@ pub fn parse(text: &str) -> Result<Vec<SurfaceLayer>> {
         if name.eq_ignore_ascii_case("Legend") {
             continue;
         }
-        let (Some(texture), Some(material)) = (field(&body, "texture"), field(&body, "material")) else { continue };
+        let Some(material) = field(&body, "material").filter(|m| !m.trim().is_empty()) else { continue };
+        // Many maps name only the material: its colour texture lies beside it as `<name>_ca`.
+        let texture = field(&body, "texture").filter(|t| !t.trim().is_empty()).unwrap_or_else(|| {
+            let stem = material.trim();
+            let stem = stem.strip_suffix(".rvmat").or_else(|| stem.strip_suffix(".RVMAT")).unwrap_or(stem);
+            format!("{stem}_ca.paa")
+        });
         let color = colors.get(&name.to_ascii_lowercase()).copied().unwrap_or_else(|| {
             forest_core::species::hsv_to_rgb(i as f64 * 47.0 % 360.0, 0.55, 0.75)
         });
@@ -159,6 +165,20 @@ class Legend
 		rock[]={{255,0,0}};
 	};
 };"#;
+    #[test]
+    fn a_layer_with_only_a_material_takes_the_colour_texture_beside_it() {
+        let text = r#"class Layers
+{
+	class cp_gravel { material = "DZ\surfaces\data\terrain\cp_gravel.rvmat"; };
+	class utes_concrete { texture = ""; material = "samples\test_terrain\data\surfaces\data\utes_concrete.rvmat"; };
+};
+class Legend { class Colors { cp_gravel[]={{127,127,127}}; }; };"#;
+        let l = parse(text).unwrap();
+        assert_eq!(l.len(), 2);
+        assert_eq!(l[0].texture, r"DZ\surfaces\data\terrain\cp_gravel_ca.paa");
+        assert_eq!(l[0].color, [127, 127, 127]);
+        assert_eq!(l[1].texture, r"samples\test_terrain\data\surfaces\data\utes_concrete_ca.paa");
+    }
     #[test]
     fn parses_layers_and_colours() {
         let l = parse(SAMPLE).unwrap();
