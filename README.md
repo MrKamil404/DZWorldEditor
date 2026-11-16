@@ -16,7 +16,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, painting objects with a brush, prefabs and undo
 - **Roads and railways** fitted from the game's own parts, with embankments, bridges, level crossings and roundabouts
 - **Every vanilla road type** of Chernarus, Livonia, Sakhal and Takistan, and **crossroads** (`kr_*`) that roads start from or that go into a road
-- **Generators** for forests, rivers, ponds, settlements, fences, power lines and more
+- **Generators** for forests, rivers, ponds, coasts and beaches, cliffs, fields, road verges, settlements, fences, power lines and more
 - **Key points** for named places on the map, compatible with Terrain Builder
 - **Map config**: the `CfgWorlds` entry of the map, with its base world, map grid and main menu scenes
 - **Terrain Builder import**, including layers, shapes, roads, key points and terrain holes, and import of built WRP worlds

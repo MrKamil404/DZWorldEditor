@@ -143,6 +143,13 @@ impl TerrainMaps {
         m
     }
 
+    /// Only the distance to the sea, worked out from a heightmap.
+    pub fn sea(h: &Heightmap, sea: f32) -> Self {
+        let h = downsample(h, MAX_SIDE);
+        let seeds: Vec<bool> = h.data.iter().map(|v| *v < sea).collect();
+        TerrainMaps { cols: h.cols, rows: h.rows, cell: h.cell, water_dist: distance_field(&seeds, h.cols, h.rows, h.cell), ..Default::default() }
+    }
+
     #[inline]
     fn sample(&self, v: &[f32], x: f32, z: f32, missing: f32) -> f32 {
         if v.is_empty() {

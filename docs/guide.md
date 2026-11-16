@@ -187,6 +187,21 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
 | Settlements and lines | Settlement, fence, power line |
 | Terrain | Terrain shape, hydraulic and thermal erosion, terraces, terrain along a line |
 | Surfaces and clean-up | Rule-based surface painting, removing objects by category or name |
+| Landscape | Coast, cliffs and rocks, fields |
+| Along roads | Road verges with bushes and signs |
+
+* **Coast** paints beaches by the water and sand on the shallow sea floor (a layer named like sand,
+  or else gravel), rock on steep shores, lays stones along the water and can lay the beaches to a
+  gentle slope. It works on the whole map or inside polygons.
+* **Cliffs and rocks** sets rocks of the game on steep slopes, facing down the slope and sunk into
+  it, with a rock surface under them.
+* **Fields** cuts polygons into strips of fields with balks between them, each strip sown with one
+  of the chosen surfaces, and lays hay bales along them.
+* **Road verges** follows roads or lines: a verge surface, bushes beyond it and now and then a
+  sign. Dropped on the map, it follows every road.
+* **Settlement** can take the game's buildings of a village, town, farm, industrial area or
+  military base from the work drive, gives each building a yard with its own surface, and fences
+  some of the plots, leaving the side to the street open.
 
 ## Menus
 

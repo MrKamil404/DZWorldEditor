@@ -46,6 +46,8 @@ struct KindContext {
     can_pick: bool,
     /// The opening a click on the map should place.
     pick: std::cell::Cell<Option<usize>>,
+    /// Where the game's models are, for the buildings of a settlement.
+    work_drive: std::path::PathBuf,
 }
 
 fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindContext {
@@ -64,6 +66,7 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
         loaded: Default::default(),
         can_pick: false,
         pick: Default::default(),
+        work_drive: app.settings.tools.work_drive.clone(),
     }
 }
 
@@ -499,6 +502,22 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Max slope"), &mut s.max_slope, 2.0..=45.0);
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut s.seed)); });
             ui.checkbox(&mut s.flatten, t("Level the ground under buildings"));
+            ui.label(t("Buildings of the game"));
+            ui.horizontal_wrapped(|ui| {
+                for style in gen::SettlementStyle::ALL {
+                    if ui.small_button(t(style.name())).on_hover_text(t("Uses the game's buildings of this kind from the work drive instead of the list above.")).clicked() {
+                        let found = gen::vanilla_buildings(&cx.work_drive, style);
+                        if !found.is_empty() { s.buildings = found; }
+                    }
+                }
+            });
+            group(ui, t("Yards and fences"), false, |ui| {
+                number(ui, t("Yard round a building m"), &mut s.yard, 0.0..=30.0);
+                layer_pick(ui, "yard_surface", t("Yard surface"), &mut s.yard_surface, &cx.layers);
+                number(ui, t("Share of plots fenced"), &mut s.fence_share, 0.0..=1.0);
+                ui.weak(t("Fence models"));
+                models_list(ui, &mut s.fences, cx);
+            });
         }
         GeneratorKind::Fence(g) => {
             preset_pick(ui, &mut g.preset, cx);
@@ -732,8 +751,90 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Step height"), step, 1.0..=80.0);
             number(ui, t("Sharpness"), sharpness, 0.0..=1.0);
         }
+        GeneratorKind::Coast(g) => {
+            ui.weak(t("Beaches by the water, sand on the shallow sea floor, rock on steep shores, and stones along the water. Works on the whole map or inside polygons."));
+            layer_pick(ui, "coast_sand", t("Beach surface"), &mut g.sand, &cx.layers);
+            layer_pick(ui, "coast_rock", t("Rocky shore surface"), &mut g.rock, &cx.layers);
+            number(ui, t("Beach width m"), &mut g.width, 4.0..=120.0);
+            number(ui, t("Beach up to m above the sea"), &mut g.max_height, 0.5..=20.0);
+            number(ui, t("Rock on shores steeper than °"), &mut g.cliff_slope, 10.0..=70.0);
+            number(ui, t("Ragged edges m"), &mut g.edge_noise, 0.0..=40.0);
+            ui.checkbox(&mut g.shape, t("Lay the beaches to a gentle slope"));
+            if g.shape { number(ui, t("Beach slope °"), &mut g.beach_slope, 1.0..=15.0); }
+            group(ui, t("Stones along the water"), false, |ui| {
+                number(ui, t("Per hectare"), &mut g.density, 0.0..=80.0);
+                objects_ui(ui, &mut g.objects, cx);
+            });
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::Cliffs(g) => {
+            ui.weak(t("Rocks on steep slopes, facing down the slope and sunk into it, with a rock surface under them."));
+            number(ui, t("Slopes steeper than °"), &mut g.min_slope, 15.0..=75.0);
+            number(ui, t("Per hectare"), &mut g.density, 0.5..=200.0);
+            number(ui, t("Minimum distance"), &mut g.min_distance, 1.0..=60.0);
+            number(ui, t("Sunk into the slope"), &mut g.sink, 0.0..=1.0);
+            layer_pick(ui, "cliff_surface", t("Surface"), &mut g.surface, &cx.layers);
+            objects_ui(ui, &mut g.objects, cx);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::Fields(g) => {
+            ui.weak(t("Cuts polygons into strips of fields with balks between them, and lays hay bales along them."));
+            ui.label(t("Surfaces of the strips"));
+            for n in &cx.layers {
+                let mut on = g.surfaces.contains(n);
+                if ui.checkbox(&mut on, n).changed() {
+                    if on { g.surfaces.push(n.clone()); } else { g.surfaces.retain(|l| l != n); }
+                }
+            }
+            if g.surfaces.is_empty() { ui.weak(t("None chosen: layers named like fields are used.")); }
+            layer_pick(ui, "field_balk", t("Balk surface"), &mut g.balk, &cx.layers);
+            range_row(ui, t("Strip width m"), &mut g.min_width, &mut g.max_width, 4.0..=300.0, 0.5);
+            number(ui, t("Balk width m"), &mut g.balk_width, 0.0..=12.0);
+            let mut fixed = g.angle.is_some();
+            ui.checkbox(&mut fixed, t("Strips in one direction")).on_hover_text(t("Off: the strips of each field follow its longest side."));
+            match (fixed, g.angle) {
+                (true, None) => g.angle = Some(0.0),
+                (false, Some(_)) => g.angle = None,
+                _ => {}
+            }
+            if let Some(a) = &mut g.angle { number(ui, t("Direction °"), a, 0.0..=180.0); }
+            group(ui, t("Hay bales"), false, |ui| {
+                number(ui, t("Per hectare"), &mut g.density, 0.0..=20.0);
+                objects_ui(ui, &mut g.objects, cx);
+            });
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::Roadside(g) => {
+            ui.weak(t("A verge along roads and lines, bushes beyond it, and now and then a sign. Drop it on a road or a line."));
+            layer_pick(ui, "verge_surface", t("Verge surface"), &mut g.verge, &cx.layers);
+            number(ui, t("Verge from the middle of the road m"), &mut g.offset, 1.0..=40.0);
+            number(ui, t("Verge width m"), &mut g.verge_width, 0.5..=20.0);
+            ui.checkbox(&mut g.both_sides, t("Both sides"));
+            group(ui, t("Bushes and trees"), false, |ui| {
+                number(ui, t("Per 100 m"), &mut g.plant_density, 0.0..=60.0);
+                number(ui, t("Band width m"), &mut g.plant_band, 0.5..=60.0);
+                objects_ui(ui, &mut g.plants, cx);
+            });
+            group(ui, t("Signs"), false, |ui| {
+                number(ui, t("One every m (0 = none)"), &mut g.sign_spacing, 0.0..=3000.0);
+                objects_ui(ui, &mut g.signs, cx);
+            });
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
     }
     sample
+}
+
+/// A surface layer by name, or none ("chosen by name" when the generator can guess one).
+fn layer_pick(ui: &mut egui::Ui, salt: &str, label: String, value: &mut String, layers: &[String]) {
+    row(ui, &label, |ui| {
+        let auto = t("Automatic");
+        let shown = if value.is_empty() { auto.clone() } else { value.clone() };
+        egui::ComboBox::from_id_salt(salt).width(ui.available_width()).selected_text(shown).show_ui(ui, |ui| {
+            ui.selectable_value(value, String::new(), &auto);
+            for n in layers { ui.selectable_value(value, n.clone(), n); }
+        });
+    });
 }
 
 pub(crate) fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
@@ -754,6 +855,10 @@ pub(crate) fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::Erosion(_) => ("E", Color32::from_rgb(110, 92, 70)),
         GeneratorKind::ThermalErosion { .. } => ("E", Color32::from_rgb(120, 100, 76)),
         GeneratorKind::Terraces { .. } => ("T", Color32::from_rgb(120, 110, 80)),
+        GeneratorKind::Coast(_) => ("C", Color32::from_rgb(170, 150, 100)),
+        GeneratorKind::Cliffs(_) => ("K", Color32::from_rgb(110, 108, 100)),
+        GeneratorKind::Fields(_) => ("F", Color32::from_rgb(150, 130, 60)),
+        GeneratorKind::Roadside(_) => ("V", Color32::from_rgb(90, 110, 70)),
     }
 }
 
@@ -792,11 +897,15 @@ pub(crate) fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
         GeneratorKind::Settlement(s) => s.buildings.first().cloned(),
         GeneratorKind::Fence(g) => g.preset.and_then(|id| app.library.objects.iter().find(|p| p.id == id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| Some(g.model.clone()).filter(|m| !m.is_empty())),
         GeneratorKind::PowerLine(g) => g.poles.first().and_then(|p| app.assets.resolve(&p.name).map(str::to_string)),
+        GeneratorKind::Cliffs(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Coast(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Fields(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Roadside(g) => g.plants.first_model(&app.library.objects).map(str::to_string),
         _ => None,
     };
     match model {
         Some(m) => Preview::Model(ObjectStore::normalize_path(&m)),
-        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_)) => Preview::Nothing,
+        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_)) => Preview::Nothing,
         None => {
             let key = match kind {
                 GeneratorKind::Terrain(p) => format!("terrain {p:?}"),
@@ -1438,6 +1547,7 @@ pub fn run_generator(app: &mut App, id: u64) {
     let world = &doc.world;
     let polygons = target_shapes(world, &g.target, ShapeKind::Polygon);
     let lines = target_lines(world, &g.target);
+    let g_target = g.target.clone();
     if g.target != GenTarget::Map && !matches!(g.target, GenTarget::Point(_)) && polygons.is_empty() && lines.is_empty() {
         app.warn(t("The shape this generator works on no longer exists"));
         return;
@@ -1513,11 +1623,7 @@ pub fn run_generator(app: &mut App, id: u64) {
                 Ok(Box::new(move |a: &mut App| {
                     // What the rules changed becomes the generator's mask modifier; the pixels of
                     // its earlier run stay part of it, so running again replaces them.
-                    let Some(d) = a.doc.as_ref() else { return };
-                    if d.world.mask.data.len() != data.len() { return; }
-                    let old = d.world.generators.iter().find(|g| g.id == id).and_then(|g| g.mask_modifier);
-                    let tiles = dz_core::maskmod::diff_tiles(&d.world.mask.data, &data, d.world.mask.width, d.world.mask.height, |x, y| old.is_some_and(|m| d.world.mask_covered(m, x, y)));
-                    crate::maskmods::store(a, Some(id), dz_core::maskmod::MaskKind::Paint, name.clone(), tiles);
+                    store_mask(a, id, &name, data);
                     a.info(name);
                 }) as Finish)
             });
@@ -1525,13 +1631,16 @@ pub fn run_generator(app: &mut App, id: u64) {
         GeneratorKind::Settlement(rule) => {
             let GenTarget::Point(p) = g.target else { return };
             let falloff = app.place.pad_falloff;
-            app.spawn(label, move |_| {
+            app.spawn(label.clone(), move |_| {
                 let s = gen::settlement(&mut lite, &db, p[0], p[1], &rule)?;
+                // The yards get their surface, as the generator's mask modifier.
+                let yards = lite.layer_index(&rule.yard_surface).filter(|_| !rule.yard_surface.is_empty()).map(|l| dz_core::landscape::polygons_mask(&lite, &s.yards, l as u8));
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| {
                     let ids = store_generated(a, id, models, s.objects);
                     let pads: Vec<u32> = s.pads.iter().map(|(i, _, _)| ids[*i]).collect();
                     a.add_pads(&pads, falloff);
+                    if let Some(data) = yards { store_mask(a, id, &label, data); }
                 }) as Finish)
             });
         }
@@ -1653,6 +1762,99 @@ pub fn run_generator(app: &mut App, id: u64) {
         GeneratorKind::Erosion(p) => { let area = area_bounds(&polygons, world.meta.size_m()).0; height_job(app, label, area, AREA_EDGE, move |h, job| gen::hydraulic_erosion(h, &p, job)) }
         GeneratorKind::ThermalErosion { iterations, talus } => { let area = area_bounds(&polygons, world.meta.size_m()).0; height_job(app, label, area, AREA_EDGE, move |h, job| gen::thermal_erosion(h, iterations, talus, job)) }
         GeneratorKind::Terraces { step, sharpness } => { let area = area_bounds(&polygons, world.meta.size_m()).0; height_job(app, label, area, AREA_EDGE, move |h, _| gen::terrace(h, step, sharpness)) }
+        GeneratorKind::Coast(mut g) => {
+            g.objects = g.objects.resolved(&presets);
+            let (area, _) = area_bounds(&polygons, world.meta.size_m());
+            let sea = world.meta.sea_level;
+            if dz_core::landscape::coast_sand(world, &g).is_none() {
+                app.warn(t("No surface for the beaches: choose one in the generator, or add a sand layer"));
+            }
+            app.spawn(label.clone(), move |job| {
+                job.stage("Finding the shore");
+                let maps = dz_core::analysis::TerrainMaps::sea(&lite.height, lite.meta.sea_level);
+                let data = dz_core::landscape::coast_mask(&lite, &g, &maps, area.as_ref());
+                let objects = if g.density > 0.0 { dz_core::landscape::coast_objects(&mut lite, &g, &maps, area.as_ref(), job)? } else { Vec::new() };
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    store_mask(a, id, &label, data);
+                    if g.shape {
+                        // The beaches are laid last, in a task of their own.
+                        height_job(a, label, area, AREA_EDGE, move |h, _| dz_core::landscape::coast_heights(h, sea, &g));
+                    }
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Cliffs(mut g) => {
+            g.objects = g.objects.resolved(&presets);
+            let (area, bounds) = area_bounds(&polygons, world.meta.size_m());
+            app.spawn(label.clone(), move |job| {
+                let objects = dz_core::landscape::cliff_objects(&mut lite, &g, area.as_ref(), bounds, job)?;
+                let data = dz_core::landscape::cliff_mask(&lite, &g, area.as_ref());
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    store_mask(a, id, &label, data);
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Fields(mut g) => {
+            if polygons.is_empty() {
+                app.warn(t("This generator needs a polygon"));
+                return;
+            }
+            if dz_core::landscape::field_layers(world, &g).is_empty() {
+                app.warn(t("Choose the surfaces of the strips in the generator"));
+                return;
+            }
+            g.objects = g.objects.resolved(&presets);
+            let fields: Vec<Vec<[f32; 2]>> = polygons.iter().map(|p| p.points.clone()).collect();
+            app.spawn(label.clone(), move |_| {
+                let data = dz_core::landscape::field_mask(&lite, &g, &fields);
+                let objects = dz_core::landscape::field_objects(&mut lite, &g, &fields)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    store_mask(a, id, &label, data);
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Roadside(mut g) => {
+            g.plants = g.plants.resolved(&presets);
+            g.signs = g.signs.resolved(&presets);
+            // On the map it follows every road.
+            let lines = if g_target_is_map(&g_target) { world.routes.iter().map(|r| r.centerline.clone()).filter(|l| l.len() > 1).collect() } else { lines };
+            if lines.is_empty() {
+                app.warn(t("There are no roads to follow"));
+                return;
+            }
+            let roads: Vec<Vec<[f32; 2]>> = world.routes.iter().map(|r| r.centerline.clone()).collect();
+            app.spawn(label.clone(), move |_| {
+                let data = dz_core::landscape::roadside_mask(&lite, &g, &lines);
+                let objects = dz_core::landscape::roadside_objects(&mut lite, &g, &lines, &roads)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    store_mask(a, id, &label, data);
+                }) as Finish)
+            });
+        }
+    }
+}
+
+fn g_target_is_map(t: &GenTarget) -> bool {
+    *t == GenTarget::Map
+}
+
+/// What a generator changed in the mask becomes its mask modifier, replacing its earlier run.
+fn store_mask(a: &mut App, id: u64, name: &str, data: Vec<u8>) {
+    let Some(d) = a.doc.as_ref() else { return };
+    if d.world.mask.data.len() != data.len() { return; }
+    let old = d.world.generators.iter().find(|g| g.id == id).and_then(|g| g.mask_modifier);
+    let tiles = dz_core::maskmod::diff_tiles(&d.world.mask.data, &data, d.world.mask.width, d.world.mask.height, |x, y| old.is_some_and(|m| d.world.mask_covered(m, x, y)));
+    if tiles.is_empty() && old.is_none() { return; }
+    if crate::maskmods::store(a, Some(id), dz_core::maskmod::MaskKind::Paint, name.to_string(), tiles).is_some() {
+        if let Some(d) = a.doc.as_mut() { d.history.group_last(2, name); }
     }
 }
 
