@@ -4314,6 +4314,25 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         }
         // A correction over the whole image (first number -1) or the shapes of layer n, with
         // brightness, saturation and warmth; `satcorrectset b s w` changes the chosen one.
+        // satgen [shape layer, -1 for the whole map] [hill shading] [patches]
+        "satgen" => {
+            app.sat.gen_whole = nums.first().is_none_or(|v| *v < 0.0);
+            app.sat.fill_layer = nums.first().filter(|v| **v >= 0.0).map(|v| *v as usize);
+            if let Some(v) = nums.get(1) { app.sat.gen.hillshade = *v; }
+            if let Some(v) = nums.get(2) { app.sat.gen.variation = *v; }
+            crate::satellite::generate_from_mask(app);
+        }
+        // satclassify brightness contrast class layer [class layer ...]
+        "satclassify" if nums.len() >= 4 => {
+            let c = &mut app.sat.classify;
+            c.adjust = dz_core::satmod::Adjust { brightness: nums[0], contrast: nums[1], legacy: true, ..Default::default() };
+            c.surfaces = [None; 8];
+            for pair in nums[2..].chunks(2) {
+                if let [class, layer] = pair { c.surfaces[(*class as usize) & 7] = Some(*layer as usize); }
+            }
+            app.sat.classify_whole = true;
+            crate::satellite::classify_to_mask(app);
+        }
         "satcorrect" if nums.len() >= 4 => {
             app.sat.correct_whole = nums[0] < 0.0;
             app.sat.fill_layer = (nums[0] >= 0.0).then_some(nums[0] as usize);

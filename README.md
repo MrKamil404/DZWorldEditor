@@ -12,7 +12,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Live 3D and 2D views** of the whole map with real DayZ models, textures, satellite image and water; a split view, a minimap, full screen and a view in a window of its own
 - **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces and non-destructive modifiers
 - **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile
-- **Satellite image** editing: bake objects, roads and water into it, and a clone brush, all as modifiers that can be hidden or deleted
+- **Satellite image** editing: bake objects, roads and water into it, a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite, all as modifiers that can be hidden or deleted
 - **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, painting objects with a brush, prefabs and undo
 - **Roads and railways** fitted from the game's own parts, with embankments, bridges, level crossings and roundabouts
 - **Every vanilla road type** of Chernarus, Livonia, Sakhal and Takistan, and **crossroads** (`kr_*`) that roads start from or that go into a road

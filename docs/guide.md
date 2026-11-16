@@ -133,8 +133,21 @@ written to the `Names` of the world config on export, so the in-game map shows t
 * **Clone brush** copies from another place of the satellite image or from a picture you load.
   Choose the source in the preview, then paint on the map.
 
-Every bake and every clone stroke is a **satellite modifier** in the outliner: it can be hidden or
-deleted, and what it covered comes back.
+* **Colour correction** changes the colours of the whole image or of shapes, and can be changed
+  later. **Use legacy** makes brightness and contrast work as Photoshop's legacy mode.
+* **Satellite from the mask** paints the image in the colours of the surfaces of the mask, with the
+  pattern of their textures, ragged soft edges between them, lighter and darker patches, the
+  shading of the hills and water under the sea level. Each surface gets its colour in **Colours of
+  the surfaces**: guessed from its name, or taken from the satellite image the map already has. A
+  project without a satellite image gets one. It works on the whole map or on shapes.
+* **Surfaces from the satellite** reads the mask from the satellite image. Brightness and contrast
+  (legacy) push the image to a few strong colours, as *Image > Adjustments > Brightness/Contrast*
+  with *Use Legacy* does in Photoshop; the preview shows them, and each colour can be given a
+  surface. Smoothing takes away specks. The result is a mask modifier.
+
+Every bake, clone stroke, correction and generated image is a **satellite modifier** in the
+outliner: it can be hidden or deleted, and what it covered comes back. Everything the satellite and
+mask modifiers make is part of the map when it is built.
 
 ### 9 Mission
 

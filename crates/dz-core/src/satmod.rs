@@ -34,6 +34,8 @@ pub enum SatKind {
     /// A colour correction worked out from what is under it whenever the image is composed,
     /// so its settings can be changed at any time. Its tiles hold a mask, one byte a pixel.
     Correct,
+    /// A satellite made from the surface mask; see `satgen`.
+    Generated,
 }
 
 /// The settings of a correction modifier.
@@ -177,6 +179,8 @@ impl SatLayers {
                 SatKind::Adjust => 2,
                 SatKind::Paint => 3,
                 SatKind::Correct => 4,
+                // Older versions read it as clone strokes, which it is drawn like.
+                SatKind::Generated => 5,
             });
             b.push(m.enabled as u8);
             b.push(m.opacity);
@@ -210,6 +214,7 @@ impl SatLayers {
                 2 => SatKind::Adjust,
                 3 => SatKind::Paint,
                 4 => SatKind::Correct,
+                5 => SatKind::Generated,
                 _ => SatKind::Clone,
             };
             let enabled = head[1] != 0;
@@ -777,19 +782,35 @@ pub struct Adjust {
     pub hue: f32,
     /// -1 cooler (bluer) to 1 warmer (yellower).
     pub warmth: f32,
+    /// Brightness and contrast as Photoshop's legacy ones: brightness moves every colour by the
+    /// same amount (up to 150 of 255) and full contrast splits each channel at its middle.
+    pub legacy: bool,
 }
 
 impl Adjust {
     pub fn apply(&self, c: [u8; 3]) -> [u8; 3] {
         let mut v: [f32; 3] = c.map(|x| x as f32 / 255.0);
-        // Lighter towards white and darker towards black, so the pattern stays.
         let b = self.brightness.clamp(-1.0, 1.0);
-        for x in &mut v {
-            *x = if b >= 0.0 { *x + (1.0 - *x) * b } else { *x * (1.0 + b) };
-        }
-        let k = 1.0 + self.contrast.clamp(-1.0, 1.0);
-        for x in &mut v {
-            *x = (*x - 0.5) * k + 0.5;
+        let contrast = self.contrast.clamp(-1.0, 1.0);
+        if self.legacy {
+            // Photoshop's legacy mode: a plain shift, then contrast about the middle that
+            // grows without end towards full, where every channel is either off or full.
+            for x in &mut v {
+                *x = (*x + b * 150.0 / 255.0).clamp(0.0, 1.0);
+            }
+            let k = if contrast >= 0.0 { 1.0 / (1.0 - contrast).max(1e-4) } else { 1.0 + contrast };
+            for x in &mut v {
+                *x = (*x - 0.5) * k + 0.5;
+            }
+        } else {
+            // Lighter towards white and darker towards black, so the pattern stays.
+            for x in &mut v {
+                *x = if b >= 0.0 { *x + (1.0 - *x) * b } else { *x * (1.0 + b) };
+            }
+            let k = 1.0 + contrast;
+            for x in &mut v {
+                *x = (*x - 0.5) * k + 0.5;
+            }
         }
         // Hue turned about the grey axis, then saturation from the grey of the same lightness.
         if self.hue != 0.0 {
@@ -810,7 +831,7 @@ impl Adjust {
         v.map(|x| (x.clamp(0.0, 1.0) * 255.0).round() as u8)
     }
     pub fn is_neutral(&self) -> bool {
-        *self == Self::default()
+        Self { legacy: false, ..*self } == Self::default()
     }
 }
 

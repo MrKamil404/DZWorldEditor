@@ -578,36 +578,10 @@ pub fn load_layer_textures(root: PathBuf, layers: Vec<(usize, String, String, [u
     let (tx, rx) = channel();
     std::thread::spawn(move || {
         for (index, tex, material, color) in layers {
-            let file = root.join(tex.replace('\\', "/"));
-            let decoded = std::fs::read(&file).ok().and_then(|b| forest_core::paa::decode(&b, 512).ok());
-            let mut rgba = Vec::with_capacity(512 * 512 * 4);
-            let mut sum = [0u64; 3];
-            match decoded {
-                Some(t) => {
-                    let (w, h) = (t.width as usize, t.height as usize);
-                    for y in 0..512 {
-                        for x in 0..512 {
-                            let p = (y * h / 512 * w + x * w / 512) * 4;
-                            rgba.extend_from_slice(&[t.rgba[p], t.rgba[p + 1], t.rgba[p + 2], t.rgba[p + 3]]);
-                            for c in 0..3 {
-                                sum[c] += t.rgba[p + c] as u64;
-                            }
-                        }
-                    }
-                }
-                None => {
-                    for _ in 0..512 * 512 {
-                        rgba.extend_from_slice(&[color[0], color[1], color[2], 255]);
-                    }
-                    for c in 0..3 {
-                        sum[c] = color[c] as u64 * 512 * 512;
-                    }
-                }
-            }
+            let (mut rgba, average, _) = dz_core::satgen::layer_texture(&root, &tex, color, 512);
             apply_relief(&root, &tex, &mut rgba);
-            let n = 512 * 512;
             let normal = surface_normal(&root, &tex, &material);
-            let _ = tx.send(LayerTexture { index, rgba, normal, average: [(sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8] });
+            let _ = tx.send(LayerTexture { index, rgba, normal, average });
             ctx.request_repaint();
         }
     });

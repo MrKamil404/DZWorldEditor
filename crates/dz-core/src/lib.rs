@@ -27,6 +27,7 @@ pub mod pbo;
 pub mod maskmod;
 pub mod mission;
 pub mod project;
+pub mod satgen;
 pub mod satmod;
 pub mod shapes;
 pub mod surfaces;

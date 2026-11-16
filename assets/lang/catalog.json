@@ -203,6 +203,10 @@
   "de": "Eine Route braucht mindestens zwei Punkte",
   "pl": "Trasa potrzebuje co najmniej dwóch punktów"
  },
+ "A satellite image of {0} × {1} pixels was made for the project": {
+  "de": "Für das Projekt wurde ein Satellitenbild mit {0} × {1} Pixeln erstellt",
+  "pl": "Dla projektu utworzono zdjęcie satelitarne {0} × {1} pikseli"
+ },
  "A single point; a click places it.": {
   "de": "Ein einzelner Punkt; ein Klick setzt ihn.",
   "pl": "Pojedynczy punkt; kliknięcie go stawia."
@@ -779,6 +783,10 @@
   "de": "Binarisieren",
   "pl": "Binaryzuj"
  },
+ "Black": {
+  "de": "Schwarz",
+  "pl": "Czarny"
+ },
  "Blend": {
   "de": "Übergang",
   "pl": "Przejście"
@@ -798,6 +806,10 @@
  "Blotch size m": {
   "de": "Fleckengröße m",
   "pl": "Wielkość plam m"
+ },
+ "Blue": {
+  "de": "Blau",
+  "pl": "Niebieski"
  },
  "Blur": {
   "de": "Weichzeichnen",
@@ -862,6 +874,14 @@
  "Brightness": {
   "de": "Helligkeit",
   "pl": "Jasność"
+ },
+ "Brightness and contrast as in Photoshop's legacy mode: brightness moves every colour by the same amount, and full contrast leaves each channel either off or full.": {
+  "de": "Helligkeit und Kontrast wie im Legacy-Modus von Photoshop: Die Helligkeit verschiebt jede Farbe um denselben Betrag, und voller Kontrast lässt jeden Kanal entweder aus oder voll.",
+  "pl": "Jasność i kontrast jak w trybie dziedziczenia Photoshopa: jasność przesuwa każdy kolor o tyle samo, a pełny kontrast zostawia każdy kanał wyłączony albo pełny."
+ },
+ "Brightness and contrast push the satellite image to a few strong colours, as Photoshop's legacy brightness and contrast does. Each colour that comes out can become a surface of the mask.": {
+  "de": "Helligkeit und Kontrast reduzieren das Satellitenbild auf wenige kräftige Farben, wie Helligkeit und Kontrast im Legacy-Modus von Photoshop. Jede entstandene Farbe kann zu einer Oberfläche der Maske werden.",
+  "pl": "Jasność i kontrast sprowadzają zdjęcie satelitarne do kilku mocnych kolorów, tak jak jasność i kontrast w trybie dziedziczenia Photoshopa. Każdy powstały kolor może stać się powierzchnią maski."
  },
  "Bring it back": {
   "de": "Zurückholen",
@@ -1154,6 +1174,10 @@
  "Choose a surface first": {
   "de": "Zuerst eine Oberfläche wählen",
   "pl": "Najpierw wybierz powierzchnię"
+ },
+ "Choose a surface for at least one colour": {
+  "de": "Wähle für mindestens eine Farbe eine Oberfläche",
+  "pl": "Wybierz powierzchnię dla co najmniej jednego koloru"
  },
  "Choose at least one model": {
   "de": "Wähle mindestens ein Modell",
@@ -1499,6 +1523,10 @@
   "de": "Farbtextur",
   "pl": "Tekstura koloru"
  },
+ "Colours of the surfaces": {
+  "de": "Farben der Oberflächen",
+  "pl": "Kolory powierzchni"
+ },
  "Configuration": {
   "de": "Konfiguration",
   "pl": "Konfiguracja"
@@ -1678,6 +1706,10 @@
  "Cutting slope": {
   "de": "Einschnittneigung",
   "pl": "Nachylenie wykopu"
+ },
+ "Cyan": {
+  "de": "Cyan",
+  "pl": "Cyjan"
  },
  "DZ_Data and the addon of the base world are always there.": {
   "de": "DZ_Data und das Addon der Basiswelt sind immer dabei.",
@@ -2131,6 +2163,10 @@
   "de": "Jede Oberfläche in ihrer Farbe aus layers.cfg.",
   "pl": "Każda nawierzchnia w swoim kolorze z layers.cfg."
  },
+ "Each surface takes the average colour the satellite image has where the mask holds it.": {
+  "de": "Jede Oberfläche nimmt die Durchschnittsfarbe des Satellitenbilds dort an, wo die Maske sie hat.",
+  "pl": "Każda powierzchnia przyjmuje średni kolor zdjęcia satelitarnego w miejscach, gdzie leży w masce."
+ },
  "Earthwork penalty": {
   "de": "Erdarbeiten-Malus",
   "pl": "Kara za roboty ziemne"
@@ -2146,6 +2182,10 @@
  "Economy files written by the game": {
   "de": "Wirtschaftsdateien, die das Spiel schreibt",
   "pl": "Pliki ekonomii zapisywane przez grę"
+ },
+ "Edge between surfaces m": {
+  "de": "Rand zwischen Oberflächen m",
+  "pl": "Krawędź między powierzchniami m"
  },
  "Edge blend in a shape": {
   "de": "Randübergang in einer Form",
@@ -2939,6 +2979,10 @@
   "de": "Gras unter Objekten",
   "pl": "Trawa pod obiektami"
  },
+ "Green": {
+  "de": "Grün",
+  "pl": "Zielony"
+ },
  "Ground colour on grass": {
   "de": "Bodenfarbe auf Gras",
   "pl": "Wpływ koloru satki na trawę"
@@ -2994,6 +3038,10 @@
  "Groups:": {
   "de": "Gruppen:",
   "pl": "Grupy:"
+ },
+ "Guess from the names": {
+  "de": "Aus den Namen raten",
+  "pl": "Zgadnij z nazw"
  },
  "Hardness": {
   "de": "Härte",
@@ -3071,6 +3119,10 @@
   "de": "Hochland",
   "pl": "Wyżyna"
  },
+ "Hill shading": {
+  "de": "Hangschattierung",
+  "pl": "Cieniowanie wzgórz"
+ },
  "Hills": {
   "de": "Hügel",
   "pl": "Wzgórza"
@@ -3114,6 +3166,14 @@
  "How many times the textures repeat in their uv space (aside and up of both stages)": {
   "de": "Wie oft sich die Texturen in ihrem UV-Raum wiederholen (aside und up beider Stages)",
   "pl": "Ile razy tekstury powtarzają się w swoim UV (aside i up obu stage'y)"
+ },
+ "How much of the light and dark pattern of the surface texture shows.": {
+  "de": "Wie viel vom hellen und dunklen Muster der Oberflächentextur zu sehen ist.",
+  "pl": "Ile widać jasnego i ciemnego wzoru tekstury powierzchni."
+ },
+ "How much of the texture's own pattern shows over its average colour.": {
+  "de": "Wie viel vom eigenen Muster der Textur über ihrer Durchschnittsfarbe zu sehen ist.",
+  "pl": "Ile własnego wzoru tekstury widać na jej średnim kolorze."
  },
  "How well someone lying, kneeling and standing on it is seen": {
   "de": "Wie gut man liegend, kniend und stehend darauf gesehen wird",
@@ -3371,6 +3431,10 @@
   "de": "Sprache",
   "pl": "Język"
  },
+ "Larger areas a little lighter or darker, as real ground is.": {
+  "de": "Größere Flächen etwas heller oder dunkler, wie echter Boden.",
+  "pl": "Większe obszary nieco jaśniejsze lub ciemniejsze, jak na prawdziwym terenie."
+ },
  "Lasso": {
   "de": "Lasso",
   "pl": "Lasso"
@@ -3458,6 +3522,10 @@
  "Least damage of spawned loot, 0..1.": {
   "de": "Geringster Schaden gespawnter Beute, 0..1.",
   "pl": "Najmniejsze uszkodzenie lootu, 0..1."
+ },
+ "Leave as it is": {
+  "de": "Unverändert lassen",
+  "pl": "Zostaw bez zmian"
  },
  "Leave out objects hidden behind the terrain or buildings": {
   "de": "Objekte hinter Gelände oder Gebäuden weglassen",
@@ -3679,6 +3747,10 @@
   "de": "Senkt den Boden unter dem Pinsel.",
   "pl": "Obniża teren pod pędzlem."
  },
+ "Magenta": {
+  "de": "Magenta",
+  "pl": "Purpurowy"
+ },
  "Main menu scenes": {
   "de": "Hauptmenü-Szenen",
   "pl": "Sceny menu głównego"
@@ -3730,6 +3802,10 @@
  "Make the map's own copy": {
   "de": "Eigene Kopie der Karte anlegen",
   "pl": "Zrób kopię dla mapy"
+ },
+ "Make the satellite": {
+  "de": "Satellitenbild erstellen",
+  "pl": "Utwórz satelitę"
  },
  "Makes env/<name>.xml and adds it to cfgenvironment.xml.": {
   "de": "Erstellt env/<Name>.xml und trägt sie in cfgenvironment.xml ein.",
@@ -3902,6 +3978,14 @@
  "Messages shown to players: welcome, repeated and shutdown countdowns.": {
   "de": "Nachrichten an Spieler: Begrüßung, wiederholte und Countdowns zum Herunterfahren.",
   "pl": "Wiadomości dla graczy: powitania, powtarzane i odliczania do wyłączenia."
+ },
+ "Metres a pixel": {
+  "de": "Meter pro Pixel",
+  "pl": "Metry na piksel"
+ },
+ "Metres one repeat of a surface texture covers.": {
+  "de": "Wie viele Meter eine Wiederholung der Oberflächentextur abdeckt.",
+  "pl": "Ile metrów zajmuje jedno powtórzenie tekstury powierzchni."
  },
  "Middle": {
   "de": "Mittel",
@@ -4819,6 +4903,10 @@
   "de": "Boden unter den Bäumen malen",
   "pl": "Maluj podłoże pod drzewami"
  },
+ "Paint the surfaces": {
+  "de": "Oberflächen malen",
+  "pl": "Pomaluj powierzchnie"
+ },
  "Paint under objects": {
   "de": "Unter Objekten malen",
   "pl": "Maluj pod obiektami"
@@ -4863,6 +4951,10 @@
   "de": "Malt die Zellen, die das Spiel nicht zeichnet, für Eingänge unter die Erde.",
   "pl": "Maluje komórki, których gra nie rysuje, np. na wejścia pod ziemię."
  },
+ "Paints the satellite image in the colours of the surfaces of the mask, with their pattern, soft edges between them and the shading of the hills. It is a modifier, so it can be hidden, blended or deleted.": {
+  "de": "Malt das Satellitenbild in den Farben der Oberflächen der Maske, mit ihrem Muster, weichen Rändern dazwischen und der Schattierung der Hügel. Es ist ein Modifikator, der ausgeblendet, überblendet oder gelöscht werden kann.",
+  "pl": "Maluje zdjęcie satelitarne w kolorach powierzchni z maski, z ich wzorem, miękkimi krawędziami między nimi i cieniowaniem wzgórz. To modyfikator, więc można go ukryć, przenikać lub usunąć."
+ },
  "Paints {0} (L{1})": {
   "de": "Malt {0} (L{1})",
   "pl": "Maluje {0} (L{1})"
@@ -4902,6 +4994,14 @@
  "Patch size": {
   "de": "Fleckgröße",
   "pl": "Rozmiar plamy"
+ },
+ "Patch size m": {
+  "de": "Fleckengröße m",
+  "pl": "Wielkość plam m"
+ },
+ "Patches": {
+  "de": "Flecken",
+  "pl": "Plamy"
  },
  "Patches per hectare": {
   "de": "Flecken pro Hektar",
@@ -5327,6 +5427,10 @@
   "de": "Letzte Projekte",
   "pl": "Ostatnie projekty"
  },
+ "Red": {
+  "de": "Rot",
+  "pl": "Czerwony"
+ },
  "Redo": {
   "de": "Wiederholen",
   "pl": "Ponów"
@@ -5671,6 +5775,14 @@
   "de": "Satellit",
   "pl": "Satelita"
  },
+ "Satellite from the mask": {
+  "de": "Satellitenbild aus der Maske",
+  "pl": "Satelita z maski"
+ },
+ "Satellite from the mask {0}": {
+  "de": "Satellitenbild aus der Maske {0}",
+  "pl": "Satelita z maski {0}"
+ },
  "Satellite image": {
   "de": "Satellitenbild",
   "pl": "Obraz satelitarny"
@@ -5914,6 +6026,10 @@
  "Select polygons in the Shapes mode first.": {
   "de": "Wähle zuerst Polygone im Modus Formen.",
   "pl": "Najpierw zaznacz wielokąty w trybie Kształty."
+ },
+ "Select polygons in the Shapes tool, or choose a shape layer": {
+  "de": "Wähle Polygone im Werkzeug Formen aus oder wähle eine Formebene",
+  "pl": "Zaznacz wielokąty w narzędziu Kształty albo wybierz warstwę kształtów"
  },
  "Select polygons or lines in the Shapes tool, or choose a shape layer": {
   "de": "Wähle Polygone oder Linien im Formen-Werkzeug aus oder wähle eine Formenebene",
@@ -6195,6 +6311,10 @@
   "de": "Stattdessen glätten",
   "pl": "Wygładzaj zamiast tego"
  },
+ "Smoothing": {
+  "de": "Glättung",
+  "pl": "Wygładzanie"
+ },
  "Snap to angle steps": {
   "de": "An Winkelschritten einrasten",
   "pl": "Przyciąganie do skoku kąta"
@@ -6379,6 +6499,10 @@
   "de": "Sonnenhöhe",
   "pl": "Wysokość słońca"
  },
+ "Sun from": {
+  "de": "Sonne aus",
+  "pl": "Słońce z"
+ },
  "Sun strength": {
   "de": "Sonnenstärke",
   "pl": "Siła słońca"
@@ -6487,6 +6611,14 @@
   "de": "Oberflächen und Bewuchs",
   "pl": "Powierzchnie i roślinność"
  },
+ "Surfaces from the satellite": {
+  "de": "Oberflächen aus dem Satellitenbild",
+  "pl": "Powierzchnie z satelity"
+ },
+ "Surfaces from the satellite {0}": {
+  "de": "Oberflächen aus dem Satellitenbild {0}",
+  "pl": "Powierzchnie z satelity {0}"
+ },
  "Surfaces in the game": {
   "de": "Oberflächen im Spiel",
   "pl": "Powierzchnie w grze"
@@ -6506,6 +6638,10 @@
  "Take a full copy...": {
   "de": "Vollständige Kopie übernehmen...",
   "pl": "Pobierz pełną kopię..."
+ },
+ "Take from the satellite": {
+  "de": "Aus dem Satellitenbild nehmen",
+  "pl": "Weź z satelity"
  },
  "Take the colour from the map": {
   "de": "Farbe von der Karte nehmen",
@@ -6530,6 +6666,10 @@
  "Take theirs": {
   "de": "Fremde übernehmen",
   "pl": "Weź cudze"
+ },
+ "Takes away specks: each pixel of the mask takes the colour most pixels round it have.": {
+  "de": "Entfernt Sprenkel: Jedes Pixel der Maske nimmt die Farbe an, die die meisten Pixel um es herum haben.",
+  "pl": "Usuwa drobinki: każdy piksel maski przyjmuje kolor, który ma większość pikseli wokół niego."
  },
  "Takes the 3D camera to this scene.": {
   "de": "Bringt die 3D-Kamera zu dieser Szene.",
@@ -6723,6 +6863,14 @@
   "de": "Texturfilterung",
   "pl": "Filtrowanie tekstur"
  },
+ "Texture pattern": {
+  "de": "Texturmuster",
+  "pl": "Wzór tekstury"
+ },
+ "Texture size m": {
+  "de": "Texturgröße m",
+  "pl": "Rozmiar tekstury m"
+ },
  "Texture tiles": {
   "de": "Texturkacheln",
   "pl": "Kafle tekstur"
@@ -6830,6 +6978,10 @@
  "The game blends at most five surfaces per texture tile; if a tile uses more, the rarest are replaced on export.": {
   "de": "Das Spiel mischt höchstens fünf Oberflächen pro Kachel; bei mehr werden die seltensten beim Export ersetzt.",
   "pl": "Gra miesza najwyżej pięć powierzchni na kafel; gdy kafel ma ich więcej, najrzadsze zostaną zastąpione przy eksporcie."
+ },
+ "The game takes the colour of the ground from the satellite image and only the pattern from the surface texture, so each surface is given its colour here.": {
+  "de": "Das Spiel nimmt die Farbe des Bodens aus dem Satellitenbild und von der Oberflächentextur nur das Muster, deshalb bekommt hier jede Oberfläche ihre Farbe.",
+  "pl": "Gra bierze kolor terenu ze zdjęcia satelitarnego, a z tekstury powierzchni tylko wzór, dlatego tutaj każda powierzchnia dostaje swój kolor."
  },
  "The generators along it and what they made ({0})": {
   "de": "Die Generatoren entlang der Route und was sie erzeugt haben ({0})",
@@ -6999,6 +7151,10 @@
   "de": "Das Projekt hat kein Satellitenbild",
   "pl": "Projekt nie ma satki"
  },
+ "The project has no satellite image yet: a new one is made at this resolution.": {
+  "de": "Das Projekt hat noch kein Satellitenbild: Ein neues wird in dieser Auflösung erstellt.",
+  "pl": "Projekt nie ma jeszcze zdjęcia satelitarnego: nowe powstanie w tej rozdzielczości."
+ },
  "The project has no satellite image.": {
   "de": "Das Projekt hat kein Satellitenbild.",
   "pl": "Projekt nie ma obrazu satelitarnego."
@@ -7078,6 +7234,10 @@
  "The surface it painted": {
   "de": "Die von ihm gemalte Oberfläche",
   "pl": "Powierzchnię, którą namalował"
+ },
+ "The surfaces are the same as the mask already has": {
+  "de": "Die Oberflächen sind dieselben, die die Maske schon hat",
+  "pl": "Powierzchnie są takie same jak w masce"
  },
  "The surfaces with their colours and materials, for Terrain Builder.": {
   "de": "Die Oberflächen mit Farben und Materialien, für Terrain Builder.",
@@ -7395,6 +7555,10 @@
   "de": "Als Straßen- oder Objektlinie verwenden",
   "pl": "Użyj jako linii drogi lub obiektów"
  },
+ "Use legacy": {
+  "de": "Legacy verwenden",
+  "pl": "Użyj dziedziczenia"
+ },
  "Use selected": {
   "de": "Gewähltes verwenden",
   "pl": "Użyj wybranego"
@@ -7515,6 +7679,10 @@
   "de": "Auch Wasserteile",
   "pl": "Także party wody"
  },
+ "Water under the sea level": {
+  "de": "Wasser unter dem Meeresspiegel",
+  "pl": "Woda poniżej poziomu morza"
+ },
  "Weaker brush": {
   "de": "Schwächerer Pinsel",
   "pl": "Słabszy pędzel"
@@ -7575,6 +7743,10 @@
   "de": "Wo sich die Spielkarte öffnet; ohne dies die Mitte des Geländes.",
   "pl": "Gdzie otwiera się mapa w grze; bez tego środek terenu."
  },
+ "Where the sun stands that shades the hills: 0 north, 90 east.": {
+  "de": "Wo die Sonne steht, die die Hügel schattiert: 0 Norden, 90 Osten.",
+  "pl": "Skąd świeci słońce cieniujące wzgórza: 0 północ, 90 wschód."
+ },
  "Where the work drive, DayZ Tools and the game are; the editor reads models and builds the map with them.": {
   "de": "Wo das Arbeitslaufwerk, DayZ Tools und das Spiel liegen; damit liest der Editor Modelle und baut die Karte.",
   "pl": "Gdzie są dysk roboczy, DayZ Tools i gra; edytor czyta z nich modele i buduje mapę."
@@ -7590,6 +7762,10 @@
  "Which parts of the economy start, load, respawn and save.": {
   "de": "Welche Teile der Wirtschaft starten, laden, neu spawnen und speichern.",
   "pl": "Które części ekonomii startują, wczytują, odradzają i zapisują."
+ },
+ "White": {
+  "de": "Weiß",
+  "pl": "Biały"
  },
  "Whole image": {
   "de": "Ganzes Bild",
@@ -7622,6 +7798,10 @@
  "Width": {
   "de": "Breite",
   "pl": "Szerokość"
+ },
+ "Width of the ragged, soft edge where one surface meets another.": {
+  "de": "Breite des ausgefransten, weichen Randes, wo eine Oberfläche auf eine andere trifft.",
+  "pl": "Szerokość postrzępionej, miękkiej krawędzi, gdzie jedna powierzchnia spotyka drugą."
  },
  "Window layout": {
   "de": "Fensteranordnung",
@@ -7734,6 +7914,10 @@
  "Yaw": {
   "de": "Gieren",
   "pl": "Obrót"
+ },
+ "Yellow": {
+  "de": "Gelb",
+  "pl": "Żółty"
  },
  "Yes": {
   "de": "Ja",
