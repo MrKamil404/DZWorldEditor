@@ -10,7 +10,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 ## Features
 
 - **Live 3D and 2D views** of the whole map with real DayZ models, textures, satellite image and water; a split view, a minimap, full screen and a view in a window of its own
-- **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces and non-destructive modifiers
+- **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces, terrain stamps (craters, hills, quarries, your own pictures or pieces of terrain) and non-destructive modifiers
 - **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile
 - **Satellite image** editing: bake objects, roads and water into it, a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite, all as modifiers that can be hidden or deleted
 - **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, painting objects with a brush, prefabs and undo

@@ -78,6 +78,18 @@ changed in the keyboard shortcuts.
 Larger changes of the terrain are generators (terrain shape, erosion, terraces) and modifiers, which
 stay editable: they are listed in the outliner and can be changed, hidden or deleted later.
 
+**Terrain stamps** lay a form of the ground: a crater, hill, ridge, quarry, embankment, valley,
+volcano or dunes. Click a stamp, then on the map (Esc cancels); they are also in the Content
+Browser under *Built-in > Modifiers > Terrain stamps*, to drag onto the map. A stamp is a terrain
+modifier: with the Select tool, a click on its dot or inside its square selects it (as does the
+outliner), and its details set its size, height (below 0 turns it upside down) and turn, and its
+effect. Stamps shape the ground itself: roads, rivers, ponds and pads are laid on top of them, and
+graded roads over a stamp follow it again when it changes.
+*Offset* adds the form to the ground as it is, *Flatten* lays it on a fixed level, *Fill* and *Cut*
+only raise or only lower. Your own stamps are grey pictures (white high, black low) added with
+**Add pictures…**, or a piece of the map kept with **Keep the terrain of the selected polygon**.
+They are kept in `%LOCALAPPDATA%\DZWorldEditor\stamps`.
+
 ### 3 Paint
 
 ![Painting surfaces](screenshots/paint.jpg)

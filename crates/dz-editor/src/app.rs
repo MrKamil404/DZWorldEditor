@@ -357,6 +357,8 @@ pub struct App {
     pub check: crate::map_check::MapCheck,
     /// The measuring tool: on, and the points clicked.
     pub measure: Measure,
+    /// Terrain stamps: the user's own, and the one a click on the map lays next.
+    pub stamps: crate::stamps_ui::StampTool,
     /// The hour and cloud of the time of day of the lighting.
     pub time_of_day: f32,
     pub overcast: f32,
@@ -592,7 +594,7 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), measure: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
@@ -678,7 +680,7 @@ impl App {
         }
         let id = route.modifier.unwrap_or_else(|| doc.world.new_modifier_id());
         let decks = route_decks(&doc.world, i);
-        let built = route.grade.then(|| gen::road_modifier(&doc.world.base, id, &route.name, &route.centerline, route.grade_width, route.grade_falloff, &decks, &route.grading, &route.profile)).flatten();
+        let built = route.grade.then(|| gen::road_modifier(&doc.world.ground(), id, &route.name, &route.centerline, route.grade_width, route.grade_falloff, &decks, &route.grading, &route.profile)).flatten();
         match (built, at) {
             (Some(m), Some(k)) => doc.world.modifiers[k] = m,
             (Some(m), None) => {
@@ -698,6 +700,16 @@ impl App {
         doc.world.recompose(Some(r));
         self.height_changed(r);
         Some(before)
+    }
+
+    /// Grades again the roads that run over a terrain stamp in the square of world metres
+    /// `[x0, z0, x1, z1]`, so they follow the ground it shapes.
+    pub(crate) fn regrade_routes_in(&mut self, area: [f32; 4]) {
+        let Some(doc) = &self.doc else { return };
+        let hit: Vec<usize> = doc.world.routes.iter().enumerate().filter(|(_, r)| r.grade && r.centerline.iter().any(|p| p[0] >= area[0] && p[0] <= area[2] && p[1] >= area[1] && p[1] <= area[3])).map(|(i, _)| i).collect();
+        for i in hit {
+            self.sync_route_modifier(i);
+        }
     }
 
     /// Also makes the roads that cross route `i` meet it, and keeps tracks over road banks.
@@ -3062,7 +3074,8 @@ fn route_decks(world: &dz_core::world::World, i: usize) -> Vec<dz_core::world::B
             _ => None,
         });
         let graded = shaped.is_some();
-        let (line, gaps) = shaped.unwrap_or_else(|| (other.centerline.iter().map(|p| [p[0], p[1], world.base.sample(p[0], p[1])]).collect(), Vec::new()));
+        let ground = world.ground();
+        let (line, gaps) = shaped.unwrap_or_else(|| (other.centerline.iter().map(|p| [p[0], p[1], ground.sample(p[0], p[1])]).collect(), Vec::new()));
         let lift = match (rail, graded) {
             (true, true) => gen::RAIL_CROSSING_LIFT,
             (true, false) => gen::RAIL_CROSSING_LIFT_UNGRADED,

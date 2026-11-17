@@ -70,7 +70,7 @@ fn categories(g: Group) -> &'static [&'static str] {
     match g {
         Group::BuiltInGenerators => &["Terrain", "Surfaces and vegetation", "Objects in areas", "Objects along lines", "Water", "Landscape"],
         Group::BuiltInPresets => &["Forests", "Roads"],
-        Group::BuiltInModifiers => &["Levelling", "Raise and lower", "Fill and cut"],
+        Group::BuiltInModifiers => &["Levelling", "Raise and lower", "Fill and cut", "Terrain stamps"],
         _ => &[],
     }
 }
@@ -91,6 +91,9 @@ fn generator_category(kind: &dz_core::library::GeneratorKind) -> usize {
 
 /// The category of a built-in modifier of `MODIFIERS`.
 fn modifier_category(i: usize) -> usize {
+    if MODIFIERS[i].form.is_some() {
+        return 3;
+    }
     match MODIFIERS[i].mode {
         ModMode::Flatten => 0,
         ModMode::Offset => 1,
@@ -206,18 +209,43 @@ fn project_templates(app: &App) -> Vec<std::path::PathBuf> {
 pub struct ModTemplate {
     pub name: &'static str,
     pub mode: ModMode,
-    pub shape: fn() -> ModShape,
+    shape: fn() -> ModShape,
     pub amount: f32,
     pub falloff: f32,
+    /// A terrain stamp of this form, instead of `shape`.
+    pub form: Option<StampForm>,
 }
 
-pub const MODIFIERS: [ModTemplate; 6] = [
-    ModTemplate { name: "Flatten (circle)", mode: ModMode::Flatten, shape: || ModShape::Circle { radius: 12.0 }, amount: 0.0, falloff: 10.0 },
-    ModTemplate { name: "Flatten (rectangle)", mode: ModMode::Flatten, shape: || ModShape::Rect { half_x: 10.0, half_z: 10.0 }, amount: 0.0, falloff: 10.0 },
-    ModTemplate { name: "Raise", mode: ModMode::Offset, shape: || ModShape::Circle { radius: 15.0 }, amount: 3.0, falloff: 15.0 },
-    ModTemplate { name: "Lower", mode: ModMode::Offset, shape: || ModShape::Circle { radius: 15.0 }, amount: -3.0, falloff: 15.0 },
-    ModTemplate { name: "Fill up to the level", mode: ModMode::Fill, shape: || ModShape::Circle { radius: 15.0 }, amount: 0.0, falloff: 12.0 },
-    ModTemplate { name: "Cut down to the level", mode: ModMode::Cut, shape: || ModShape::Circle { radius: 15.0 }, amount: 0.0, falloff: 12.0 },
+impl ModTemplate {
+    pub fn shape(&self) -> ModShape {
+        match self.form {
+            Some(f) => dz_core::terrain_stamps::form_shape(f),
+            None => (self.shape)(),
+        }
+    }
+}
+
+use dz_core::terrain_stamps::StampForm;
+
+const fn stamp(name: &'static str, form: StampForm) -> ModTemplate {
+    ModTemplate { name, mode: ModMode::Offset, shape: || ModShape::Circle { radius: 1.0 }, amount: 0.0, falloff: 0.0, form: Some(form) }
+}
+
+pub const MODIFIERS: [ModTemplate; 14] = [
+    ModTemplate { name: "Flatten (circle)", mode: ModMode::Flatten, shape: || ModShape::Circle { radius: 12.0 }, amount: 0.0, falloff: 10.0, form: None },
+    ModTemplate { name: "Flatten (rectangle)", mode: ModMode::Flatten, shape: || ModShape::Rect { half_x: 10.0, half_z: 10.0 }, amount: 0.0, falloff: 10.0, form: None },
+    ModTemplate { name: "Raise", mode: ModMode::Offset, shape: || ModShape::Circle { radius: 15.0 }, amount: 3.0, falloff: 15.0, form: None },
+    ModTemplate { name: "Lower", mode: ModMode::Offset, shape: || ModShape::Circle { radius: 15.0 }, amount: -3.0, falloff: 15.0, form: None },
+    ModTemplate { name: "Fill up to the level", mode: ModMode::Fill, shape: || ModShape::Circle { radius: 15.0 }, amount: 0.0, falloff: 12.0, form: None },
+    ModTemplate { name: "Cut down to the level", mode: ModMode::Cut, shape: || ModShape::Circle { radius: 15.0 }, amount: 0.0, falloff: 12.0, form: None },
+    stamp("Crater", StampForm::Crater),
+    stamp("Hill", StampForm::Hill),
+    stamp("Ridge", StampForm::Ridge),
+    stamp("Quarry", StampForm::Quarry),
+    stamp("Embankment", StampForm::Mound),
+    stamp("Valley", StampForm::Valley),
+    stamp("Volcano", StampForm::Volcano),
+    stamp("Dunes", StampForm::Dunes),
 ];
 
 /// The folders of the work drive as a tree, made once for each scan.
@@ -405,6 +433,11 @@ struct Look {
 /// The ground before and after a modifier of `MODIFIERS`, as heights 0..1 across 0..1.
 fn profile(i: usize, x: f32) -> (f32, f32) {
     let m = &MODIFIERS[i];
+    // A stamp: its section from west to east through the middle.
+    if let Some(f) = m.form {
+        let s = dz_core::terrain_stamps::builtin(f).sample(x * 2.0 - 1.0, 0.0);
+        return (0.45, 0.45 + 0.4 * s);
+    }
     let d = (x - 0.5).abs();
     let w = 1.0 - ((d - 0.18) / 0.16).clamp(0.0, 1.0);
     let w = w * w * (3.0 - 2.0 * w);
@@ -2268,7 +2301,7 @@ pub fn drop_preview(app: &App, painter: &egui::Painter, v: &crate::camera::View,
         match p {
             Pick::Modifier(i) => {
                 let tpl = &MODIFIERS[*i];
-                let r = match (tpl.shape)() { ModShape::Circle { radius } => radius, ModShape::Rect { half_x, half_z } => half_x.max(half_z), _ => 10.0 };
+                let r = match tpl.shape() { ModShape::Circle { radius } => radius, ModShape::Rect { half_x, half_z } => half_x.max(half_z), ModShape::Stamp { size, .. } => size * 0.5, _ => 10.0 };
                 let x = at[0] + k as f32 * 35.0;
                 ring(x, at[2], r);
                 ring(x, at[2], r + tpl.falloff);
@@ -2333,7 +2366,7 @@ pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32) {
         let tpl = &MODIFIERS[*i];
         let Some(doc) = app.doc.as_mut() else { return };
         let id = doc.world.new_modifier_id();
-        let m = dz_core::world::TerrainModifier { id, name: t(tpl.name), enabled: true, x: x + k as f32 * 35.0, z, yaw: 0.0, shape: (tpl.shape)(), mode: tpl.mode, target: None, amount: tpl.amount, falloff: tpl.falloff, attached: None, follow: false };
+        let m = dz_core::world::TerrainModifier { id, name: t(tpl.name), enabled: true, x: x + k as f32 * 35.0, z, yaw: 0.0, shape: tpl.shape(), mode: tpl.mode, target: None, amount: tpl.amount, falloff: tpl.falloff, attached: None, follow: false };
         app.set_modifiers(&t("Add terrain modifier"), |list| list.push(m));
         app.selected_modifier = Some(id);
     }

@@ -37,6 +37,7 @@ pub mod shapes;
 pub mod surfaces;
 pub mod team;
 pub mod terrain;
+pub mod terrain_stamps;
 pub mod tv4l;
 pub mod world;
 pub mod wrp;

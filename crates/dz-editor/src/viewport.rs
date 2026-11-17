@@ -314,6 +314,28 @@ fn ray_in_model(o: &V3, d: &V3, ob: &Obj, ground: f32) -> (V3, V3) {
     ([dot(rel, m[0]) / s2, dot(rel, m[1]) / s2, dot(rel, m[2]) / s2], [dot(*d, m[0]) / s2, dot(*d, m[1]) / s2, dot(*d, m[2]) / s2])
 }
 
+/// The terrain modifier whose dot is under the cursor; with `inside`, the smallest terrain stamp
+/// whose square the cursor is in.
+fn pick_modifier(app: &App, v: &View, s: Pos2, inside: bool) -> Option<u64> {
+    let world = &app.doc.as_ref()?.world;
+    if !inside {
+        return world.modifiers.iter().filter(|m| m.enabled).filter_map(|m| {
+            let c = v.project([m.x, world.height.sample(m.x, m.z) + 0.5, m.z])?;
+            let d = (c - s).length();
+            (d <= 9.0).then_some((d, m.id))
+        }).min_by(|a, b| a.0.total_cmp(&b.0)).map(|x| x.1);
+    }
+    let (o, d) = v.ray(s);
+    let hit = pick_terrain(&world.height, o, d, v.ortho)?;
+    world.modifiers.iter().filter(|m| m.enabled).filter_map(|m| {
+        let dz_core::world::ModShape::Stamp { size, .. } = &m.shape else { return None };
+        let (sin, cos) = m.yaw.to_radians().sin_cos();
+        let (dx, dz) = (hit[0] - m.x, hit[2] - m.z);
+        let (u, w) = (dx * cos - dz * sin, dx * sin + dz * cos);
+        (u.abs() <= size * 0.5 && w.abs() <= size * 0.5).then_some((*size, m.id))
+    }).min_by(|a, b| a.0.total_cmp(&b.0)).map(|x| x.1)
+}
+
 fn pick_object(app: &App, v: &View, s: Pos2) -> Option<u32> {
     pick_hits(app, v, s, false).first().copied()
 }
@@ -1781,6 +1803,23 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         measure_input(app, ctx, resp, v);
         return;
     }
+    // A terrain stamp waiting for its place.
+    if app.stamps.armed.is_some() && app.mode == Mode::Landscape {
+        if ctx.input(|i| i.key_pressed(Key::Escape)) || resp.secondary_clicked() {
+            app.stamps.armed = None;
+            return;
+        }
+        if resp.clicked() {
+            if let Some(mouse) = resp.hover_pos() {
+                let (o, d) = v.ray(mouse);
+                if let Some(h) = app.doc.as_ref().and_then(|doc| pick_terrain(&doc.world.height, o, d, v.ortho)) {
+                    crate::stamps_ui::lay(app, h[0], h[2]);
+                    app.stamps.armed = None;
+                }
+            }
+        }
+        return;
+    }
     // The merge of team work is writing the project; it is opened again afterwards.
     if app.team.merging() {
         return;
@@ -2208,6 +2247,13 @@ fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool
             _ => pick_object(app, v, b),
         };
         app.last_click = Some(b);
+        // The dot of a terrain modifier is picked before what stands round it.
+        if !add_mode {
+            if let Some(id) = pick_modifier(app, v, b, false) {
+                app.selected_modifier = Some(id);
+                return;
+            }
+        }
         let whole = if app.select_whole && !add_mode { whole_at(app, v, b, picked) } else { None };
         if let Some((target, ids)) = whole {
             app.selection.extend(ids);
@@ -2221,6 +2267,9 @@ fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool
             } else {
                 app.selection.insert(id);
             }
+        } else if let Some(id) = (!add_mode).then(|| pick_modifier(app, v, b, true)).flatten() {
+            // Nothing solid under the cursor, but inside a terrain stamp.
+            app.selected_modifier = Some(id);
         } else if app.show_shapes {
             // Nothing solid under the cursor: shapes can be picked from this tool as well.
             if let Some(doc) = &app.doc {
@@ -2970,6 +3019,14 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
     let painter = ui.painter_at(v.rect);
     let Some(doc) = &app.doc else { return };
     let world = &doc.world;
+    // The square an armed stamp will cover.
+    if let (Some(size), Some(c), Mode::Landscape) = (crate::stamps_ui::armed_size(app), app.cursor_ground.filter(|_| resp.hovered()), app.mode) {
+        let h = size * 0.5;
+        let square = [[c[0] - h, c[2] - h], [c[0] + h, c[2] - h], [c[0] + h, c[2] + h], [c[0] - h, c[2] + h], [c[0] - h, c[2] - h]];
+        for (width, col) in [(3.0f32, Color32::BLACK), (1.5f32, Color32::from_rgb(205, 175, 60))] {
+            draw_polyline(&painter, v, world, &square, Stroke::new(width, col));
+        }
+    }
     if app.measure.active {
         let mut line = app.measure.points.clone();
         if let Some(c) = app.cursor_ground.filter(|_| resp.hovered()) { line.push([c[0], c[2]]); }
@@ -3111,6 +3168,14 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
                 let selected = app.selected_modifier == Some(m.id);
                 painter.circle_stroke(c, if selected { 7.0 } else { 4.0 }, Stroke::new(1.5_f32, if selected { Color32::from_rgb(255, 170, 40) } else { Color32::from_rgb(120, 220, 255) }));
             }
+        }
+        // The square a selected stamp covers, turned with it.
+        if let (true, dz_core::world::ModShape::Stamp { size, .. }) = (app.selected_modifier == Some(m.id), &m.shape) {
+            let (s, c) = m.yaw.to_radians().sin_cos();
+            let h = size * 0.5;
+            let corner = |u: f32, w: f32| [m.x + u * c + w * s, m.z - u * s + w * c];
+            let square = [corner(-h, -h), corner(h, -h), corner(h, h), corner(-h, h), corner(-h, -h)];
+            draw_polyline(&painter, v, world, &square, Stroke::new(1.5_f32, Color32::from_rgb(255, 170, 40)));
         }
     }
     // Wire box round the first selected objects.
@@ -4419,6 +4484,14 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         // A correction over the whole image (first number -1) or the shapes of layer n, with
         // brightness, saturation and warmth; `satcorrectset b s w` changes the chosen one.
         "check" => crate::map_check::run(app, None),
+        // stamp <form> x z: lays a terrain stamp of a form that comes with the editor.
+        "stamp" if nums.len() >= 3 => {
+            if let Some(f) = dz_core::terrain_stamps::StampForm::ALL.get(nums[0] as usize) {
+                app.stamps.armed = Some(crate::stamps_ui::StampPick::Form(*f));
+                crate::stamps_ui::lay(app, nums[1], nums[2]);
+                app.stamps.armed = None;
+            }
+        }
         // measure x z x z ...: the measuring tool with these points.
         "measure" => app.measure = crate::app::Measure { active: true, points: nums.chunks(2).filter(|c| c.len() == 2).map(|c| [c[0], c[1]]).collect() },
         // tod hour overcast: the lighting of that hour.

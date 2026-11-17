@@ -244,6 +244,13 @@ pub enum ModShape {
         #[serde(default)]
         bank: Option<LineBank>,
     },
+    /// A form of the ground laid as a square of `size` metres: its relief (-1..1) times
+    /// `height` metres; see `terrain_stamps`.
+    Stamp {
+        stamp: crate::edit::Stamp,
+        size: f32,
+        height: f32,
+    },
     /// Basins dug under water standing at their own level.
     Pond {
         areas: Vec<PondArea>,
@@ -329,9 +336,25 @@ impl TerrainModifier {
         self.falloff + match &self.shape {
             ModShape::Circle { radius } => *radius,
             ModShape::Rect { half_x, half_z } => (half_x * half_x + half_z * half_z).sqrt(),
+            ModShape::Stamp { size, .. } => size * std::f32::consts::FRAC_1_SQRT_2,
             ModShape::Pond { areas, bank, .. } => bank + areas.iter().flat_map(|a| &a.points).map(|p| (p[0] - self.x).abs().max((p[1] - self.z).abs())).fold(0.0, f32::max) * std::f32::consts::SQRT_2,
             ModShape::Line { points, half_width, .. } => half_width + points.iter().map(|p| (p[0] - self.x).abs().max((p[1] - self.z).abs())).fold(0.0, f32::max),
         }
+    }
+    /// A terrain stamp, which shapes the land other modifiers are laid on.
+    pub fn is_form(&self) -> bool {
+        matches!(self.shape, ModShape::Stamp { .. })
+    }
+    /// The height a stamp adds at a world position: its relief there times its height; 0 for
+    /// other shapes and outside the stamp.
+    #[inline]
+    pub fn relief(&self, x: f32, z: f32, sin: f32, cos: f32) -> f32 {
+        let ModShape::Stamp { stamp, size, height } = &self.shape else { return 0.0 };
+        let (dx, dz) = (x - self.x, z - self.z);
+        let half = (size * 0.5).max(0.01);
+        let (u, v) = (dx * cos - dz * sin, dx * sin + dz * cos);
+        // The raster runs east and south.
+        stamp.sample(u / half, -v / half) * height
     }
     /// Blend weight at a world position: 1 inside the shape, down to 0 at the falloff edge.
     #[inline]
@@ -341,13 +364,8 @@ impl TerrainModifier {
             ModShape::Circle { radius } => (dx * dx + dz * dz).sqrt() - radius,
             ModShape::Pond { areas, .. } => areas.iter().map(|a| a.signed_distance(x, z)).fold(f32::MAX, f32::min),
             ModShape::Line { points, half_width, .. } => points.windows(2).map(|w| segment_distance(w[0], w[1], x, z).0).fold(f32::MAX, f32::min) - half_width,
-            ModShape::Rect { half_x, half_z } => {
-                let u = dx * cos - dz * sin;
-                let v = dx * sin + dz * cos;
-                let (a, b) = (u.abs() - *half_x, v.abs() - *half_z);
-                let out = (a.max(0.0).powi(2) + b.max(0.0).powi(2)).sqrt();
-                out + a.max(b).min(0.0)
-            }
+            ModShape::Rect { half_x, half_z } => rect_distance(dx, dz, sin, cos, *half_x, *half_z),
+            ModShape::Stamp { size, .. } => rect_distance(dx, dz, sin, cos, size * 0.5, size * 0.5),
         };
         if d <= 0.0 {
             1.0
@@ -362,6 +380,54 @@ impl TerrainModifier {
 
 fn default_tile_surfaces() -> u8 {
     6
+}
+
+/// Lays one modifier over `height` within `area`; `base` is the terrain targets are read from.
+fn apply_modifier(height: &mut Heightmap, base: &Heightmap, m: &TerrainModifier, area: Rect) {
+    let cell = base.cell;
+    let Some(r) = base.rect_around(m.x, m.z, m.reach()) else { return };
+    let (x0, y0, x1, y1) = (r.x0.max(area.x0), r.y0.max(area.y0), r.x1.min(area.x1), r.y1.min(area.y1));
+    if x0 > x1 || y0 > y1 {
+        return;
+    }
+    if matches!(m.shape, ModShape::Line { .. }) {
+        apply_line(height, m, Rect { x0, y0, x1, y1 }, false);
+        return;
+    }
+    if matches!(m.shape, ModShape::Pond { .. }) {
+        apply_pond(height, m, Rect { x0, y0, x1, y1 });
+        return;
+    }
+    let (sin, cos) = m.yaw.to_radians().sin_cos();
+    let target = m.target.unwrap_or_else(|| base.sample(m.x, m.z)) + m.amount;
+    for j in y0..=y1 {
+        for i in x0..=x1 {
+            let w = m.weight(i as f32 * cell, j as f32 * cell, sin, cos);
+            if w <= 0.0 {
+                continue;
+            }
+            let h = height.at(i, j);
+            // A stamp lays its relief on the level, or on the ground as it is.
+            let relief = m.relief(i as f32 * cell, j as f32 * cell, sin, cos);
+            let goal = match m.mode {
+                ModMode::Flatten => target + relief,
+                ModMode::Offset => h + m.amount + relief,
+                ModMode::Fill => h.max(target + relief),
+                ModMode::Cut => h.min(target + relief),
+            };
+            height.set(i, j, h + (goal - h) * w);
+        }
+    }
+}
+
+/// Distance from a point to a rectangle of half sides `hx` and `hz` turned by the angle of
+/// `sin` and `cos`; less than 0 inside.
+fn rect_distance(dx: f32, dz: f32, sin: f32, cos: f32, hx: f32, hz: f32) -> f32 {
+    let u = dx * cos - dz * sin;
+    let v = dx * sin + dz * cos;
+    let (a, b) = (u.abs() - hx, v.abs() - hz);
+    let out = (a.max(0.0).powi(2) + b.max(0.0).powi(2)).sqrt();
+    out + a.max(b).min(0.0)
 }
 
 /// Distance from a point to a segment, and how far along the segment its nearest point is.
@@ -663,7 +729,7 @@ impl TerrainModifier {
         match &mut self.shape {
             ModShape::Line { points, .. } => points.iter_mut().for_each(|p| *p = m.apply(*p)),
             ModShape::Pond { areas, .. } => areas.iter_mut().flat_map(|a| a.points.iter_mut()).for_each(|p| *p = m.apply(*p)),
-            ModShape::Circle { .. } | ModShape::Rect { .. } => {}
+            ModShape::Circle { .. } | ModShape::Rect { .. } | ModShape::Stamp { .. } => {}
         }
     }
 }
@@ -848,14 +914,15 @@ impl World {
         w.recompose(None);
         w
     }
-    /// Copy for generators on another thread: no satellite and no placed objects.
+    /// Copy for generators on another thread: no satellite and no placed objects. Its base is
+    /// the ground with the terrain stamps, which is what generators lay things on.
     pub fn lite(&self) -> World {
         let mut objects = ObjectStore::default();
         for m in &self.objects.models {
             objects.intern(&m.path);
         }
         World {
-            meta: self.meta.clone(), base: self.base.clone(), height: self.height.clone(), mask: self.mask.clone(),
+            meta: self.meta.clone(), base: self.ground().into_owned(), height: self.height.clone(), mask: self.mask.clone(),
             layers: self.layers.clone(), satellite: None, sat: Default::default(), mask_mods: Default::default(), objects, modifiers: Vec::new(), holes: Default::default(), holes_rev: 0, keypoints: Vec::new(), mission: None, object_layers: self.object_layers.clone(), active_layer: self.active_layer, shape_layers: Vec::new(), active_shape_layer: 0, generators: Vec::new(), road_removed: Default::default(), road_added: Vec::new(), road_project: None, template_libraries: Vec::new(), routes: Vec::new(), authors: None, team_me: self.team_me.clone(), team_unlocked: self.team_unlocked.clone(), next_modifier: self.next_modifier,
         }
     }
@@ -988,7 +1055,23 @@ impl World {
     pub fn modifier_rect(&self, m: &TerrainModifier) -> Option<Rect> {
         self.base.rect_around(m.x, m.z, m.reach())
     }
-    /// Rebuild composed heights in a region (or everywhere) from base plus modifiers.
+    /// The ground roads, rivers, ponds and pads are laid on: the sculpted terrain with the
+    /// terrain stamps, which shape the land itself. Borrowed when the map has no stamps.
+    pub fn ground(&self) -> std::borrow::Cow<'_, Heightmap> {
+        if !self.modifiers.iter().any(|m| m.enabled && m.is_form()) {
+            return std::borrow::Cow::Borrowed(&self.base);
+        }
+        let mut h = self.base.clone();
+        let area = self.base.full_rect();
+        for m in self.modifiers.iter().filter(|m| m.enabled && m.is_form()) {
+            apply_modifier(&mut h, &self.base, m, area);
+        }
+        std::borrow::Cow::Owned(h)
+    }
+
+    /// Rebuild composed heights in a region (or everywhere) from base plus modifiers. Terrain
+    /// stamps come first, whatever their place in the list: they shape the ground the others
+    /// (roads, ponds, pads) are laid on.
     pub fn recompose(&mut self, area: Option<Rect>) {
         let area = area.unwrap_or_else(|| self.base.full_rect());
         let cols = self.base.cols;
@@ -996,49 +1079,13 @@ impl World {
             let (s, e) = (y * cols + area.x0, y * cols + area.x1 + 1);
             self.height.data[s..e].copy_from_slice(&self.base.data[s..e]);
         }
-        let cell = self.base.cell;
-        for m in self.modifiers.iter().filter(|m| m.enabled) {
-            let Some(r) = self.base.rect_around(m.x, m.z, m.reach()) else { continue };
-            let (x0, y0, x1, y1) = (r.x0.max(area.x0), r.y0.max(area.y0), r.x1.min(area.x1), r.y1.min(area.y1));
-            if x0 > x1 || y0 > y1 {
-                continue;
-            }
-            if matches!(m.shape, ModShape::Line { .. }) {
-                apply_line(&mut self.height, m, Rect { x0, y0, x1, y1 }, false);
-                continue;
-            }
-            if matches!(m.shape, ModShape::Pond { .. }) {
-                apply_pond(&mut self.height, m, Rect { x0, y0, x1, y1 });
-                continue;
-            }
-            let (sin, cos) = m.yaw.to_radians().sin_cos();
-            let target = m.target.unwrap_or_else(|| self.base.sample(m.x, m.z)) + m.amount;
-            for j in y0..=y1 {
-                for i in x0..=x1 {
-                    let w = m.weight(i as f32 * cell, j as f32 * cell, sin, cos);
-                    if w <= 0.0 {
-                        continue;
-                    }
-                    let h = self.height.at(i, j);
-                    let goal = match m.mode {
-                        ModMode::Flatten => target,
-                        ModMode::Offset => h + m.amount,
-                        ModMode::Fill => h.max(target),
-                        ModMode::Cut => h.min(target),
-                    };
-                    self.height.set(i, j, h + (goal - h) * w);
-                }
-            }
-        }
-        // Banks reach far; the beds themselves must survive whatever came after them.
-        for m in self.modifiers.iter().filter(|m| m.enabled && matches!(m.shape, ModShape::Line { .. })) {
-            let Some(r) = self.base.rect_around(m.x, m.z, m.reach()) else { continue };
-            let (x0, y0, x1, y1) = (r.x0.max(area.x0), r.y0.max(area.y0), r.x1.min(area.x1), r.y1.min(area.y1));
-            if x0 <= x1 && y0 <= y1 {
-                apply_line(&mut self.height, m, Rect { x0, y0, x1, y1 }, true);
-            }
+        let forms = self.modifiers.iter().filter(|m| m.enabled && m.is_form());
+        let rest = self.modifiers.iter().filter(|m| m.enabled && !m.is_form());
+        for m in forms.chain(rest) {
+            apply_modifier(&mut self.height, &self.base, m, area);
         }
     }
+
     /// Moves attached modifiers after an object moved; returns the changed area.
     pub fn sync_attached(&mut self, object: u32) -> Option<Rect> {
         let o = *self.objects.get(object)?;
