@@ -2,3 +2,4 @@
 *.tmp
 *.pdb
 .claude/
+claude.md
