@@ -64,8 +64,9 @@ impl BrushShape {
 }
 
 /// A brush tip taken from a picture, seen from above with north up: white works fully,
-/// black not at all. It fills the square around the brush.
-#[derive(Clone, Debug, PartialEq)]
+/// black not at all. It fills the square around the brush. Terrain stamps use the same raster
+/// for their relief, -1..1 (see `terrain_stamps`).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stamp {
     pub width: usize,
     pub height: usize,

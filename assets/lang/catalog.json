@@ -339,6 +339,10 @@
   "de": "Objekt hinzufügen",
   "pl": "Dodaj obiekt"
  },
+ "Add pictures…": {
+  "de": "Bilder hinzufügen…",
+  "pl": "Dodaj obrazy…"
+ },
  "Add player spawn": {
   "de": "Spieler-Spawn hinzufügen",
   "pl": "Dodaj spawn gracza"
@@ -1375,6 +1379,10 @@
   "de": "Auf einen Kurzbefehl klicken und die neue Taste mit ihren Modifikatoren drücken. Esc bricht ab, Rücktaste entfernt die Taste.",
   "pl": "Kliknij skrót i naciśnij nowy klawisz z modyfikatorami. Esc anuluje, Backspace zostawia akcję bez klawisza."
  },
+ "Click a stamp, then on the map, to lay a form of the ground there. It is a terrain modifier: move, turn and scale it, change its height, or take it away again.": {
+  "de": "Klicke einen Stempel und dann auf die Karte, um dort eine Geländeform zu setzen. Es ist ein Geländemodifikator: verschiebe, drehe und skaliere ihn, ändere seine Höhe oder entferne ihn wieder.",
+  "pl": "Kliknij stempel, a potem mapę, żeby położyć tam formę terenu. To modyfikator terenu: możesz go przesuwać, obracać i skalować, zmieniać jego wysokość albo usunąć."
+ },
  "Click a type in the table.": {
   "de": "Klicke einen Typ in der Tabelle.",
   "pl": "Kliknij typ w tabeli."
@@ -1430,6 +1438,10 @@
  "Click on the map adds a zone.": {
   "de": "Ein Klick auf die Karte fügt eine Zone hinzu.",
   "pl": "Kliknięcie na mapie dodaje strefę."
+ },
+ "Click on the map to lay the stamp; Esc cancels.": {
+  "de": "Klicke auf die Karte, um den Stempel zu setzen; Esc bricht ab.",
+  "pl": "Kliknij na mapie, żeby położyć stempel; Esc anuluje."
  },
  "Click on the map to place it; it can also be dragged onto the map.": {
   "de": "Klicke auf die Karte, um es zu platzieren; es lässt sich auch auf die Karte ziehen.",
@@ -1742,6 +1754,10 @@
  "Coverage": {
   "de": "Abdeckung",
   "pl": "Pokrycie"
+ },
+ "Crater": {
+  "de": "Krater",
+  "pl": "Krater"
  },
  "Create": {
   "de": "Erstellen",
@@ -2231,6 +2247,10 @@
   "de": "Trockenes Gras",
   "pl": "Sucha trawa"
  },
+ "Dunes": {
+  "de": "Dünen",
+  "pl": "Wydmy"
+ },
  "Duplicate": {
   "de": "Duplizieren",
   "pl": "Powiel"
@@ -2410,6 +2430,10 @@
  "Elevation": {
   "de": "Höhe über Gelände",
   "pl": "Wysokość nad terenem"
+ },
+ "Embankment": {
+  "de": "Damm",
+  "pl": "Nasyp"
  },
  "Embankment slope": {
   "de": "Dammneigung",
@@ -2927,6 +2951,10 @@
   "de": "Format",
   "pl": "Format"
  },
+ "Forms": {
+  "de": "Formen",
+  "pl": "Formy"
+ },
  "Forward": {
   "de": "Vorwärts",
   "pl": "Dalej"
@@ -3287,6 +3315,10 @@
   "de": "Hochland",
   "pl": "Wyżyna"
  },
+ "Hill": {
+  "de": "Hügel",
+  "pl": "Wzgórze"
+ },
  "Hill shading": {
   "de": "Hangschattierung",
   "pl": "Cieniowanie wzgórz"
@@ -3338,6 +3370,10 @@
  "How far the swell runs up the shore and back; the game's MaxWave is 0.25 m.": {
   "de": "Wie weit die Dünung den Strand hinauf- und zurückläuft; MaxWave des Spiels ist 0,25 m.",
   "pl": "Jak daleko fala wbiega na brzeg i się cofa; MaxWave w grze to 0,25 m."
+ },
+ "How high the highest part of the stamp rises; less than 0 turns it upside down.": {
+  "de": "Wie hoch der höchste Teil des Stempels aufragt; unter 0 kehrt ihn um.",
+  "pl": "Jak wysoko wznosi się najwyższa część stempla; poniżej 0 odwraca go."
  },
  "How large the copy comes out against the source: to fit a picture of another resolution, or to make fields larger or smaller.": {
   "de": "Wie groß die Kopie gegenüber der Quelle wird: für ein Bild anderer Auflösung oder um Felder größer oder kleiner zu machen.",
@@ -3575,6 +3611,10 @@
   "de": "Gelegte Stücke behalten",
   "pl": "Zachowuj ułożone części"
  },
+ "Keep the terrain of the selected polygon": {
+  "de": "Gelände des ausgewählten Polygons behalten",
+  "pl": "Zapisz teren zaznaczonego wielokąta"
+ },
  "Keep this view": {
   "de": "Diese Ansicht merken",
   "pl": "Zapisz ten widok"
@@ -3586,6 +3626,10 @@
  "Kept as a mask modifier of this generator: running it again repaints it, deleting it brings the mask back.": {
   "de": "Bleibt als Masken-Modifikator dieses Generators: erneutes Ausführen malt ihn neu, Löschen stellt die Maske wieder her.",
   "pl": "Zostaje jako modyfikator maski tego generatora: ponowne uruchomienie maluje go od nowa, usunięcie przywraca maskę."
+ },
+ "Kept as the stamp {0}": {
+  "de": "Als Stempel {0} behalten",
+  "pl": "Zapisano jako stempel {0}"
  },
  "Key point": {
   "de": "Keypoint",
@@ -3666,6 +3710,10 @@
  "Lay": {
   "de": "Legen",
   "pl": "Połóż"
+ },
+ "Lay a terrain stamp": {
+  "de": "Geländestempel setzen",
+  "pl": "Połóż stempel terenu"
  },
  "Lay at least one piece first": {
   "de": "Lege zuerst mindestens ein Teil",
@@ -4731,6 +4779,10 @@
   "de": "Ohne Haken werden die sichtbaren geschrieben.",
   "pl": "Gdy nic nie zaznaczono, zapisywane są widoczne."
  },
+ "None yet: add grey pictures (white high, black low), or keep a piece of the terrain.": {
+  "de": "Noch keine: Füge Graustufenbilder hinzu (weiß hoch, schwarz tief) oder behalte ein Stück Gelände.",
+  "pl": "Jeszcze żadnych: dodaj obrazy w odcieniach szarości (biały wysoko, czarny nisko) albo zapisz fragment terenu."
+ },
  "Noon": {
   "de": "Mittag",
   "pl": "Południe"
@@ -5030,6 +5082,10 @@
  "Open backups folder": {
   "de": "Sicherungsordner öffnen",
   "pl": "Otwórz folder kopii"
+ },
+ "Open folder": {
+  "de": "Ordner öffnen",
+  "pl": "Otwórz folder"
  },
  "Open language folder": {
   "de": "Sprachordner öffnen",
@@ -5671,6 +5727,10 @@
   "de": "Qualität",
   "pl": "Jakość"
  },
+ "Quarry": {
+  "de": "Steinbruch",
+  "pl": "Kamieniołom"
+ },
  "Radius": {
   "de": "Radius",
   "pl": "Promień"
@@ -5914,6 +5974,10 @@
  "Revert": {
   "de": "Zurücksetzen",
   "pl": "Cofnij zmiany"
+ },
+ "Ridge": {
+  "de": "Bergrücken",
+  "pl": "Grzbiet"
  },
  "Right": {
   "de": "Rechts",
@@ -6207,6 +6271,10 @@
   "de": "{0} gespeichert",
   "pl": "Zapisano {0}"
  },
+ "Saves the ground inside the square round the selected polygon as a stamp of your own.": {
+  "de": "Speichert das Gelände im Quadrat um das ausgewählte Polygon als eigenen Stempel.",
+  "pl": "Zapisuje teren w kwadracie wokół zaznaczonego wielokąta jako twój własny stempel."
+ },
  "Saves the selected objects as a prefab of the library, to be placed again anywhere as one.": {
   "de": "Speichert die ausgewählten Objekte als Prefab der Bibliothek, um sie überall als Ganzes wieder zu platzieren.",
   "pl": "Zapisuje zaznaczone obiekty jako prefab biblioteki, który można postawić w dowolnym miejscu jako całość."
@@ -6350,6 +6418,10 @@
  "Select": {
   "de": "Auswählen",
   "pl": "Zaznacz"
+ },
+ "Select a polygon in the Shapes tool round the ground to keep": {
+  "de": "Wähle im Werkzeug Formen ein Polygon um das zu behaltende Gelände",
+  "pl": "Zaznacz w narzędziu Kształty wielokąt wokół terenu do zapisania"
  },
  "Select all": {
   "de": "Alles auswählen",
@@ -6658,6 +6730,10 @@
  "Size": {
   "de": "Größe",
   "pl": "Rozmiar"
+ },
+ "Size m": {
+  "de": "Größe m",
+  "pl": "Rozmiar m"
  },
  "Size of the copy": {
   "de": "Größe der Kopie",
@@ -7218,6 +7294,10 @@
  "Terrain shape": {
   "de": "Geländeform",
   "pl": "Kształt terenu"
+ },
+ "Terrain stamps": {
+  "de": "Geländestempel",
+  "pl": "Stemple terenu"
  },
  "Terrain synthesis": {
   "de": "Geländesynthese",
@@ -8095,6 +8175,10 @@
   "de": "Verwendet die Gebäude des Spiels dieser Art vom Arbeitslaufwerk statt der Liste oben.",
   "pl": "Używa budynków z gry tego rodzaju z dysku roboczego zamiast listy powyżej."
  },
+ "Valley": {
+  "de": "Tal",
+  "pl": "Dolina"
+ },
  "Value": {
   "de": "Value",
   "pl": "Value"
@@ -8162,6 +8246,10 @@
  "Visible only": {
   "de": "Nur sichtbare",
   "pl": "Tylko widoczne"
+ },
+ "Volcano": {
+  "de": "Vulkan",
+  "pl": "Wulkan"
  },
  "WRP world...": {
   "de": "WRP-Welt...",
@@ -8498,6 +8586,10 @@
  "Your name": {
   "de": "Dein Name",
   "pl": "Twoje imię"
+ },
+ "Your stamps": {
+  "de": "Deine Stempel",
+  "pl": "Twoje stemple"
  },
  "Your version: {0}": {
   "de": "Deine Version: {0}",

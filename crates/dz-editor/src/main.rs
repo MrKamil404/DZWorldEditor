@@ -22,6 +22,7 @@ mod panels;
 mod render;
 mod satellite;
 mod settings;
+mod stamps_ui;
 mod surfaces_ui;
 mod theme;
 mod proxies;

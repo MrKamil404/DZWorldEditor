@@ -620,6 +620,7 @@ fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
         slider(ui, &t("Falloff"), &mut app.sculpt.falloff, 0.0..=1.0, false);
         slider(ui, &t("Edge noise"), &mut app.sculpt.noise, 0.0..=1.0, false);
     });
+    crate::stamps_ui::panel(app, ui);
     shortcuts(ui, |ui| brush_hints(app, ui, Some("Lower instead of raise"), true, true, true));
 }
 
@@ -2014,6 +2015,7 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
                 slider(ui, "X", half_x, 0.5..=300.0, true);
                 slider(ui, "Z", half_z, 0.5..=300.0, true);
             }
+            ModShape::Stamp { size, height, .. } => crate::stamps_ui::details(ui, size, height, &mut m.yaw),
         }
         slider(ui, &t("Blend"), &mut m.falloff, 0.0..=120.0, false);
         slider(ui, &t("Height offset"), &mut m.amount, -50.0..=50.0, false);
@@ -2051,6 +2053,12 @@ fn modifier_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
         if let Some(r) = area {
             doc.world.recompose(Some(r));
             app.height_changed(r);
+        }
+        // A stamp changes the ground roads are laid on: those over it are graded again.
+        if old.is_form() || new.is_form() {
+            let square = |m: &dz_core::world::TerrainModifier| { let r = m.reach(); [m.x - r, m.z - r, m.x + r, m.z + r] };
+            let (a, b) = (square(&old), square(&new));
+            app.regrade_routes_in([a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]);
         }
     }
 }
