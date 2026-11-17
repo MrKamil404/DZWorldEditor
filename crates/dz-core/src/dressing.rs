@@ -87,8 +87,7 @@ impl Default for WreckGen {
             "wreck_hb02_aban1_red", "wreck_offroad02_aban1", "wreck_truck01_aban1_blue", "wreck_volha_grey", "wreck_lada_red", "wreck_s1023_blue", "wreck_uaz", "wreck_v3s",
         ]);
         let decals = models("roads\\decals", &[
-            "decal_damage_long1", "decal_damage_long2", "decal_damage_long3", "decal_damage_medium1", "decal_damage_medium2", "decal_damage_small1", "decal_damage_small2",
-            "decal_tireprints_01_faded", "decal_tireprints_02_faded", "decal_manhole",
+            "decal_damage_long1", "decal_damage_long2", "decal_damage_long3", "decal_damage_medium1", "decal_damage_medium2", "decal_damage_small1", "decal_damage_small2","decal_manhole",
         ]);
         Self {
             wrecks: ObjectSet { models: cars, random_yaw: false, scale_min: 1.0, scale_max: 1.0, align: true, ..Default::default() },
