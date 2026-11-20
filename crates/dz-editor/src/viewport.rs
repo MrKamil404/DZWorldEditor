@@ -1147,21 +1147,74 @@ fn brush_objects(app: &mut App, x: f32, z: f32, erase: bool) {
         }
         return;
     }
-    let saved = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
-    for _ in 0..6 {
-        app.place_counter = app.place_counter.wrapping_add(1);
-        let h = app.place_counter.wrapping_mul(2654435761);
-        let angle = (h & 0xffff) as f32 / 65535.0 * std::f32::consts::TAU;
-        let distance = ((h >> 16) as f32 / 65535.0).sqrt() * radius;
-        let (px, pz) = (x + angle.cos() * distance, z + angle.sin() * distance);
+    // The zone this stroke has painted: a dab comes only when the brush has moved on, so holding
+    // still adds nothing, and only the part of its circle not painted before gets objects.
+    let step = (radius * 0.25).max(0.5);
+    if app.place_zone.last().is_some_and(|l| (l[0] - x).hypot(l[1] - z) < step) {
+        return;
+    }
+    let near: Vec<[f32; 2]> = app.place_zone.iter().copied().filter(|c| (c[0] - x).hypot(c[1] - z) < radius * 2.0).collect();
+    app.place_zone.push([x, z]);
+    app.place_counter = app.place_counter.wrapping_add(1);
+    let mut seed = app.place_counter.wrapping_mul(2654435761) ^ x.to_bits() ^ z.to_bits().rotate_left(7) | 1;
+    let mut next = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        seed as f32 / u32::MAX as f32
+    };
+    // Spots spread evenly over the circle, in random order, that no earlier dab covered.
+    let area = std::f32::consts::PI * radius * radius;
+    let samples = (area * 2.0).clamp(128.0, 6000.0) as usize;
+    let mut spots = Vec::new();
+    for _ in 0..samples {
+        let (angle, distance) = (next() * std::f32::consts::TAU, next().sqrt() * radius);
+        let p = [x + angle.cos() * distance, z + angle.sin() * distance];
+        if near.iter().all(|c| (c[0] - p[0]).powi(2) + (c[1] - p[1]).powi(2) >= radius * radius) {
+            spots.push(p);
+        }
+    }
+    if spots.is_empty() {
+        return;
+    }
+    // How many the new part of the zone is owed; without a density, as many as fit.
+    let mut want = usize::MAX;
+    if app.place.brush_density > 0.0 {
+        let owed = app.place.brush_density * area * spots.len() as f32 / samples as f32 / 100.0 + app.place_carry;
+        want = owed.floor() as usize;
+        app.place_carry = owed - want as f32;
+    }
+    // Objects of some size that stand about: spots under them are left alone when asked.
+    let solid: Vec<(Obj, dz_core::model_info::ModelInfo)> = if app.place.brush_avoid {
         let Some(doc) = &app.doc else { return };
-        let mut crowded = false;
+        let mut found = Vec::new();
+        doc.world.objects.for_each_in(x - radius - 40.0, z - radius - 40.0, x + radius + 40.0, z + radius + 40.0, |_, o| {
+            let info = app.db.get(doc.world.objects.model_path(o));
+            let (hx, hz) = info.footprint();
+            if info.known && hx >= 0.6 && hz >= 0.6 {
+                found.push((*o, info));
+            }
+        });
+        found
+    } else {
+        Vec::new()
+    };
+    let saved = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
+    let mut placed = 0usize;
+    for [px, pz] in spots {
+        if placed >= want {
+            break;
+        }
+        let Some(doc) = &app.doc else { return };
+        let mut crowded = solid.iter().any(|(o, info)| dz_core::check::contains(o, info, [px, pz], 0.3));
         doc.world.objects.for_each_in(px - spacing, pz - spacing, px + spacing, pz + spacing, |_, o| {
             crowded |= (o.x - px).powi(2) + (o.z - pz).powi(2) < spacing * spacing;
         });
         if crowded {
             continue;
         }
+        app.place_counter = app.place_counter.wrapping_add(1);
+        let h = app.place_counter.wrapping_mul(2654435761);
         let model = match app.place.preset {
             Some(id) => match crate::library_ui::pick_from_preset(app, id, h) {
                 Some((m, s)) => {
@@ -1178,14 +1231,18 @@ fn brush_objects(app: &mut App, x: f32, z: f32, erase: bool) {
                 }
             },
         };
-        if let Some(placed) = insert_placed(app, &model, px, pz) {
-            app.place_stroke.push((placed.0, None, Some(placed.1)));
+        if let Some(object) = insert_placed(app, &model, px, pz) {
+            app.place_stroke.push((object.0, None, Some(object.1)));
+            placed += 1;
         }
         (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = saved;
     }
 }
 
 fn finish_place_stroke(app: &mut App) {
+    // The next stroke paints a zone of its own.
+    app.place_zone.clear();
+    app.place_carry = 0.0;
     if app.place_stroke.is_empty() {
         return;
     }

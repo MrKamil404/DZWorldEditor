@@ -122,7 +122,7 @@ what the game shows. The *Mask* shading of the view shows the mask in its colour
 ### 4 Place
 
 Choose a model in the Content Browser and click on the terrain, or drag models onto the map.
-**Paint with a brush** places objects as you drag, with radius and spacing. Random rotation, align to
+**Paint with a brush** places objects as you drag, with radius, spacing and **Density** (objects per 100 m² of the zone you paint). What you paint with the button held is one zone: each part of it gets its objects once, and holding still adds nothing more. **Skip spots taken by other objects** keeps the brush out of buildings and other larger objects. Random rotation, align to
 slope and a scale range apply to every object placed. An **object preset** places one of several
 models with its own settings.
 

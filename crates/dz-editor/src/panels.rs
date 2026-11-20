@@ -921,6 +921,16 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
         if app.place.brush {
             slider(ui, &t("Radius"), &mut app.place.brush_radius, 1.0..=300.0, true);
             slider(ui, &t("Spacing"), &mut app.place.brush_spacing, 0.3..=60.0, true);
+            row(ui, &t("Density"), |ui| {
+                ui.add(egui::Slider::new(&mut app.place.brush_density, 0.0..=40.0).custom_formatter(|v, _| if v <= 0.0 { t("no limit") } else { format!("{v:.1}") }).custom_parser(|s| s.trim().parse::<f64>().ok()))
+                    .on_hover_text(t("Objects put in 100 m² of the zone you paint while the button is held. Holding still adds nothing."));
+            });
+            // Objects this close fit in 100 m² at most; a density above that cannot be reached.
+            let room = 115.0 / (app.place.brush_spacing * app.place.brush_spacing).max(0.09);
+            if app.place.brush_density > room {
+                ui.colored_label(theme::WARN, tf("The spacing leaves room for about {0} per 100 m²", &[&format!("{room:.1}")]));
+            }
+            ui.checkbox(&mut app.place.brush_avoid, t("Skip spots taken by other objects")).on_hover_text(t("Leaves out the places where buildings and other larger objects stand, so nothing is put inside them."));
         }
     });
     section(ui, &icons::with(icons::ARROWS_CLOCKWISE, &t("Rotation and size")), true, |ui| {

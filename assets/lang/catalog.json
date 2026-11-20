@@ -9282,5 +9282,25 @@
  "The first and last object lie between the end of the line and the fence instead of on the end point, and the fence is shorter by their length.": {
   "de": "Das erste und letzte Objekt liegen zwischen dem Ende der Linie und dem Zaun statt auf dem Endpunkt, und der Zaun wird um ihre Länge kürzer.",
   "pl": "Pierwszy i ostatni obiekt leżą między końcem linii a ogrodzeniem, a nie na punkcie końcowym, a ogrodzenie jest krótsze o ich długość."
+ },
+ "no limit": {
+  "de": "keine Grenze",
+  "pl": "bez limitu"
+ },
+ "Objects put in 100 m² of the zone you paint while the button is held. Holding still adds nothing.": {
+  "de": "Objekte auf 100 m² der Zone, die du bei gedrückter Taste malst. Stillhalten fügt nichts hinzu.",
+  "pl": "Obiekty stawiane na 100 m² strefy, którą malujesz przy wciśniętym przycisku. Trzymanie w miejscu nic nie dodaje."
+ },
+ "The spacing leaves room for about {0} per 100 m²": {
+  "de": "Der Abstand lässt Platz für etwa {0} auf 100 m²",
+  "pl": "Odstęp pozwala na około {0} na 100 m²"
+ },
+ "Skip spots taken by other objects": {
+  "de": "Von anderen Objekten belegte Stellen auslassen",
+  "pl": "Pomijaj miejsca zajęte przez inne obiekty"
+ },
+ "Leaves out the places where buildings and other larger objects stand, so nothing is put inside them.": {
+  "de": "Lässt die Stellen aus, an denen Gebäude und andere größere Objekte stehen, damit nichts in ihnen steht.",
+  "pl": "Pomija miejsca, w których stoją budynki i inne większe obiekty, aby nic nie stało w ich wnętrzu."
  }
 }
