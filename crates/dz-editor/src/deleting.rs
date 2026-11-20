@@ -31,6 +31,9 @@ pub enum Kind {
     Owner,
     /// The generators that follow a route.
     Followers,
+    /// The shape the deleted terrain modifiers gave the ground stays, written into the
+    /// sculpted terrain (the heightmap exported as ASC).
+    KeepTerrain,
 }
 
 #[derive(Clone, Debug)]
@@ -65,7 +68,10 @@ fn plan(app: &App, target: Target) -> Option<Plan> {
             let n = alive(&g.objects);
             if n > 0 { part(Kind::Objects, tf("The objects it placed ({0})", &[&n.to_string()]), true); }
             if !g.removed.is_empty() { part(Kind::Restore, tf("Put back the objects it removed ({0})", &[&g.removed.len().to_string()]), true); }
-            if g.modifier.is_some_and(|m| w.modifiers.iter().any(|x| x.id == m)) { part(Kind::Terrain, t("Its change of the terrain"), true); }
+            if g.modifier.is_some_and(|m| w.modifiers.iter().any(|x| x.id == m)) {
+                part(Kind::Terrain, t("Its change of the terrain"), true);
+                part(Kind::KeepTerrain, t("Keep the terrain as it is for good (written into the heightmap)"), false);
+            }
             if g.mask_modifier.is_some_and(|m| w.mask_mods.position(m).is_some()) { part(Kind::Surface, t("The surface it painted"), true); }
             tf("Delete generator {0}", &[&g.name])
         }
@@ -73,7 +79,10 @@ fn plan(app: &App, target: Target) -> Option<Plan> {
             let r = w.routes.iter().find(|r| r.id == *id)?;
             let n = alive(&r.objects);
             if n > 0 { part(Kind::Objects, tf("Its models ({0})", &[&n.to_string()]), true); }
-            if r.modifier.is_some_and(|m| w.modifiers.iter().any(|x| x.id == m)) { part(Kind::Terrain, t("The terrain levelled under it"), true); }
+            if r.modifier.is_some_and(|m| w.modifiers.iter().any(|x| x.id == m)) {
+                part(Kind::Terrain, t("The terrain levelled under it"), true);
+                part(Kind::KeepTerrain, t("Keep the terrain as it is for good (written into the heightmap)"), false);
+            }
             let followers = w.generators.iter().filter(|g| g.target == GenTarget::Route(*id)).count();
             if followers > 0 { part(Kind::Followers, tf("The generators along it and what they made ({0})", &[&followers.to_string()]), true); }
             tf("Delete route {0}", &[&r.name])
@@ -88,6 +97,7 @@ fn plan(app: &App, target: Target) -> Option<Plan> {
                 let name = w.objects.model_path(o).rsplit('\\').next().unwrap_or("").to_string();
                 part(Kind::Owner, tf("Delete the object {0} too", &[&name]), false);
             }
+            part(Kind::KeepTerrain, t("Keep the terrain as it is for good (written into the heightmap)"), false);
             tf("Delete terrain modifier {0}", &[&m.name])
         }
         Target::MaskModifier(id) => {
@@ -117,11 +127,23 @@ pub fn request(app: &mut App, target: Target) {
 pub fn window(app: &mut App, ctx: &egui::Context, plan: &mut Plan, open: &mut bool) -> bool {
     let mut done = false;
     egui::Window::new(format!("{} {}", crate::icons::TRASH, plan.title)).collapsible(false).resizable(false).open(open).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
-        ui.label(t("Delete with it:"));
-        for p in &mut plan.parts {
+        if plan.parts.iter().any(|p| p.kind != Kind::KeepTerrain) {
+            ui.label(t("Delete with it:"));
+        }
+        for p in plan.parts.iter_mut().filter(|p| p.kind != Kind::KeepTerrain) {
             ui.checkbox(&mut p.remove, &p.label);
         }
-        ui.weak(t("What is not ticked stays on the map. All of it can be undone in one step."));
+        // Keeping the ground only means something when the terrain change goes.
+        let terrain_goes = matches!(plan.target, Target::Modifier(_)) || plan.parts.iter().any(|p| p.kind == Kind::Terrain && p.remove);
+        if let Some(p) = plan.parts.iter_mut().find(|p| p.kind == Kind::KeepTerrain) {
+            ui.add_space(4.0);
+            ui.add_enabled(terrain_goes, egui::Checkbox::new(&mut p.remove, &p.label)).on_hover_text(t("The ground keeps the shape the modifier gave it, and it is part of the exported heightmap; without this, the terrain goes back to how it was before the modifier."));
+        }
+        if plan.parts.iter().any(|p| p.kind != Kind::KeepTerrain) {
+            ui.weak(t("What is not ticked stays on the map. All of it can be undone in one step."));
+        } else {
+            ui.weak(t("It can be undone."));
+        }
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             if ui.add(egui::Button::new(egui::RichText::new(format!("{} {}", crate::icons::TRASH, t("Delete"))).color(egui::Color32::WHITE)).fill(crate::theme::ERROR)).clicked() {
@@ -230,6 +252,8 @@ pub fn execute(app: &mut App, plan: &Plan) {
         if r.modifier.is_some_and(|m| drop_mods.contains(&m)) { r.modifier = None; r.grade = false; }
     }
     let terrain = w.modifiers.iter().any(|m| drop_mods.contains(&m.id));
+    // The ground keeps the shape they gave it, in the sculpted terrain.
+    let baked = if terrain && plan.removes(Kind::KeepTerrain) { dz_core::edit::bake_modifiers(w, &drop_mods) } else { None };
     w.modifiers.retain(|m| !drop_mods.contains(&m.id));
     let mut mask_area = None;
     for m in &drop_masks {
@@ -239,6 +263,11 @@ pub fn execute(app: &mut App, plan: &Plan) {
     if objects_changed { doc.history.push(label.clone(), Change::Objects(change)); steps += 1; doc.dirty.objects = true; }
     doc.history.push(label.clone(), Change::Generators(gens_before)); steps += 1;
     doc.history.push(label.clone(), Change::Routes(routes_before)); steps += 1;
+    if let Some((before, _)) = baked {
+        doc.history.push(label.clone(), Change::Height(before));
+        doc.dirty.height = true;
+        steps += 1;
+    }
     if terrain { doc.history.push(label.clone(), Change::Modifiers(mods_before)); steps += 1; }
     if !drop_masks.is_empty() { doc.history.push(label.clone(), Change::MaskMods(masks_before)); steps += 1; }
     doc.history.group_last(steps, label);

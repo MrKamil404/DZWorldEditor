@@ -4484,6 +4484,12 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         // A correction over the whole image (first number -1) or the shapes of layer n, with
         // brightness, saturation and warmth; `satcorrectset b s w` changes the chosen one.
         "check" => crate::map_check::run(app, None),
+        // moddel <index>: asks to delete a terrain modifier.
+        "moddel" => {
+            if let Some(id) = app.doc.as_ref().and_then(|d| d.world.modifiers.get(nums.first().map_or(0, |v| *v as usize))).map(|m| m.id) {
+                crate::deleting::request(app, crate::deleting::Target::Modifier(id));
+            }
+        }
         // stamp <form> x z: lays a terrain stamp of a form that comes with the editor.
         "stamp" if nums.len() >= 3 => {
             if let Some(f) = dz_core::terrain_stamps::StampForm::ALL.get(nums[0] as usize) {
