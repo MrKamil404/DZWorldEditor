@@ -298,6 +298,8 @@ pub enum LayerAction {
     Visible(u16),
     Editable(u16),
     Export(u16),
+    /// Its objects are baked into the satellite image, or left out.
+    Satellite(u16),
     Solo(u16),
     EditAll,
     ShowAll,
@@ -2680,6 +2682,7 @@ impl App {
             LayerAction::Visible(l) => layers[l as usize].visible ^= true,
             LayerAction::Editable(l) => layers[l as usize].editable ^= true,
             LayerAction::Export(l) => layers[l as usize].export ^= true,
+            LayerAction::Satellite(l) => layers[l as usize].satellite ^= true,
             LayerAction::Solo(l) => {
                 for (i, x) in layers.iter_mut().enumerate() {
                     x.editable = i == l as usize;

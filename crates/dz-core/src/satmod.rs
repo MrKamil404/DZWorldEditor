@@ -894,6 +894,20 @@ pub struct BakeObject {
     pub model: String,
 }
 
+/// True when `path` is one of the models left out of a bake: it holds one of the entries of
+/// `skip`, which are whole model paths or parts of them such as `\wrecks\`. Case and the
+/// kind of slash do not matter.
+pub fn bake_skipped(skip: &[String], path: &str) -> bool {
+    if skip.is_empty() {
+        return false;
+    }
+    let p = path.to_ascii_lowercase().replace('/', "\\");
+    skip.iter().any(|s| {
+        let s = s.trim().to_ascii_lowercase().replace('/', "\\");
+        !s.is_empty() && p.contains(&s)
+    })
+}
+
 /// Choices for [`bake_objects_with`].
 #[derive(Clone, Default)]
 pub struct BakeOptions {
@@ -1234,6 +1248,15 @@ pub fn bake_objects_with(objects: &[BakeObject], db: &ModelDb, width: usize, hei
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn models_in_the_skip_list_are_left_out_of_a_bake() {
+        let skip = vec!["\\wrecks\\".to_string(), "DZ/structures/walls/Wall_Fen2_6.p3d".to_string(), "  ".to_string()];
+        assert!(bake_skipped(&skip, "dz\\structures\\wrecks\\vehicles\\a.p3d"));
+        assert!(bake_skipped(&skip, "DZ\\Structures\\Walls\\wall_fen2_6.p3d"));
+        assert!(!bake_skipped(&skip, "dz\\structures\\walls\\wall_fen2_7.p3d"));
+        assert!(!bake_skipped(&[], "dz\\a.p3d"));
+    }
+
     use super::*;
     use crate::world::WorldMeta;
 

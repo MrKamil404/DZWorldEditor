@@ -843,6 +843,8 @@ enum Act {
     SelectAll,
     Clear,
     Surface(Vec<String>, Option<String>),
+    /// Leave these models out of the satellite bake, or take them back in.
+    BakeSkip(Vec<String>, bool),
     /// Put these models in place of the objects selected on the map.
     Replace(Vec<String>),
     AddTo(String, Vec<String>, Vec<u64>),
@@ -1486,6 +1488,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         if ui.button(crate::icons::with(crate::icons::SWAP, &text)).on_hover_text(t("Where they stand, how they are turned and their size stay.")).clicked() { acts.push(Act::Replace(models.clone())); ui.close_menu(); }
                                         ui.separator();
                                     }
+                                    if !models.is_empty() && has_doc {
+                                        let all = app.doc.as_ref().is_some_and(|d| models.iter().all(|m| d.world.meta.bake_skip.iter().any(|s| s.eq_ignore_ascii_case(m))));
+                                        let text = if all { t("Bake it into the satellite again") } else { t("Leave out of the satellite bake") };
+                                        if ui.button(text).on_hover_text(t("Baking objects into the satellite image skips these models.")).clicked() { acts.push(Act::BakeSkip(models.clone(), !all)); ui.close_menu(); }
+                                    }
                                     if !models.is_empty() {
                                         ui.menu_button(t("Surface under the models"), |ui| {
                                             let current = if models.len() == 1 { app.library.surface_of(&models[0]).map(str::to_string) } else { None };
@@ -1592,6 +1599,7 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
             Act::SelectAll => app.browser.selected = picks.to_vec(),
             Act::Clear => app.browser.selected.clear(),
             Act::Replace(models) => app.replace_selection(&models),
+            Act::BakeSkip(models, skip) => crate::satellite::set_bake_skip(app, &models, skip),
             Act::Surface(models, s) => {
                 for m in &models { app.library.set_surface(m, s.as_deref()); }
                 app.lib_dirty = true;

@@ -167,7 +167,12 @@ written to the `Names` of the world config on export, so the in-game map shows t
 
 * **Bake objects** draws the objects as seen from above into the satellite image: the selected ones
   or all, optionally trees and bushes, road parts and water parts, only what is above the ground, with
-  a blending of the edges.
+  a blending of the edges. Baking the whole map can leave things out, so wrecks, rubbish or fences do
+  not end up in the image: turn off **Bake into the satellite** in the menu of an object layer (the
+  layers of a built map are sorted by kind), or right click a model in the Outliner or the Content
+  Browser and choose **Leave out of the satellite bake**. The list of left out models and path
+  parts (such as `\wrecks\`) is in the Bake objects section, and is kept in the project. Objects you
+  select by hand are always baked.
 * **Clone brush** copies from another place of the satellite image or from a picture you load.
   Choose the source in the preview, then paint on the map.
 

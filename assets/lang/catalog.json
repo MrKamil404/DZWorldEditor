@@ -9210,5 +9210,61 @@
  "Height {0} m copied": {
   "de": "Höhe {0} m kopiert",
   "pl": "Skopiowano wysokość {0} m"
+ },
+ "Bake into the satellite": {
+  "de": "In das Satellitenbild einbrennen",
+  "pl": "Wypalaj do satelitarki"
+ },
+ "Turn it off for a layer of wrecks, rubbish or fences, so baking objects into the satellite image leaves them out.": {
+  "de": "Für eine Ebene mit Wracks, Müll oder Zäunen ausschalten, damit sie beim Einbrennen der Objekte in das Satellitenbild fehlen.",
+  "pl": "Wyłącz dla warstwy wraków, śmieci albo płotów, aby wypalanie obiektów do satelitarki je pomijało."
+ },
+ "Bake it into the satellite again": {
+  "de": "Wieder in das Satellitenbild einbrennen",
+  "pl": "Wypalaj do satelitarki ponownie"
+ },
+ "Leave out of the satellite bake": {
+  "de": "Beim Einbrennen ins Satellitenbild auslassen",
+  "pl": "Pomijaj przy wypalaniu do satelitarki"
+ },
+ "Baking objects into the satellite image skips this model.": {
+  "de": "Beim Einbrennen der Objekte in das Satellitenbild wird dieses Modell übersprungen.",
+  "pl": "Wypalanie obiektów do satelitarki pomija ten model."
+ },
+ "Baking objects into the satellite image skips these models.": {
+  "de": "Beim Einbrennen der Objekte in das Satellitenbild werden diese Modelle übersprungen.",
+  "pl": "Wypalanie obiektów do satelitarki pomija te modele."
+ },
+ "{0} models on the list left out of the satellite bake": {
+  "de": "{0} Einträge in der Liste der beim Einbrennen ausgelassenen Modelle",
+  "pl": "Wpisów na liście pomijanych przy wypalaniu do satelitarki: {0}"
+ },
+ "Left out when baking the whole map": {
+  "de": "Beim Einbrennen der ganzen Karte ausgelassen",
+  "pl": "Pomijane przy wypalaniu całej mapy"
+ },
+ "Bake it again": {
+  "de": "Wieder einbrennen",
+  "pl": "Wypalaj ponownie"
+ },
+ "Fences and walls": {
+  "de": "Zäune und Mauern",
+  "pl": "Płoty i mury"
+ },
+ "Furniture": {
+  "de": "Möbel",
+  "pl": "Meble"
+ },
+ "Leaves out every model whose path holds {0}": {
+  "de": "Lässt jedes Modell aus, dessen Pfad {0} enthält",
+  "pl": "Pomija każdy model, którego ścieżka zawiera {0}"
+ },
+ "Part of a model path": {
+  "de": "Teil eines Modellpfads",
+  "pl": "Fragment ścieżki modelu"
+ },
+ "Leave out the models whose path holds this text.": {
+  "de": "Lässt die Modelle aus, deren Pfad diesen Text enthält.",
+  "pl": "Pomija modele, których ścieżka zawiera ten tekst."
  }
 }

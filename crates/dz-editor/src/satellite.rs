@@ -350,7 +350,12 @@ pub fn bake(app: &mut App) {
     let w = &d.world;
     let selected = app.sat.bake_selection && !app.selection.is_empty();
     let (plants, roads, water) = (app.sat.bake_plants, app.sat.bake_roads, app.sat.bake_water);
+    let skip = w.meta.bake_skip.clone();
     let wanted = |path: &str| -> bool {
+        // What was chosen by hand is baked as asked; the skip list is for baking the whole map.
+        if !selected && dz_core::satmod::bake_skipped(&skip, path) {
+            return false;
+        }
         // Decals lie flat on the image already; road and water parts only when asked for.
         if path.contains("\\roads\\parts\\") {
             return roads;
@@ -365,7 +370,8 @@ pub fn bake(app: &mut App) {
         let path = w.objects.model_path(o);
         // Objects under the terrain cannot be seen from above.
         let underground = o.flags & dz_core::objects::FLAG_UNDERGROUND != 0;
-        if w.object_visible(o) && !underground && wanted(path) {
+        let layer_on = selected || w.object_in_satellite(o);
+        if w.object_visible(o) && !underground && layer_on && wanted(path) {
             objects.push(BakeObject { object: *o, origin_y: dz_core::objects::ObjectStore::origin_y(o, &w.height), model: path.to_string() });
         }
     };
@@ -412,6 +418,56 @@ pub fn bake(app: &mut App) {
             app.info(tf("Baked {0} objects into the satellite image", &[&count.to_string()]));
         }) as Finish)
     });
+}
+
+/// Puts models on the list of those left out of a bake, or takes them off it.
+pub fn set_bake_skip(app: &mut App, models: &[String], skip: bool) {
+    let Some(d) = &mut app.doc else { return };
+    let list = &mut d.world.meta.bake_skip;
+    for m in models {
+        list.retain(|s| !s.eq_ignore_ascii_case(m));
+        if skip { list.push(m.clone()); }
+    }
+    d.history.revision += 1;
+    app.info(tf("{0} models on the list left out of the satellite bake", &[&app.doc.as_ref().map_or(0, |d| d.world.meta.bake_skip.len()).to_string()]));
+}
+
+/// The list of models and path parts a bake leaves out, with a field to add one.
+fn bake_skip_ui(app: &mut App, ui: &mut egui::Ui) {
+    let Some(d) = &app.doc else { return };
+    let list = d.world.meta.bake_skip.clone();
+    ui.label(t("Left out when baking the whole map"));
+    let mut remove = None;
+    for (i, s) in list.iter().enumerate() {
+        ui.horizontal(|ui| {
+            if ui.small_button(crate::icons::X).on_hover_text(t("Bake it again")).clicked() { remove = Some(i); }
+            ui.add(egui::Label::new(egui::RichText::new(s).small()).truncate());
+        });
+    }
+    // Parts of the game's folders, to leave out a whole kind of object at once.
+    ui.horizontal_wrapped(|ui| {
+        for (name, part) in [("Wrecks", "\\wrecks\\"), ("Fences and walls", "\\walls\\"), ("Signs", "\\signs\\"), ("Furniture", "\\furniture\\")] {
+            let on = list.iter().any(|s| s == part);
+            if ui.selectable_label(on, t(name)).on_hover_text(tf("Leaves out every model whose path holds {0}", &[part])).clicked() {
+                set_bake_skip(app, &[part.to_string()], !on);
+            }
+        }
+    });
+    ui.horizontal(|ui| {
+        let id = egui::Id::new("bake_skip_text");
+        let mut text: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_default());
+        let edit = ui.add(egui::TextEdit::singleline(&mut text).hint_text(t("Part of a model path")).desired_width(ui.available_width() - 40.0));
+        let add = ui.small_button(crate::icons::PLUS).on_hover_text(t("Leave out the models whose path holds this text.")).clicked() || (edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+        if add && !text.trim().is_empty() {
+            set_bake_skip(app, &[text.trim().to_string()], true);
+            text.clear();
+        }
+        ui.data_mut(|d| d.insert_temp(id, text));
+    });
+    if let Some(i) = remove {
+        let s = list[i].clone();
+        set_bake_skip(app, &[s], false);
+    }
 }
 
 /// Rows of the satellite modifiers in the outliner.
@@ -1249,6 +1305,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         ui.checkbox(&mut app.sat.bake_plants, t("Trees and bushes too"));
         ui.checkbox(&mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
         ui.checkbox(&mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
+        bake_skip_ui(app, ui);
         ui.checkbox(&mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
         // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.
         let chosen = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == SatKind::Bake)).map(|m| (m.id, m.name.clone(), 1.0 - m.opacity as f32 / 255.0)));

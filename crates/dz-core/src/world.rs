@@ -55,6 +55,10 @@ pub struct WorldMeta {
     /// Places of the camera kept to go back to.
     #[serde(default)]
     pub views: Vec<SavedView>,
+    /// Model paths, or parts of them, left out when objects are baked into the satellite image
+    /// (see `satmod::bake_skipped`): wrecks, rubbish, fences.
+    #[serde(default)]
+    pub bake_skip: Vec<String>,
 }
 
 /// A place of the 3D camera: where it stands and which way it looks, in degrees.
@@ -190,7 +194,7 @@ impl WorldMeta {
         let map_id = if map_id.is_empty() { "NewMap".to_string() } else { map_id };
         let side = size as f32 * cell;
         Self {
-            max_tile_surfaces: 6, build_folders: Vec::new(), views: Vec::new(), name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
+            max_tile_surfaces: 6, build_folders: Vec::new(), views: Vec::new(), bake_skip: Vec::new(), name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
             sea_level: 0.0, easting: 200000.0, northing: 0.0, tile_px: 512, cells_per_tile: 8,
             spawn: [side / 2.0, side / 2.0], latitude: 54.0, longitude: 23.0, write_underground_flag: true, config: MapConfig::default(),
         }
@@ -752,6 +756,9 @@ pub struct ObjectLayer {
     pub editable: bool,
     #[serde(default = "yes")]
     pub export: bool,
+    /// Its objects are drawn into the satellite image when objects are baked into it.
+    #[serde(default = "yes")]
+    pub satellite: bool,
     #[serde(default)]
     pub deleted: bool,
     /// Who works on this layer in team work; empty when anyone does.
@@ -765,7 +772,7 @@ fn yes() -> bool {
 
 impl ObjectLayer {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), visible: true, editable: true, export: true, deleted: false, owner: String::new() }
+        Self { name: name.into(), visible: true, editable: true, export: true, satellite: true, deleted: false, owner: String::new() }
     }
     /// Tools may pick and change the objects of this layer.
     pub fn interactive(&self) -> bool {
@@ -933,6 +940,10 @@ impl World {
     #[inline]
     pub fn object_visible(&self, o: &Obj) -> bool {
         self.object_layer(o).is_none_or(|l| l.visible)
+    }
+    /// The layer of this object lets it be baked into the satellite image.
+    pub fn object_in_satellite(&self, o: &Obj) -> bool {
+        self.object_layer(o).is_none_or(|l| l.satellite)
     }
     /// Tools may pick and change this object.
     #[inline]
@@ -1126,6 +1137,22 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn projects_from_before_the_satellite_bake_list_still_open() {
+        // A layer of an old project is baked, and its map leaves nothing out.
+        let layer: ObjectLayer = serde_json::from_str(r#"{"name":"Walls"}"#).unwrap();
+        assert!(layer.satellite);
+        let mut meta = serde_json::to_value(WorldMeta::new("t", 512, 10.0)).unwrap();
+        meta.as_object_mut().unwrap().remove("bake_skip");
+        let meta: WorldMeta = serde_json::from_value(meta).unwrap();
+        assert!(meta.bake_skip.is_empty());
+        // What is left out is written, and read back.
+        let mut meta = meta;
+        meta.bake_skip.push("\\wrecks\\".into());
+        let back: WorldMeta = serde_json::from_str(&serde_json::to_string(&meta).unwrap()).unwrap();
+        assert_eq!(back.bake_skip, meta.bake_skip);
+    }
+
     use super::*;
     #[test]
     fn objects_of_a_built_world_go_to_layers_by_kind() {

@@ -1823,6 +1823,8 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                         if ui.add_enabled(has_selection, egui::Button::new(t("Move selection here"))).clicked() { layer_action = Some(LayerAction::MoveSelection(id)); ui.close_menu(); }
                         let mut export = l.export;
                         if ui.checkbox(&mut export, t("Include in export")).clicked() { layer_action = Some(LayerAction::Export(id)); ui.close_menu(); }
+                        let mut satellite = l.satellite;
+                        if ui.checkbox(&mut satellite, t("Bake into the satellite")).on_hover_text(t("Turn it off for a layer of wrecks, rubbish or fences, so baking objects into the satellite image leaves them out.")).clicked() { layer_action = Some(LayerAction::Satellite(id)); ui.close_menu(); }
                         if team {
                             ui.separator();
                             ui.menu_button(icons::with(icons::USER, &t("Owner")), |ui| {
@@ -1861,6 +1863,8 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                         }).map(|(_, o)| dz_core::goto::Spot { x: o.x, z: o.z, radius: 20.0 })
                     });
                     if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                    let skipped = app.doc.as_ref().is_some_and(|d| d.world.meta.bake_skip.iter().any(|s| s.eq_ignore_ascii_case(&path)));
+                    if ui.button(if skipped { t("Bake it into the satellite again") } else { t("Leave out of the satellite bake") }).on_hover_text(t("Baking objects into the satellite image skips this model.")).clicked() { crate::satellite::set_bake_skip(app, std::slice::from_ref(&path), !skipped); ui.close_menu(); }
                     if ui.button(icons::with(icons::FOLDER_OPEN, &t("Show in asset browser"))).clicked() { reveal = Some(path.clone()); ui.close_menu(); }
                     if ui.button(t("Select objects")).clicked() { select_model = Some(*m); ui.close_menu(); }
                 });
