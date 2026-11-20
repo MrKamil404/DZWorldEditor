@@ -155,6 +155,8 @@ uniform float u_fog, u_exposure, u_bias, u_surface_range;
 uniform float u_parallax;
 // How sharply surfaces meet along their relief, 0 soft to 1 hard.
 uniform float u_blend_sharp;
+uniform int u_game;
+uniform int u_pixels;
 uniform int u_brush_shape;
 uniform float u_time;
 //SEA
@@ -205,6 +207,9 @@ void surfacesAt(vec2 mp, out uvec4 ids, out vec4 share){
   ivec2 base = ivec2(floor(mp)) - 1;
   vec2 f = mp - floor(mp);
   vec4 wx = bspline(f.x), wy = bspline(f.y);
+  // The game filters its mask between the four nearest pixels only, so one pixel shows in
+  // full at its middle. The smooth spline would spread it over 4x4 pixels and wash it out.
+  if (u_game != 0) { wx = vec4(0.0, 1.0 - f.x, f.x, 0.0); wy = vec4(0.0, 1.0 - f.y, f.y, 0.0); }
   ids = uvec4(maskAt(base + ivec2(1, 1)));
   share = vec4(0.0);
   int n = 1;
@@ -243,6 +248,11 @@ void main(){
   uvec4 ids;
   vec4 sh;
   surfacesAt(mp, ids, sh);
+  // Hard pixels: the surface of the mask pixel the point lies in, and nothing else.
+  if (u_pixels != 0) {
+    ids = uvec4(maskAt(ivec2(floor(mp + 0.5))));
+    sh = vec4(1.0, 0.0, 0.0, 0.0);
+  }
   uint a = ids.x, b = ids.y, c = ids.z, d = ids.w;
   // Patches of ground of a few metres break the bands up, as wear and drifts do.
   vec2 gp = v_world.xz;
@@ -251,7 +261,8 @@ void main(){
               + vec4(tnoise(gp * 2.6), tnoise(gp * 2.6 + 7.0), tnoise(gp * 2.6 + 29.0), tnoise(gp * 2.6 + 61.0)) * 0.2 - 0.5;
   // Only where surfaces meet: inside a surface its share stays whole.
   vec4 edge = clamp(sh * (1.0 - sh) * 4.0, 0.0, 1.0);
-  sh = max(sh + wobble * edge * 1.5 * step(0.0001, sh), vec4(0.0));
+  // The game breaks its borders up only with the relief of the surfaces, not with noise.
+  if (u_game == 0) sh = max(sh + wobble * edge * 1.5 * step(0.0001, sh), vec4(0.0));
   sh /= max(sh.x + sh.y + sh.z + sh.w, 1e-4);
   float wa = sh.x, wb = sh.y, wc = sh.z, wd = sh.w;
   vec3 palette = pal(a)*wa + pal(b)*wb + pal(c)*wc + pal(d)*wd;
@@ -1177,6 +1188,10 @@ pub struct Frame {
     pub parallax: f32,
     /// How sharply surfaces meet along their relief, 0 to 1.
     pub blend_sharp: f32,
+    /// The surfaces are drawn as the game will show them.
+    pub game: bool,
+    /// Each mask pixel is drawn as its own surface, without blending.
+    pub pixels: bool,
     pub sea_waves: f32,
     /// How far the tide has lifted or lowered the sea, in metres.
     pub tide: f32,
@@ -1472,6 +1487,15 @@ impl Renderer {
             }
         }
         self.uploads.push(Upload::Holes { width: cols as i32, height: rows as i32, data });
+    }
+    /// A rectangle of mask values from elsewhere than the map (the surfaces as the game shows
+    /// them); only for masks the texture holds whole.
+    pub fn update_mask_data(&mut self, m: &dz_core::terrain::MaskMap, r: Rect, data: Vec<u8>) -> bool {
+        if m.width.max(m.height) > 16384 {
+            return false;
+        }
+        self.uploads.push(Upload::MaskRect { x: r.x0 as i32, y: r.y0 as i32, w: r.width() as i32, h: r.height() as i32, data });
+        true
     }
     pub fn update_mask(&mut self, m: &dz_core::terrain::MaskMap, r: Rect) {
         // A mask over 16k is shown at a fraction of its size: only the changed part of that is sent.
@@ -2449,6 +2473,8 @@ impl Renderer {
         gl.uniform_1_f32(u(terrain, "u_surface_range").as_ref(), f.surface_range);
         gl.uniform_1_f32(u(terrain, "u_parallax").as_ref(), f.parallax);
         gl.uniform_1_f32(u(terrain, "u_blend_sharp").as_ref(), f.blend_sharp);
+        gl.uniform_1_i32(u(terrain, "u_game").as_ref(), f.game as i32);
+        gl.uniform_1_i32(u(terrain, "u_pixels").as_ref(), f.pixels as i32);
         gl.uniform_2_f32(u(terrain, "u_size").as_ref(), self.size[0], self.size[1]);
         gl.uniform_1_f32(u(terrain, "u_cell").as_ref(), self.cell);
         gl.uniform_1_f32(u(terrain, "u_world").as_ref(), f.world);

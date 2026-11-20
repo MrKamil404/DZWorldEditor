@@ -119,6 +119,16 @@ The game can draw only a limited number of surfaces on one texture tile. The bru
 surface to a tile that already has as many as the project allows (up to six), so what you paint is
 what the game shows. The *Mask* shading of the view shows the mask in its colours, as above.
 
+**Surfaces as the game shows them** (on by default, in `Edit > Settings` under the surface blending, and in the Camera menu of the 3D view)
+draws the ground with the surfaces the built map will have. The game keeps the mask of each
+texture tile in blocks of 4 by 4 metres with at most two surfaces each, so specks of a third surface
+at an edge go, and edges follow those blocks. Surfaces blend only between neighbouring pixels, as
+in the game, so a single painted pixel still shows. The view and the *Mask* shading show exactly that,
+worked out by the same code as the build.
+
+**Hard mask pixels** (off by default, in the same two places) draws each pixel of the mask as one
+surface, with hard edges and no blending between surfaces. Use it to see exactly what is painted where.
+
 ### 4 Place
 
 Choose a model in the Content Browser and click on the terrain, or drag models onto the map.

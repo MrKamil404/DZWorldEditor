@@ -56,6 +56,22 @@ fn compress_color(px: &[[u8; 4]; 16], out: &mut Vec<u8>) {
             b = *p;
         }
     }
+    // Colours on opposite ends of the seed's normal (red and green, say) all fall on the same
+    // point of the axis, which then gives a single colour for the whole block: the two pixels
+    // farthest apart are the ends instead.
+    if a[..3] == b[..3] {
+        let dist = |p: &[u8; 4], q: &[u8; 4]| (0..3).map(|c| (p[c] as i32 - q[c] as i32).pow(2)).sum::<i32>();
+        let mut far = 0;
+        for (i, p) in px.iter().enumerate() {
+            for q in &px[i + 1..] {
+                let d = dist(p, q);
+                if d > far {
+                    far = d;
+                    (a, b) = (*p, *q);
+                }
+            }
+        }
+    }
     let to565 = |p: [u8; 4]| -> u16 {
         let q = |v: u8, n: u32| (v as u32 * n + 127) / 255;
         ((q(p[0], 31) << 11) | (q(p[1], 63) << 5) | q(p[2], 31)) as u16
@@ -104,6 +120,22 @@ fn compress_alpha(px: &[[u8; 4]; 16], out: &mut Vec<u8>) {
         out.push(a1);
         out.extend_from_slice(&[0; 6]);
         return;
+    }
+    // Three levels, two of them 0 and 255 (as the blue surfaces of terrain masks have): the
+    // mode with 0 and 255 in its palette keeps all three exactly.
+    let middle: Vec<u8> = px.iter().map(|p| p[3]).filter(|a| *a != 0 && *a != 255).collect();
+    if let Some(&v) = middle.first() {
+        if middle.iter().all(|a| *a == v) && px.iter().any(|p| p[3] == 0 || p[3] == 255) {
+            let mut bits = 0u64;
+            for (i, p) in px.iter().enumerate() {
+                let k: u64 = match p[3] { 0 => 6, 255 => 7, _ => 0 };
+                bits |= k << (i * 3);
+            }
+            out.push(v);
+            out.push(v);
+            out.extend_from_slice(&bits.to_le_bytes()[..6]);
+            return;
+        }
     }
     let (x0, x1) = (a0 as i32, a1 as i32);
     let pal: [i32; 8] = [x0, x1, (6 * x0 + x1) / 7, (5 * x0 + 2 * x1) / 7, (4 * x0 + 3 * x1) / 7, (3 * x0 + 4 * x1) / 7, (2 * x0 + 5 * x1) / 7, (x0 + 6 * x1) / 7];
@@ -322,6 +354,32 @@ mod tests {
             err += (*a as i64 - *b as i64).unsigned_abs();
         }
         assert!(err / (img.len() as u64) < 8, "mean error {}", err / img.len() as u64);
+    }
+
+    #[test]
+    fn blocks_of_two_mask_colours_keep_both() {
+        // Each pair of the pure mask colours, half a block each.
+        let colours = [[0u8, 0, 0, 255], [255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]];
+        for a in 0..4 {
+            for b in 0..4 {
+                let mut img = Vec::new();
+                for _y in 0..4 { for x in 0..4 { img.extend_from_slice(&colours[if x < 2 { a } else { b }]); } }
+                let t = forest_core::paa::decode(&encode(&img, 4, 4, Format::Dxt5), 64).unwrap();
+                assert_eq!(&t.rgba[..], &img[..], "{a} beside {b}");
+            }
+        }
+    }
+
+    #[test]
+    fn three_alpha_levels_of_masks_stay_exact() {
+        let mut img = Vec::new();
+        for k in 0..16 * 16 {
+            img.extend_from_slice(&[0, 0, 255, [255u8, 128, 0][k % 3]]);
+        }
+        let t = forest_core::paa::decode(&encode(&img, 16, 16, Format::Dxt5), 4096).unwrap();
+        for (a, b) in t.rgba.chunks(4).zip(img.chunks(4)) {
+            assert_eq!(a[3], b[3]);
+        }
     }
 
     #[test]

@@ -3605,6 +3605,9 @@ pub fn start_day(date: &str) -> u32 {
 
 /// The parallax and blending of the surfaces, from the relief in their alpha channel.
 pub fn surface_relief_ui(ui: &mut egui::Ui, s: &mut crate::settings::Settings) {
+    // Turned on or off, the ground is uploaded again by the app (see `App::sync_game_surfaces`).
+    ui.checkbox(&mut s.game_surfaces, t("Surfaces as the game shows them")).on_hover_text(t("The ground shows the surfaces the built map will have: at most the surfaces a texture tile may hold, and two in each block of 4 metres, as the game's compressed masks keep them. Specks of a third surface at an edge go, as in the game. The Mask shading shows the same."));
+    ui.checkbox(&mut s.surface_pixels, t("Hard mask pixels")).on_hover_text(t("The ground shows each pixel of the mask as one surface, with hard edges and no blending: to see exactly what is painted where."));
     ui.add(egui::Slider::new(&mut s.surface_parallax, 0.0..=15.0).text(t("Surface parallax cm"))).on_hover_text(t("How deep the relief in the alpha channel of the surface textures looks close up; 0 leaves them flat."));
     ui.add(egui::Slider::new(&mut s.surface_blend, 0.0..=1.0).text(t("Surface blend by relief"))).on_hover_text(t("Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper."));
 }
@@ -3684,7 +3687,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         show_water: app.show_water,
         surface_range: app.settings.surface_range,
         parallax: app.settings.surface_parallax.max(0.0) / 100.0,
-        blend_sharp: app.settings.surface_blend.clamp(0.0, 1.0),
+        blend_sharp: app.settings.surface_blend.clamp(0.0, 1.0), game: app.settings.game_surfaces, pixels: app.settings.surface_pixels,
         sea_waves: app.settings.sea_waves,
         tide: tide(app, &ctx),
         world: meta.size_m(),
@@ -4179,7 +4182,7 @@ fn minimap(app: &mut App, ui: &mut egui::Ui, view: Rect) {
             show_water: app.show_water,
             surface_range: app.settings.surface_range,
             parallax: 0.0,
-            blend_sharp: app.settings.surface_blend.clamp(0.0, 1.0),
+            blend_sharp: app.settings.surface_blend.clamp(0.0, 1.0), game: app.settings.game_surfaces, pixels: app.settings.surface_pixels,
             sea_waves: app.settings.sea_waves,
             tide: tide(app, &ctx),
             world: meta.size_m(),
