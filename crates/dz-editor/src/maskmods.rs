@@ -35,7 +35,7 @@ impl App {
     pub fn mask_recomposed(&mut self, r: Rect) {
         let Some(doc) = &mut self.doc else { return };
         doc.dirty.mask = true;
-        self.renderer.lock().unwrap().update_mask(&doc.world.mask, r);
+        self.upload_mask(Some(r));
     }
 }
 

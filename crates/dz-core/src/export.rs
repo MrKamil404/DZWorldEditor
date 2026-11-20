@@ -1,4 +1,10 @@
 //! Writes everything a map PBO needs into the work drive folder.
+//!
+//! The terrain tiles are written as the game's own maps have them (Chernarus, Livonia and
+//! Sakhal alike): every tile material uses the `TerrainX` shader with up to six surfaces, told
+//! apart in the mask by colour (black, red, green, blue) and, for the three blue ones, by alpha.
+//! The game has no use for `TerrainSNX` (four or five surfaces with a satellite normal map), which
+//! Arma 3's Terrain Builder can also write: with it, surfaces and their edges come out wrong.
 use crate::model_info::ModelDb;
 use crate::objects::{rotation, ObjectStore, FLAG_UNDERGROUND};
 use crate::paa_write::{self, Format};
@@ -12,10 +18,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-/// Surfaces a tile can hold: six in Terrain Builder's six-material mode, without normals.
+/// Surfaces a tile can hold with the `TerrainX` shader.
 pub const MAX_SLOTS: usize = 6;
-/// Surfaces of a tile that also has a satellite normal map (`TerrainSNX`).
-const SNX_SLOTS: usize = 5;
 
 /// Grid of satellite and mask tiles.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -97,17 +101,77 @@ fn synthetic_rgb(w: &World, wx: f32, wz: f32) -> [u8; 3] {
     [(c[0] as f32 * shade).min(255.0) as u8, (c[1] as f32 * shade).min(255.0) as u8, (c[2] as f32 * shade).min(255.0) as u8]
 }
 
-/// RGBA of mask slot `slot` (0-based), as Terrain Builder encodes it.
+/// RGBA of mask slot `slot` (0-based), as Terrain Builder and the game's maps encode it.
 #[inline]
-fn slot_rgba(slot: usize, six: bool) -> [u8; 4] {
-    match (slot, six) {
-        (0, _) => [0, 0, 0, 255],
-        (1, _) => [255, 0, 0, 255],
-        (2, _) => [0, 255, 0, 255],
-        (3, _) => [0, 0, 255, 255],
-        (4, true) => [0, 0, 255, 128],
-        (_, true) => [0, 0, 255, 0],
-        _ => [0, 0, 0, 128],
+fn slot_rgba(slot: usize) -> [u8; 4] {
+    match slot {
+        0 => [0, 0, 0, 255],
+        1 => [255, 0, 0, 255],
+        2 => [0, 255, 0, 255],
+        3 => [0, 0, 255, 255],
+        4 => [0, 0, 255, 128],
+        _ => [0, 0, 255, 0],
+    }
+}
+
+/// The colour a slot has in the mask, by which DXT tells slots apart: black, red, green, blue
+/// (the three blue slots share it and differ only in alpha).
+#[inline]
+fn colour_class(slot: u8) -> u8 {
+    slot.min(3)
+}
+
+/// Masks are compressed in blocks of 4 by 4 pixels (4 metres), and a block can only hold two
+/// colours exactly; a third comes out as a mix of the others, which the game draws as a blend of
+/// surfaces with ragged, wrong edges. So in each block only the two colours most used stay, and a
+/// pixel of any other takes the slot most of its neighbours in the block have. Specks of a third
+/// surface at the edge of two others are lost; the edges stay clean.
+pub(crate) fn two_colours_a_block(slots: &mut [u8], px: usize) {
+    for by in (0..px).step_by(4) {
+        for bx in (0..px).step_by(4) {
+            let cells: Vec<usize> = (by..(by + 4).min(px)).flat_map(|y| (bx..(bx + 4).min(px)).map(move |x| y * px + x)).collect();
+            let mut count = [0u32; 4];
+            for &c in &cells {
+                count[colour_class(slots[c]) as usize] += 1;
+            }
+            if count.iter().filter(|n| **n > 0).count() <= 2 {
+                continue;
+            }
+            let mut classes = [0u8, 1, 2, 3];
+            classes.sort_by_key(|k| std::cmp::Reverse(count[*k as usize]));
+            let keep = [classes[0], classes[1]];
+            // The slot each kept colour stands for in this block: the one used most.
+            let slot_for = |class: u8| -> u8 {
+                let mut n = [0u32; 256];
+                for &c in &cells {
+                    if colour_class(slots[c]) == class { n[slots[c] as usize] += 1; }
+                }
+                (0..=255u8).max_by_key(|s| n[*s as usize]).unwrap_or(class)
+            };
+            let fill = [slot_for(keep[0]), slot_for(keep[1])];
+            // The block as it was, so that changed pixels do not vote.
+            let before: std::collections::HashMap<usize, u8> = cells.iter().map(|c| (*c, slots[*c])).collect();
+            for &c in &cells {
+                if keep.contains(&colour_class(before[&c])) {
+                    continue;
+                }
+                // The kept colour more of its neighbours in the block have; the block's main one
+                // on a tie.
+                let (x, y) = ((c % px) as i64, (c / px) as i64);
+                let mut votes = [0u32; 2];
+                for dy in -1..=1i64 {
+                    for dx in -1..=1i64 {
+                        let (nx, ny) = (x + dx, y + dy);
+                        if nx < bx as i64 || ny < by as i64 || nx >= (bx + 4).min(px) as i64 || ny >= (by + 4).min(px) as i64 {
+                            continue;
+                        }
+                        let k = colour_class(before[&(ny as usize * px + nx as usize)]);
+                        if k == keep[0] { votes[0] += 1 } else if k == keep[1] { votes[1] += 1 }
+                    }
+                }
+                slots[c] = if votes[1] > votes[0] { fill[1] } else { fill[0] };
+            }
+        }
     }
 }
 
@@ -151,7 +215,7 @@ fn nopx_of(root: &Path, texture: &str) -> String {
 
 /// Text of one tile material, matching what Terrain Builder generates.
 #[allow(clippy::too_many_arguments)]
-pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots: usize, used: &[Option<(String, String)>], six: bool) -> String {
+pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots: usize, used: &[Option<(String, String)>]) -> String {
     let tile = format!("{name_col:03}_{name_row:03}");
     let id_lc = id.to_ascii_lowercase();
     let scale = 1.0 / layout.tile_m;
@@ -163,7 +227,7 @@ pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots:
         "class TexGen{n}\n{{\n\tuvSource=\"tex\";\n\tclass uvTransform\n\t{{\n\t\taside[]={{{k},0,0}};\n\t\tup[]={{0,{k},0}};\n\t\tdir[]={{0,0,{k}}};\n\t\tpos[]={{0,0,0}};\n\t}};\n}};\n"
     );
     let mut s = String::with_capacity(2048);
-    s += if six { "ambient[]={1,1,1,1};\ndiffuse[]={1,1,1,1};\n" } else { "ambient[]={0.89999998,0.89999998,0.89999998,1};\ndiffuse[]={0.89999998,0.89999998,0.89999998,1};\n" };
+    s += "ambient[]={1,1,1,1};\ndiffuse[]={1,1,1,1};\n";
     s += "forcedDiffuse[]={0.02,0.02,0.02,1};\nemmisive[]={0,0,0,0};\nspecular[]={0,0,0,0};\nspecularPower=0;\n";
     s += &format!("class Stage0\n{{\n\ttexture=\"{id_lc}\\data\\layers\\s_{tile}_lco.paa\";\n\ttexGen=3;\n}};\n");
     s += &format!("class Stage1\n{{\n\ttexture=\"{id_lc}\\data\\layers\\m_{tile}_lca.paa\";\n\ttexGen=4;\n}};\n");
@@ -172,7 +236,7 @@ pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots:
     s += &tex_gen(0, 1);
     s += &tex_gen(1, 10);
     s += &tex_gen(2, 10);
-    s += if six { "PixelShaderID=\"TerrainX\";\nVertexShaderID=\"Terrain\";\n" } else { "PixelShaderID=\"TerrainSNX\";\nVertexShaderID=\"Terrain\";\n" };
+    s += "PixelShaderID=\"TerrainX\";\nVertexShaderID=\"Terrain\";\n";
     s += "class Stage2\n{\n\ttexture=\"#(rgb,1,1,1)color(0.5,0.5,0.5,1,cdt)\";\n\ttexGen=0;\n};\n";
     for k in 0..slots {
         let (nopx, ca) = match &used[k] {
@@ -181,9 +245,6 @@ pub fn rvmat(id: &str, name_col: u32, name_row: u32, layout: &TileLayout, slots:
         };
         s += &format!("class Stage{}\n{{\n\ttexture=\"{nopx}\";\n\ttexGen=1;\n}};\n", 3 + k * 2);
         s += &format!("class Stage{}\n{{\n\ttexture=\"{ca}\";\n\ttexGen=2;\n}};\n", 4 + k * 2);
-    }
-    if !six {
-        s += &format!("class Stage14\n{{\n\ttexture=\"{id_lc}\\data\\layers\\n_{tile}_nohq.paa\";\n\ttexGen=3;\n}};\n");
     }
     s
 }
@@ -194,24 +255,19 @@ struct TileOutput {
     rvmats: BTreeMap<String, String>,
 }
 
-fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path, col: u32, row: u32, layer_tex: &[(String, String)], six: bool) -> Result<TileOutput> {
+/// The surfaces of a tile in slot order, and the slot of every pixel of its mask as the game gets
+/// it: at most as many surfaces as the material takes (the rarest replaced by the most used), and
+/// at most two colours in each block of 4 by 4 pixels. The export writes this, and the editor
+/// draws it, so that both show the same ground.
+pub fn tile_slots(w: &World, layout: &TileLayout, col: u32, row: u32) -> (Vec<usize>, Vec<u8>) {
     let px = layout.px as usize;
     let size = w.meta.size_m();
-    let id = &w.meta.map_id;
-    let _ = opts;
-    let mut sat = vec![255u8; px * px * 4];
     let mut indices = vec![0u8; px * px];
     let mut count = [0u32; 256];
     for y in 0..px {
         for x in 0..px {
             let (wx, wz) = layout.world(col, row, x as f32, y as f32);
-            let (cx, cz) = (wx.clamp(0.0, size - 0.01), wz.clamp(0.0, size - 0.01));
-            let c = match &w.satellite {
-                Some(s) => sample_rgb(s, cx, cz, size),
-                None => synthetic_rgb(w, cx, cz),
-            };
-            sat[(y * px + x) * 4..(y * px + x) * 4 + 3].copy_from_slice(&c);
-            let l = w.mask.sample(cx, cz, size);
+            let l = w.mask.sample(wx.clamp(0.0, size - 0.01), wz.clamp(0.0, size - 0.01), size);
             indices[y * px + x] = l;
             count[l as usize] += 1;
         }
@@ -219,9 +275,8 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
     // The most used surfaces of the tile, as many as the material can take.
     let mut order: Vec<usize> = (0..256).filter(|l| count[*l] > 0).collect();
     order.sort_by_key(|l| std::cmp::Reverse(count[*l]));
-    order.truncate((if six { MAX_SLOTS } else { SNX_SLOTS }).min(w.meta.max_tile_surfaces.max(1) as usize));
+    order.truncate(MAX_SLOTS.min(w.meta.max_tile_surfaces.max(1) as usize));
     order.sort();
-    let slots = order.len();
     let mut slot_of = [0u8; 256];
     for l in 0..256usize {
         slot_of[l] = match order.iter().position(|o| *o == l) {
@@ -233,31 +288,86 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
             }
         };
     }
-    let mut mask = vec![0u8; px * px * 4];
-    for (i, l) in indices.iter().enumerate() {
-        mask[i * 4..i * 4 + 4].copy_from_slice(&slot_rgba(slot_of[*l as usize] as usize, six));
-    }
-    if six {
-        spread_blue_alpha(&mut mask, px);
-    }
-    // Normal map from the heightmap.
-    let mut normal = vec![255u8; px * px * 4];
+    let mut pixel_slot: Vec<u8> = indices.iter().map(|l| slot_of[*l as usize]).collect();
+    two_colours_a_block(&mut pixel_slot, px);
+    (order, pixel_slot)
+}
+
+/// The pixels of the mask whose surface in the game can change when those of `r` change: the
+/// whole of every tile whose texture (overlap included) shows them, as a tile's surfaces and
+/// blocks are chosen over all of it.
+pub fn game_mask_area(w: &World, r: crate::terrain::Rect) -> crate::terrain::Rect {
+    let layout = TileLayout::of(w);
+    let (mw, mh) = (w.mask.width as f32, w.mask.height as f32);
+    let per = mw / layout.size;
+    let reach = ((layout.margin + 4.0) * per).ceil() as usize;
+    let (x0, y0) = (r.x0.saturating_sub(reach), r.y0.saturating_sub(reach));
+    let (x1, y1) = ((r.x1 + reach).min(mw as usize - 1), (r.y1 + reach).min(mh as usize - 1));
+    let step = layout.step * per;
+    let snap_lo = |v: usize| ((v as f32 / step).floor() * step) as usize;
+    let snap_hi = |v: usize, max: f32| ((((v as f32 + 1.0) / step).ceil() * step) as usize).min(max as usize) - 1;
+    crate::terrain::Rect { x0: snap_lo(x0), y0: snap_lo(y0), x1: snap_hi(x1, mw), y1: snap_hi(y1, mh) }
+}
+
+/// The surface the game shows at each pixel of the mask within `area` (row by row), as the
+/// exported tiles give it: each point is drawn by the tile of its land cell.
+pub fn game_mask(w: &World, area: crate::terrain::Rect) -> Vec<u8> {
+    let layout = TileLayout::of(w);
+    let (mw, mh) = (w.mask.width, w.mask.height);
+    let size = w.meta.size_m();
+    let px = layout.px as usize;
+    let mpp = layout.tile_m / layout.px as f32;
+    let world = |x: usize, y: usize| ((x as f32 + 0.5) / mw as f32 * size, (1.0 - (y as f32 + 0.5) / mh as f32) * size);
+    let tile_of = |wx: f32, wz: f32| (((wx / layout.step) as u32).min(layout.tiles - 1), (((size - wz) / layout.step) as u32).min(layout.tiles - 1));
+    // The tiles the area takes its pixels from, each worked out once.
+    let (a, b) = (world(area.x0, area.y0), world(area.x1, area.y1));
+    let (c0, r0) = tile_of(a.0, a.1);
+    let (c1, r1) = tile_of(b.0, b.1);
+    let tiles: Vec<(u32, u32)> = (r0..=r1).flat_map(|r| (c0..=c1).map(move |c| (c, r))).collect();
+    let done: HashMap<(u32, u32), (Vec<usize>, Vec<u8>)> = tiles.par_iter().map(|&(c, r)| ((c, r), tile_slots(w, &layout, c, r))).collect();
+    let width = area.width();
+    let mut out = vec![0u8; width * area.height()];
+    out.par_chunks_mut(width).enumerate().for_each(|(k, line)| {
+        let y = area.y0 + k;
+        for (i, v) in line.iter_mut().enumerate() {
+            let (wx, wz) = world(area.x0 + i, y);
+            let (col, row) = tile_of(wx, wz);
+            let (order, slots) = &done[&(col, row)];
+            let tx = (((wx - (col as f32 * layout.step - layout.margin)) / mpp) as usize).min(px - 1);
+            let ty = ((((size + layout.margin - row as f32 * layout.step) - wz) / mpp) as usize).min(px - 1);
+            *v = order.get(slots[ty * px + tx] as usize).copied().unwrap_or(0) as u8;
+        }
+    });
+    out
+}
+
+fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path, col: u32, row: u32, layer_tex: &[(String, String)]) -> Result<TileOutput> {
+    let px = layout.px as usize;
+    let size = w.meta.size_m();
+    let id = &w.meta.map_id;
+    let _ = opts;
+    let mut sat = vec![255u8; px * px * 4];
     for y in 0..px {
         for x in 0..px {
             let (wx, wz) = layout.world(col, row, x as f32, y as f32);
-            let n = w.height.normal(wx.clamp(0.0, size), wz.clamp(0.0, size));
-            let p = (y * px + x) * 4;
-            normal[p] = ((n[0] * 0.5 + 0.5) * 255.0) as u8;
-            normal[p + 1] = ((n[2] * 0.5 + 0.5) * 255.0) as u8;
-            normal[p + 2] = 255;
+            let (cx, cz) = (wx.clamp(0.0, size - 0.01), wz.clamp(0.0, size - 0.01));
+            let c = match &w.satellite {
+                Some(s) => sample_rgb(s, cx, cz, size),
+                None => synthetic_rgb(w, cx, cz),
+            };
+            sat[(y * px + x) * 4..(y * px + x) * 4 + 3].copy_from_slice(&c);
         }
     }
+    let (order, pixel_slot) = tile_slots(w, layout, col, row);
+    let slots = order.len();
+    let mut mask = vec![0u8; px * px * 4];
+    for (i, s) in pixel_slot.iter().enumerate() {
+        mask[i * 4..i * 4 + 4].copy_from_slice(&slot_rgba(*s as usize));
+    }
+    spread_blue_alpha(&mut mask, px);
     let tile = format!("{col:03}_{row:03}");
     atomic_write(&dir.join(format!("S_{tile}_lco.paa")), &paa_write::encode(&sat, px, px, Format::Dxt1))?;
     atomic_write(&dir.join(format!("M_{tile}_lca.paa")), &paa_write::encode(&mask, px, px, Format::Dxt5))?;
-    if !six {
-        atomic_write(&dir.join(format!("N_{tile}_nohq.paa")), &paa_write::encode(&normal, px, px, Format::Dxt5))?;
-    }
 
     // One material per set of surfaces actually present in a land cell.
     let cells_per = w.meta.cells_per_tile;
@@ -278,7 +388,7 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
             let mut present = [false; MAX_SLOTS];
             for y in y0..=y1 {
                 for x in x0..=x1 {
-                    present[slot_of[indices[y * px + x] as usize] as usize] = true;
+                    present[pixel_slot[y * px + x] as usize] = true;
                 }
             }
             let mut name = format!("P_{col:03}-{row:03}");
@@ -294,7 +404,7 @@ fn export_tile(w: &World, opts: &ExportOptions, layout: &TileLayout, dir: &Path,
             }
             name += ".rvmat";
             if !out.rvmats.contains_key(&name) {
-                out.rvmats.insert(name.clone(), rvmat(id, col, row, layout, slots, &used, six));
+                out.rvmats.insert(name.clone(), rvmat(id, col, row, layout, slots, &used));
             }
             out.cells.push(((i, j), name));
         }
@@ -596,12 +706,6 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
     if over > 0 {
         job.log(format!("{over} tiles use more than {limit} surfaces, so the rarest are replaced in the export."));
     }
-    // One shader for the whole map, as Terrain Builder does: the mode costs the satellite
-    // normals, so it is only used when a tile really needs it.
-    let six = limit == MAX_SLOTS && crate::mask_limit::count_over(w, SNX_SLOTS) > 0;
-    if six {
-        job.log("Some tiles use six surfaces: exporting with TerrainX, without satellite normal maps.".to_string());
-    }
     ensure!(opts.root.is_dir(), "Work drive {} is not available", opts.root.display());
     let target = opts.root.join(&id);
     let mut report = ExportReport { folder: target.clone(), ..Default::default() };
@@ -630,7 +734,7 @@ pub fn run(w: &World, db: &ModelDb, opts: &ExportOptions, job: &Job) -> Result<E
         let outputs = Mutex::new(Vec::with_capacity(list.len()));
         list.par_iter().try_for_each(|&(c, r)| -> Result<()> {
             job.check()?;
-            let o = export_tile(w, opts, &layout, &layers_dir, c, r, &layer_tex, six).with_context(|| format!("Tile {c}/{r}"))?;
+            let o = export_tile(w, opts, &layout, &layers_dir, c, r, &layer_tex).with_context(|| format!("Tile {c}/{r}"))?;
             outputs.lock().unwrap().push(o);
             let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             job.set_progress(n as f32 / tiles.pow(2) as f32 * 0.85);
@@ -732,6 +836,54 @@ pub fn write_source(w: &World, db: &ModelDb, dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_game_mask_is_what_the_exported_tiles_hold() {
+        let mut w = World::new(WorldMeta::new("Game", 512, 4.0), 10.0);
+        w.mask = crate::terrain::MaskMap::new(2048, 2048, 0);
+        // Blocks start a margin before the tile, a metre a pixel here.
+        let layout = TileLayout::of(&w);
+        let start = 1000 + (-layout.margin).rem_euclid(4.0) as usize;
+        // A speck of surface 2 in a block where 0 and 1 meet: the game drops it.
+        for y in 0..2048 {
+            for x in start + 2..2048 {
+                w.mask.data[y * 2048 + x] = 1;
+            }
+        }
+        w.mask.data[500 * 2048 + start + 1] = 2;
+        let area = crate::terrain::Rect { x0: 990, y0: 490, x1: 1019, y1: 509 };
+        let g = game_mask(&w, area);
+        let at = |x: usize, y: usize| g[(y - 490) * 30 + (x - 990)];
+        assert_eq!((at(start, 500), at(start + 2, 500)), (0, 1), "the edge stays");
+        assert_ne!(at(start + 1, 500), 2, "the speck goes as in the game");
+    }
+
+    #[test]
+    fn mask_blocks_keep_two_colours_and_compress_without_mixes() {
+        // Concrete (slot 1) beside grass (slot 2) speckled with gravel (slot 0), and a blue slot.
+        let px = 32;
+        let mut slots: Vec<u8> = (0..px * px).map(|i| {
+            let (x, y) = (i % px, i / px);
+            if x < 14 { 1 } else if (x * 7 + y * 13) % 5 == 0 { 0 } else if y > 24 { 4 } else { 2 }
+        }).collect();
+        two_colours_a_block(&mut slots, px);
+        for by in (0..px).step_by(4) {
+            for bx in (0..px).step_by(4) {
+                let mut seen = std::collections::BTreeSet::new();
+                for y in by..by + 4 { for x in bx..bx + 4 { seen.insert(colour_class(slots[y * px + x])); } }
+                assert!(seen.len() <= 2, "block {bx},{by}: {seen:?}");
+            }
+        }
+        // The concrete edge stays where it was.
+        assert!((0..px).all(|y| slots[y * px + 13] == 1 && slots[y * px + 15] != 1));
+        let mut rgba = Vec::new();
+        for s in &slots { rgba.extend_from_slice(&slot_rgba(*s as usize)); }
+        let t = forest_core::paa::decode(&paa_write::encode(&rgba, px, px, Format::Dxt5), 4096).unwrap();
+        // Every pixel comes back as the very colour of its slot: no mixes for the game to blend.
+        for (i, s) in slots.iter().enumerate() {
+            assert_eq!(&t.rgba[i * 4..i * 4 + 4], &slot_rgba(*s as usize), "pixel {i}");
+        }
+    }
     use crate::objects::Obj;
     use crate::world::WorldMeta;
 
@@ -791,7 +943,9 @@ mod tests {
         assert!(wrp.materials.iter().any(|m| m.contains("_L00")));
         assert!(wrp.materials.iter().any(|m| m.contains("_L02")));
         let mat = std::fs::read_to_string(target.join("data/layers").join(wrp.materials[0].rsplit('\\').next().unwrap())).unwrap();
-        assert!(mat.contains("TerrainSNX") && mat.contains("Stage14") && mat.contains("en_grass1_ca.paa"));
+        // The shader of the game's own maps, never TerrainSNX.
+        assert!(mat.contains("\"TerrainX\"") && !mat.contains("TerrainSNX") && !mat.contains("Stage14") && mat.contains("en_grass1_ca.paa"));
+        assert!(!target.join("data/layers/N_000_000_nohq.paa").exists());
         let cfg = std::fs::read_to_string(target.join("world/config.cpp")).unwrap();
         assert_eq!(cfg.contains("class Holes"), !w.holes.is_empty());
         assert!(cfg.contains("class TestMap: Enoch") && cfg.contains("TestMap\\world\\testmap.wrp"));

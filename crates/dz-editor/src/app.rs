@@ -363,6 +363,8 @@ pub struct App {
     pub layer_averages: Vec<[u8; 3]>,
     /// The map check and its window.
     pub check: crate::map_check::MapCheck,
+    /// Whether the view holds the surfaces as the game shows them.
+    shown_game_surfaces: bool,
     pub goto: crate::goto::GoTo,
     /// The measuring tool: on, and the points clicked.
     pub measure: Measure,
@@ -612,7 +614,7 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), shown_game_surfaces: false, goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
@@ -1267,6 +1269,7 @@ impl App {
 
     pub fn tick(&mut self) {
         self.keep_flow();
+        self.sync_game_surfaces();
         let mut messages = Vec::new();
         let mut finished = None;
         if let Some(task) = &self.task {
@@ -1500,6 +1503,8 @@ impl App {
             r.set_holes(&world.holes, world.height.cols, world.height.rows);
             r.set_satellite(world.satellite.as_ref());
         }
+        // The surfaces as the game shows them go over the painted mask once the world is open.
+        self.shown_game_surfaces = false;
         self.loader.reset();
         self.impostor_fits.clear();
         self.layer_averages.clear();
@@ -1651,7 +1656,33 @@ impl App {
         doc.dirty.mask = true;
         // What was painted goes under the mask modifiers, which stay on top of it.
         let r = doc.world.mask_painted(r).map_or(r, |m| m.union(r));
-        self.renderer.lock().unwrap().update_mask(&doc.world.mask, r);
+        self.upload_mask(Some(r));
+    }
+
+    /// Sends the mask to the view: as painted, or as the game will show it.
+    pub fn upload_mask(&mut self, area: Option<Rect>) {
+        let Some(doc) = &self.doc else { return };
+        let m = &doc.world.mask;
+        let mut r = self.renderer.lock().unwrap();
+        if self.settings.game_surfaces && m.width.max(m.height) <= 16384 {
+            let all = Rect { x0: 0, y0: 0, x1: m.width - 1, y1: m.height - 1 };
+            let area = area.map_or(all, |a| dz_core::export::game_mask_area(&doc.world, a));
+            if r.update_mask_data(m, area, dz_core::export::game_mask(&doc.world, area)) {
+                return;
+            }
+        }
+        match area {
+            Some(a) => r.update_mask(m, a),
+            None => r.set_mask(m),
+        }
+    }
+
+    /// Uploads the mask again when the way it is shown was changed.
+    pub fn sync_game_surfaces(&mut self) {
+        if self.shown_game_surfaces != self.settings.game_surfaces {
+            self.shown_game_surfaces = self.settings.game_surfaces;
+            self.upload_mask(None);
+        }
     }
 
     pub fn whole_height_changed(&mut self) {
@@ -1669,7 +1700,7 @@ impl App {
         doc.dirty.mask = true;
         let all = Rect { x0: 0, y0: 0, x1: doc.world.mask.width.saturating_sub(1), y1: doc.world.mask.height.saturating_sub(1) };
         doc.world.mask_painted(all);
-        self.renderer.lock().unwrap().set_mask(&doc.world.mask);
+        self.upload_mask(None);
     }
 
     /// Adds objects made by a generator on a `lite` copy of the world.

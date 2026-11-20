@@ -143,6 +143,10 @@
   "de": "Ein Tor, wo eine Straße oder ein Gleis den Zaun kreuzt",
   "pl": "Brama tam, gdzie płot przecina droga lub tor"
  },
+ "A key point of the map, a square of the game's map grid (045 123) or metres east and north (4500, 12300).": {
+  "de": "Ein Key Point der Karte, ein Feld des Spielkartenrasters (045 123) oder Meter nach Osten und Norden (4500, 12300).",
+  "pl": "Key point mapy, kratka siatki mapy z gry (045 123) albo metry na wschód i na północ (4500, 12300)."
+ },
  "A list of objects Terrain Builder imports.": {
   "de": "Eine Objektliste, die Terrain Builder importiert.",
   "pl": "Lista obiektów do importu w Terrain Builderze."
@@ -687,6 +691,10 @@
   "de": "Automatisch speichern alle",
   "pl": "Autozapis co"
  },
+ "Average": {
+  "de": "Durchschnitt",
+  "pl": "Średnia"
+ },
  "Back": {
   "de": "Zurück",
   "pl": "Wstecz"
@@ -727,6 +735,18 @@
   "de": "Einbrennen",
   "pl": "Wypal"
  },
+ "Bake into the satellite": {
+  "de": "In das Satellitenbild einbrennen",
+  "pl": "Wypalaj do satelitarki"
+ },
+ "Bake it again": {
+  "de": "Wieder einbrennen",
+  "pl": "Wypalaj ponownie"
+ },
+ "Bake it into the satellite again": {
+  "de": "Wieder in das Satellitenbild einbrennen",
+  "pl": "Wypalaj do satelitarki ponownie"
+ },
  "Bake objects": {
   "de": "Objekte einbrennen",
   "pl": "Wypalanie obiektów"
@@ -746,6 +766,14 @@
  "Baking objects into the satellite": {
   "de": "Objekte werden in das Satellitenbild eingebrannt",
   "pl": "Wypalanie obiektów na satce"
+ },
+ "Baking objects into the satellite image skips these models.": {
+  "de": "Beim Einbrennen der Objekte in das Satellitenbild werden diese Modelle übersprungen.",
+  "pl": "Wypalanie obiektów do satelitarki pomija te modele."
+ },
+ "Baking objects into the satellite image skips this model.": {
+  "de": "Beim Einbrennen der Objekte in das Satellitenbild wird dieses Modell übersprungen.",
+  "pl": "Wypalanie obiektów do satelitarki pomija ten model."
  },
  "Balk surface": {
   "de": "Oberfläche der Feldraine",
@@ -910,6 +938,10 @@
  "Box": {
   "de": "Rechteck",
   "pl": "Prostokąt"
+ },
+ "Box centre": {
+  "de": "Mitte des Rahmens",
+  "pl": "Środek ramki"
  },
  "Breadcrumbs": {
   "de": "Brotkrumen",
@@ -1663,6 +1695,10 @@
   "de": "Kontrast",
   "pl": "Kontrast"
  },
+ "Copied height": {
+  "de": "Kopierte Höhe",
+  "pl": "Skopiowana wysokość"
+ },
  "Copies a file into the mission, e.g. a types file of a mod.": {
   "de": "Kopiert eine Datei in die Mission, z. B. eine Typendatei einer Mod.",
   "pl": "Kopiuje plik do misji, np. plik typów moda."
@@ -1690,6 +1726,10 @@
  "Copy": {
   "de": "Kopieren",
   "pl": "Kopiuj"
+ },
+ "Copy a height first: right click or Alt+click the terrain.": {
+  "de": "Zuerst eine Höhe kopieren: Rechtsklick oder Alt+Klick auf das Gelände.",
+  "pl": "Najpierw skopiuj wysokość: prawy przycisk albo Alt+klik na terenie."
  },
  "Copy from": {
   "de": "Kopieren aus",
@@ -2719,6 +2759,10 @@
   "de": "Zaunmodelle",
   "pl": "Modele płotów"
  },
+ "Fences and walls": {
+  "de": "Zäune und Mauern",
+  "pl": "Płoty i mury"
+ },
  "Field of view": {
   "de": "Sichtfeld",
   "pl": "Pole widzenia"
@@ -2858,6 +2902,10 @@
  "Fly right": {
   "de": "Nach rechts fliegen",
   "pl": "Leć w prawo"
+ },
+ "Fly the camera to a key point, a position or a square of the game's map grid.": {
+  "de": "Fliegt die Kamera zu einem Key Point, einer Position oder einem Feld des Spielkartenrasters.",
+  "pl": "Przenosi kamerę do key pointu, pozycji albo kratki siatki mapy z gry."
  },
  "Fly up": {
   "de": "Nach oben fliegen",
@@ -3027,6 +3075,10 @@
   "de": "Vollbild",
   "pl": "Pełny ekran"
  },
+ "Furniture": {
+  "de": "Möbel",
+  "pl": "Meble"
+ },
  "Furniture and fittings that buildings place in their visual LOD, as the game shows them. Proxies of the geometry, fire, memory and roadway LODs are not drawn.": {
   "de": "Möbel und Ausstattung, die Gebäude in ihrem sichtbaren LOD platzieren, wie das Spiel sie zeigt. Proxys der Geometrie-, Fire-, Memory- und Roadway-LODs werden nicht gezeichnet.",
   "pl": "Meble i wyposażenie, które budynki wstawiają w LOD-zie widoku, tak jak pokazuje je gra. Proxy z LOD-ów geometrii, fire, memory i roadway nie są rysowane."
@@ -3123,6 +3175,10 @@
   "de": "Ausgewählte Objekte übergeben",
   "pl": "Oddaj zaznaczone obiekty"
  },
+ "Gizmo and turn centre": {
+  "de": "Gizmo und Drehzentrum",
+  "pl": "Gizmo i środek obrotu"
+ },
  "Global numbers of the economy: counts, cleanup times, login and logout times.": {
   "de": "Globale Werte der Wirtschaft: Anzahlen, Aufräumzeiten, Ein- und Ausloggzeiten.",
   "pl": "Globalne liczby ekonomii: limity, czasy sprzątania, logowania i wylogowania."
@@ -3138,6 +3194,10 @@
  "Go to": {
   "de": "Hingehen",
   "pl": "Przejdź"
+ },
+ "Go to...": {
+  "de": "Gehe zu...",
+  "pl": "Idź do..."
  },
  "Grade the terrain": {
   "de": "Gelände angleichen",
@@ -3170,6 +3230,10 @@
  "Green": {
   "de": "Grün",
   "pl": "Zielony"
+ },
+ "Grid square {0} {1}": {
+  "de": "Rasterfeld {0} {1}",
+  "pl": "Kratka {0} {1}"
  },
  "Ground colour on grass": {
   "de": "Bodenfarbe auf Gras",
@@ -3235,6 +3299,10 @@
   "de": "Halbe Straßenbreite m",
   "pl": "Połowa szerokości drogi m"
  },
+ "Hard mask pixels": {
+  "de": "Harte Maskenpixel",
+  "pl": "Ostre piksele maski"
+ },
  "Hardness": {
   "de": "Härte",
   "pl": "Twardość"
@@ -3274,6 +3342,10 @@
  "Height smoothing": {
   "de": "Höhenglättung",
   "pl": "Wygładzanie wysokości"
+ },
+ "Height {0} m copied": {
+  "de": "Höhe {0} m kopiert",
+  "pl": "Skopiowano wysokość {0} m"
  },
  "Heightmap": {
   "de": "Höhenkarte",
@@ -3515,6 +3587,10 @@
   "de": "Infizierte",
   "pl": "Zarażeni"
  },
+ "Inside the line, not beyond its ends": {
+  "de": "In der Linie, nicht über ihre Enden hinaus",
+  "pl": "W linii, a nie poza jej końcami"
+ },
  "Installed. The new version starts after a restart.": {
   "de": "Installiert. Die neue Version startet nach einem Neustart.",
   "pl": "Zainstalowano. Nowa wersja zadziała po ponownym uruchomieniu."
@@ -3643,9 +3719,17 @@
   "de": "Keypoint",
   "pl": "Keypoint"
  },
+ "Key point, 045 123 or 4500, 12300": {
+  "de": "Key Point, 045 123 oder 4500, 12300",
+  "pl": "Key point, 045 123 albo 4500, 12300"
+ },
  "Key points": {
   "de": "Keypoints",
   "pl": "Keypointy"
+ },
+ "Key points ({0})": {
+  "de": "Key Points ({0})",
+  "pl": "Key pointy ({0})"
  },
  "Key points tool": {
   "de": "Schlüsselpunkt-Werkzeug",
@@ -3795,9 +3879,25 @@
   "de": "Objekte hinter Gelände oder Gebäuden weglassen",
   "pl": "Pomijaj obiekty zasłonięte terenem lub budynkami"
  },
+ "Leave out of the satellite bake": {
+  "de": "Beim Einbrennen ins Satellitenbild auslassen",
+  "pl": "Pomijaj przy wypalaniu do satelitarki"
+ },
+ "Leave out the models whose path holds this text.": {
+  "de": "Lässt die Modelle aus, deren Pfad diesen Text enthält.",
+  "pl": "Pomija modele, których ścieżka zawiera ten tekst."
+ },
+ "Leaves out every model whose path holds {0}": {
+  "de": "Lässt jedes Modell aus, dessen Pfad {0} enthält",
+  "pl": "Pomija każdy model, którego ścieżka zawiera {0}"
+ },
  "Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it.": {
   "de": "Lässt die im Gelände versunkenen Teile eines Objekts weg, sodass ein halb eingegrabener Pier nur seinen Teil darüber zeigt.",
   "pl": "Pomija części obiektu zagłębione w terenie, więc molo w połowie w ziemi pokazuje tylko część nad nią."
+ },
+ "Leaves out the places where buildings and other larger objects stand, so nothing is put inside them.": {
+  "de": "Lässt die Stellen aus, an denen Gebäude und andere größere Objekte stehen, damit nichts in ihnen steht.",
+  "pl": "Pomija miejsca, w których stoją budynki i inne większe obiekty, aby nic nie stało w ich wnętrzu."
  },
  "Left": {
   "de": "Links",
@@ -3806,6 +3906,14 @@
  "Left leaf": {
   "de": "Linker Flügel",
   "pl": "Lewe skrzydło"
+ },
+ "Left leaf turn °": {
+  "de": "Drehung des linken Flügels °",
+  "pl": "Obrót lewego skrzydła °"
+ },
+ "Left out when baking the whole map": {
+  "de": "Beim Einbrennen der ganzen Karte ausgelassen",
+  "pl": "Pomijane przy wypalaniu całej mapy"
  },
  "Legend": {
   "de": "Legende",
@@ -4459,6 +4567,10 @@
   "de": "Auswahl hierher verschieben",
   "pl": "Przenieś tu zaznaczenie"
  },
+ "Move the camera here": {
+  "de": "Kamera hierher bewegen",
+  "pl": "Przejdź kamerą do"
+ },
  "Move to an edge for the panels · F11 leaves full screen": {
   "de": "Zum Rand für die Leisten · F11 beendet das Vollbild",
   "pl": "Najedź na krawędź po panele · F11 wychodzi z pełnego ekranu"
@@ -4815,6 +4927,10 @@
   "de": "Hinweise ({0})",
   "pl": "Uwagi ({0})"
  },
+ "Nothing copied yet": {
+  "de": "Noch nichts kopiert",
+  "pl": "Jeszcze nic nie skopiowano"
+ },
  "Nothing found": {
   "de": "Nichts gefunden",
   "pl": "Nic nie znaleziono"
@@ -4922,6 +5038,10 @@
  "Objects of the layers stand on the chosen heightmap, and models that follow the ground (path panels, barriers) come in level when tilted by less than 10°. A built world (WRP) has them as the game shows them.": {
   "de": "Objekte der Ebenen stehen auf der gewählten Höhenkarte, und Modelle, die dem Boden folgen (Wegplatten, Leitplanken), kommen bei weniger als 10° Neigung eben. Eine gebaute Welt (WRP) hat sie so, wie das Spiel sie zeigt.",
   "pl": "Obiekty z warstw stoją na wybranej mapie wysokości, a modele dopasowujące się do terenu (panele ścieżek, bariery) wchodzą poziomo, gdy ich przechył jest mniejszy niż 10°. Zbudowany świat (WRP) ma je tak, jak pokazuje je gra."
+ },
+ "Objects put in 100 m² of the zone you paint while the button is held. Holding still adds nothing.": {
+  "de": "Objekte auf 100 m² der Zone, die du bei gedrückter Taste malst. Stillhalten fügt nichts hinzu.",
+  "pl": "Obiekty stawiane na 100 m² strefy, którą malujesz przy wciśniętym przycisku. Trzymanie w miejscu nic nie dodaje."
  },
  "Objects under the terrain need the underground flag, and holes cost performance.": {
   "de": "Objekte unter dem Gelände brauchen die Untergrund-Markierung, und Löcher kosten Leistung.",
@@ -5299,6 +5419,10 @@
   "de": "Malt die Zellen, die das Spiel nicht zeichnet, für Eingänge unter die Erde.",
   "pl": "Maluje komórki, których gra nie rysuje, np. na wejścia pod ziemię."
  },
+ "Paints the ground to a height copied from the map: right click or Alt+click the terrain to copy it.": {
+  "de": "Malt das Gelände auf eine von der Karte kopierte Höhe: Rechtsklick oder Alt+Klick auf das Gelände kopiert sie.",
+  "pl": "Maluje teren do wysokości skopiowanej z mapy: kliknij prawym przyciskiem albo Alt+klik na terenie, aby ją skopiować."
+ },
  "Paints the satellite image in the colours of the surfaces of the mask, with their pattern, soft edges between them and the shading of the hills. It is a modifier, so it can be hidden, blended or deleted.": {
   "de": "Malt das Satellitenbild in den Farben der Oberflächen der Maske, mit ihrem Muster, weichen Rändern dazwischen und der Schattierung der Hügel. Es ist ein Modifikator, der ausgeblendet, überblendet oder gelöscht werden kann.",
   "pl": "Maluje zdjęcie satelitarne w kolorach powierzchni z maski, z ich wzorem, miękkimi krawędziami między nimi i cieniowaniem wzgórz. To modyfikator, więc można go ukryć, przenikać lub usunąć."
@@ -5310,6 +5434,10 @@
  "Parallax": {
   "de": "Parallax",
   "pl": "Parallax"
+ },
+ "Part of a model path": {
+  "de": "Teil eines Modellpfads",
+  "pl": "Fragment ścieżki modelu"
  },
  "Part removed": {
   "de": "Entfernter Anteil",
@@ -5630,6 +5758,10 @@
  "Position": {
   "de": "Position",
   "pl": "Położenie"
+ },
+ "Position {0}": {
+  "de": "Position {0}",
+  "pl": "Pozycja {0}"
  },
  "Positions of dirt piles; usually empty.": {
   "de": "Positionen von Erdhaufen; meist leer.",
@@ -6002,6 +6134,10 @@
  "Right leaf": {
   "de": "Rechter Flügel",
   "pl": "Prawe skrzydło"
+ },
+ "Right leaf turn °": {
+  "de": "Drehung des rechten Flügels °",
+  "pl": "Obrót prawego skrzydła °"
  },
  "Ring Ø{0} m from {1} pieces, kinks of {2}° where they meet": {
   "de": "Ring Ø{0} m aus {1} Stücken, Knicke von {2}° an den Stößen",
@@ -6547,6 +6683,10 @@
   "de": "Für diese Oberfläche setzen; aus behält den Wert der Basis",
   "pl": "Ustaw dla tej powierzchni; wyłączone zostawia wartość bazowej"
  },
+ "Set height": {
+  "de": "Höhe setzen",
+  "pl": "Ustaw wysokość"
+ },
  "Set how the brush changes the colours first": {
   "de": "Lege zuerst fest, wie der Pinsel die Farben ändert",
   "pl": "Najpierw ustaw, jak pędzel ma zmieniać kolory"
@@ -6646,6 +6786,10 @@
  "Sharpness": {
   "de": "Schärfe",
   "pl": "Ostrość"
+ },
+ "Shift and drag turns about the press": {
+  "de": "Umschalt und Ziehen dreht um den Druckpunkt",
+  "pl": "Shift i przeciągnięcie obraca wokół miejsca kliknięcia"
  },
  "Shift or Ctrl held while dragging a selected object rotates or scales it.": {
   "de": "Ziehen eines ausgewählten Objekts mit Umschalt dreht es, mit Strg skaliert es.",
@@ -6750,6 +6894,10 @@
  "Size variation": {
   "de": "Größenstreuung",
   "pl": "Losowość rozmiaru"
+ },
+ "Skip spots taken by other objects": {
+  "de": "Von anderen Objekten belegte Stellen auslassen",
+  "pl": "Pomijaj miejsca zajęte przez inne obiekty"
  },
  "Slope": {
   "de": "Neigung",
@@ -7107,6 +7255,10 @@
   "de": "Oberflächen und Bewuchs",
   "pl": "Powierzchnie i roślinność"
  },
+ "Surfaces as the game shows them": {
+  "de": "Oberflächen wie im Spiel",
+  "pl": "Powierzchnie jak w grze"
+ },
  "Surfaces from the satellite": {
   "de": "Oberflächen aus dem Satellitenbild",
   "pl": "Powierzchnie z satelity"
@@ -7415,6 +7567,10 @@
   "de": "Die aktive Ebene ist ausgeblendet oder gesperrt",
   "pl": "Aktywna warstwa jest ukryta lub zablokowana"
  },
+ "The average of the positions of the selected objects.": {
+  "de": "Der Durchschnitt der Positionen der gewählten Objekte.",
+  "pl": "Średnia położeń zaznaczonych obiektów."
+ },
  "The braces do not pair up ({0}); check the extra lines.": {
   "de": "Die Klammern passen nicht zusammen ({0}); prüfe die zusätzlichen Zeilen.",
   "pl": "Nawiasy się nie domykają ({0}); sprawdź dodatkowe linie."
@@ -7475,6 +7631,10 @@
   "de": "Die Dateien der Mission stimmen überein.",
   "pl": "Pliki misji są ze sobą zgodne."
  },
+ "The first and last object lie between the end of the line and the fence instead of on the end point, and the fence is shorter by their length.": {
+  "de": "Das erste und letzte Objekt liegen zwischen dem Ende der Linie und dem Zaun statt auf dem Endpunkt, und der Zaun wird um ihre Länge kürzer.",
+  "pl": "Pierwszy i ostatni obiekt leżą między końcem linii a ogrodzeniem, a nie na punkcie końcowym, a ogrodzenie jest krótsze o ich długość."
+ },
  "The folder has to be on the work drive": {
   "de": "Der Ordner muss auf dem Arbeitslaufwerk liegen",
   "pl": "Folder musi być na dysku roboczym"
@@ -7510,6 +7670,14 @@
  "The ground keeps the shape the modifier gave it, and it is part of the exported heightmap; without this, the terrain goes back to how it was before the modifier.": {
   "de": "Der Boden behält die Form, die der Modifikator ihm gegeben hat, und gehört zur exportierten Heightmap; ohne dies kehrt das Gelände in den Zustand vor dem Modifikator zurück.",
   "pl": "Teren zachowuje kształt nadany przez modyfikator i trafia do eksportowanej heightmapy; bez tego teren wraca do stanu sprzed modyfikatora."
+ },
+ "The ground shows each pixel of the mask as one surface, with hard edges and no blending: to see exactly what is painted where.": {
+  "de": "Der Boden zeigt jedes Pixel der Maske als eine Oberfläche, mit harten Kanten und ohne Überblendung: um genau zu sehen, was wo gemalt ist.",
+  "pl": "Teren pokazuje każdy piksel maski jako jedną powierzchnię, z ostrymi krawędziami i bez mieszania: żeby dokładnie widzieć, co gdzie jest namalowane."
+ },
+ "The ground shows the surfaces the built map will have: at most the surfaces a texture tile may hold, and two in each block of 4 metres, as the game's compressed masks keep them. Specks of a third surface at an edge go, as in the game. The Mask shading shows the same.": {
+  "de": "Der Boden zeigt die Oberflächen, die die gebaute Karte haben wird: höchstens so viele, wie eine Texturkachel haben darf, und zwei in jedem Block von 4 Metern, wie die komprimierten Masken des Spiels sie halten. Sprenkel einer dritten Oberfläche an einer Kante verschwinden wie im Spiel. Die Schattierung Maske zeigt dasselbe.",
+  "pl": "Teren pokazuje powierzchnie, jakie będzie miała zbudowana mapa: najwyżej tyle, ile może mieć kafel tekstury, i dwie w każdym bloku 4 metrów, tak jak trzymają je skompresowane maski gry. Drobinki trzeciej powierzchni przy krawędzi znikają, jak w grze. Cieniowanie Maska pokazuje to samo."
  },
  "The heightmap has {0} columns, the project {1}": {
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",
@@ -7578,6 +7746,10 @@
  "The mask colour painted under the model, by trees as their forest ground and by the tool that paints under objects.": {
   "de": "Die Maskenfarbe unter dem Modell: für Bäume als Waldboden und für das Werkzeug, das unter Objekte malt.",
   "pl": "Kolor maski malowany pod modelem: przez drzewa jako podłoże lasu i przez narzędzie malujące pod obiektami."
+ },
+ "The middle of the box that holds the positions of the selected objects.": {
+  "de": "Die Mitte des Rahmens, der die Positionen der gewählten Objekte enthält.",
+  "pl": "Środek ramki, w której mieszczą się położenia zaznaczonych obiektów."
  },
  "The mission folder {0}, as the server reads it from mpmissions.": {
   "de": "Der Missionsordner {0}, wie der Server ihn aus mpmissions liest.",
@@ -7683,6 +7855,10 @@
   "de": "Der Spielerstart liegt außerhalb der Karte oder im Meer",
   "pl": "Start gracza jest poza mapą albo w morzu"
  },
+ "The position of the first selected object.": {
+  "de": "Die Position des ersten gewählten Objekts.",
+  "pl": "Położenie pierwszego zaznaczonego obiektu."
+ },
  "The prefab takes the selected objects instead of those it had.": {
   "de": "Das Prefab übernimmt die ausgewählten Objekte statt seiner bisherigen.",
   "pl": "Prefab przejmuje zaznaczone obiekty w miejsce dotychczasowych."
@@ -7759,6 +7935,10 @@
   "de": "An diesem Objekt darf das Sekundärevent (Infizierte) spawnen.",
   "pl": "Przy tym obiekcie może pojawić się event wtórny (zarażeni)."
  },
+ "The selection turns about the spot of the ground where the button went down, not about its own centre.": {
+  "de": "Die Auswahl dreht sich um die Stelle des Bodens, an der die Taste gedrückt wurde, nicht um ihre eigene Mitte.",
+  "pl": "Zaznaczenie obraca się wokół miejsca na terenie, w którym wciśnięto przycisk, a nie wokół własnego środka."
+ },
  "The server finds the mission by this name in mpmissions: dayzOffline.<world>.": {
   "de": "Der Server findet die Mission unter diesem Namen in mpmissions: dayzOffline.<Welt>.",
   "pl": "Serwer znajduje misję po tej nazwie w mpmissions: dayzOffline.<świat>."
@@ -7778,6 +7958,10 @@
  "The source keeps its distance from the brush from one stroke to the next. Off: every stroke starts copying from the source point again.": {
   "de": "Die Quelle behält ihren Abstand zum Pinsel von Strich zu Strich. Aus: jeder Strich beginnt wieder am Quellpunkt.",
   "pl": "Źródło zachowuje odległość od pędzla między pociągnięciami. Wyłączone: każde pociągnięcie zaczyna kopiować od punktu źródła."
+ },
+ "The spacing leaves room for about {0} per 100 m²": {
+  "de": "Der Abstand lässt Platz für etwa {0} auf 100 m²",
+  "pl": "Odstęp pozwala na około {0} na 100 m²"
  },
  "The sun of that hour at the map's latitude and start date (Map config).": {
   "de": "Die Sonne zu dieser Stunde am Breitengrad und Startdatum der Karte (Kartenkonfiguration).",
@@ -8019,9 +8203,17 @@
   "de": "Drehung",
   "pl": "Obrót"
  },
+ "Turn it off for a layer of wrecks, rubbish or fences, so baking objects into the satellite image leaves them out.": {
+  "de": "Für eine Ebene mit Wracks, Müll oder Zäunen ausschalten, damit sie beim Einbrennen der Objekte in das Satellitenbild fehlen.",
+  "pl": "Wyłącz dla warstwy wraków, śmieci albo płotów, aby wypalanie obiektów do satelitarki je pomijało."
+ },
  "Turn °": {
   "de": "Drehung °",
   "pl": "Obrót °"
+ },
+ "Turned about its middle, up to 180° to open the other way. The fence closes up to what a turned object leaves of the gap.": {
+  "de": "Um die eigene Mitte gedreht, bis 180°, um in die andere Richtung zu öffnen. Der Zaun schließt bis an das, was ein gedrehtes Objekt von der Lücke übrig lässt.",
+  "pl": "Obrót wokół własnego środka, do 180°, aby otwierać na drugą stronę. Ogrodzenie dochodzi do tego, co obrócony obiekt zostawia z przerwy."
  },
  "Turns what is copied about the source point, to lay fields or rows another way.": {
   "de": "Dreht das Kopierte um den Quellpunkt, um Felder oder Reihen anders zu legen.",
@@ -8747,6 +8939,10 @@
   "de": "Name",
   "pl": "nazwa"
  },
+ "no limit": {
+  "de": "keine Grenze",
+  "pl": "bez limitu"
+ },
  "none": {
   "de": "keine",
   "pl": "brak"
@@ -8894,6 +9090,10 @@
  "{0} models": {
   "de": "{0} Modelle",
   "pl": "modeli: {0}"
+ },
+ "{0} models on the list left out of the satellite bake": {
+  "de": "{0} Einträge in der Liste der beim Einbrennen ausgelassenen Modelle",
+  "pl": "Wpisów na liście pomijanych przy wypalaniu do satelitarki: {0}"
  },
  "{0} models · {1} points": {
   "de": "{0} Modelle · {1} Punkte",
@@ -9118,189 +9318,5 @@
  "{0}°  ·  step {1}° (wheel)": {
   "de": "{0}°  ·  Schritt {1}° (Mausrad)",
   "pl": "{0}°  ·  skok {1}° (kółko)"
- },
- "Go to...": {
-  "de": "Gehe zu...",
-  "pl": "Idź do..."
- },
- "Fly the camera to a key point, a position or a square of the game's map grid.": {
-  "de": "Fliegt die Kamera zu einem Key Point, einer Position oder einem Feld des Spielkartenrasters.",
-  "pl": "Przenosi kamerę do key pointu, pozycji albo kratki siatki mapy z gry."
- },
- "Key point, 045 123 or 4500, 12300": {
-  "de": "Key Point, 045 123 oder 4500, 12300",
-  "pl": "Key point, 045 123 albo 4500, 12300"
- },
- "A key point of the map, a square of the game's map grid (045 123) or metres east and north (4500, 12300).": {
-  "de": "Ein Key Point der Karte, ein Feld des Spielkartenrasters (045 123) oder Meter nach Osten und Norden (4500, 12300).",
-  "pl": "Key point mapy, kratka siatki mapy z gry (045 123) albo metry na wschód i na północ (4500, 12300)."
- },
- "Grid square {0} {1}": {
-  "de": "Rasterfeld {0} {1}",
-  "pl": "Kratka {0} {1}"
- },
- "Position {0}": {
-  "de": "Position {0}",
-  "pl": "Pozycja {0}"
- },
- "Move the camera here": {
-  "de": "Kamera hierher bewegen",
-  "pl": "Przejdź kamerą do"
- },
- "Key points ({0})": {
-  "de": "Key Points ({0})",
-  "pl": "Key pointy ({0})"
- },
- "Gizmo and turn centre": {
-  "de": "Gizmo und Drehzentrum",
-  "pl": "Gizmo i środek obrotu"
- },
- "Average": {
-  "de": "Durchschnitt",
-  "pl": "Średnia"
- },
- "Box centre": {
-  "de": "Mitte des Rahmens",
-  "pl": "Środek ramki"
- },
- "The average of the positions of the selected objects.": {
-  "de": "Der Durchschnitt der Positionen der gewählten Objekte.",
-  "pl": "Średnia położeń zaznaczonych obiektów."
- },
- "The middle of the box that holds the positions of the selected objects.": {
-  "de": "Die Mitte des Rahmens, der die Positionen der gewählten Objekte enthält.",
-  "pl": "Środek ramki, w której mieszczą się położenia zaznaczonych obiektów."
- },
- "The position of the first selected object.": {
-  "de": "Die Position des ersten gewählten Objekts.",
-  "pl": "Położenie pierwszego zaznaczonego obiektu."
- },
- "Shift and drag turns about the press": {
-  "de": "Umschalt und Ziehen dreht um den Druckpunkt",
-  "pl": "Shift i przeciągnięcie obraca wokół miejsca kliknięcia"
- },
- "The selection turns about the spot of the ground where the button went down, not about its own centre.": {
-  "de": "Die Auswahl dreht sich um die Stelle des Bodens, an der die Taste gedrückt wurde, nicht um ihre eigene Mitte.",
-  "pl": "Zaznaczenie obraca się wokół miejsca na terenie, w którym wciśnięto przycisk, a nie wokół własnego środka."
- },
- "Set height": {
-  "de": "Höhe setzen",
-  "pl": "Ustaw wysokość"
- },
- "Paints the ground to a height copied from the map: right click or Alt+click the terrain to copy it.": {
-  "de": "Malt das Gelände auf eine von der Karte kopierte Höhe: Rechtsklick oder Alt+Klick auf das Gelände kopiert sie.",
-  "pl": "Maluje teren do wysokości skopiowanej z mapy: kliknij prawym przyciskiem albo Alt+klik na terenie, aby ją skopiować."
- },
- "Copied height": {
-  "de": "Kopierte Höhe",
-  "pl": "Skopiowana wysokość"
- },
- "Nothing copied yet": {
-  "de": "Noch nichts kopiert",
-  "pl": "Jeszcze nic nie skopiowano"
- },
- "Copy a height first: right click or Alt+click the terrain.": {
-  "de": "Zuerst eine Höhe kopieren: Rechtsklick oder Alt+Klick auf das Gelände.",
-  "pl": "Najpierw skopiuj wysokość: prawy przycisk albo Alt+klik na terenie."
- },
- "Height {0} m copied": {
-  "de": "Höhe {0} m kopiert",
-  "pl": "Skopiowano wysokość {0} m"
- },
- "Bake into the satellite": {
-  "de": "In das Satellitenbild einbrennen",
-  "pl": "Wypalaj do satelitarki"
- },
- "Turn it off for a layer of wrecks, rubbish or fences, so baking objects into the satellite image leaves them out.": {
-  "de": "Für eine Ebene mit Wracks, Müll oder Zäunen ausschalten, damit sie beim Einbrennen der Objekte in das Satellitenbild fehlen.",
-  "pl": "Wyłącz dla warstwy wraków, śmieci albo płotów, aby wypalanie obiektów do satelitarki je pomijało."
- },
- "Bake it into the satellite again": {
-  "de": "Wieder in das Satellitenbild einbrennen",
-  "pl": "Wypalaj do satelitarki ponownie"
- },
- "Leave out of the satellite bake": {
-  "de": "Beim Einbrennen ins Satellitenbild auslassen",
-  "pl": "Pomijaj przy wypalaniu do satelitarki"
- },
- "Baking objects into the satellite image skips this model.": {
-  "de": "Beim Einbrennen der Objekte in das Satellitenbild wird dieses Modell übersprungen.",
-  "pl": "Wypalanie obiektów do satelitarki pomija ten model."
- },
- "Baking objects into the satellite image skips these models.": {
-  "de": "Beim Einbrennen der Objekte in das Satellitenbild werden diese Modelle übersprungen.",
-  "pl": "Wypalanie obiektów do satelitarki pomija te modele."
- },
- "{0} models on the list left out of the satellite bake": {
-  "de": "{0} Einträge in der Liste der beim Einbrennen ausgelassenen Modelle",
-  "pl": "Wpisów na liście pomijanych przy wypalaniu do satelitarki: {0}"
- },
- "Left out when baking the whole map": {
-  "de": "Beim Einbrennen der ganzen Karte ausgelassen",
-  "pl": "Pomijane przy wypalaniu całej mapy"
- },
- "Bake it again": {
-  "de": "Wieder einbrennen",
-  "pl": "Wypalaj ponownie"
- },
- "Fences and walls": {
-  "de": "Zäune und Mauern",
-  "pl": "Płoty i mury"
- },
- "Furniture": {
-  "de": "Möbel",
-  "pl": "Meble"
- },
- "Leaves out every model whose path holds {0}": {
-  "de": "Lässt jedes Modell aus, dessen Pfad {0} enthält",
-  "pl": "Pomija każdy model, którego ścieżka zawiera {0}"
- },
- "Part of a model path": {
-  "de": "Teil eines Modellpfads",
-  "pl": "Fragment ścieżki modelu"
- },
- "Leave out the models whose path holds this text.": {
-  "de": "Lässt die Modelle aus, deren Pfad diesen Text enthält.",
-  "pl": "Pomija modele, których ścieżka zawiera ten tekst."
- },
- "Left leaf turn °": {
-  "de": "Drehung des linken Flügels °",
-  "pl": "Obrót lewego skrzydła °"
- },
- "Right leaf turn °": {
-  "de": "Drehung des rechten Flügels °",
-  "pl": "Obrót prawego skrzydła °"
- },
- "Turned about its middle, up to 180° to open the other way. The fence closes up to what a turned object leaves of the gap.": {
-  "de": "Um die eigene Mitte gedreht, bis 180°, um in die andere Richtung zu öffnen. Der Zaun schließt bis an das, was ein gedrehtes Objekt von der Lücke übrig lässt.",
-  "pl": "Obrót wokół własnego środka, do 180°, aby otwierać na drugą stronę. Ogrodzenie dochodzi do tego, co obrócony obiekt zostawia z przerwy."
- },
- "Inside the line, not beyond its ends": {
-  "de": "In der Linie, nicht über ihre Enden hinaus",
-  "pl": "W linii, a nie poza jej końcami"
- },
- "The first and last object lie between the end of the line and the fence instead of on the end point, and the fence is shorter by their length.": {
-  "de": "Das erste und letzte Objekt liegen zwischen dem Ende der Linie und dem Zaun statt auf dem Endpunkt, und der Zaun wird um ihre Länge kürzer.",
-  "pl": "Pierwszy i ostatni obiekt leżą między końcem linii a ogrodzeniem, a nie na punkcie końcowym, a ogrodzenie jest krótsze o ich długość."
- },
- "no limit": {
-  "de": "keine Grenze",
-  "pl": "bez limitu"
- },
- "Objects put in 100 m² of the zone you paint while the button is held. Holding still adds nothing.": {
-  "de": "Objekte auf 100 m² der Zone, die du bei gedrückter Taste malst. Stillhalten fügt nichts hinzu.",
-  "pl": "Obiekty stawiane na 100 m² strefy, którą malujesz przy wciśniętym przycisku. Trzymanie w miejscu nic nie dodaje."
- },
- "The spacing leaves room for about {0} per 100 m²": {
-  "de": "Der Abstand lässt Platz für etwa {0} auf 100 m²",
-  "pl": "Odstęp pozwala na około {0} na 100 m²"
- },
- "Skip spots taken by other objects": {
-  "de": "Von anderen Objekten belegte Stellen auslassen",
-  "pl": "Pomijaj miejsca zajęte przez inne obiekty"
- },
- "Leaves out the places where buildings and other larger objects stand, so nothing is put inside them.": {
-  "de": "Lässt die Stellen aus, an denen Gebäude und andere größere Objekte stehen, damit nichts in ihnen steht.",
-  "pl": "Pomija miejsca, w których stoją budynki i inne większe obiekty, aby nic nie stało w ich wnętrzu."
  }
 }

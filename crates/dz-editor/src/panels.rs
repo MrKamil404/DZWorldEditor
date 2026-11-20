@@ -2785,6 +2785,8 @@ fn settings_graphics(app: &mut App, ui: &mut egui::Ui) {
     choice(ui, &t("Texture filtering"), "anisotropy", &mut app.settings.anisotropy, &[(1, t("Off")), (2, "2x".into()), (4, "4x".into()), (8, "8x".into()), (16, "16x".into())]);
     slider(ui, &t("Surface parallax cm"), &mut app.settings.surface_parallax, 0.0..=15.0, false);
     slider(ui, &t("Surface blend by relief"), &mut app.settings.surface_blend, 0.0..=1.0, false);
+    ui.checkbox(&mut app.settings.game_surfaces, t("Surfaces as the game shows them")).on_hover_text(t("The ground shows the surfaces the built map will have: at most the surfaces a texture tile may hold, and two in each block of 4 metres, as the game's compressed masks keep them. Specks of a third surface at an edge go, as in the game. The Mask shading shows the same."));
+    ui.checkbox(&mut app.settings.surface_pixels, t("Hard mask pixels")).on_hover_text(t("The ground shows each pixel of the mask as one surface, with hard edges and no blending: to see exactly what is painted where."));
     slider(ui, &t("Ground colour on grass"), &mut app.settings.grass_ground_color, 0.0..=1.0, false);
     settings_heading(ui, &t("Shadows and effects"));
     choice(ui, &t("Shadow detail"), "shadow_map", &mut app.settings.shadow_map, &[(2048, "2048".into()), (4096, "4096".into()), (8192, "8192".into())]);
