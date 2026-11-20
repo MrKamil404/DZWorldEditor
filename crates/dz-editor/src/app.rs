@@ -578,6 +578,7 @@ impl App {
             settings.language = crate::i18n::detect();
         }
         crate::i18n::set_language(&settings.language);
+        dayz_road_tool::drive::set(&settings.tools.work_drive);
         crate::icons::install(&ctx);
         theme::apply(&ctx, settings.ui_scale);
         let root = settings.tools.work_drive.clone();
@@ -1171,7 +1172,7 @@ impl App {
             Ok(Box::new(move |app: &mut App| {
                 let mut catalog = catalog;
                 if let Some(d) = &app.doc {
-                    gen::apply_catalog_edits(&mut catalog, &d.world.road_removed, &d.world.road_added, Path::new("P:\\dz\\structures\\roads\\parts"));
+                    gen::apply_catalog_edits(&mut catalog, &d.world.road_removed, &d.world.road_added, &dayz_road_tool::drive::roads_folder());
                 }
                 app.road_families = gen::road_families(&catalog);
                 if !app.road_families.contains(&app.line.family) {

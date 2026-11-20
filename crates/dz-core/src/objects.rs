@@ -88,6 +88,12 @@ impl ObjectStore {
     pub fn is_empty(&self) -> bool {
         self.alive == 0
     }
+    /// The path without a drive letter, so a model of `P:` or of `D:` is the same model.
+    /// Models are kept relative to the work drive, whichever letter the drive has.
+    pub fn strip_drive(path: &str) -> &str {
+        let b = path.as_bytes();
+        if b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/') { &path[3..] } else { path }
+    }
     pub fn normalize_path(path: &str) -> String {
         path.trim().replace('/', "\\").trim_start_matches('\\').to_ascii_lowercase()
     }
@@ -368,6 +374,13 @@ pub fn angles(m: &[[f32; 3]; 3]) -> (f32, f32, f32, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_drive_letter_is_dropped_from_a_model_path() {
+        assert_eq!(ObjectStore::strip_drive("p:\\dz\\a.p3d"), "dz\\a.p3d");
+        assert_eq!(ObjectStore::strip_drive("D:/dz/a.p3d"), "dz/a.p3d");
+        assert_eq!(ObjectStore::strip_drive("dz\\a.p3d"), "dz\\a.p3d");
+        assert_eq!(ObjectStore::strip_drive("a:b"), "a:b");
+    }
     fn obj(x: f32, z: f32) -> Obj {
         Obj { x, z, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 }
     }

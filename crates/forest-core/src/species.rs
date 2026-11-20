@@ -474,15 +474,15 @@ pub fn vanilla_library() -> Vec<SpeciesDef> {
     v
 }
 
-/// Skanuje katalogi roślinności na P:\ i zwraca zestaw nazw modeli (bez .p3d,
+/// Skanuje katalogi roślinności na dysku roboczym (zwykle P:\) i zwraca zestaw nazw modeli (bez .p3d,
 /// z zachowaną wielkością liter jak na dysku). Obejmuje żywe drzewa/krzewy
 /// (t_*/b_*) oraz martwe drewno — pniaki i wykroty (d_*):
 /// - P:\DZ\plants\tree + bush (Chernarus),
 /// - P:\DZ\plants_bliss (Livonia/Bliss, warianty letnie),
 /// - P:\DZ\plants_sakhal (Sakhal, mrok/zima/jesień).
 /// Błąd, gdy workdrive nie jest zamontowany.
-pub fn game_plant_models() -> Result<std::collections::HashSet<String>, String> {
-    Ok(game_plant_files()?.into_iter().map(|f| f.model).collect())
+pub fn game_plant_models(work_drive: &std::path::Path) -> Result<std::collections::HashSet<String>, String> {
+    Ok(game_plant_files(work_drive)?.into_iter().map(|f| f.model).collect())
 }
 
 /// Plik modelu rośliny znaleziony na dysku roboczym.
@@ -493,8 +493,8 @@ pub struct PlantFile {
     pub path: std::path::PathBuf,
 }
 
-/// Wszystkie pliki modeli roślin z P:\DZ\plants* (zakres jak w `game_plant_models`).
-pub fn game_plant_files() -> Result<Vec<PlantFile>, String> {
+/// Wszystkie pliki modeli roślin z DZ\plants* na dysku roboczym (zakres jak w `game_plant_models`).
+pub fn game_plant_files(work_drive: &std::path::Path) -> Result<Vec<PlantFile>, String> {
     fn scan_recursive(dir: &str, out: &mut Vec<PlantFile>) -> Result<(), String> {
         let rd = std::fs::read_dir(dir)
             .map_err(|e| format!("Nie mogę otworzyć {dir}: {e}"))?;
@@ -520,31 +520,25 @@ pub fn game_plant_files() -> Result<Vec<PlantFile>, String> {
     let mut any = false;
     // rekurencyjnie — martwe drewno leży też w podkatalogach
     // (tree\cutted_cut, tree\cutted_stump)
-    for dir in [
-        "P:\\DZ\\plants\\tree",
-        "P:\\DZ\\plants\\bush",
-    ] {
-        scan_recursive(dir, &mut out)?;
+    for dir in ["DZ\\plants\\tree", "DZ\\plants\\bush"] {
+        scan_recursive(&work_drive.join(dir).to_string_lossy(), &mut out)?;
         any = true;
     }
-    for root in [
-        "P:\\DZ\\plants_bliss",
-        "P:\\DZ\\plants_sakhal",
-        "P:\\DZ\\plants\\clutter",
-    ] {
-        if std::path::Path::new(root).exists() {
-            scan_recursive(root, &mut out)?;
+    for root in ["DZ\\plants_bliss", "DZ\\plants_sakhal", "DZ\\plants\\clutter"] {
+        let root = work_drive.join(root);
+        if root.exists() {
+            scan_recursive(&root.to_string_lossy(), &mut out)?;
             any = true;
         }
     }
     if !any || out.is_empty() {
-        return Err("W P:\\DZ\\plants* nie znaleziono żadnych modeli t_/b_/d_".into());
+        return Err(format!("W {} nie znaleziono żadnych modeli t_/b_/d_", work_drive.join("DZ\\plants*").display()));
     }
     Ok(out)
 }
 
 /// Zwraca listę gatunków, których modelu nie ma wśród plików gry.
-/// `available` — wynik `game_plant_models()`.
+/// `available` — wynik `game_plant_models(work_drive)`.
 pub fn missing_in_game(species: &[SpeciesDef], available: &std::collections::HashSet<String>) -> Vec<String> {
     species
         .iter()

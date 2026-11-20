@@ -1400,11 +1400,15 @@ pub fn road_catalog_from_project(project: &Path, folder: &Path) -> Result<Vec<da
 
 pub fn road_model_path(model: &str, models_prefix: &str) -> String {
     let lower = crate::objects::ObjectStore::normalize_path(model);
-    match lower.strip_prefix("p:\\") {
-        Some(rest) => rest.to_string(),
+    let rest = crate::objects::ObjectStore::strip_drive(&lower);
+    // A path with a drive letter lies on the work drive, whichever letter that has.
+    if rest.len() != lower.len() {
+        rest.to_string()
+    } else if lower.contains('\\') {
         // Pieces of other maps are named with their folder on the work drive.
-        None if lower.contains('\\') => lower,
-        None => format!("{models_prefix}\\{}", lower.rsplit('\\').next().unwrap_or(&lower)),
+        lower
+    } else {
+        format!("{models_prefix}\\{}", lower.rsplit('\\').next().unwrap_or(&lower))
     }
 }
 
@@ -1531,7 +1535,8 @@ pub struct RouteRequest {
 
 /// Track pieces, which are not part of a road project.
 pub fn rail_catalog() -> Vec<dayz_road_tool::roads::CatalogPart> {
-    let folder = Path::new(dayz_road_tool::rails::DEFAULT_FOLDER);
+    let folder = dayz_road_tool::drive::rails_folder();
+    let folder = folder.as_path();
     let mut lib = dayz_road_tool::geometry::Library::new(folder.to_path_buf());
     dayz_road_tool::rails::catalog(folder, &mut lib).map(|(c, _)| c).unwrap_or_default()
 }
@@ -1550,8 +1555,9 @@ pub fn build_route(w: &mut World, db: &crate::model_info::ModelDb, req: &RouteRe
         reach_past_caps(&mut drawn, req.start.is_none(), cap_tail(db, catalog, &req.family, prefix));
     }
     let line: Vec<[f64; 2]> = drawn.iter().map(|p| [p[0] as f64, p[1] as f64]).collect();
-    let tracks = Path::new(rails::DEFAULT_FOLDER);
-    let road_folder = Path::new("P:\\").join(r"dz\structures\roads\parts");
+    let tracks = dayz_road_tool::drive::rails_folder();
+    let tracks = tracks.as_path();
+    let road_folder = dayz_road_tool::drive::roads_folder();
     let cancel = AtomicBool::new(false);
     let crossings = if rail {
         let near: Vec<RoadLine> = req.roads.iter().enumerate().filter(|(_, l)| l.len() >= 2).map(|(road, l)| RoadLine { points: l.iter().map(|p| [p[0] as f64, p[1] as f64]).collect(), half_width: 4.0, road }).collect();
@@ -2654,7 +2660,7 @@ pub fn decks_over_tracks(w: &World, db: &crate::model_info::ModelDb, center: &[[
                 ((m[2][0] * rz - m[2][2] * rx) / (rx.hypot(rz) * m[2][0].hypot(m[2][2])).max(1e-4)).abs()
             });
             let blocks = (rails::is_straight_piece(stem) && sin >= (rails::MIN_CROSSING_ANGLE as f32).to_radians().sin() - 1e-3)
-                .then(|| rails::deck_blocks(&track.family, Path::new(rails::DEFAULT_FOLDER), f64::from(2.0 * HALF_WIDTH / sin + 2.0 * MARGIN)))
+                .then(|| rails::deck_blocks(&track.family, dayz_road_tool::drive::rails_folder().as_path(), f64::from(2.0 * HALF_WIDTH / sin + 2.0 * MARGIN)))
                 .flatten();
             let Some(blocks) = blocks else { skipped += 1; continue };
             let (center_of, ground) = (db.get(path).center, crate::objects::ObjectStore::origin_y(piece, &w.height));

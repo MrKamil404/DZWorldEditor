@@ -145,7 +145,9 @@ fn count_row(ui: &mut egui::Ui, label: String, v: &mut u32, range: std::ops::Ran
     row(ui, &label, |ui| { ui.add(egui::Slider::new(v, range)); });
 }
 
-const POWERLINES: &str = "P:\\samples\\DayZ-Misc-master\\Powerlines";
+fn powerlines() -> PathBuf {
+    dayz_road_tool::drive::work_drive().join(r"samples\DayZ-Misc-master\Powerlines")
+}
 
 /// A margin that can be switched off.
 fn margin_field(ui: &mut egui::Ui, label: String, value: &mut Option<f32>) {
@@ -622,7 +624,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
         }
         GeneratorKind::PowerLine(g) => {
             row(ui, &t("Configuration"), |ui| {
-                let files: Vec<PathBuf> = std::fs::read_dir(POWERLINES).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("xml"))).collect()).unwrap_or_default();
+                let files: Vec<PathBuf> = std::fs::read_dir(powerlines()).map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("xml"))).collect()).unwrap_or_default();
                 let mut chosen = None;
                 egui::ComboBox::from_id_salt("power").selected_text(g.config.clone()).show_ui(ui, |ui| {
                     for p in &files {
@@ -1061,7 +1063,7 @@ pub(crate) fn preview_texture(app: &mut App, ctx: &egui::Context, preview: &Prev
 pub(crate) fn road_model(app: &App, family: &str) -> Option<String> {
     app.road_catalog.iter().filter(|c| c.family == family && c.category == 3).min_by_key(|c| c.path.len()).map(|c| {
         let path = ObjectStore::normalize_path(&c.path);
-        if path.contains('\\') { path.strip_prefix("p:\\").unwrap_or(&path).to_string() } else { format!("dz\\structures\\roads\\parts\\{path}") }
+        if path.contains('\\') { ObjectStore::strip_drive(&path).to_string() } else { format!("dz\\structures\\roads\\parts\\{path}") }
     })
 }
 
@@ -2243,12 +2245,12 @@ pub fn road_catalog_window(app: &mut App, ctx: &egui::Context, open: &mut bool) 
                 d.history.revision += 1;
                 let (removed, added) = (d.world.road_removed.clone(), d.world.road_added.clone());
                 let mut catalog = (*app.road_catalog).clone();
-                gen::apply_catalog_edits(&mut catalog, &removed, &added, std::path::Path::new(ROADS));
+                gen::apply_catalog_edits(&mut catalog, &removed, &added, &dayz_road_tool::drive::roads_folder());
                 app.road_catalog = Arc::new(catalog);
             }
         }
         if let Some((category, path)) = dropped {
-            let full = format!("P:\\{path}");
+            let full = dayz_road_tool::drive::work_drive().join(&path).to_string_lossy().to_string();
             let file = path.rsplit('\\').next().unwrap_or(&path).to_ascii_lowercase();
             if let Some(d) = &mut app.doc {
                 d.world.road_removed.remove(&file);
@@ -2256,14 +2258,12 @@ pub fn road_catalog_window(app: &mut App, ctx: &egui::Context, open: &mut bool) 
                 d.history.revision += 1;
                 let (removed, added) = (d.world.road_removed.clone(), d.world.road_added.clone());
                 let mut catalog = (*app.road_catalog).clone();
-                gen::apply_catalog_edits(&mut catalog, &removed, &added, std::path::Path::new(ROADS));
+                gen::apply_catalog_edits(&mut catalog, &removed, &added, &dayz_road_tool::drive::roads_folder());
                 app.road_catalog = Arc::new(catalog);
             }
         }
     });
 }
-
-const ROADS: &str = "P:\\dz\\structures\\roads\\parts";
 
 fn save_catalog(app: &mut App, base: PathBuf) {
     use dayz_road_tool::tv4p::{write_definitions, DefinitionEdit};

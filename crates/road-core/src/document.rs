@@ -261,7 +261,7 @@ impl Default for Document {
         Self {
             version: 1,
             base: None,
-            models: "P:\\dz\\structures\\roads\\parts".into(),
+            models: crate::drive::roads_folder(),
             satellite: None,
             terrain: None,
             satellite_cache: None,

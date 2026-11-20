@@ -528,8 +528,11 @@ impl Library {
         let configured = self.root.join(file);
         // A path such as `dz\structures_sakhal\roads\parts\x.p3d` lies on the drive that
         // holds the configured folder.
-        let on_drive = (!requested.is_absolute() && requested.parent().is_some_and(|p| !p.as_os_str().is_empty()))
-            .then(|| self.root.ancestors().map(|a| a.join(&requested)).find(|p| p.exists()))
+        // The same goes for a path on another drive letter than the work drive's (a project
+        // made with `P:` opened where the work drive is `D:`).
+        let relative = crate::drive::without_drive(&requested);
+        let on_drive = relative.parent().is_some_and(|p| !p.as_os_str().is_empty())
+            .then(|| self.root.ancestors().chain(std::iter::once(crate::drive::work_drive().as_path())).map(|a| a.join(&relative)).find(|p| p.exists()))
             .flatten();
         let path = if configured.exists() {
             configured

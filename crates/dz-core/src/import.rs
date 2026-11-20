@@ -978,7 +978,7 @@ pub fn import_tv4p(path: &Path, w: &mut World, layer: Option<u16>) -> Result<usi
 /// map no route took over.
 pub fn import_tv4p_report(path: &Path, w: &mut World, layer: Option<u16>) -> Result<(usize, Vec<String>)> {
     use dayz_road_tool::{geometry::Library, tv4p};
-    let mut lib = Library::new(PathBuf::from("P:\\dz\\structures\\roads\\parts"));
+    let mut lib = Library::new(dayz_road_tool::drive::roads_folder());
     let project = tv4p::load(path, &mut lib)?;
     let mut n = 0;
     let mut notes = Vec::new();
@@ -1028,7 +1028,7 @@ pub fn import_tv4p_report(path: &Path, w: &mut World, layer: Option<u16>) -> Res
             let is_cap = |k: usize| road.shape.placements[k].0.to_string_lossy().to_ascii_lowercase().contains("konec");
             for (k, (file, angle, at)) in road.shape.placements.iter().enumerate() {
                 let path = ObjectStore::normalize_path(&file.to_string_lossy());
-                let path = path.strip_prefix("p:\\").unwrap_or(&path).to_string();
+                let path = ObjectStore::strip_drive(&path).to_string();
                 let model = w.objects.intern(&path);
                 // A road closes with a cap facing the other way than the one it opens with.
                 let closes = is_cap(k) && k > 0 && !is_cap(k - 1);
@@ -1198,7 +1198,7 @@ pub fn import_forest_project(path: &Path, w: &mut World, assets: &AssetIndex) ->
 pub fn import_road_document(path: &Path, w: &mut World) -> Result<usize> {
     let doc = dayz_road_tool::document::Document::load(path)?;
     let (ex, ey) = (w.meta.easting, w.meta.northing);
-    let prefix = doc.models.to_string_lossy().trim_start_matches("P:\\").trim_start_matches("p:\\").replace('/', "\\");
+    let prefix = dayz_road_tool::drive::without_drive(&doc.models).to_string_lossy().replace('/', "\\");
     let mut n = 0;
     for route in &doc.routes {
         let points: Vec<[f32; 2]> = route.points.iter().map(|p| [(p[0] - ex) as f32, (p[1] - ey) as f32]).collect();

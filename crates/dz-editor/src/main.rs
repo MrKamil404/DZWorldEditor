@@ -49,6 +49,8 @@ impl eframe::App for Host {
             v.push((now - self.last).as_secs_f32() * 1000.0);
         }
         self.last = now;
+        // Road and track pieces are looked for on the work drive of the settings.
+        dayz_road_tool::drive::set(&self.app.settings.tools.work_drive);
         self.app.tick();
         panels::ui(&mut self.app, ctx);
         viewport::run_script(&mut self.app, ctx);

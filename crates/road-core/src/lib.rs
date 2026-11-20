@@ -1,4 +1,5 @@
 pub mod document;
+pub mod drive;
 pub mod geometry;
 pub mod grading;
 pub mod i18n;

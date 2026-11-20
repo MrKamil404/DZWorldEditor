@@ -226,7 +226,7 @@ pub fn parse_library(text: &str, out: &mut HashMap<u32, String>) {
         let (Some(file), Some(hash)) = (tag(block, "File"), tag(block, "Hash")) else { continue };
         let Ok(hash) = hash.parse::<i64>() else { continue };
         let path = ObjectStore::normalize_path(file);
-        let path = path.strip_prefix("p:\\").map(str::to_string).unwrap_or(path);
+        let path = ObjectStore::strip_drive(&path).to_string();
         out.entry(hash as u32).or_insert(path);
     }
 }
@@ -238,7 +238,7 @@ pub fn library_models(text: &str) -> Vec<String> {
     for block in text.split("<Template>").skip(1) {
         let Some(file) = tag(block, "File") else { continue };
         let path = ObjectStore::normalize_path(file);
-        let path = path.strip_prefix("p:\\").map(str::to_string).unwrap_or(path);
+        let path = ObjectStore::strip_drive(&path).to_string();
         if map.insert(path.clone(), ()).is_none() {
             out.push(path);
         }
@@ -312,7 +312,7 @@ pub fn add_templates(text: &str, models: &[NewTemplate], taken: &mut std::collec
     let mut seen = std::collections::HashSet::new();
     for m in models {
         let file = ObjectStore::normalize_path(&m.file);
-        let file = file.strip_prefix("p:\\").map(str::to_string).unwrap_or(file);
+        let file = ObjectStore::strip_drive(&file).to_string();
         if present.contains(&file) || !seen.insert(file.clone()) {
             continue;
         }
@@ -387,7 +387,7 @@ pub fn add_templates(text: &str, models: &[NewTemplate], taken: &mut std::collec
 pub fn remove_templates(text: &str, models: &[String]) -> (String, usize) {
     let gone: std::collections::HashSet<String> = models.iter().map(|m| {
         let f = ObjectStore::normalize_path(m);
-        f.strip_prefix("p:\\").map(str::to_string).unwrap_or(f)
+        ObjectStore::strip_drive(&f).to_string()
     }).collect();
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -398,7 +398,7 @@ pub fn remove_templates(text: &str, models: &[String]) -> (String, usize) {
         let block = &rest[a..end];
         let file = tag(block, "File").map(|f| {
             let f = ObjectStore::normalize_path(f);
-            f.strip_prefix("p:\\").map(str::to_string).unwrap_or(f)
+            ObjectStore::strip_drive(&f).to_string()
         });
         if file.is_some_and(|f| gone.contains(&f)) {
             // The block goes with the indent before it and the line break after it.

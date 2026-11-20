@@ -1150,8 +1150,15 @@ fn shape_details(app: &mut App, ui: &mut egui::Ui) {
 
 /// The road bridges that can be chosen, read from the work drive once.
 fn bridge_models() -> &'static [String] {
-    static MODELS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    MODELS.get_or_init(|| dayz_road_tool::rails::BridgeKit::road_models(std::path::Path::new("P:\\")))
+    // Read again when another work drive is chosen.
+    static MODELS: std::sync::Mutex<Option<(std::path::PathBuf, &'static [String])>> = std::sync::Mutex::new(None);
+    let drive = dayz_road_tool::drive::work_drive();
+    let mut cached = MODELS.lock().unwrap();
+    if cached.as_ref().is_none_or(|(d, _)| *d != drive) {
+        let list: &'static [String] = Vec::leak(dayz_road_tool::rails::BridgeKit::road_models(&drive));
+        *cached = Some((drive, list));
+    }
+    cached.as_ref().unwrap().1
 }
 
 fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSettings) -> bool {
