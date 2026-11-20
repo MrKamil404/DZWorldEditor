@@ -30,9 +30,40 @@ fn state() -> &'static RwLock<State> {
         RwLock::new(State {
             tables,
             names: vec![("pl".into(), "Polski".into()), ("en".into(), "English".into()), ("de".into(), "Deutsch".into())],
-            current: "pl".into(),
+            current: "en".into(),
         })
     })
+}
+
+/// The language code of the system, such as `pl` for `pl-PL`; `None` when it cannot be read.
+#[cfg(windows)]
+fn system_code() -> Option<String> {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetUserDefaultLocaleName(name: *mut u16, len: i32) -> i32;
+    }
+    let mut buf = [0u16; 85];
+    let n = unsafe { GetUserDefaultLocaleName(buf.as_mut_ptr(), buf.len() as i32) };
+    if n <= 1 {
+        return None;
+    }
+    let name = String::from_utf16_lossy(&buf[..n as usize - 1]);
+    name.split(['-', '_']).next().map(|c| c.to_lowercase())
+}
+
+#[cfg(not(windows))]
+fn system_code() -> Option<String> {
+    None
+}
+
+/// The language to start with: that of the system when the editor has it, else English.
+/// Call it after the user languages are loaded.
+pub fn detect() -> String {
+    pick(system_code().as_deref(), &languages())
+}
+
+fn pick(system: Option<&str>, available: &[(String, String)]) -> String {
+    system.filter(|c| available.iter().any(|(a, _)| a == c)).unwrap_or("en").to_string()
 }
 
 /// Loads user languages: `lang/fr.json` = `{"__name__": "Français", "File": "Fichier"}`.
@@ -87,6 +118,14 @@ pub fn tf(text: &str, args: &[&str]) -> String {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn the_system_language_is_used_only_when_it_is_available() {
+        let have = vec![("pl".to_string(), "Polski".to_string()), ("en".to_string(), "English".to_string())];
+        assert_eq!(pick(Some("pl"), &have), "pl");
+        assert_eq!(pick(Some("fr"), &have), "en");
+        assert_eq!(pick(None, &have), "en");
+    }
 
     fn collect(dir: &Path, out: &mut BTreeSet<String>) {
         for e in std::fs::read_dir(dir).unwrap().flatten() {

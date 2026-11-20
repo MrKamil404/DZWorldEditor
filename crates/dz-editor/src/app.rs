@@ -571,8 +571,12 @@ pub struct App {
 
 impl App {
     pub fn new(ctx: egui::Context) -> Self {
-        let settings = Settings::load();
+        let mut settings = Settings::load();
         crate::i18n::load_user_languages(&data_dir().join("lang"));
+        // Never chosen: the language of the system, or English.
+        if settings.language.is_empty() {
+            settings.language = crate::i18n::detect();
+        }
         crate::i18n::set_language(&settings.language);
         crate::icons::install(&ctx);
         theme::apply(&ctx, settings.ui_scale);
