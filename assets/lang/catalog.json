@@ -9154,5 +9154,37 @@
  "Key points ({0})": {
   "de": "Key Points ({0})",
   "pl": "Key pointy ({0})"
+ },
+ "Gizmo and turn centre": {
+  "de": "Gizmo und Drehzentrum",
+  "pl": "Gizmo i środek obrotu"
+ },
+ "Average": {
+  "de": "Durchschnitt",
+  "pl": "Średnia"
+ },
+ "Box centre": {
+  "de": "Mitte des Rahmens",
+  "pl": "Środek ramki"
+ },
+ "The average of the positions of the selected objects.": {
+  "de": "Der Durchschnitt der Positionen der gewählten Objekte.",
+  "pl": "Średnia położeń zaznaczonych obiektów."
+ },
+ "The middle of the box that holds the positions of the selected objects.": {
+  "de": "Die Mitte des Rahmens, der die Positionen der gewählten Objekte enthält.",
+  "pl": "Środek ramki, w której mieszczą się położenia zaznaczonych obiektów."
+ },
+ "The position of the first selected object.": {
+  "de": "Die Position des ersten gewählten Objekts.",
+  "pl": "Położenie pierwszego zaznaczonego obiektu."
+ },
+ "Shift and drag turns about the press": {
+  "de": "Umschalt und Ziehen dreht um den Druckpunkt",
+  "pl": "Shift i przeciągnięcie obraca wokół miejsca kliknięcia"
+ },
+ "The selection turns about the spot of the ground where the button went down, not about its own centre.": {
+  "de": "Die Auswahl dreht sich um die Stelle des Bodens, an der die Taste gedrückt wurde, nicht um ihre eigene Mitte.",
+  "pl": "Zaznaczenie obraca się wokół miejsca na terenie, w którym wciśnięto przycisk, a nie wokół własnego środka."
  }
 }

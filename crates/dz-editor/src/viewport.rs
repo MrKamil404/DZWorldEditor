@@ -1301,13 +1301,33 @@ fn finish_line(app: &mut App) {
 
 fn selection_pivot(app: &App) -> Option<V3> {
     let doc = app.doc.as_ref()?;
-    let (mut s, mut n) = ([0.0f32; 3], 0.0);
-    for id in app.selection.iter().take(2000) {
+    let at = |id: &u32| -> Option<V3> {
         let o = doc.world.objects.get(*id)?;
-        s = add(s, [o.x, ObjectStore::origin_y(o, &doc.world.height), o.z]);
-        n += 1.0;
+        Some([o.x, ObjectStore::origin_y(o, &doc.world.height), o.z])
+    };
+    match app.settings.pivot_mode {
+        crate::settings::PivotMode::First => app.selection.iter().next().and_then(at),
+        crate::settings::PivotMode::Bounds => {
+            let (mut lo, mut hi, mut n) = ([f32::MAX; 3], [f32::MIN; 3], 0);
+            for id in app.selection.iter().take(2000) {
+                let p = at(id)?;
+                for k in 0..3 {
+                    lo[k] = lo[k].min(p[k]);
+                    hi[k] = hi[k].max(p[k]);
+                }
+                n += 1;
+            }
+            (n > 0).then(|| mul(add(lo, hi), 0.5))
+        }
+        crate::settings::PivotMode::Middle => {
+            let (mut s, mut n) = ([0.0f32; 3], 0.0);
+            for id in app.selection.iter().take(2000) {
+                s = add(s, at(id)?);
+                n += 1.0;
+            }
+            (n > 0.0).then(|| mul(s, 1.0 / n))
+        }
     }
-    (n > 0.0).then(|| mul(s, 1.0 / n))
 }
 
 /// The axes the gizmo moves and turns along: those of the world, or of the first selected
@@ -2093,7 +2113,11 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                 let stepped = modifiers.shift && (modifiers.ctrl || modifiers.command);
                 let turn = modifiers.shift && !(modifiers.ctrl || modifiers.command);
                 let scale = modifiers.alt && !modifiers.shift && !(modifiers.ctrl || modifiers.command) && handle_allowed(app, Handle::Scale);
-                if let (true, Some(p)) = (turn || stepped || scale, pivot) {
+                if let (true, Some(mut p)) = (turn || stepped || scale, pivot) {
+                    // A turn can take the spot of the press for its centre.
+                    if (turn || stepped) && app.settings.turn_about_press {
+                        if let Some(h) = hit { p = h; }
+                    }
                     let doc = app.doc.as_ref().unwrap();
                     let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                     let handle = if scale { Handle::Scale } else { Handle::Spin };

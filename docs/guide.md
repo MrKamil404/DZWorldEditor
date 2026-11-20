@@ -63,6 +63,7 @@ scales them.
 * **Select whole roads and generators** picks a road or a generator as a whole instead of its
   objects.
 * **Move objects by dragging them**: an object held by its shape slides over the ground.
+* **Gizmo and turn centre** chooses where the gizmo stands and what the selection turns about: the average of the object positions (the default), the middle of the box that holds them, or the first selected object. Only positions count; the models are not looked into. **Shift and drag turns about the press** makes a Shift drag turn the selection about the spot of the ground where the button went down.
 * **Stick to the ground** tilts moved objects with the ground; **Align to the ground** does it now.
 * **Duplicate** (Ctrl+D) and **Delete**. C copies the selection to the cursor, V copies the last
   selection there again.

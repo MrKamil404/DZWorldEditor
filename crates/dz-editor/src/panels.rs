@@ -498,8 +498,9 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
         });
         row(ui, &t("Drag selects"), |ui| {
             let mut changed = false;
-            if tool_button(ui, !app.settings.lasso, &icons::with(icons::SELECTION, &t("Box"))).clicked() { app.settings.lasso = false; changed = true; }
-            if tool_button(ui, app.settings.lasso, &icons::with(icons::LASSO, &t("Lasso"))).on_hover_text(t("Draw an outline round what to select.")).clicked() { app.settings.lasso = true; changed = true; }
+            if icon_tool(ui, !app.settings.lasso, icons::SELECTION, None, t("Box")).clicked() { app.settings.lasso = false; changed = true; }
+            if icon_tool(ui, app.settings.lasso, icons::LASSO, None, format!("{}
+{}", t("Lasso"), t("Draw an outline round what to select."))).clicked() { app.settings.lasso = true; changed = true; }
             if changed { app.settings.save(); }
         });
     });
@@ -509,6 +510,28 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
         if ui.checkbox(&mut app.settings.align_to_ground, t("Stick to the ground")).on_hover_text(t("Moved and turned objects tilt with the ground under them.")).changed() { app.settings.save(); }
         if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("Align to the ground"))).on_hover_text(t("Tilts the selected objects to the ground under them now.")).clicked() { app.align_selection_to_ground(); }
         angle_snap_ui(app, ui);
+        // Icons only, with the name in the tip, so the panel can be made narrow.
+        ui.horizontal_wrapped(|ui| {
+            use crate::settings::PivotMode;
+            ui.label(t("Gizmo and turn centre"));
+            for (m, icon, name, tip) in [
+                (PivotMode::Middle, icons::ARROWS_IN_CARDINAL, "Average", "The average of the positions of the selected objects."),
+                (PivotMode::Bounds, icons::BOUNDING_BOX, "Box centre", "The middle of the box that holds the positions of the selected objects."),
+                (PivotMode::First, icons::NUMBER_ONE, "First object", "The position of the first selected object."),
+            ] {
+                if icon_tool(ui, app.settings.pivot_mode == m, icon, None, format!("{}
+{}", t(name), t(tip))).clicked() { app.settings.pivot_mode = m; app.settings.save(); }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            let on = app.settings.turn_about_press;
+            if icon_tool(ui, on, icons::CROSSHAIR_SIMPLE, None, format!("{}
+{}", t("Shift and drag turns about the press"), t("The selection turns about the spot of the ground where the button went down, not about its own centre."))).clicked() {
+                app.settings.turn_about_press = !on;
+                app.settings.save();
+            }
+            ui.add(egui::Label::new(RichText::new(t("Shift and drag turns about the press")).color(if on { theme::TEXT } else { theme::TEXT_DIM })).wrap());
+        });
     });
     section(ui, &icons::with(icons::STACK, &t("Terrain under objects")), false, |ui| {
         about(ui, &t("A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched."));
