@@ -29,8 +29,20 @@ jobs:
           exit $code
       - run: cargo build --release -p dz-editor
         if: startsWith(github.ref, 'refs/tags/')
+      - name: Release notes from CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $ver = '${{ github.ref_name }}'.TrimStart('v')
+          $out = @(); $on = $false
+          foreach ($l in Get-Content CHANGELOG.md) {
+            if ($l -match '^## ') { if ($on) { break }; $on = ($l -eq "## $ver"); continue }
+            if ($on) { $out += $l }
+          }
+          if ($out.Count -eq 0) { throw "No CHANGELOG.md section for $ver" }
+          Set-Content release-notes.md ($out -join "`n").Trim()
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: target/release/DZWorldEditor.exe
-          generate_release_notes: true
+          body_path: release-notes.md
