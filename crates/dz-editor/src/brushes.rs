@@ -1,7 +1,6 @@
 //! Brush tips of the user's own: grey pictures kept in `%LOCALAPPDATA%\DZWorldEditor\brushes`.
 use crate::i18n::{t, tf};
 use eframe::egui;
-use crate::theme::tool_button;
 use dz_core::edit::{BrushShape, Stamp};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -110,8 +109,8 @@ pub fn tip_row(ui: &mut egui::Ui, brushes: &mut Vec<CustomBrush>, shape: &mut Br
     use dz_core::edit::BrushShape as B;
     let mut action = TipAction::None;
     ui.horizontal_wrapped(|ui| {
-        for (s, name) in [(B::Circle, "Round"), (B::Square, "Square"), (B::Diamond, "Diamond")] {
-            if tool_button(ui, picture.is_none() && *shape == s, &t(name)).clicked() {
+        for (s, icon, name) in [(B::Circle, crate::tool_icons::Glyph::Circle, "Round"), (B::Square, crate::tool_icons::Glyph::Square, "Square"), (B::Diamond, crate::tool_icons::Glyph::Diamond, "Diamond")] {
+            if crate::tool_icons::button(ui, picture.is_none() && *shape == s, icon, t(name)).clicked() {
                 *shape = s;
                 *picture = None;
             }
@@ -163,9 +162,11 @@ pub fn tip_row(ui: &mut egui::Ui, brushes: &mut Vec<CustomBrush>, shape: &mut Br
 /// The spray switch and its density.
 pub fn spray_row(ui: &mut egui::Ui, on: &mut bool, density: &mut f32) {
     ui.horizontal(|ui| {
-        ui.checkbox(on, t("Spray")).on_hover_text(t("Sprays scattered dots that fill in while the button is held, instead of covering the whole brush."));
+        let tip = format!("{}
+{}", t("Spray"), t("Sprays scattered dots that fill in while the button is held, instead of covering the whole brush."));
+        if crate::tool_icons::button(ui, *on, crate::tool_icons::Glyph::Spray, tip).clicked() { *on = !*on; }
         if *on {
-            ui.add(egui::Slider::new(density, 0.01..=0.6).logarithmic(true).text(t("Density")));
+            ui.add(egui::Slider::new(density, 0.01..=0.6).logarithmic(true).show_value(false)).on_hover_text(t("Density"));
         }
     });
 }

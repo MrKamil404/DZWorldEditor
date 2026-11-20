@@ -75,7 +75,10 @@ scales them.
 
 ![Sculpting terrain](screenshots/sculpt.jpg)
 
-Raise, Lower, Smooth, Flatten, Noise, Ramp and **Terrain holes**. The brush is round, square,
+Raise, Lower, Smooth, Flatten, Noise, Ramp, **Set height** and **Terrain holes**; the tools are
+icons, and the tip says what each one does. **Set height** paints the ground to a height you copy
+from the map: right click the terrain (or Alt+click) to copy its height, then paint; the copied
+height can also be typed in. The brush is round, square,
 diamond or a picture of your own, with radius, falloff, strength, edge noise and spray. Ctrl inverts
 the tool, Shift smooths. `[` and `]` change the size, Shift+`[` and Shift+`]` the strength; with the
 wheel, Shift changes the size, Alt the strength and Ctrl the edge noise. These modifier keys can be

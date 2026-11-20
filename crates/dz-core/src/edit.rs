@@ -16,6 +16,8 @@ pub enum SculptTool {
     Flatten,
     Noise,
     Ramp,
+    /// Paints the ground to a height copied from the map; the stroke's `target`.
+    SetHeight,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -498,7 +500,7 @@ impl SculptStroke {
                 let v = match self.tool {
                     SculptTool::Raise => h + rate * k,
                     SculptTool::Lower => h - rate * k,
-                    SculptTool::Flatten => h + (self.target - h) * (blend * 4.0 * k).min(1.0),
+                    SculptTool::Flatten | SculptTool::SetHeight => h + (self.target - h) * (blend * 4.0 * k).min(1.0),
                     SculptTool::Noise => h + self.noise.fbm(px / 60.0, pz / 60.0, 4, 0.5, 2.0) * rate * k,
                     SculptTool::Smooth => {
                         let get = |a: i64, b: i64| {
@@ -677,6 +679,19 @@ mod tests {
         assert!((w.height.sample(500.0, 500.0) - 20.0).abs() < 0.01);
     }
 
+    #[test]
+    fn set_height_paints_the_ground_to_the_copied_height() {
+        let mut w = world();
+        let brush = Brush { radius: 100.0, falloff: 0.5, strength: 100.0 };
+        let mut s = SculptStroke::begin(SculptTool::SetHeight, brush, &w, 500.0, 500.0);
+        s.target = 140.0;
+        for _ in 0..200 {
+            s.apply(&mut w, 500.0, 500.0, 0.05);
+        }
+        assert!((w.height.sample(500.0, 500.0) - 140.0).abs() < 0.5);
+        // Far from the brush nothing changed.
+        assert_eq!(w.height.sample(900.0, 900.0), 100.0);
+    }
     #[test]
     fn raise_undo_redo_restores_exact_heights() {
         let mut w = world();

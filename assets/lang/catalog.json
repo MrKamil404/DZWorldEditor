@@ -9186,5 +9186,29 @@
  "The selection turns about the spot of the ground where the button went down, not about its own centre.": {
   "de": "Die Auswahl dreht sich um die Stelle des Bodens, an der die Taste gedrückt wurde, nicht um ihre eigene Mitte.",
   "pl": "Zaznaczenie obraca się wokół miejsca na terenie, w którym wciśnięto przycisk, a nie wokół własnego środka."
+ },
+ "Set height": {
+  "de": "Höhe setzen",
+  "pl": "Ustaw wysokość"
+ },
+ "Paints the ground to a height copied from the map: right click or Alt+click the terrain to copy it.": {
+  "de": "Malt das Gelände auf eine von der Karte kopierte Höhe: Rechtsklick oder Alt+Klick auf das Gelände kopiert sie.",
+  "pl": "Maluje teren do wysokości skopiowanej z mapy: kliknij prawym przyciskiem albo Alt+klik na terenie, aby ją skopiować."
+ },
+ "Copied height": {
+  "de": "Kopierte Höhe",
+  "pl": "Skopiowana wysokość"
+ },
+ "Nothing copied yet": {
+  "de": "Noch nichts kopiert",
+  "pl": "Jeszcze nic nie skopiowano"
+ },
+ "Copy a height first: right click or Alt+click the terrain.": {
+  "de": "Zuerst eine Höhe kopieren: Rechtsklick oder Alt+Klick auf das Gelände.",
+  "pl": "Najpierw skopiuj wysokość: prawy przycisk albo Alt+klik na terenie."
+ },
+ "Height {0} m copied": {
+  "de": "Höhe {0} m kopiert",
+  "pl": "Skopiowano wysokość {0} m"
  }
 }

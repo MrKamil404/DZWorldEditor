@@ -134,6 +134,8 @@ pub struct SculptSettings {
     pub picture: Option<String>,
     pub spray: bool,
     pub spray_density: f32,
+    /// The height copied from the map for the set height brush.
+    pub height: Option<f32>,
 }
 
 pub struct PaintSettings {
@@ -605,7 +607,7 @@ impl App {
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, road_guard: (u64::MAX, 0), hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
-            sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08 },
+            sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08, height: None },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false, into_modifier: true, target: None },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None, live_keep: true }, live: Default::default(), road_parts: Default::default(),

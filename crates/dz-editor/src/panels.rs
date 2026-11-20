@@ -291,7 +291,7 @@ fn coffee_button(ui: &mut egui::Ui) {
 }
 
 /// An icon button of the toolbar, lit when `active`, with the action's name and key as tip.
-fn icon_tool(ui: &mut egui::Ui, active: bool, icon: &str, label: Option<&str>, tip: String) -> egui::Response {
+pub(crate) fn icon_tool(ui: &mut egui::Ui, active: bool, icon: &str, label: Option<&str>, tip: String) -> egui::Response {
     let text = match label { Some(l) => format!("{icon} {l}"), None => icon.to_string() };
     let r = ui.add(egui::Button::new(RichText::new(text).size(14.0).color(if active { Color32::WHITE } else { theme::TEXT })).fill(if active { theme::ACCENT } else { Color32::from_rgb(56, 56, 56) }).min_size(vec2(26.0, 24.0)));
     r.on_hover_text(tip)
@@ -612,25 +612,41 @@ pub(crate) fn grading_ui(ui: &mut egui::Ui, g: &mut dz_core::world::RoadGrading,
 
 fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::MOUNTAINS, &t("Sculpt tool")), true, |ui| {
+        // The tools as icons; the tip says what each one does.
+        use crate::tool_icons::Glyph as G;
+        let tools = [
+            (SculptTool::Raise, G::Raise, "Raise", "Raises the ground under the brush."),
+            (SculptTool::Lower, G::Lower, "Lower", "Lowers the ground under the brush."),
+            (SculptTool::Smooth, G::Smooth, "Smooth", "Evens out bumps and edges."),
+            (SculptTool::Flatten, G::Flatten, "Flatten", "Levels the ground to the height where the stroke starts."),
+            (SculptTool::Noise, G::Noise, "Noise", "Roughens the ground with random bumps."),
+            (SculptTool::Ramp, G::Ramp, "Ramp", "An even slope from where the stroke starts to the cursor."),
+            (SculptTool::SetHeight, G::SetHeight, "Set height", "Paints the ground to a height copied from the map: right click or Alt+click the terrain to copy it."),
+        ];
         ui.horizontal_wrapped(|ui| {
-            for (tool, name) in [(SculptTool::Raise, "Raise"), (SculptTool::Lower, "Lower"), (SculptTool::Smooth, "Smooth"), (SculptTool::Flatten, "Flatten"), (SculptTool::Noise, "Noise"), (SculptTool::Ramp, "Ramp")] {
-                if tool_button(ui, app.sculpt.tool == tool && !app.hole_tool, &t(name)).clicked() { app.sculpt.tool = tool; app.hole_tool = false; }
+            for (tool, icon, name, what) in tools {
+                if crate::tool_icons::button(ui, app.sculpt.tool == tool && !app.hole_tool, icon, format!("{}
+{}", t(name), t(what))).clicked() { app.sculpt.tool = tool; app.hole_tool = false; }
             }
+            let holes = format!("{}
+{}", t("Terrain holes"), t("Paints the cells the game does not draw, for entrances under the ground."));
+            if crate::tool_icons::button(ui, app.hole_tool, G::Holes, holes).clicked() { app.hole_tool = !app.hole_tool; }
         });
-        if tool_button(ui, app.hole_tool, &icons::with(icons::CIRCLE_DASHED, &t("Terrain holes"))).clicked() { app.hole_tool = !app.hole_tool; }
         let what = if app.hole_tool {
             "Paints the cells the game does not draw, for entrances under the ground."
         } else {
-            match app.sculpt.tool {
-                SculptTool::Raise => "Raises the ground under the brush.",
-                SculptTool::Lower => "Lowers the ground under the brush.",
-                SculptTool::Smooth => "Evens out bumps and edges.",
-                SculptTool::Flatten => "Levels the ground to the height where the stroke starts.",
-                SculptTool::Noise => "Roughens the ground with random bumps.",
-                SculptTool::Ramp => "An even slope from where the stroke starts to the cursor.",
-            }
+            tools.iter().find(|t| t.0 == app.sculpt.tool).map_or("", |t| t.3)
         };
+        let name = if app.hole_tool { "Terrain holes" } else { tools.iter().find(|t| t.0 == app.sculpt.tool).map_or("", |t| t.2) };
+        ui.label(RichText::new(t(name)).strong());
         about(ui, &t(what));
+        if !app.hole_tool && app.sculpt.tool == SculptTool::SetHeight {
+            let mut height = app.sculpt.height.unwrap_or(0.0);
+            row(ui, &t("Copied height"), |ui| {
+                if ui.add(egui::DragValue::new(&mut height).speed(0.1).suffix(" m")).changed() { app.sculpt.height = Some(height); }
+            });
+            if app.sculpt.height.is_none() { status(ui, &t("Nothing copied yet"), false); }
+        }
     });
     if app.hole_tool {
         section(ui, &icons::with(icons::PAINT_BRUSH_BROAD, &t("Brush")), true, |ui| {
@@ -898,8 +914,9 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
             });
         }
         row(ui, &t("A click"), |ui| {
-            if tool_button(ui, !app.place.brush, &t("Places one")).clicked() { app.place.brush = false; }
-            if tool_button(ui, app.place.brush, &icons::with(icons::PAINT_BRUSH_BROAD, &t("Paints"))).on_hover_text(t("Hold the button to paint objects.")).clicked() { app.place.brush = true; }
+            use crate::tool_icons::{button, Glyph as G};
+            if button(ui, !app.place.brush, G::PlaceOne, t("Places one")).clicked() { app.place.brush = false; }
+            if button(ui, app.place.brush, G::PlacePaint, format!("{}\n{}", t("Paints"), t("Hold the button to paint objects."))).clicked() { app.place.brush = true; }
         });
         if app.place.brush {
             slider(ui, &t("Radius"), &mut app.place.brush_radius, 1.0..=300.0, true);
@@ -961,9 +978,16 @@ fn saved_views_menu(app: &mut App, ui: &mut egui::Ui) {
 
 fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::PATH, &t("Draw")), true, |ui| {
-        ui.horizontal(|ui| {
-            for (tool, icon, name) in [(ShapeTool::Edit, icons::PENCIL_SIMPLE, "Edit"), (ShapeTool::Polygon, icons::POLYGON, "Polygon"), (ShapeTool::Polyline, icons::LINE_SEGMENTS, "Polyline"), (ShapeTool::Point, icons::MAP_PIN, "Point")] {
-                if tool_button(ui, app.shape.tool == tool, &icons::with(icon, &t(name))).clicked() {
+        ui.horizontal_wrapped(|ui| {
+            use crate::tool_icons::Glyph as G;
+            for (tool, glyph, name, what) in [
+                (ShapeTool::Edit, G::ShapeEdit, "Edit", "Click selects a shape. Drag a dot to move a point, a + to add one, the square to move the whole shape; right click or Delete removes a point."),
+                (ShapeTool::Polygon, G::ShapePolygon, "Polygon", "A closed area, for forests, fields or places to keep free."),
+                (ShapeTool::Polyline, G::ShapePolyline, "Polyline", "An open line, for roads, rivers, fences and power lines to follow."),
+                (ShapeTool::Point, G::ShapePoint, "Point", "A single point; a click places it."),
+            ] {
+                if crate::tool_icons::button(ui, app.shape.tool == tool, glyph, format!("{}
+{}", t(name), t(what))).clicked() {
                     app.shape.tool = tool;
                     app.shape.points.clear();
                 }
@@ -1004,8 +1028,9 @@ fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
 fn keypoints_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::MAP_PIN, &t("Key points tool")), true, |ui| {
         ui.horizontal(|ui| {
-            if tool_button(ui, !app.shape.keypoint_adding, &icons::with(icons::PENCIL_SIMPLE, &t("Edit"))).clicked() { app.shape.keypoint_adding = false; }
-            if tool_button(ui, app.shape.keypoint_adding, &icons::with(icons::PLUS, &t("Add"))).clicked() { app.shape.keypoint_adding = true; }
+            use crate::tool_icons::{button, Glyph as G};
+            if button(ui, !app.shape.keypoint_adding, G::ShapeEdit, t("Edit")).clicked() { app.shape.keypoint_adding = false; }
+            if button(ui, app.shape.keypoint_adding, G::Add, t("Add")).clicked() { app.shape.keypoint_adding = true; }
         });
         about(ui, &if app.shape.keypoint_adding { t("A click on the map adds a key point.") } else { t("Click selects a key point. Drag moves it, Delete removes it.") });
     });
@@ -1250,8 +1275,8 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         let mut method = route.method;
         ui.label(t("Edit as"));
         ui.horizontal_wrapped(|ui| {
-            for (m, n) in [(RoadDraw::Points, "By points"), (RoadDraw::Live, "Live"), (RoadDraw::Parts, "Piece by piece")] {
-                if tool_button(ui, method == m, &t(n)).clicked() { method = m; }
+            for (m, g, n, tip) in draw_methods() {
+                if crate::tool_icons::button(ui, method == m, g, format!("{}\n{}", t(n), t(tip))).clicked() { method = m; }
             }
         });
         if method != route.method {
@@ -1282,8 +1307,9 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
             if taken.is_none() { crate::road_draw::load_route(app, index, app.road_parts.target.is_some_and(|t| t.0 == index && t.1)); }
             let at_start = app.road_parts.target.is_some_and(|t| t.1);
             row(ui, &t("Change the pieces at the"), |ui| {
-                if tool_button(ui, at_start, &t("start")).clicked() && !at_start { crate::road_draw::load_route(app, index, true); }
-                if tool_button(ui, !at_start, &t("end")).clicked() && at_start { crate::road_draw::load_route(app, index, false); }
+                use crate::tool_icons::{button, Glyph as G};
+                if button(ui, at_start, G::EndStart, t("start")).clicked() && !at_start { crate::road_draw::load_route(app, index, true); }
+                if button(ui, !at_start, G::EndEnd, t("end")).clicked() && at_start { crate::road_draw::load_route(app, index, false); }
             });
             if app.road_parts.open.is_some() {
                 parts_panel(app, ui);
@@ -1297,8 +1323,9 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         }
         section(ui, &icons::with(icons::ARROWS_OUT_LINE_HORIZONTAL, &t("Extend")), true, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if tool_button(ui, app.line.extend == Some(true), &t("Extend start")).clicked() { app.line.extend = if app.line.extend == Some(true) { None } else { Some(true) }; }
-                if tool_button(ui, app.line.extend == Some(false), &t("Extend end")).clicked() { app.line.extend = if app.line.extend == Some(false) { None } else { Some(false) }; }
+                use crate::tool_icons::{button, Glyph as G};
+                if button(ui, app.line.extend == Some(true), G::ExtendStart, t("Extend start")).clicked() { app.line.extend = if app.line.extend == Some(true) { None } else { Some(true) }; }
+                if button(ui, app.line.extend == Some(false), G::ExtendEnd, t("Extend end")).clicked() { app.line.extend = if app.line.extend == Some(false) { None } else { Some(false) }; }
             });
             about(ui, &t("Then click on the map beyond that end; Ctrl+click picks the nearer end itself."));
             ui.checkbox(&mut app.line.extend_only, t("Fit only the new stretch when extending")).on_hover_text(t("A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route."));
@@ -1422,8 +1449,9 @@ fn parts_panel(app: &mut App, ui: &mut egui::Ui) {
     ]);
     ui.horizontal(|ui| {
         ui.label(t("Curves bend"));
-        if tool_button(ui, app.road_parts.left, &t("Left")).clicked() { app.road_parts.left = true; }
-        if tool_button(ui, !app.road_parts.left, &t("Right")).clicked() { app.road_parts.left = false; }
+        use crate::tool_icons::{button, Glyph as G};
+        if button(ui, app.road_parts.left, G::BendLeft, t("Left")).clicked() { app.road_parts.left = true; }
+        if button(ui, !app.road_parts.left, G::BendRight, t("Right")).clicked() { app.road_parts.left = false; }
     });
     let list = crate::road_draw::choices(&app.road_catalog, &crate::road_draw::family_of(app));
     if list.is_empty() {
@@ -1453,9 +1481,9 @@ fn parts_panel(app: &mut App, ui: &mut egui::Ui) {
 fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::PATH, &t("Draw")), true, |ui| {
         // Roads are what this tool is for; the two plain line tools wait in a menu.
-        ui.horizontal(|ui| {
-            for (a, icon, n) in [(LineAction::Road, icons::ROAD_HORIZON, "New road"), (LineAction::Edit, icons::PENCIL_SIMPLE, "Edit routes")] {
-                if tool_button(ui, app.line.action == a, &icons::with(icon, &t(n))).clicked() { app.line.action = a; }
+        ui.horizontal_wrapped(|ui| {
+            for (a, glyph, n) in [(LineAction::Road, crate::tool_icons::Glyph::RoadNew, "New road"), (LineAction::Edit, crate::tool_icons::Glyph::RoadEdit, "Edit routes")] {
+                if crate::tool_icons::button(ui, app.line.action == a, glyph, t(n)).clicked() { app.line.action = a; }
             }
             let other = matches!(app.line.action, LineAction::Fence | LineAction::Plain);
             let label = match app.line.action {
@@ -1511,6 +1539,16 @@ fn drawing_status(app: &mut App, ui: &mut egui::Ui) {
     angle_snap_ui(app, ui);
 }
 
+/// The ways to lay a road: how each is drawn, its name and what it does.
+fn draw_methods() -> [(RoadDraw, crate::tool_icons::Glyph, &'static str, &'static str); 3] {
+    use crate::tool_icons::Glyph as G;
+    [
+        (RoadDraw::Points, G::DrawPoints, "By points", "Click the points of the road; Enter fits the models along them."),
+        (RoadDraw::Live, G::DrawLive, "Live", "The models follow the mouse: green where they fit, red where they cannot. A click keeps the road up to there."),
+        (RoadDraw::Parts, G::DrawParts, "Piece by piece", "Lay the road one chosen piece after another, as Terrain Builder's Road Tool does."),
+    ]
+}
+
 /// A new road: its type, how it is laid, and how it is fitted.
 fn road_draw_fields(app: &mut App, ui: &mut egui::Ui) {
     let families = app.road_families.clone();
@@ -1524,8 +1562,8 @@ fn road_draw_fields(app: &mut App, ui: &mut egui::Ui) {
     });
     // Wrapped, so a narrow panel is not held wide by the three buttons.
     ui.horizontal_wrapped(|ui| {
-        for (d, n) in [(RoadDraw::Points, "By points"), (RoadDraw::Live, "Live"), (RoadDraw::Parts, "Piece by piece")] {
-            if tool_button(ui, app.line.draw == d, &t(n)).clicked() { app.line.draw = d; }
+        for (d, g, n, tip) in draw_methods() {
+            if crate::tool_icons::button(ui, app.line.draw == d, g, format!("{}\n{}", t(n), t(tip))).clicked() { app.line.draw = d; }
         }
     });
     let about = match app.line.draw {

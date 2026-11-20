@@ -13,6 +13,7 @@ mod keys;
 mod layout;
 mod library_ui;
 mod goto;
+mod tool_icons;
 mod map_check;
 mod maskmods;
 mod material_ui;

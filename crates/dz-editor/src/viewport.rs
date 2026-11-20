@@ -1067,7 +1067,13 @@ fn begin_paint_or_sculpt(app: &mut App, p: V3, invert: bool, smooth: bool) {
             } else {
                 app.sculpt.tool
             };
-            let mut stroke = SculptStroke::begin(tool, brush, &doc.world, p[0], p[2]); stroke.shape = app.sculpt.shape; stroke.edge_noise = app.sculpt.noise;
+            let Some(height) = (tool != SculptTool::SetHeight).then_some(0.0).or(app.sculpt.height) else {
+                app.warn(t("Copy a height first: right click or Alt+click the terrain."));
+                return;
+            };
+            let mut stroke = SculptStroke::begin(tool, brush, &doc.world, p[0], p[2]);
+            if tool == SculptTool::SetHeight { stroke.target = height; }
+            stroke.shape = app.sculpt.shape; stroke.edge_noise = app.sculpt.noise;
             stroke.stamp = crate::brushes::stamp(&app.brushes, &app.sculpt.picture);
             stroke.spray = if app.sculpt.spray { app.sculpt.spray_density } else { 0.0 };
             app.stroke = Some(stroke);
@@ -1952,6 +1958,16 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     app.paint.layer = d.world.mask.sample(h[0], h[2], d.world.meta.size_m()) as usize;
                 }
                 app.paint.picking = false;
+                return;
+            }
+            // The set height brush copies the height of the terrain the same way.
+            let copy_height = app.mode == Mode::Landscape && app.sculpt.tool == SculptTool::SetHeight && (resp.secondary_clicked() || (pressed && keys.held(Hold::Pick, modifiers)));
+            if copy_height {
+                if let (Some(h), Some(d)) = (hit, &app.doc) {
+                    let height = d.world.height.sample(h[0], h[2]);
+                    app.sculpt.height = Some(height);
+                    app.info(tf("Height {0} m copied", &[&format!("{height:.1}")]));
+                }
                 return;
             }
             if pressed && !pick {
