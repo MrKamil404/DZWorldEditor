@@ -27,6 +27,10 @@ struct ProjectFile {
     meta: WorldMeta,
     layers: Vec<SurfaceLayer>,
     modifiers: Vec<TerrainModifier>,
+    /// Terrain stamps, kept apart from `modifiers` with their place in it, so that versions
+    /// before 0.2.6.1, which do not know them, still open the project (without the stamps).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    terrain_stamps: Vec<(usize, TerrainModifier)>,
     /// Road lines of older projects; they are turned into routes on load.
     #[serde(default, skip_serializing)]
     lines: Vec<MapLine>,
@@ -62,6 +66,25 @@ struct ProjectFile {
     /// Who made the modifiers, roads and generators, in team work.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     authors: Option<std::collections::BTreeMap<u64, String>>,
+}
+
+/// The modifiers without the terrain stamps, and the stamps with their places in the list.
+fn split_stamps(all: Vec<TerrainModifier>) -> (Vec<TerrainModifier>, Vec<(usize, TerrainModifier)>) {
+    let (mut rest, mut stamps) = (Vec::new(), Vec::new());
+    for (k, m) in all.into_iter().enumerate() {
+        if m.is_form() { stamps.push((k, m)) } else { rest.push(m) }
+    }
+    (rest, stamps)
+}
+
+/// The modifiers with the terrain stamps back in their places.
+fn join_stamps(mut rest: Vec<TerrainModifier>, mut stamps: Vec<(usize, TerrainModifier)>) -> Vec<TerrainModifier> {
+    stamps.sort_by_key(|s| s.0);
+    for (k, m) in stamps {
+        let at = k.min(rest.len());
+        rest.insert(at, m);
+    }
+    rest
 }
 
 /// Which parts need rewriting; rasters are large, so unchanged ones are skipped.
@@ -115,6 +138,7 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
     for m in &mut modifiers {
         m.attached = m.attached.and_then(|id| ordinal.get(&id).copied());
     }
+    let (modifiers, terrain_stamps) = split_stamps(modifiers);
     let mut generators = w.generators.clone();
     for g in &mut generators {
         g.objects = g.objects.iter().filter_map(|id| ordinal.get(id).copied()).collect();
@@ -128,6 +152,7 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         meta: w.meta.clone(),
         layers: w.layers.clone(),
         modifiers,
+        terrain_stamps,
         lines: Vec::new(),
         mask_size: [w.mask.width, w.mask.height],
         satellite_size: w.satellite.as_ref().map(|s| [s.width, s.height]),
@@ -250,7 +275,8 @@ pub fn load_with(dir: &Path, satellite: bool) -> Result<World> {
         None => None,
     };
     let objects = ObjectStore::from_bytes(&std::fs::read(dir.join("objects.dzob")).context("objects.dzob")?)?;
-    let mut w = World::from_parts(file.meta, base, mask, file.layers, satellite, objects, file.modifiers);
+    let modifiers = join_stamps(file.modifiers, file.terrain_stamps);
+    let mut w = World::from_parts(file.meta, base, mask, file.layers, satellite, objects, modifiers);
     if let Ok(bytes) = std::fs::read(dir.join("mask.mods")) {
         w.mask_mods = crate::maskmod::MaskLayers::from_bytes(&bytes).context("mask.mods")?;
     }
@@ -327,6 +353,31 @@ mod tests {
         assert_eq!((r.base.at(5, 5), r.base.at(3, 4)), (12.0, 77.0));
         assert_eq!(r.satellite.as_ref().unwrap().data[1], 2);
         assert_eq!(backups_in(&root).len(), 2);
+    }
+
+    #[test]
+    fn stamps_are_kept_apart_so_older_versions_open_the_project() {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("Stamps", 64, 8.0), 50.0);
+        let pad = |id: u64| TerrainModifier { id, name: format!("pad {id}"), enabled: true, x: 100.0, z: 100.0, yaw: 0.0, shape: ModShape::Circle { radius: 8.0 }, mode: ModMode::Offset, target: None, amount: 1.0, falloff: 4.0, attached: None, follow: false };
+        let stamp = TerrainModifier { id: 2, name: "hill".into(), shape: crate::terrain_stamps::form_shape(crate::terrain_stamps::StampForm::Hill), ..pad(2) };
+        w.modifiers = vec![pad(1), stamp, pad(3)];
+        save(&w, d.path(), SaveParts::ALL).unwrap();
+        // The list older versions read holds no shape they do not know.
+        let file: serde_json::Value = serde_json::from_slice(&std::fs::read(d.path().join("project.dzwe")).unwrap()).unwrap();
+        assert!(!file["modifiers"].to_string().contains("Stamp"));
+        assert_eq!(file["modifiers"].as_array().unwrap().len(), 2);
+        // This version has them all back, in their order.
+        let r = load(d.path()).unwrap();
+        assert_eq!(r.modifiers.iter().map(|m| m.id).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert!(r.modifiers[1].is_form());
+        // Projects saved with the stamps among the modifiers (0.2.6.1 before this) still open.
+        let mut file = file;
+        let inline = serde_json::to_value(&w.modifiers).unwrap();
+        file["modifiers"] = inline;
+        file.as_object_mut().unwrap().remove("terrain_stamps");
+        std::fs::write(d.path().join("project.dzwe"), serde_json::to_vec(&file).unwrap()).unwrap();
+        assert_eq!(load(d.path()).unwrap().modifiers.len(), 3);
     }
 
     #[test]
