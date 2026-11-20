@@ -90,6 +90,12 @@ only raise or only lower. Your own stamps are grey pictures (white high, black l
 **Add pictures…**, or a piece of the map kept with **Keep the terrain of the selected polygon**.
 They are kept in `%LOCALAPPDATA%\DZWorldEditor\stamps`.
 
+When a terrain modifier is deleted (also the levelling of a road or the terrain change of a
+generator), **Keep the terrain as it is for good** writes the shape it gave the ground into the
+sculpted terrain, the heightmap that is exported as ASC. Without it the ground goes back to how it
+was before the modifier. Projects with terrain stamps still open in versions before 0.2.6.1, only
+without the stamps.
+
 ### 3 Paint
 
 ![Painting surfaces](screenshots/paint.jpg)

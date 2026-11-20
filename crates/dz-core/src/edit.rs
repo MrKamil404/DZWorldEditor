@@ -156,6 +156,38 @@ impl<T: Copy> TileSnapshot<T> {
     }
 }
 
+/// Writes what the modifiers `ids` do to the terrain into the sculpted terrain (the heightmap
+/// that is exported as ASC), so that the ground keeps their shape once they are deleted. Returns
+/// the heights as they were, to undo, and the area that changed. The modifiers stay; the caller
+/// deletes them.
+pub fn bake_modifiers(w: &mut World, ids: &[u64]) -> Option<(TileSnapshot<f32>, Rect)> {
+    let area = w.modifiers.iter().filter(|m| m.enabled && ids.contains(&m.id)).filter_map(|m| w.modifier_rect(m)).reduce(|a, b| a.union(b))?;
+    let with = copy_rect(&w.height, area);
+    // The terrain without them.
+    let enabled: Vec<bool> = w.modifiers.iter().map(|m| m.enabled).collect();
+    for m in w.modifiers.iter_mut().filter(|m| ids.contains(&m.id)) {
+        m.enabled = false;
+    }
+    w.recompose(Some(area));
+    let without = copy_rect(&w.height, area);
+    for (m, on) in w.modifiers.iter_mut().zip(enabled) {
+        m.enabled = on;
+    }
+    let mut before = TileSnapshot::default();
+    let (cols, rows) = (w.base.cols, w.base.rows);
+    before.capture(&w.base.data, cols, rows, area);
+    let width = area.width();
+    for j in area.y0..=area.y1 {
+        for i in area.x0..=area.x1 {
+            let k = (j - area.y0) * width + (i - area.x0);
+            let v = w.base.at(i, j) + with[k] - without[k];
+            w.base.set(i, j, v);
+        }
+    }
+    w.recompose(Some(area));
+    Some((before, area))
+}
+
 /// One undoable change.
 pub enum Change {
     Height(TileSnapshot<f32>),
@@ -585,6 +617,28 @@ mod tests {
 
     fn world() -> World {
         World::new(WorldMeta::new("T", 256, 8.0), 100.0)
+    }
+    #[test]
+    fn a_baked_modifier_leaves_its_shape_in_the_terrain() {
+        use crate::world::{ModMode, ModShape, TerrainModifier};
+        let mut w = world();
+        let hill = TerrainModifier { id: 7, name: "hill".into(), enabled: true, x: 1000.0, z: 1000.0, yaw: 0.0, shape: ModShape::Stamp { stamp: crate::terrain_stamps::StampForm::Hill.stamp(), size: 400.0, height: 30.0 }, mode: ModMode::Offset, target: None, amount: 0.0, falloff: 0.0, attached: None, follow: false };
+        let pad = TerrainModifier { id: 8, name: "pad".into(), shape: ModShape::Circle { radius: 20.0 }, mode: ModMode::Offset, amount: 2.0, falloff: 10.0, x: 1500.0, z: 1500.0, ..hill.clone() };
+        w.modifiers = vec![hill, pad];
+        w.recompose(None);
+        let top = w.height.sample(1000.0, 1000.0);
+        assert!(top > 125.0);
+        let (mut before, area) = bake_modifiers(&mut w, &[7]).unwrap();
+        w.modifiers.retain(|m| m.id != 7);
+        w.recompose(None);
+        // The hill is in the sculpted terrain now, and the other modifier is as it was.
+        assert!((w.base.sample(1000.0, 1000.0) - top).abs() < 0.01);
+        assert!((w.height.sample(1000.0, 1000.0) - top).abs() < 0.01);
+        assert!((w.height.sample(1500.0, 1500.0) - 102.0).abs() < 0.01);
+        // Undo gives the old terrain back.
+        let (c, r) = (w.base.cols, w.base.rows);
+        assert!(before.swap(&mut w.base.data, c, r).is_some_and(|a| a.x0 <= area.x0 && a.x1 >= area.x1));
+        assert_eq!(w.base.sample(1000.0, 1000.0), 100.0);
     }
     #[test]
     fn steps_before_a_removed_layer_still_undo() {

@@ -3543,6 +3543,10 @@
   "de": "Insel",
   "pl": "Wyspa"
  },
+ "It can be undone.": {
+  "de": "Das lässt sich rückgängig machen.",
+  "pl": "Można to cofnąć."
+ },
  "Items new characters get:": {
   "de": "Gegenstände neuer Charaktere:",
   "pl": "Przedmioty nowych postaci:"
@@ -3610,6 +3614,10 @@
  "Keep the pieces already laid": {
   "de": "Gelegte Stücke behalten",
   "pl": "Zachowuj ułożone części"
+ },
+ "Keep the terrain as it is for good (written into the heightmap)": {
+  "de": "Gelände dauerhaft so lassen, wie es ist (in die Heightmap geschrieben)",
+  "pl": "Zostaw teren tak, jak jest, na stałe (zapisany w heightmapie)"
  },
  "Keep the terrain of the selected polygon": {
   "de": "Gelände des ausgewählten Polygons behalten",
@@ -7498,6 +7506,10 @@
  "The ground is levelled to the height the object stands at and comes up or down with it. The object keeps a height of its own, so lifting the ground does not lift it again.": {
   "de": "Der Boden wird auf die Höhe des Objekts geebnet und hebt und senkt sich mit ihm. Das Objekt behält eine eigene Höhe, damit der angehobene Boden es nicht noch einmal anhebt.",
   "pl": "Teren jest wyrównywany do wysokości, na której stoi obiekt, i podnosi się lub obniża razem z nim. Obiekt zachowuje własną wysokość, więc podniesiony teren nie podnosi go drugi raz."
+ },
+ "The ground keeps the shape the modifier gave it, and it is part of the exported heightmap; without this, the terrain goes back to how it was before the modifier.": {
+  "de": "Der Boden behält die Form, die der Modifikator ihm gegeben hat, und gehört zur exportierten Heightmap; ohne dies kehrt das Gelände in den Zustand vor dem Modifikator zurück.",
+  "pl": "Teren zachowuje kształt nadany przez modyfikator i trafia do eksportowanej heightmapy; bez tego teren wraca do stanu sprzed modyfikatora."
  },
  "The heightmap has {0} columns, the project {1}": {
   "de": "Die Höhenkarte hat {0} Spalten, das Projekt {1}",

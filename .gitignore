@@ -2,5 +2,5 @@
 *.tmp
 *.pdb
 .claude/
-claude.md
+CLAUDE.md
 todo/
