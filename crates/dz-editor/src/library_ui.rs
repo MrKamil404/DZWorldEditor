@@ -190,7 +190,19 @@ fn opening_ui(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, cx: &Ki
         model_field(ui, if o.gate { t("Gate") } else { t("Wicket") }, &mut o.model, &cx.model);
     }
     number(ui, t("Gap width m (0 = of the model)"), &mut o.width, 0.0..=60.0);
-    ui.checkbox(&mut o.flip, t("Turn by 180° to open the other way"));
+    // The old "turn by 180°" is a turn like the others now.
+    if o.flip {
+        o.flip = false;
+        o.turn = (o.turn + 180.0).min(180.0);
+        o.turn_right = (o.turn_right + 180.0).min(180.0);
+    }
+    if o.two_leaves {
+        number(ui, t("Left leaf turn °"), &mut o.turn, 0.0..=180.0);
+        number(ui, t("Right leaf turn °"), &mut o.turn_right, 0.0..=180.0);
+    } else {
+        number(ui, t("Turn °"), &mut o.turn, 0.0..=180.0);
+    }
+    ui.weak(t("Turned about its middle, up to 180° to open the other way. The fence closes up to what a turned object leaves of the gap."));
     ui.checkbox(&mut o.upright, t("Stand upright")).on_hover_text(t("The wicket or gate stays level instead of leaning with the slope like the fence."));
 }
 
@@ -535,6 +547,9 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 if !g.start_model.is_empty() { ui.checkbox(&mut g.flip_start, t("Rotate the first object by 180°")); }
                 model_field(ui, t("Last object"), &mut g.end_model, &cx.model);
                 if !g.end_model.is_empty() { ui.checkbox(&mut g.flip_end, t("Rotate the last object by 180°")); }
+                if !g.start_model.is_empty() || !g.end_model.is_empty() {
+                    ui.checkbox(&mut g.ends_inside, t("Inside the line, not beyond its ends")).on_hover_text(t("The first and last object lie between the end of the line and the fence instead of on the end point, and the fence is shorter by their length."));
+                }
             });
             let openings = g.openings.len() + usize::from(g.road_gate.is_some());
             group(ui, format!("{} ({openings})", t("Wickets and gates")), false, |ui| {

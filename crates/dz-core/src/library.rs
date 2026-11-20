@@ -142,6 +142,9 @@ pub struct FenceGen {
     pub end_model: String,
     pub flip_start: bool,
     pub flip_end: bool,
+    /// The first and last object stand inside the line, between its end and the fence, instead
+    /// of on its end with half of them beyond it.
+    pub ends_inside: bool,
     pub seed: u64,
     pub line: LineOptions,
     /// Wickets and gates set into the fence.
@@ -172,21 +175,29 @@ pub struct FenceOpening {
     pub right: String,
     /// Width of the gap; 0 takes the width of the model or of both leaves.
     pub width: f32,
-    /// Turns the object or the leaves by 180°, so they open the other way.
+    /// Turns the object or the leaves by 180°, so they open the other way. Older projects have
+    /// this; [`FenceOpening::turn`] says the same in degrees.
     pub flip: bool,
+    /// Degrees the object, or the left leaf, is turned about its own middle, 0 to 180. The
+    /// fence closes up to what the turned object leaves of the gap.
+    #[serde(default)]
+    pub turn: f32,
+    /// The same for the right leaf of a gate of two leaves.
+    #[serde(default)]
+    pub turn_right: f32,
     /// Stands upright instead of tilting with the slope as the fence pieces do.
     pub upright: bool,
 }
 
 impl Default for FenceOpening {
     fn default() -> Self {
-        Self { gate: false, at: 10.0, two_leaves: false, model: String::new(), left: String::new(), right: String::new(), width: 0.0, flip: false, upright: true }
+        Self { gate: false, at: 10.0, two_leaves: false, model: String::new(), left: String::new(), right: String::new(), width: 0.0, flip: false, turn: 0.0, turn_right: 0.0, upright: true }
     }
 }
 
 impl Default for FenceGen {
     fn default() -> Self {
-        Self { model: r"dz\structures\walls\wall_cnc_5.p3d".into(), preset: None, resolved: Vec::new(), spacing: 0.0, yaw_offset: 0.0, random_rotation: false, follow_slope: true, join_corners: true, start_model: String::new(), end_model: String::new(), flip_start: false, flip_end: false, seed: 1, line: LineOptions::default(), openings: Vec::new(), road_gate: None, roads: Vec::new() }
+        Self { model: r"dz\structures\walls\wall_cnc_5.p3d".into(), preset: None, resolved: Vec::new(), spacing: 0.0, yaw_offset: 0.0, random_rotation: false, follow_slope: true, join_corners: true, start_model: String::new(), end_model: String::new(), flip_start: false, flip_end: false, ends_inside: false, seed: 1, line: LineOptions::default(), openings: Vec::new(), road_gate: None, roads: Vec::new() }
     }
 }
 

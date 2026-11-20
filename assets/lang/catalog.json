@@ -8019,10 +8019,6 @@
   "de": "Drehung",
   "pl": "Obrót"
  },
- "Turn by 180° to open the other way": {
-  "de": "Um 180° drehen, um zur anderen Seite zu öffnen",
-  "pl": "Obróć o 180°, aby otwierała się w drugą stronę"
- },
  "Turn °": {
   "de": "Drehung °",
   "pl": "Obrót °"
@@ -9266,5 +9262,25 @@
  "Leave out the models whose path holds this text.": {
   "de": "Lässt die Modelle aus, deren Pfad diesen Text enthält.",
   "pl": "Pomija modele, których ścieżka zawiera ten tekst."
+ },
+ "Left leaf turn °": {
+  "de": "Drehung des linken Flügels °",
+  "pl": "Obrót lewego skrzydła °"
+ },
+ "Right leaf turn °": {
+  "de": "Drehung des rechten Flügels °",
+  "pl": "Obrót prawego skrzydła °"
+ },
+ "Turned about its middle, up to 180° to open the other way. The fence closes up to what a turned object leaves of the gap.": {
+  "de": "Um die eigene Mitte gedreht, bis 180°, um in die andere Richtung zu öffnen. Der Zaun schließt bis an das, was ein gedrehtes Objekt von der Lücke übrig lässt.",
+  "pl": "Obrót wokół własnego środka, do 180°, aby otwierać na drugą stronę. Ogrodzenie dochodzi do tego, co obrócony obiekt zostawia z przerwy."
+ },
+ "Inside the line, not beyond its ends": {
+  "de": "In der Linie, nicht über ihre Enden hinaus",
+  "pl": "W linii, a nie poza jej końcami"
+ },
+ "The first and last object lie between the end of the line and the fence instead of on the end point, and the fence is shorter by their length.": {
+  "de": "Das erste und letzte Objekt liegen zwischen dem Ende der Linie und dem Zaun statt auf dem Endpunkt, und der Zaun wird um ihre Länge kürzer.",
+  "pl": "Pierwszy i ostatni obiekt leżą między końcem linii a ogrodzeniem, a nie na punkcie końcowym, a ogrodzenie jest krótsze o ich długość."
  }
 }

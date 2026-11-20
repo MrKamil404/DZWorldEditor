@@ -1866,7 +1866,7 @@ pub fn prepare_line(points: &[[f32; 2]], o: &crate::library::LineOptions) -> Vec
 pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[f32; 2]], g: &crate::library::FenceGen) -> Vec<Obj> {
     use crate::library::LineMode;
     // `across` moves the model's middle onto the line; fence pieces keep their origin on it.
-    struct Piece { model: u32, length: f32, along_x: bool, shift: f32, across: f32, weight: f32, skews: bool }
+    struct Piece { model: u32, length: f32, /* across the line */ depth: f32, along_x: bool, shift: f32, across: f32, weight: f32, skews: bool }
     let piece_along = |w: &mut World, path: &str, weight: f32, axis: Option<bool>| {
         let info = db.get(&crate::objects::ObjectStore::normalize_path(path));
         let (lx, lz) = if info.known { (info.max[0] - info.min[0], info.max[2] - info.min[2]) } else { (0.0, 4.0) };
@@ -1875,7 +1875,8 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         let (cx, cz) = if info.known { ((info.min[0] + info.max[0]) * 0.5, (info.min[2] + info.max[2]) * 0.5) } else { (0.0, 0.0) };
         let length = if axis.is_some() { if along_x { lx } else { lz } } else { lx.max(lz) };
         let across = if axis.is_some() { if along_x { cz } else { cx } } else { 0.0 };
-        Piece { model: w.objects.intern(path), length: length.max(0.5), along_x, shift: if along_x { -cx } else { cz }, across, weight, skews: info.placement.skews() }
+        let depth = if along_x { lz } else { lx };
+        Piece { model: w.objects.intern(path), length: length.max(0.5), depth: depth.max(0.05), along_x, shift: if along_x { -cx } else { cz }, across, weight, skews: info.placement.skews() }
     };
     let piece_of = |w: &mut World, path: &str, weight: f32| piece_along(w, path, weight, None);
     let list: Vec<(String, f32)> = if g.resolved.is_empty() { vec![(g.model.clone(), 1.0)] } else { g.resolved.clone() };
@@ -1894,37 +1895,60 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
     }
     // Openings: their pieces, and the stretch of line each leaves free.
     let length: f32 = full.windows(2).map(|s| (s[1][0] - s[0][0]).hypot(s[1][1] - s[0][1])).sum();
-    let mut openings: Vec<(f32, f32, Vec<(Piece, f32)>, bool, bool)> = Vec::new();
+    // Each is: where it starts and ends along the line, its objects with where their middles lie
+    // from the middle of the opening and their turn in degrees, and whether it stands upright.
+    let mut openings: Vec<(f32, f32, Vec<(Piece, f32, f32)>, bool)> = Vec::new();
     let mut wanted: Vec<crate::library::FenceOpening> = g.openings.clone();
     if let Some(gate) = &g.road_gate {
         wanted.extend(line_crossings(&full, &g.roads).into_iter().map(|at| crate::library::FenceOpening { at, ..gate.clone() }));
     }
     for o in &wanted {
-        // Each object with where its middle lies from the middle of the opening.
-        let parts: Vec<(Piece, f32)> = if o.two_leaves {
+        // Each object with the stretch of the gap it fills and its turn in degrees.
+        let legacy = if o.flip { 180.0 } else { 0.0 };
+        let leaves: Vec<(Piece, f32, f32)> = if o.two_leaves {
             let (l, r) = (o.left.trim(), o.right.trim());
             if l.is_empty() && r.is_empty() { continue; }
             let (pl, pr) = (gate_of(w, if l.is_empty() { r } else { l }), gate_of(w, if r.is_empty() { l } else { r }));
             // Each leaf fills its half of the gap: from its post to the middle.
             let width = if o.width > 0.0 { o.width } else { pl.length + pr.length };
             let split = if o.width > 0.0 { width * 0.5 } else { pl.length };
-            vec![(pl, -width * 0.5 + split * 0.5), (pr, width * 0.5 - (width - split) * 0.5)]
+            let (span_l, span_r) = (split, width - split);
+            vec![(pl, span_l, o.turn + legacy), (pr, span_r, o.turn_right + legacy)]
         } else {
             if o.model.trim().is_empty() { continue; }
-            vec![(gate_of(w, o.model.trim()), 0.0)]
+            let p = gate_of(w, o.model.trim());
+            let span = if o.width > 0.0 { o.width } else { p.length };
+            vec![(p, span, o.turn + legacy)]
         };
-        let width = if o.width > 0.0 { o.width } else { parts.iter().map(|p| p.0.length).sum() };
+        // A turned object takes less of the line, which the fence closes up instead of leaving
+        // a hole: the gap shrinks to what the object covers along the line.
+        let spans: Vec<f32> = leaves.iter().map(|(p, span, turn)| {
+            let (sin, cos) = turn.to_radians().sin_cos();
+            span * ((p.length * cos.abs() + p.depth * sin.abs()) / p.length).min(1.0)
+        }).collect();
+        let width: f32 = spans.iter().sum();
+        let mut from_edge = -width * 0.5;
+        let mut parts = Vec::new();
+        for ((p, _, turn), span) in leaves.into_iter().zip(spans) {
+            parts.push((p, from_edge + span * 0.5, turn));
+            from_edge += span;
+        }
         let at = o.at.clamp(width * 0.5, (length - width * 0.5).max(width * 0.5));
-        openings.push((at - width * 0.5, at + width * 0.5, parts, o.flip, o.upright));
+        openings.push((at - width * 0.5, at + width * 0.5, parts, o.upright));
     }
     openings.sort_by(|a, b| a.0.total_cmp(&b.0));
+    // Objects standing inside the line at its ends take their length off the fence.
+    let end_piece = |w: &mut World, model: &str| (g.ends_inside && !model.is_empty()).then(|| piece_of(w, model, 1.0));
+    let (start_piece, end_piece) = (end_piece(w, &g.start_model), end_piece(w, &g.end_model));
+    let (reserve_start, reserve_end) = (start_piece.as_ref().map_or(0.0, |p| p.length.min(length * 0.5)), end_piece.as_ref().map_or(0.0, |p| p.length.min(length * 0.5)));
     let mut stretches: Vec<Vec<[f32; 2]>> = Vec::new();
-    let mut from = 0.0f32;
-    for (a, b, _, _, _) in &openings {
-        if *a > from + 0.05 { stretches.push(cut_line(&full, from, *a)); }
+    let mut from = reserve_start;
+    let fence_end = length - reserve_end;
+    for (a, b, _, _) in &openings {
+        if *a > from + 0.05 { stretches.push(cut_line(&full, from, a.min(fence_end))); }
         from = from.max(*b);
     }
-    if length > from + 0.05 { stretches.push(cut_line(&full, from, length)); }
+    if fence_end > from + 0.05 { stretches.push(cut_line(&full, from, fence_end)); }
     let mut rng = StdRng::seed_from_u64(g.seed);
     let total: f32 = pieces.iter().map(|p| p.weight).sum();
     let choose = |rng: &mut StdRng| -> Option<usize> {
@@ -1957,6 +1981,14 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         let elevation = if follow { (ga + gb) * 0.5 - w.height.sample(x, z) } else { 0.0 };
         let spin = if g.random_rotation { rng.gen_range(0.0..360.0) } else { 0.0 };
         out.push(Obj { x, z, elevation, yaw: yaw + g.yaw_offset + spin, pitch, roll, scale: 1.0, model: p.model, flags: 0 });
+    }
+    // Turns an object by `deg` degrees about a point, as the gizmo turns a selection.
+    fn turn_about(o: &mut Obj, about: [f32; 2], deg: f32) {
+        let (sin, cos) = deg.to_radians().sin_cos();
+        let (rx, rz) = (o.x - about[0], o.z - about[1]);
+        o.x = about[0] + rx * cos + rz * sin;
+        o.z = about[1] - rx * sin + rz * cos;
+        o.yaw += deg;
     }
     // Where a circle of radius `r` around `from` first leaves the line, searching on from segment `i`.
     fn chord(line: &[[f32; 2]], from: [f32; 2], i: usize, r: f32) -> Option<([f32; 2], usize)> {
@@ -2051,17 +2083,15 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
     // The wickets and gates, in line with the fence.
     // An upright gate stands level on the ground at its middle, however the fence leans.
     let level = crate::library::FenceGen { follow_slope: false, ..g.clone() };
-    for (a, b, parts, flip, upright) in &openings {
+    for (a, b, parts, upright) in &openings {
         let middle = (a + b) * 0.5;
-        for (p, offset) in parts {
+        for (p, offset, turn) in parts {
             let centre = middle + offset;
             let half = p.length * 0.5;
             let (s, e) = (point_along(&full, centre - half), point_along(&full, centre + half));
             let before = out.len();
             place(w, if *upright { &level } else { g }, &mut out, &mut rng, p, s, e);
-            if *flip {
-                if let Some(o) = out.get_mut(before) { o.yaw += 180.0; }
-            }
+            if let (Some(o), true) = (out.get_mut(before), *turn != 0.0) { turn_about(o, [(s[0] + e[0]) * 0.5, (s[1] + e[1]) * 0.5], *turn); }
         }
     }
     let line = full;
@@ -2072,6 +2102,15 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
             continue;
         }
         let p = piece_of(w, model, 1.0);
+        // Inside the line: from its end inwards, where the fence stops short of it.
+        if g.ends_inside {
+            let len = p.length.min(length * 0.5);
+            let (a, b) = if i == 0 { (line[0], point_along(&line, len)) } else { (point_along(&line, length - len), *line.last().unwrap()) };
+            let before = out.len();
+            place(w, &level, &mut out, &mut rng, &p, a, b);
+            if let (Some(o), true) = (out.get_mut(before), flip) { turn_about(o, [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5], 180.0); }
+            continue;
+        }
         // Both ends face the direction of the line.
         let (dx, dz) = if i == 0 { (next[0] - at[0], next[1] - at[1]) } else { (at[0] - next[0], at[1] - next[1]) };
         let heading = dx.atan2(dz).to_degrees() + if p.along_x { 90.0 } else { 0.0 };
@@ -3189,6 +3228,69 @@ mod tests {
         let g = FenceGen { openings: vec![crate::library::FenceOpening { upright: false, ..g.openings[0].clone() }], ..g };
         let objects = fence_objects(&mut hill, &db, &line, &g);
         assert!(objects.iter().filter(|o| hill.objects.models[o.model as usize].path == "gate.p3d").all(|o| o.pitch.abs() + o.roll.abs() > 1.0));
+    }
+
+    #[test]
+    fn a_turned_gate_leaves_no_hole_and_each_leaf_turns_on_its_own() {
+        use crate::library::{FenceGen, FenceOpening};
+        let db = crate::model_info::ModelDb::new("Z:/none");
+        let line = [[0.0, 50.0], [100.0, 50.0]];
+        let run = |o: FenceOpening| {
+            let mut w = World::new(crate::world::WorldMeta::new("F", 64, 4.0), 10.0);
+            let objects = fence_objects(&mut w, &db, &line, &FenceGen { model: "wall.p3d".into(), openings: vec![o], ..Default::default() });
+            let paths: Vec<String> = objects.iter().map(|o| w.objects.models[o.model as usize].path.clone()).collect();
+            (objects, paths)
+        };
+        let gate = |turn: f32, turn_right: f32| FenceOpening { at: 50.0, two_leaves: true, left: "l.p3d".into(), right: "r.p3d".into(), turn, turn_right, ..Default::default() };
+        // Shut, the leaves fill 46..54; the wall stops there.
+        let (shut, shut_names) = run(gate(0.0, 0.0));
+        let walls = |objects: &[Obj], names: &[String]| objects.iter().zip(names).filter(|(_, n)| *n == "wall.p3d").map(|(o, _)| o.x).collect::<Vec<f32>>();
+        assert!(walls(&shut, &shut_names).iter().all(|x| !(46.5..53.5).contains(x)));
+        // Turned a quarter, they take hardly any of the line and the wall closes up to them.
+        let (open, names) = run(gate(90.0, 90.0));
+        let near_middle = walls(&open, &names).iter().filter(|x| (46.0..54.0).contains(*x)).count();
+        assert!(near_middle >= 1, "the fence closes the gap");
+        let gap = |objects: &[Obj], names: &[String]| {
+            let mut xs = walls(objects, names);
+            xs.sort_by(f32::total_cmp);
+            xs.windows(2).map(|p| p[1] - p[0]).fold(0.0f32, f32::max)
+        };
+        assert!(gap(&open, &names) < gap(&shut, &shut_names) - 3.0, "{} {}", gap(&open, &names), gap(&shut, &shut_names));
+        // One leaf turned, the other not: only that one changes its yaw.
+        let (one, names) = run(gate(0.0, 180.0));
+        let yaw = |n: &str| one.iter().zip(&names).find(|(_, p)| *p == n).unwrap().0.yaw;
+        let (shut_one, names2) = run(gate(0.0, 0.0));
+        let yaw0 = |n: &str| shut_one.iter().zip(&names2).find(|(_, p)| *p == n).unwrap().0.yaw;
+        assert!((yaw("l.p3d") - yaw0("l.p3d")).abs() < 1e-3);
+        assert!((yaw("r.p3d") - yaw0("r.p3d") - 180.0).abs() < 1e-3);
+        // A turn of 180° keeps the leaf where it stood: it swings about its own middle.
+        let x = |objects: &[Obj], names: &[String], n: &str| objects.iter().zip(names).find(|(_, p)| *p == n).unwrap().0.x;
+        assert!((x(&one, &names, "r.p3d") - x(&shut_one, &names2, "r.p3d")).abs() < 0.01);
+        // The old yes or no of "turn by 180°" still does that.
+        let (old, names3) = run(FenceOpening { flip: true, ..gate(0.0, 0.0) });
+        assert!((old.iter().zip(&names3).find(|(_, p)| *p == "l.p3d").unwrap().0.yaw - yaw0("l.p3d") - 180.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn end_objects_can_stand_inside_the_line() {
+        use crate::library::FenceGen;
+        let db = crate::model_info::ModelDb::new("Z:/none");
+        let line = [[0.0, 50.0], [100.0, 50.0]];
+        let make = |inside: bool| {
+            let mut w = World::new(crate::world::WorldMeta::new("F", 64, 4.0), 10.0);
+            let g = FenceGen { model: "wall.p3d".into(), start_model: "post.p3d".into(), end_model: "post.p3d".into(), ends_inside: inside, ..Default::default() };
+            let objects = fence_objects(&mut w, &db, &line, &g);
+            let posts: Vec<f32> = objects.iter().filter(|o| w.objects.models[o.model as usize].path == "post.p3d").map(|o| o.x).collect();
+            let walls = objects.iter().filter(|o| w.objects.models[o.model as usize].path == "wall.p3d").count();
+            (posts, walls)
+        };
+        // On the end, the post stands in the line's end point, half of it beyond.
+        let (on, walls_on) = make(false);
+        assert!(on.contains(&0.0) && on.contains(&100.0), "{on:?}");
+        // Inside, a 4 m post covers 0..4 and 96..100, and the wall runs between them.
+        let (inside, walls_in) = make(true);
+        assert!(inside.iter().any(|x| (x - 2.0).abs() < 0.01) && inside.iter().any(|x| (x - 98.0).abs() < 0.01), "{inside:?}");
+        assert!(walls_in < walls_on, "{walls_in} {walls_on}");
     }
 
     #[test]
