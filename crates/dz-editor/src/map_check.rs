@@ -77,13 +77,9 @@ fn describe(i: &Issue) -> String {
 
 /// Goes to the place of an issue and selects its objects.
 fn go_to(app: &mut App, i: &Issue) {
-    let Some(d) = &app.doc else { return };
     let Some([x, z]) = i.at else { return };
-    let y = d.world.height.sample(x, z).max(d.world.meta.sea_level);
-    let f = app.camera.forward();
-    app.camera.pos = [x - f[0] * 60.0, y - f[1] * 60.0 + 5.0, z - f[2] * 60.0];
-    app.top_center = [x, z];
-    app.top_mpp = app.top_mpp.min(0.5);
+    crate::goto::fly_to(app, dz_core::goto::Spot { x, z, radius: 30.0 });
+    let Some(d) = &app.doc else { return };
     if !i.objects.is_empty() {
         app.selection = i.objects.iter().copied().filter(|id| d.world.objects.get(*id).is_some()).collect();
         app.selection_rev += 1;

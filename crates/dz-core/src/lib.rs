@@ -14,6 +14,7 @@ pub mod export;
 pub mod export_files;
 pub mod fsutil;
 pub mod gen;
+pub mod goto;
 pub mod import;
 pub mod holes;
 pub mod layer_material;

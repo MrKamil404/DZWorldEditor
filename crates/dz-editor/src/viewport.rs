@@ -3811,6 +3811,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     if k(Action::Shortcuts) { app.dialog = crate::app::Dialog::Shortcuts; }
     if k(Action::Build) && app.doc.is_some() && app.task.is_none() { app.build(false); }
     if k(Action::Play) && app.doc.is_some() && app.task.is_none() { app.build(true); }
+    if k(Action::GoTo) && app.doc.is_some() { crate::goto::open(app); }
     if k(Action::SearchAssets) {
         app.bottom = crate::app::BottomTab::Content;
         app.focus_search = true;

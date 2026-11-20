@@ -1389,16 +1389,20 @@ fn instance_buttons(app: &mut App, ui: &mut egui::Ui, id: u64) {
 /// Rows of the generators in the outliner.
 pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'static str, usize)], filter: &str) {
     let mut action: Option<(u64, u8)> = None;
+    let mut fly = None;
     for (id, name, kind, count) in rows.iter().filter(|r| r.1.to_ascii_lowercase().contains(filter)) {
         let row = ui.selectable_label(app.selected_generator == Some(*id), format!("{name}  [{}]  ({count})", t(kind)));
         if row.clicked() { action = Some((*id, 0)); }
-        row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
+        row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            let spot = app.doc.as_ref().and_then(|d| dz_core::goto::generator_spot(&d.world, d.world.generators.iter().find(|g| g.id == *id)?));
+            if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
             for (code, label) in [(1u8, "Generate"), (2, "Select objects"), (3, "Duplicate"), (4, "Save as preset"), (5, "Delete generator...")] {
                 if ui.button(t(label)).clicked() { action = Some((*id, code)); ui.close_menu(); }
             }
             crate::team_ui::author_menu(app, ui, *id);
         });
     }
+    if let Some(s) = fly { crate::goto::fly_to(app, s); }
     if let Some((id, code)) = action {
         if code == 0 || code == 2 { app.leave_browser(); }
         match code {

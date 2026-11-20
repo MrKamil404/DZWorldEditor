@@ -53,6 +53,7 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
     dialogs(app, ctx);
     crate::mission_ui::window(app, ctx);
     crate::map_check::window(app, ctx);
+    crate::goto::window(app, ctx);
     crate::team_ui::window(app, ctx);
     app.updater.window(ctx);
     crate::asset_browser::drag_ghost(app, ctx);
@@ -214,6 +215,10 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
             ui.menu_button(t("View"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 if ui.add_enabled(app.doc.is_some(), egui::Button::new(icons::with(icons::RULER, &t("Measure"))).selected(app.measure.active)).on_hover_text(t("Clicks on the map measure lengths, the climb along them and the area they close.")).clicked() {
                     app.measure = crate::app::Measure { active: !app.measure.active, points: Vec::new() };
+                    ui.close_menu();
+                }
+                if ui.add_enabled(app.doc.is_some(), egui::Button::new(icons::with(icons::CROSSHAIR, &t("Go to..."))).shortcut_text(keys.text(Action::GoTo))).on_hover_text(t("Fly the camera to a key point, a position or a square of the game's map grid.")).clicked() {
+                    crate::goto::open(app);
                     ui.close_menu();
                 }
                 saved_views_menu(app, ui);
@@ -1613,13 +1618,21 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut select_model = None;
     let mut start_rename = None;
     let mut select_modifier = None;
+    let mut fly: Option<dz_core::goto::Spot> = None;
+    let mut select_keypoint = None;
+    let keypoints: Vec<(usize, String)> = doc.world.keypoints.iter().enumerate().map(|(i, k)| (i, k.name.clone())).collect();
     crate::team_ui::filter_ui(app, ui);
     egui::ScrollArea::vertical().id_salt("outl").auto_shrink([false, false]).show(ui, |ui| {
         outliner_section(fold, "Terrain modifiers", icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()])), mods.len() == 0).show(ui, |ui| {
             for (id, name) in mods.iter().filter(|(_, n)| n.to_ascii_lowercase().contains(&filter)) {
                 let row = ui.selectable_label(app.selected_modifier == Some(*id), name);
                 if row.clicked() { select_modifier = Some(*id); }
-                if team { row.context_menu(|ui| crate::team_ui::author_menu(app, ui, *id)); }
+                row.context_menu(|ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    let spot = app.doc.as_ref().and_then(|d| d.world.modifiers.iter().find(|m| m.id == *id)).map(dz_core::goto::modifier_spot);
+                    if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                    if team { crate::team_ui::author_menu(app, ui, *id); }
+                });
             }
         });
         crate::maskmods::outliner(app, ui, &filter, fold);
@@ -1633,8 +1646,21 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 if row.clicked() { select_route = Some(*i); }
                 row.context_menu(|ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    let spot = app.doc.as_ref().and_then(|d| d.world.routes.get(*i)).and_then(dz_core::goto::route_spot);
+                    if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
                     if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); }
                     crate::team_ui::author_menu(app, ui, route_ids[*i]);
+                });
+            }
+        });
+        outliner_section(fold, "Key points", icons::with(icons::MAP_PIN, &tf("Key points ({0})", &[&keypoints.len().to_string()])), keypoints.is_empty()).show(ui, |ui| {
+            for (i, name) in keypoints.iter().filter(|(_, n)| n.to_ascii_lowercase().contains(&filter)) {
+                let row = ui.selectable_label(app.shape.keypoint == Some(*i), name);
+                if row.clicked() { select_keypoint = Some(*i); }
+                row.context_menu(|ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    let spot = app.doc.as_ref().and_then(|d| d.world.keypoints.get(*i)).map(dz_core::goto::keypoint_spot);
+                    if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
                 });
             }
         });
@@ -1657,7 +1683,9 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                     let row = ui.selectable_label(active_shape == *i, if *visible { label } else { label.weak() });
                     if row.clicked() { shape_action = Some(ShapeAction::Active(*i)); }
                     if let Some(p) = row.dnd_release_payload::<(usize, usize)>() { shape_move = Some((p.0, p.1, *i)); }
-                    row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
+                    row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        let spot = app.doc.as_ref().and_then(|d| d.world.shape_layers.get(*i)).and_then(dz_core::goto::layer_spot);
+                        if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
                         if ui.button(t("Rename")).clicked() { start_shape_rename = Some((*i, name.clone())); ui.close_menu(); }
                         if ui.button(t("Delete layer")).clicked() { shape_action = Some(ShapeAction::Delete(*i)); ui.close_menu(); }
                     });
@@ -1671,6 +1699,10 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                                 let r = ui.selectable_label(selected, format!("{}  {kind}  ({n})", s + 1)).interact(egui::Sense::click_and_drag());
                                 if r.clicked() { shape_pick = Some((*i, *s, ui.input(|i| i.modifiers.shift || i.modifiers.command))); }
                                 r.dnd_set_drag_payload((*i, *s));
+                                r.context_menu(|ui| {
+                                    let spot = app.doc.as_ref().and_then(|d| d.world.shape_layers.get(*i)?.shapes.get(*s)).and_then(dz_core::goto::shape_spot);
+                                    if let Some(sp) = crate::goto::menu(ui, spot) { fly = Some(sp); }
+                                });
                             }
                         });
                     });
@@ -1752,6 +1784,15 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 let path = paths[k].clone();
                 row.context_menu(|ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    // The nearest object of the model to the camera.
+                    let spot = app.doc.as_ref().and_then(|d| {
+                        let c = app.camera.pos;
+                        d.world.objects.iter().filter(|(_, o)| o.model == *m).min_by(|(_, a), (_, b)| {
+                            let dist = |o: &dz_core::objects::Obj| (o.x - c[0]).powi(2) + (o.z - c[2]).powi(2);
+                            dist(a).total_cmp(&dist(b))
+                        }).map(|(_, o)| dz_core::goto::Spot { x: o.x, z: o.z, radius: 20.0 })
+                    });
+                    if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
                     if ui.button(icons::with(icons::FOLDER_OPEN, &t("Show in asset browser"))).clicked() { reveal = Some(path.clone()); ui.close_menu(); }
                     if ui.button(t("Select objects")).clicked() { select_model = Some(*m); ui.close_menu(); }
                 });
@@ -1760,6 +1801,11 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     });
     app.outliner_rev = app.selection_rev;
     if let Some(p) = reveal { app.show_in_browser(&p); }
+    if let Some(s) = fly { crate::goto::fly_to(app, s); }
+    if let Some(i) = select_keypoint {
+        app.shape.keypoint = Some(i);
+        app.mode = Mode::KeyPoints;
+    }
     if select_model.is_some() || shape_pick.is_some() || select_route.is_some() || select_modifier.is_some() {
         app.leave_browser();
     }

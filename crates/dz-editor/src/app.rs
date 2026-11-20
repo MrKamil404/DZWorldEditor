@@ -355,6 +355,7 @@ pub struct App {
     pub layer_averages: Vec<[u8; 3]>,
     /// The map check and its window.
     pub check: crate::map_check::MapCheck,
+    pub goto: crate::goto::GoTo,
     /// The measuring tool: on, and the points clicked.
     pub measure: Measure,
     /// Terrain stamps: the user's own, and the one a click on the map lays next.
@@ -594,7 +595,7 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,

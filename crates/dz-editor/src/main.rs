@@ -12,6 +12,7 @@ mod icons;
 mod keys;
 mod layout;
 mod library_ui;
+mod goto;
 mod map_check;
 mod maskmods;
 mod material_ui;

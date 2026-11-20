@@ -102,6 +102,8 @@ pub enum Action {
     PasteLast,
     Delete,
     Focus,
+    /// Fly the camera to a key point, a position or a square of the map grid.
+    GoTo,
     Underground,
     ModeSelect,
     ModeSculpt,
@@ -145,9 +147,9 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 54] = [
+    pub const ALL: [Action; 55] = [
         Action::NewProject, Action::Open, Action::Save, Action::SaveAs, Action::Undo, Action::Redo, Action::Settings, Action::Shortcuts, Action::Build, Action::Play,
-        Action::SelectAll, Action::Deselect, Action::Duplicate, Action::PasteHere, Action::PasteLast, Action::Delete, Action::Focus, Action::Underground,
+        Action::SelectAll, Action::Deselect, Action::Duplicate, Action::PasteHere, Action::PasteLast, Action::Delete, Action::Focus, Action::GoTo, Action::Underground,
         Action::ModeSelect, Action::ModeSculpt, Action::ModePaint, Action::ModePlace, Action::ModeRoads, Action::ModeShapes, Action::ModeKeyPoints, Action::ModeSatellite, Action::ModeMission,
         Action::GizmoMove, Action::GizmoRotate, Action::GizmoScale, Action::GizmoSpace,
         Action::View3d, Action::View2d, Action::ViewSplit, Action::CameraBelow, Action::ToggleGrass, Action::ToggleObjects, Action::ToggleShapes,
@@ -174,6 +176,7 @@ impl Action {
             Action::PasteLast => "Copy the last selection to the cursor",
             Action::Delete => "Delete",
             Action::Focus => "Frame the selection",
+            Action::GoTo => "Go to",
             Action::Underground => "Underground flag",
             Action::ModeSelect => "Select",
             Action::ModeSculpt => "Sculpt",
@@ -219,7 +222,7 @@ impl Action {
             NewProject | Open | Save | SaveAs | Undo | Redo | Settings | Shortcuts | Build | Play => "General",
             SelectAll | Deselect | Duplicate | PasteHere | PasteLast | Delete | Focus | Underground => "Selection",
             ModeSelect | ModeSculpt | ModePaint | ModePlace | ModeRoads | ModeShapes | ModeKeyPoints | ModeSatellite | ModeMission | GizmoMove | GizmoRotate | GizmoScale | GizmoSpace => "Tools",
-            View3d | View2d | ViewSplit | CameraBelow | ToggleGrass | ToggleObjects | ToggleShapes | SearchAssets | ToggleHints => "View",
+            GoTo | View3d | View2d | ViewSplit | CameraBelow | ToggleGrass | ToggleObjects | ToggleShapes | SearchAssets | ToggleHints => "View",
             RoadPieceAdd | RoadPiecePrev | RoadPieceNext | RoadPieceSide => "Roads piece by piece",
             BrushSmaller | BrushBigger | BrushWeaker | BrushStronger => "Brushes",
             CameraForward | CameraBack | CameraLeft | CameraRight | CameraUp | CameraDown => "Camera (with the right mouse button held)",
@@ -245,6 +248,7 @@ impl Action {
             PasteLast => Shortcut::new(Key::V),
             Delete => Shortcut::new(Key::Delete),
             Focus => Shortcut::new(Key::F),
+            GoTo => Shortcut::ctrl(Key::G),
             Underground => Shortcut::new(Key::U),
             ModeSelect => Shortcut::new(Key::Num1),
             ModeSculpt => Shortcut::new(Key::Num2),

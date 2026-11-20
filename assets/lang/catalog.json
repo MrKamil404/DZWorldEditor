@@ -9122,5 +9122,37 @@
  "{0}°  ·  step {1}° (wheel)": {
   "de": "{0}°  ·  Schritt {1}° (Mausrad)",
   "pl": "{0}°  ·  skok {1}° (kółko)"
+ },
+ "Go to...": {
+  "de": "Gehe zu...",
+  "pl": "Idź do..."
+ },
+ "Fly the camera to a key point, a position or a square of the game's map grid.": {
+  "de": "Fliegt die Kamera zu einem Key Point, einer Position oder einem Feld des Spielkartenrasters.",
+  "pl": "Przenosi kamerę do key pointu, pozycji albo kratki siatki mapy z gry."
+ },
+ "Key point, 045 123 or 4500, 12300": {
+  "de": "Key Point, 045 123 oder 4500, 12300",
+  "pl": "Key point, 045 123 albo 4500, 12300"
+ },
+ "A key point of the map, a square of the game's map grid (045 123) or metres east and north (4500, 12300).": {
+  "de": "Ein Key Point der Karte, ein Feld des Spielkartenrasters (045 123) oder Meter nach Osten und Norden (4500, 12300).",
+  "pl": "Key point mapy, kratka siatki mapy z gry (045 123) albo metry na wschód i na północ (4500, 12300)."
+ },
+ "Grid square {0} {1}": {
+  "de": "Rasterfeld {0} {1}",
+  "pl": "Kratka {0} {1}"
+ },
+ "Position {0}": {
+  "de": "Position {0}",
+  "pl": "Pozycja {0}"
+ },
+ "Move the camera here": {
+  "de": "Kamera hierher bewegen",
+  "pl": "Przejdź kamerą do"
+ },
+ "Key points ({0})": {
+  "de": "Key Points ({0})",
+  "pl": "Key pointy ({0})"
  }
 }

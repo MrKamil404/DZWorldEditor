@@ -34,6 +34,11 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 length on the map and along the ground, the climb from the first point to the last and, from three
 points, the area they close. Backspace takes the last point back, Esc or a right click ends.
 **View > Saved views** keeps places of the 3D camera in the project to go back to with a click.
+**View > Go to** (Ctrl+G) flies the camera to a place. Type the name of a key point, a square of the
+game's map grid (`045 123`: the east number first, squares of 100 m from the south west corner) or
+metres east and north with a comma (`4500, 12300`), and press Enter. Right click a key point, modifier,
+generator, road, shape, shape layer or model in the Outliner and choose **Move the camera here** to
+fly to it.
 
 The bar at the top of each view chooses the shading (Lit, Satellite, Mask, Hillshade, Height,
 Slope, Water flow), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
