@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.8
+
+### New
+
+- **Team work is no longer experimental.** The **Team** menu is always there; you no longer need
+  *Show experimental features*. Only the mission editor stays experimental.
+- **Team work warns you about the work of others.** Deleting a modifier, road or generator that
+  someone else made first asks whether to delete it anyway, and names who made it. Changing their
+  things (moving their road, running their generator again, editing objects on a layer of theirs
+  that you unlocked) shows a message once, with a reminder that Ctrl+Z undoes it.
+- **Rows of walls and fences:**
+  - **Row direction** turns the way the row goes, and its arrows, by any angle from the long side
+    of the first object: a slider, a typed value, or 0°, 90°, 180° and -90°. For models whose
+    copies belong another way, such as posts or gates.
+  - **Turn copies by 180° at random** and **Random turn ±°** turn the new copies about their own
+    middle, so a row shows both sides of a wall or looks less straight. The outlines while
+    dragging show these turns.
+- **Wrecks and road decals:**
+  - **Turn of the wrecks** turns every wreck by a chosen angle, for models that face the wrong way.
+    The random turn of cars in a jam and on the verge can be set too.
+  - **Most metres from the middle** limits how far decals lie from the middle of the road, and
+    **Keep decals inside the road** (on by default) keeps wide decals nearer the middle so their
+    edges stay on the road.
+
+### Fixed
+
+- **Camera below the terrain** moved from the Show menu to the Camera menu of the 3D view. It is
+  still in the View menu and on the B key.
+- Messages of the forest generator and the updater, and errors when reading files (Terrain
+  Builder exports, SHP, GeoJSON, models, textures), were partly in Polish in the English
+  interface. They are in English now.
+- The README, the guide and the screenshots show the editor as it is now.
+
+### Good to know
+
+- Projects saved in 0.2.8 still open in 0.2.7.2. The older version leaves out the new settings
+  of the wrecks generator.
+- When you run a wrecks generator again, its decals are laid out differently than before: they
+  now keep inside the road.
+
 ## 0.2.7.2
 
 ### New
