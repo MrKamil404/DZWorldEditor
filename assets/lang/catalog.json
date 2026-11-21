@@ -439,6 +439,10 @@
   "de": "Addons und zusätzliche Zeilen",
   "pl": "Addony i dodatkowe linie"
  },
+ "Adds the generators, presets and prefabs of a library file (.dzwelib) here.": {
+  "de": "Fügt die Generatoren, Presets und Prefabs einer Bibliotheksdatei (.dzwelib) hier hinzu.",
+  "pl": "Dodaje tutaj generatory, presety i prefaby z pliku biblioteki (.dzwelib)."
+ },
  "Adjust": {
   "de": "Anpassen",
   "pl": "Korekcja"
@@ -2643,6 +2647,10 @@
   "de": "Exportieren",
   "pl": "Eksportuj"
  },
+ "Export all of it to a file...": {
+  "de": "Alles in eine Datei exportieren...",
+  "pl": "Eksportuj całość do pliku..."
+ },
  "Export and binarise the PBO": {
   "de": "PBO exportieren und binarisieren",
   "pl": "Eksportuj i zbinaryzuj PBO"
@@ -2659,9 +2667,17 @@
   "de": "Dateien exportieren...",
   "pl": "Eksport plików..."
  },
+ "Export library items": {
+  "de": "Bibliothekselemente exportieren",
+  "pl": "Eksport elementów biblioteki"
+ },
  "Export shapes (SHP)...": {
   "de": "Formen exportieren (SHP)...",
   "pl": "Eksportuj kształty (SHP)..."
+ },
+ "Export to a file...": {
+  "de": "In Datei exportieren...",
+  "pl": "Eksportuj do pliku..."
  },
  "Export with Terrain Builder sources": {
   "de": "Mit Terrain-Builder-Quellen exportieren",
@@ -2682,6 +2698,10 @@
  "Exported {0} files to {1}": {
   "de": "{0} Dateien nach {1} exportiert",
   "pl": "Wyeksportowano {0} plików do {1}"
+ },
+ "Exported {0} generators, {1} presets and {2} prefabs": {
+  "de": "Exportiert: {0} Generatoren, {1} Presets und {2} Prefabs",
+  "pl": "Wyeksportowano generatory: {0}, presety: {1}, prefaby: {2}"
  },
  "Exported {0} shapefiles": {
   "de": "{0} Shapefiles exportiert",
@@ -3511,6 +3531,10 @@
   "de": "Mission importieren...",
   "pl": "Importuj misję..."
  },
+ "Import from a file...": {
+  "de": "Aus Datei importieren...",
+  "pl": "Importuj z pliku..."
+ },
  "Import heightmap": {
   "de": "Höhenkarte importieren",
   "pl": "Import mapy wysokości"
@@ -3518,6 +3542,10 @@
  "Import key points": {
   "de": "Keypoints importieren",
   "pl": "Import keypointów"
+ },
+ "Import library items": {
+  "de": "Bibliothekselemente importieren",
+  "pl": "Import elementów biblioteki"
  },
  "Import map": {
   "de": "Karte importieren",
@@ -3538,6 +3566,10 @@
  "Import...": {
   "de": "Importieren...",
   "pl": "Importuj..."
+ },
+ "Imported {0} generators, {1} presets and {2} prefabs": {
+  "de": "Importiert: {0} Generatoren, {1} Presets und {2} Prefabs",
+  "pl": "Zaimportowano generatory: {0}, presety: {1}, prefaby: {2}"
  },
  "Imported {0} objects": {
   "de": "{0} Objekte importiert",
@@ -6415,9 +6447,17 @@
   "de": "{0} gespeichert",
   "pl": "Zapisano {0}"
  },
+ "Saves everything in here as a library file (.dzwelib) to give to others.": {
+  "de": "Speichert alles hier als Bibliotheksdatei (.dzwelib) zum Weitergeben.",
+  "pl": "Zapisuje wszystko stąd jako plik biblioteki (.dzwelib), który można dać innym."
+ },
  "Saves the ground inside the square round the selected polygon as a stamp of your own.": {
   "de": "Speichert das Gelände im Quadrat um das ausgewählte Polygon als eigenen Stempel.",
   "pl": "Zapisuje teren w kwadracie wokół zaznaczonego wielokąta jako twój własny stempel."
+ },
+ "Saves the selected generators, presets and prefabs as a library file (.dzwelib) to give to others.": {
+  "de": "Speichert die ausgewählten Generatoren, Presets und Prefabs als Bibliotheksdatei (.dzwelib) zum Weitergeben.",
+  "pl": "Zapisuje zaznaczone generatory, presety i prefaby jako plik biblioteki (.dzwelib), który można dać innym."
  },
  "Saves the selected objects as a prefab of the library, to be placed again anywhere as one.": {
   "de": "Speichert die ausgewählten Objekte als Prefab der Bibliothek, um sie überall als Ganzes wieder zu platzieren.",
@@ -7622,6 +7662,10 @@
  "The elevation is then measured from sea level": {
   "de": "Die Höhe wird dann ab Meeresspiegel gemessen",
   "pl": "Wysokość jest wtedy liczona od poziomu morza"
+ },
+ "The file holds no generators, presets or prefabs": {
+  "de": "Die Datei enthält keine Generatoren, Presets oder Prefabs",
+  "pl": "W pliku nie ma generatorów, presetów ani prefabów"
  },
  "The file is not there": {
   "de": "Die Datei ist nicht da",

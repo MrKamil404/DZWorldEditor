@@ -217,6 +217,9 @@ The Content Browser at the bottom holds:
 * **Built-in**: generators, object presets and modifiers that come with the editor. They cannot be
   changed, only duplicated.
 * **Library**: your own generators, presets and prefabs, in folders.
+  To share them, right-click an item (or a folder, or the Library) and choose **Export to a file**.
+  This makes a `.dzwelib` file. **Import from a file** adds the contents of such a file as new items,
+  next to what you already have. A generator takes the object presets it uses along with it.
 * **My folders**: models and presets you collect yourself, and Terrain Builder template libraries.
 
 A generator is dropped on a shape, a road or the map (or select the shape first and double-click
