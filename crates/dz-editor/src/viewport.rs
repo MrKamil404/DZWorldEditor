@@ -62,6 +62,11 @@ enum Handle {
     Scale,
     /// Turning with the mouse held on the object itself.
     Spin,
+    /// The arrows of the copy gizmo: a row of copies ahead of the selection or behind it.
+    RowAhead,
+    RowBehind,
+    /// The ring of the copy gizmo: turns the selection about where it joins its neighbour.
+    RowTurn,
 }
 
 pub struct ObjectDrag {
@@ -88,6 +93,8 @@ pub struct ObjectDrag {
     /// The axis a turn goes about, chosen with X, Y and Z while it goes as in Blender:
     /// 0 X, 1 Y (up, the default), 2 Z; and whether it is the object's own axis.
     spin_axis: (u8, bool),
+    /// A row of copies being dragged out: how many and the turn in degrees.
+    row: (usize, f32),
 }
 
 /// Scripted input for automatic checks (`DZWE_AUTO`).
@@ -1546,7 +1553,60 @@ fn gizmo_handle_any(app: &App, v: &View, p: V3, mouse: Pos2) -> Option<(Handle, 
             best.map(|(_, h, a)| (h, vec2(0.0, 0.0), a, 0.0))
         }
         Gizmo::Scale => (mouse - c).length().lt(&60.0).then_some((Handle::Scale, vec2(0.0, 0.0), [0.0; 3], 0.0)),
+        Gizmo::Copy => {
+            if app.whole.is_some() {
+                return None;
+            }
+            if let Some(h) = row_arrows(app, v).into_iter().find(|(_, a, b)| near_segment(mouse, *a, *b) < 8.0) {
+                return Some((h.0, vec2(0.0, 0.0), [0.0; 3], 0.0));
+            }
+            let pts = turn_ring(app, v)?.1;
+            pts.windows(2).any(|s| near_segment(mouse, s[0], s[1]) < 7.0).then_some((Handle::RowTurn, vec2(0.0, 0.0), [0.0; 3], 0.0))
+        }
     }
+}
+
+/// The arrows of the copy gizmo on screen: from where the selection ends along its long side,
+/// out ahead and behind.
+fn row_arrows(app: &App, v: &View) -> Vec<(Handle, Pos2, Pos2)> {
+    let Some(doc) = &app.doc else { return Vec::new() };
+    let items = app.selection_items();
+    let mut out = Vec::new();
+    for (h, ahead) in [(Handle::RowAhead, true), (Handle::RowBehind, false)] {
+        let Some(row) = dz_core::objects::row_of(&items, ahead) else { continue };
+        let y = doc.world.height.sample(row.joint[0], row.joint[1]) + 0.3;
+        let a = [row.joint[0], y, row.joint[1]];
+        let len = gizmo_size(v, a) * 0.8;
+        let b = [row.joint[0] + row.dir[0] * len, y, row.joint[1] + row.dir[1] * len];
+        if let (Some(pa), Some(pb)) = (v.project(a), v.project(b)) {
+            out.push((h, pa, pb));
+        }
+    }
+    out
+}
+
+/// The point the copy gizmo turns the selection about, on the ground, and its ring on screen:
+/// where the selection joins its neighbour, or else where it ends behind.
+fn turn_ring(app: &App, v: &View) -> Option<(V3, Vec<Pos2>)> {
+    let doc = app.doc.as_ref()?;
+    let at = match app.selection_link() {
+        Some((_, theirs, _)) => theirs,
+        None => dz_core::objects::row_of(&app.selection_items(), false)?.joint,
+    };
+    let p = [at[0], doc.world.height.sample(at[0], at[1]) + 0.3, at[1]];
+    let r = gizmo_size(v, p) * 0.45;
+    let pts = (0..=48).filter_map(|k| {
+        let a = k as f32 / 48.0 * std::f32::consts::TAU;
+        v.project([p[0] + a.sin() * r, p[1], p[2] + a.cos() * r])
+    }).collect();
+    Some((p, pts))
+}
+
+/// The row a drag of the copy gizmo lays: its copies on the ground, for the preview.
+fn row_preview(app: &App, drag: &ObjectDrag) -> Vec<Obj> {
+    let items: Vec<_> = drag.before.iter().filter_map(|(_, o)| Some((*o, app.db.get(app.doc.as_ref()?.world.objects.model_path(o))))).collect();
+    let Some(row) = app.selection_row(&items, drag.handle == Handle::RowAhead) else { return Vec::new() };
+    dz_core::objects::row_copies(&items, &row, drag.row.0, drag.row.1)
 }
 
 /// A point snapped so the line to it from `from` runs at a whole step of `step` degrees,
@@ -1719,6 +1779,44 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
         Handle::Scale => {
             factor = (1.0 + delta.x * 0.01).max(0.05);
         }
+        Handle::RowTurn => {
+            // Moved back to the joint, then turned about it by the angle the mouse swept.
+            let piv = [drag.pivot[0], drag.pivot[2]];
+            let ground = |s: Pos2| { let (o, d) = v.ray(s); pick_terrain(&world.height, o, d, v.ortho) };
+            if let (Some(p), Some(p0)) = (ground(mouse), ground(drag.start)) {
+                let yaw_of = |q: V3| (q[0] - piv[0]).atan2(q[2] - piv[1]).to_degrees();
+                let mut turn = (yaw_of(p) - yaw_of(p0) + 180.0).rem_euclid(360.0) - 180.0;
+                if snap || angle_snap { turn = (turn / step).round() * step; }
+                drag.row.1 = turn;
+                let before: Vec<Obj> = drag.before.iter().map(|(_, o)| *o).collect();
+                let moved = dz_core::objects::shift_and_turn(&before, drag.grab_offset, piv, turn);
+                for ((id, b), mut o) in drag.before.iter().zip(moved) {
+                    if app.settings.align_to_ground && !app.db.get(world.objects.model_path(&o)).placement.skews() {
+                        (o.pitch, o.roll) = gen::slope_angles(&world.height, o.x, o.z, o.yaw);
+                    } else {
+                        (o.pitch, o.roll) = (b.pitch, b.roll);
+                    }
+                    world.objects.update(*id, o);
+                    if let Some(r) = world.sync_attached(*id) { area = Some(area.map_or(r, |a| a.union(r))); }
+                }
+                doc.dirty.objects = true;
+            }
+            app.drag = Some(drag);
+            if let Some(r) = area { app.height_changed(r); }
+            return;
+        }
+        Handle::RowAhead | Handle::RowBehind => {
+            // Nothing moves: the row is shown and laid when the button comes up.
+            let (o, d) = v.ray(mouse);
+            if let Some(p) = pick_terrain(&world.height, o, d, v.ortho) {
+                let items: Vec<_> = drag.before.iter().map(|(_, o)| (*o, app.db.get(world.objects.model_path(o)))).collect();
+                if let Some(row) = app.selection_row(&items, drag.handle == Handle::RowAhead) {
+                    drag.row = dz_core::objects::row_to(&row, [p[0], p[2]], (snap || angle_snap).then_some(step), 4.0);
+                }
+            }
+            app.drag = Some(drag);
+            return;
+        }
     }
     let (sin, cos) = dyaw.to_radians().sin_cos();
     let mut updates = Vec::new();
@@ -1763,6 +1861,10 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
 /// Ends a drag; a release before the mouse moved gives back the click it was.
 fn end_object_drag(app: &mut App) -> Option<(Pos2, bool)> {
     let Some(drag) = app.drag.take() else { return None };
+    if matches!(drag.handle, Handle::RowAhead | Handle::RowBehind) {
+        app.copy_selection_row(drag.handle == Handle::RowAhead, drag.row.0, drag.row.1);
+        return None;
+    }
     if !drag.started {
         if let Some(c) = drag.click {
             return Some(c);
@@ -1924,6 +2026,24 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
             crate::library_ui::take_sample(app, h[0], h[2]);
         }
         return;
+    }
+    // An object whose direction the selection takes.
+    if app.pick_direction {
+        if ctx.input(|i| i.key_pressed(Key::Escape)) || app.selection.is_empty() {
+            app.pick_direction = false;
+            app.status.clear();
+            return;
+        }
+        if pressed {
+            match pick_object(app, v, mouse) {
+                Some(id) => {
+                    app.pick_direction = false;
+                    app.copy_direction_from(id);
+                }
+                None => app.status = t("Click an object to take its direction, Esc cancels"),
+            }
+            return;
+        }
     }
     // A wicket or gate waiting to be placed on its fence.
     if app.pick_opening.is_some() {
@@ -2176,7 +2296,14 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let grab = hit.map(|h| [p[0] - h[0], p[2] - h[2]]).unwrap_or([0.0, 0.0]);
-                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot: p, start: mouse, axis: (dir, axis, scale), grab_offset: grab , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false) });
+                        // The ring of the copy gizmo turns about the joint with the neighbour, after
+                        // moving the selection back to meet it.
+                        let (pivot, grab) = match (handle, app.join_shift(), turn_ring(app, v)) {
+                            (Handle::RowTurn, Some((shift, theirs)), _) => ([theirs[0], 0.0, theirs[1]], shift),
+                            (Handle::RowTurn, None, Some((q, _))) => (q, [0.0, 0.0]),
+                            _ => (p, grab),
+                        };
+                        app.drag = Some(ObjectDrag { toggle: None, started: true, handle, before, pivot, start: mouse, axis: (dir, axis, scale), grab_offset: grab , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false), row: (0, 0.0) });
                         return;
                     }
                 }
@@ -2194,7 +2321,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     let doc = app.doc.as_ref().unwrap();
                     let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                     let handle = if scale { Handle::Scale } else { Handle::Spin };
-                    app.drag = Some(ObjectDrag { toggle: None, started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0], virt: None, click: Some((mouse, modifiers.shift || modifiers.ctrl)), stepped, mods: modifiers, spin_axis: (1, false) });
+                    app.drag = Some(ObjectDrag { toggle: None, started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0], virt: None, click: Some((mouse, modifiers.shift || modifiers.ctrl)), stepped, mods: modifiers, spin_axis: (1, false), row: (0, 0.0) });
                     return;
                 }
                 // Held by its shape, an object slides over the ground; one not yet selected is
@@ -2209,7 +2336,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         if let (true, Some(p)) = (app.selection.contains(&id), selection_pivot(app)) {
                             let doc = app.doc.as_ref().unwrap();
                             let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
-                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] , virt: None, click: again, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false) });
+                            app.drag = Some(ObjectDrag { toggle: None, started: false, handle: Handle::Plane, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [p[0] - h[0], p[2] - h[2]] , virt: None, click: again, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false), row: (0, 0.0) });
                             return;
                         }
                     }
@@ -2220,7 +2347,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         let doc = app.doc.as_ref().unwrap();
                         let before: Vec<_> = app.selection.iter().filter_map(|id| doc.world.objects.get(*id).map(|o| (*id, *o))).collect();
                         let handle = if modifiers.shift { Handle::Spin } else { Handle::Scale };
-                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false) });
+                        app.drag = Some(ObjectDrag { toggle: Some(id), started: false, handle, before, pivot: p, start: mouse, axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false), row: (0, 0.0) });
                         return;
                     }
                 }
@@ -2236,7 +2363,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     }
                 }
             }
-            if app.drag.as_ref().is_some_and(|d| d.stepped) {
+            if app.drag.as_ref().is_some_and(|d| d.stepped || (matches!(d.handle, Handle::RowAhead | Handle::RowBehind) && app.settings.keys.held(Hold::AngleSnap, modifiers))) {
                 let wheel = ctx.input(|i| i.raw_scroll_delta.y + i.raw_scroll_delta.x);
                 if wheel != 0.0 {
                     app.settings.angle_step = step_angle(app.settings.angle_step, wheel > 0.0);
@@ -2442,6 +2569,44 @@ fn draw_gizmo(app: &App, painter: &egui::Painter, v: &View, p: V3, hover: Option
                 if let (Some(b), Some(o)) = (d.before.first(), app.selection.iter().next().and_then(|id| app.doc.as_ref()?.world.objects.get(*id))) {
                     let text = format!("Y {:.1}°  P {:.1}°  R {:.1}°", o.yaw - b.1.yaw, o.pitch - b.1.pitch, o.roll - b.1.roll);
                     painter.text(c + vec2(0.0, -size.min(400.0) * 0.0 - 24.0), egui::Align2::CENTER_BOTTOM, text, egui::FontId::proportional(12.0), Color32::WHITE);
+                }
+            }
+        }
+        Gizmo::Copy => {
+            // The ring turning about the joint with the neighbour, and the joint itself.
+            if let Some((q, pts)) = turn_ring(app, v) {
+                painter.add(egui::Shape::line(pts, Stroke::new(if hover == Some(Handle::RowTurn) { 3.5_f32 } else { 2.5 }, color(Handle::RowTurn, Color32::from_rgb(70, 200, 70)))));
+                if let Some(s) = v.project(q) {
+                    painter.circle_filled(s, 4.0, Color32::from_rgb(70, 200, 70));
+                    if let Some(d) = app.drag.as_ref().filter(|d| d.handle == Handle::RowTurn) {
+                        painter.text(s + vec2(0.0, -14.0), egui::Align2::CENTER_BOTTOM, format!("{:.1}°", d.row.1), egui::FontId::proportional(13.0), Color32::WHITE);
+                    }
+                }
+            }
+            for (h, a, b) in row_arrows(app, v) {
+                let col = color(h, if h == Handle::RowAhead { Color32::from_rgb(230, 60, 60) } else { Color32::from_rgb(200, 120, 120) });
+                painter.line_segment([a, b], Stroke::new(3.0_f32, col));
+                let dir = (b - a).normalized();
+                let side = vec2(-dir.y, dir.x) * 6.0;
+                painter.add(egui::Shape::convex_polygon(vec![b + dir * 10.0, b + side, b - side], col, Stroke::NONE));
+                painter.circle_filled(a, 4.0, col);
+            }
+            // The copies the drag will lay, as outlines on the ground.
+            if let (Some(d), Some(doc)) = (app.drag.as_ref().filter(|d| matches!(d.handle, Handle::RowAhead | Handle::RowBehind)), app.doc.as_ref()) {
+                let w = &doc.world;
+                for o in row_preview(app, d) {
+                    let info = app.db.get(w.objects.model_path(&o));
+                    let m = rotation(o.yaw, 0.0, 0.0, o.scale);
+                    let y = ObjectStore::origin_y(&o, &w.height) + info.min[1] * o.scale;
+                    let corner = |x: f32, z: f32| v.project([o.x + x * m[0][0] + z * m[2][0], y, o.z + x * m[0][2] + z * m[2][2]]);
+                    let pts: Vec<Pos2> = [(info.min[0], info.min[2]), (info.max[0], info.min[2]), (info.max[0], info.max[2]), (info.min[0], info.max[2]), (info.min[0], info.min[2])].iter().filter_map(|(x, z)| corner(*x, *z)).collect();
+                    if pts.len() == 5 {
+                        painter.add(egui::Shape::line(pts, Stroke::new(2.0_f32, Color32::from_rgb(255, 120, 90))));
+                    }
+                }
+                if let Some(m) = app.drag.as_ref().and_then(|d| d.virt.map(|v| v.0)) {
+                    let text = format!("× {}   {:.1}°", d.row.0, d.row.1);
+                    painter.text(m + vec2(14.0, -14.0), egui::Align2::LEFT_BOTTOM, text, egui::FontId::proportional(13.0), Color32::WHITE);
                 }
             }
         }
@@ -3921,6 +4086,11 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         return;
     }
     if k(Action::Duplicate) { app.duplicate_selection(); }
+    if matches!(app.mode, Mode::Select | Mode::Place) {
+        if k(Action::JoinNeighbour) { app.join_selection_to_neighbour(); }
+        if k(Action::CopyAhead) { app.copy_selection_along(true); }
+        if k(Action::CopyBehind) { app.copy_selection_along(false); }
+    }
     app.remember_selection();
     if matches!(app.mode, Mode::Select | Mode::Place) && app.view_hovered_last {
         if k(Action::PasteHere) { app.paste_at_cursor(false); }
@@ -3971,7 +4141,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
     for (a, m) in [(Action::ModeSelect, Mode::Select), (Action::ModeSculpt, Mode::Landscape), (Action::ModePaint, Mode::Paint), (Action::ModePlace, Mode::Place), (Action::ModeRoads, Mode::Lines), (Action::ModeShapes, Mode::Shapes), (Action::ModeKeyPoints, Mode::KeyPoints), (Action::ModeSatellite, Mode::Satellite), (Action::ModeMission, Mode::Mission)] {
         if k(a) && app.mode_enabled(m) { app.mode = m; }
     }
-    for (a, g) in [(Action::GizmoMove, Gizmo::Move), (Action::GizmoRotate, Gizmo::Rotate), (Action::GizmoScale, Gizmo::Scale)] {
+    for (a, g) in [(Action::GizmoMove, Gizmo::Move), (Action::GizmoRotate, Gizmo::Rotate), (Action::GizmoScale, Gizmo::Scale), (Action::GizmoCopy, Gizmo::Copy)] {
         if k(a) { app.gizmo = g; }
     }
     if k(Action::GizmoSpace) { app.gizmo_local = !app.gizmo_local; }
@@ -4915,6 +5085,31 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "dup" => app.duplicate_selection(),
+        // The first object whose model holds the text.
+        "selmodel" => {
+            let part = arg.trim().to_ascii_lowercase();
+            if let Some(id) = app.doc.as_ref().and_then(|d| d.world.objects.iter().find(|(_, o)| d.world.objects.model_path(o).to_ascii_lowercase().contains(&part)).map(|(id, _)| id)) {
+                app.selection = [id].into_iter().collect();
+                app.selection_rev += 1;
+            }
+        }
+        "copyalong" => app.copy_selection_along(arg.trim() != "0"),
+        // A row: ahead (1) or behind (0), how many, turned by degrees.
+        "copyrow" if nums.len() >= 3 => app.copy_selection_row(nums[0] != 0.0, nums[1] as usize, nums[2]),
+        "gizmocopy" => app.gizmo = crate::app::Gizmo::Copy,
+        "resetscale" => app.reset_selection_scale(),
+        "joinnext" => app.join_selection_to_neighbour(),
+        "rowgap" if !nums.is_empty() => app.settings.row_gap = nums[0],
+        "linkinfo" => match app.selection_link() {
+            Some((m, t, _)) => eprintln!("LINK mine={m:?} theirs={t:?} gap={:.3}", (m[0] - t[0]).hypot(m[1] - t[1])),
+            None => eprintln!("LINK none"),
+        },
+        // Takes the direction of the first other object whose model holds the text.
+        "copydir" => {
+            let part = arg.trim().to_ascii_lowercase();
+            let source = app.doc.as_ref().and_then(|d| d.world.objects.iter().find(|(id, o)| !app.selection.contains(id) && d.world.objects.model_path(o).to_ascii_lowercase().contains(&part)).map(|(id, _)| id));
+            if let Some(id) = source { app.copy_direction_from(id); }
+        }
         // Moves the selection by (dx, dz) as a drag of the gizmo does.
         "dragsel" if nums.len() >= 2 => {
             if let Some(d) = app.doc.as_mut() {
@@ -4927,7 +5122,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     d.world.sync_attached(*id);
                 }
                 let pivot = before.first().map(|(_, o)| [o.x, 0.0, o.z]).unwrap_or([0.0; 3]);
-                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false) });
+                app.drag = Some(ObjectDrag { toggle: None, started: true, handle: Handle::Plane, before, pivot, start: pos2(0.0, 0.0), axis: (vec2(0.0, 0.0), [0.0; 3], 0.0), grab_offset: [0.0, 0.0] , virt: None, click: None, stepped: false, mods: egui::Modifiers::NONE, spin_axis: (1, false), row: (0, 0.0) });
                 let _ = end_object_drag(app);
             }
         }

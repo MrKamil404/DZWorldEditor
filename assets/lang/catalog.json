@@ -123,6 +123,14 @@
   "de": "Ein verseuchtes Gebiet um jede in Formen ausgewählte Form.",
   "pl": "Strefa skażenia wokół każdego kształtu zaznaczonego w trybie Kształty."
  },
+ "A copy of the selection goes right ahead of it, along its long side, and is selected, so pressing again lays a row.": {
+  "de": "Eine Kopie der Auswahl kommt direkt davor, entlang ihrer langen Seite, und wird ausgewählt; erneutes Drücken legt so eine Reihe.",
+  "pl": "Kopia zaznaczenia staje tuż przed nim, wzdłuż jego dłuższego boku, i zostaje zaznaczona, więc kolejne naciśnięcia układają rząd."
+ },
+ "A copy of the selection goes right behind it, along its long side, and is selected, so pressing again lays a row.": {
+  "de": "Eine Kopie der Auswahl kommt direkt dahinter, entlang ihrer langen Seite, und wird ausgewählt; erneutes Drücken legt so eine Reihe.",
+  "pl": "Kopia zaznaczenia staje tuż za nim, wzdłuż jego dłuższego boku, i zostaje zaznaczona, więc kolejne naciśnięcia układają rząd."
+ },
  "A file of that name is already there; choose another name or load it.": {
   "de": "Eine Datei mit diesem Namen existiert bereits; wähle einen anderen Namen oder lade sie.",
   "pl": "Plik o tej nazwie już istnieje; wybierz inną nazwę albo go wczytaj."
@@ -1427,9 +1435,17 @@
   "de": "Klicke einen Typ in der Tabelle.",
   "pl": "Kliknij typ w tabeli."
  },
+ "Click an object to take its direction, Esc cancels": {
+  "de": "Ein Objekt anklicken, um seine Richtung zu übernehmen, Esc bricht ab",
+  "pl": "Kliknij obiekt, aby przejąć jego kierunek, Esc anuluje"
+ },
  "Click an object, a route, a generator or a modifier to see and change it here.": {
   "de": "Klicke ein Objekt, eine Route, einen Generator oder einen Modifikator an, um ihn hier zu sehen und zu ändern.",
   "pl": "Kliknij obiekt, trasę, generator lub modyfikator, aby zobaczyć i zmienić go tutaj."
+ },
+ "Click another object afterwards: the selection turns the way it faces.": {
+  "de": "Danach ein anderes Objekt anklicken: Die Auswahl dreht sich in seine Richtung.",
+  "pl": "Potem kliknij inny obiekt: zaznaczenie obróci się tak jak on."
  },
  "Click in the preview to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it.": {
   "de": "In die Vorschau klicken, um die Quelle zu wählen, dann auf der Karte malen. Das Mausrad zoomt die Vorschau, Ziehen verschiebt sie.",
@@ -1723,6 +1739,10 @@
   "de": "Kopiert einen anderen Teil des Bildes oder eines Fotos auf die Karte.",
   "pl": "Kopiuje inną część obrazu albo wczytanego zdjęcia na mapę."
  },
+ "Copies of the selection laid end to end along its long side, as walls and fences are.": {
+  "de": "Kopien der Auswahl, Ende an Ende entlang ihrer langen Seite gelegt, wie Mauern und Zäune.",
+  "pl": "Kopie zaznaczenia układane jedna za drugą wzdłuż jego dłuższego boku, tak jak mury i płoty."
+ },
  "Copies the texture into the map's folder, adds it as a layer and names the surface after it": {
   "de": "Kopiert die Textur in den Ordner der Karte, fügt sie als Ebene hinzu und benennt die Oberfläche danach",
   "pl": "Kopiuje teksturę do folderu mapy, dodaje ją jako warstwę i nazywa po niej powierzchnię"
@@ -1743,6 +1763,10 @@
   "de": "Zuerst eine Höhe kopieren: Rechtsklick oder Alt+Klick auf das Gelände.",
   "pl": "Najpierw skopiuj wysokość: prawy przycisk albo Alt+klik na terenie."
  },
+ "Copy direction": {
+  "de": "Richtung übernehmen",
+  "pl": "Kopiuj kierunek"
+ },
  "Copy from": {
   "de": "Kopieren aus",
   "pl": "Kopiuj z"
@@ -1751,9 +1775,29 @@
   "de": "Vom angeklickten Punkt kopieren",
   "pl": "Kopiuj z klikniętego punktu"
  },
+ "Copy in a row": {
+  "de": "In einer Reihe kopieren",
+  "pl": "Kopiuj w rzędzie"
+ },
+ "Copy in a row: drag an arrow, aside to turn, Ctrl by steps; the ring turns about the joint": {
+  "de": "In einer Reihe kopieren: Pfeil ziehen, zur Seite zum Drehen, mit Strg in Schritten; der Ring dreht um die Verbindung",
+  "pl": "Kopiuj w rzędzie: przeciągnij strzałkę, w bok aby skręcić, z Ctrl o kroki; pierścień obraca wokół łączenia"
+ },
  "Copy objects": {
   "de": "Objekte kopieren",
   "pl": "Kopiuj obiekty"
+ },
+ "Copy on ahead": {
+  "de": "Nach vorn weiterkopieren",
+  "pl": "Kopiuj dalej do przodu"
+ },
+ "Copy on along the selection": {
+  "de": "Kopie weiter entlang der Auswahl",
+  "pl": "Kopia dalej wzdłuż zaznaczenia"
+ },
+ "Copy on behind": {
+  "de": "Nach hinten weiterkopieren",
+  "pl": "Kopiuj dalej do tyłu"
  },
  "Copy prototypes": {
   "de": "Prototypen kopieren",
@@ -3131,6 +3175,10 @@
   "de": "Gameplay-Einstellungen: Ausdauer, Basenbau, Karte, Oberfläche und mehr (benötigt enableCfgGameplayFile).",
   "pl": "Ustawienia rozgrywki: stamina, budowanie baz, mapa, interfejs i więcej (wymaga enableCfgGameplayFile)."
  },
+ "Gap": {
+  "de": "Abstand",
+  "pl": "Odstęp"
+ },
  "Gap between the pieces. 0 makes them touch, negative values overlap them.": {
   "de": "Abstand zwischen den Teilen. 0 lässt sie aneinanderstoßen, negative Werte überlappen sie.",
   "pl": "Odstęp między elementami. 0 oznacza styk, wartości ujemne nakładają je na siebie."
@@ -3718,6 +3766,10 @@
  "Join the pieces at corners": {
   "de": "Teile an Ecken verbinden",
   "pl": "Łącz elementy na załamaniach"
+ },
+ "Join to the neighbour": {
+  "de": "An den Nachbarn anschließen",
+  "pl": "Dosuń do sąsiada"
  },
  "Keep free of trees": {
   "de": "Baumfrei halten",
@@ -4419,6 +4471,10 @@
   "de": "Meter pro Pixel",
   "pl": "Metry na piksel"
  },
+ "Metres between copies and between joined neighbours. Negative values overlap them.": {
+  "de": "Meter zwischen den Kopien und zwischen angeschlossenen Nachbarn. Negative Werte lassen sie überlappen.",
+  "pl": "Metry między kopiami i między dosuniętymi sąsiadami. Wartości ujemne nakładają je na siebie."
+ },
  "Metres each piece reaches past the corner. Negative values stop it short of the corner.": {
   "de": "Meter, die jedes Teil über die Ecke hinausreicht. Negative Werte lassen es vor der Ecke enden.",
   "pl": "Ile metrów każdy odcinek sięga za róg. Wartości ujemne kończą go przed rogiem."
@@ -4647,6 +4703,10 @@
   "de": "Bewegungstempo",
   "pl": "Prędkość ruchu"
  },
+ "Moves the selection so its end meets the end of the wall or fence next to it, as after turning it.": {
+  "de": "Verschiebt die Auswahl so, dass ihr Ende an das Ende der Mauer oder des Zauns daneben stößt, etwa nach dem Drehen.",
+  "pl": "Przesuwa zaznaczenie tak, aby jego koniec stykał się z końcem sąsiedniego muru lub płotu, np. po obróceniu."
+ },
  "Moves them to a layer of the one you choose, made when they have none. Select an area of the map to give it.": {
   "de": "Verschiebt sie auf eine Ebene der gewählten Person, die angelegt wird, wenn sie keine hat. Wähle einen Bereich der Karte aus, um ihn zu übergeben.",
   "pl": "Przenosi je na warstwę wybranej osoby, tworząc ją, jeśli osoba żadnej nie ma. Zaznacz obszar mapy, aby go oddać."
@@ -4850,6 +4910,10 @@
  "No navmesh yet: AI does not walk until it is generated (Build > Generate navmesh)": {
   "de": "Noch kein Navmesh: Die KI läuft nicht, bis es erzeugt ist (Bauen > Navmesh erzeugen)",
   "pl": "Brak jeszcze navmesha: AI nie chodzi, dopóki go nie wygenerujesz (Buduj > Generuj navmesh)"
+ },
+ "No object ends near the ends of the selection": {
+  "de": "An den Enden der Auswahl endet kein Objekt",
+  "pl": "Przy końcach zaznaczenia nie kończy się żaden obiekt"
  },
  "No objects to bake": {
   "de": "Keine Objekte zum Einbrennen",
@@ -6151,6 +6215,10 @@
   "de": "Alles zurücksetzen",
   "pl": "Przywróć wszystkie domyślne"
  },
+ "Reset scale": {
+  "de": "Skalierung zurücksetzen",
+  "pl": "Resetuj skalę"
+ },
  "Rest on the ground as the old model did": {
   "de": "Wie das alte Modell auf dem Boden stehen",
   "pl": "Stawiaj na ziemi tak jak stary model"
@@ -6378,6 +6446,10 @@
  "Routes ({0})": {
   "de": "Routen ({0})",
   "pl": "Trasy ({0})"
+ },
+ "Rows of walls and fences": {
+  "de": "Reihen von Mauern und Zäunen",
+  "pl": "Rzędy murów i płotów"
  },
  "Runs through the whole tide of the game, up to MaxTide 1.5 m, in two minutes.": {
   "de": "Durchläuft die ganzen Gezeiten des Spiels, bis MaxTide 1,5 m, in zwei Minuten.",
@@ -6770,6 +6842,10 @@
  "Sets the flag in every cell inside the polygons selected in the Shapes mode.": {
   "de": "Setzt das Flag in jeder Zelle innerhalb der im Modus Formen ausgewählten Polygone.",
   "pl": "Ustawia flagę w każdej komórce wewnątrz wielokątów zaznaczonych w trybie Kształty."
+ },
+ "Sets the selected objects back to their own size.": {
+  "de": "Setzt die ausgewählten Objekte auf ihre eigene Größe zurück.",
+  "pl": "Przywraca zaznaczonym obiektom ich własny rozmiar."
  },
  "Setting up team work": {
   "de": "Teamarbeit wird eingerichtet",
@@ -7739,6 +7815,10 @@
   "de": "Die Generatoren entlang der Route und was sie erzeugt haben ({0})",
   "pl": "Generatory wzdłuż niej i to, co utworzyły ({0})"
  },
+ "The gizmo shows arrows at the ends of the selection: drag one out to lay copies, aside to turn the row. The green ring turns the selection about where it joins its neighbour.": {
+  "de": "Das Gizmo zeigt Pfeile an den Enden der Auswahl: einen herausziehen legt Kopien, zur Seite dreht die Reihe. Der grüne Ring dreht die Auswahl um die Verbindung mit dem Nachbarn.",
+  "pl": "Gizmo pokazuje strzałki na końcach zaznaczenia: przeciągnij jedną, aby ułożyć kopie, w bok, aby skręcić rząd. Zielony pierścień obraca zaznaczenie wokół łączenia z sąsiadem."
+ },
  "The ground follows the height of the object": {
   "de": "Der Boden folgt der Höhe des Objekts",
   "pl": "Teren podąża za wysokością obiektu"
@@ -8014,6 +8094,10 @@
  "The secondary event (infected) of the event may spawn at this object.": {
   "de": "An diesem Objekt darf das Sekundärevent (Infizierte) spawnen.",
   "pl": "Przy tym obiekcie może pojawić się event wtórny (zarażeni)."
+ },
+ "The selection already faces that way": {
+  "de": "Die Auswahl zeigt schon in diese Richtung",
+  "pl": "Zaznaczenie już jest tak obrócone"
  },
  "The selection turns about the spot of the ground where the button went down, not about its own centre.": {
   "de": "Die Auswahl dreht sich um die Stelle des Bodens, an der die Taste gedrückt wurde, nicht um ihre eigene Mitte.",

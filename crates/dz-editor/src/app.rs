@@ -99,6 +99,8 @@ pub enum Gizmo {
     Move,
     Rotate,
     Scale,
+    /// Arrows at the ends of the selection lay copies of it in a row.
+    Copy,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -521,6 +523,8 @@ pub struct App {
     pub focus_search: bool,
     /// A wicket or gate of a fence generator waiting for a click on its fence: (generator, opening).
     pub pick_opening: Option<(u64, usize)>,
+    /// The next click on an object gives the selection its direction.
+    pub pick_direction: bool,
     pub outliner_filter: String,
     /// Opens (true) or closes every outliner section in the next frame.
     pub outliner_fold: Option<bool>,
@@ -628,7 +632,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
-            task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
+            task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
             settings,
         };
@@ -2088,6 +2092,201 @@ impl App {
             doc.history.push(t("Align to the ground"), Change::Objects(change));
             doc.dirty.objects = true;
         }
+    }
+
+    /// Sets the selected objects back to their own size.
+    pub fn reset_selection_scale(&mut self) {
+        let Some(doc) = &mut self.doc else { return };
+        let mut change = Vec::new();
+        for id in self.selection.iter() {
+            let Some(o) = doc.world.objects.get(*id).copied() else { continue };
+            if o.scale != 1.0 {
+                let n = dz_core::objects::Obj { scale: 1.0, ..o };
+                doc.world.objects.update(*id, n);
+                change.push((*id, Some(o), Some(n)));
+            }
+        }
+        if !change.is_empty() {
+            doc.history.push(t("Reset scale"), Change::Objects(change));
+            doc.dirty.objects = true;
+            self.selection_rev += 1;
+        }
+    }
+
+    /// Turns the selected objects the way `source` faces. With "Stick to the ground" they take
+    /// its heading only and tilt with the ground under them.
+    pub fn copy_direction_from(&mut self, source: u32) {
+        let Some(doc) = &mut self.doc else { return };
+        let Some(s) = doc.world.objects.get(source).copied() else { return };
+        let w = &mut doc.world;
+        let mut change = Vec::new();
+        for id in self.selection.iter().filter(|id| **id != source) {
+            let Some(o) = w.objects.get(*id).copied() else { continue };
+            let mut n = dz_core::objects::Obj { yaw: s.yaw, pitch: s.pitch, roll: s.roll, ..o };
+            if self.settings.align_to_ground && !self.db.get(w.objects.model_path(&o)).placement.skews() {
+                (n.pitch, n.roll) = dz_core::gen::slope_angles(&w.height, n.x, n.z, n.yaw);
+            }
+            if n != o {
+                w.objects.update(*id, n);
+                change.push((*id, Some(o), Some(n)));
+            }
+        }
+        let mut area: Option<Rect> = None;
+        for (id, _, _) in &change {
+            if let Some(r) = w.sync_attached(*id) { area = Some(area.map_or(r, |a| a.union(r))); }
+        }
+        if change.is_empty() {
+            self.status = t("The selection already faces that way");
+        } else {
+            doc.history.push(t("Copy direction"), Change::Objects(change));
+            doc.dirty.objects = true;
+            self.selection_rev += 1;
+            self.status.clear();
+        }
+        if let Some(r) = area { self.height_changed(r); }
+    }
+
+    /// The selected objects with their models' boxes, in the order of the selection.
+    pub fn selection_items(&self) -> Vec<(dz_core::objects::Obj, dz_core::model_info::ModelInfo)> {
+        let Some(doc) = &self.doc else { return Vec::new() };
+        let w = &doc.world;
+        self.selection.iter().filter_map(|id| {
+            let o = w.objects.get(*id).copied()?;
+            Some((o, self.db.get(w.objects.model_path(&o))))
+        }).collect()
+    }
+
+    /// The row copies of the selection are laid in, ahead or behind, with the gap of the
+    /// settings between them.
+    pub fn selection_row(&self, items: &[(dz_core::objects::Obj, dz_core::model_info::ModelInfo)], ahead: bool) -> Option<dz_core::objects::Row> {
+        let mut row = dz_core::objects::row_of(items, ahead)?;
+        row.step = (row.step + self.settings.row_gap).max(0.1);
+        Some(row)
+    }
+
+    /// How the selection moves to join its neighbour, with the gap of the settings between
+    /// them, and the neighbour's end it then turns about.
+    pub fn join_shift(&self) -> Option<([f32; 2], [f32; 2])> {
+        let (mine, theirs, other) = self.selection_link()?;
+        // The gap opens along the selection, away from the neighbour.
+        let (dx, dz) = (other[0] - mine[0], other[1] - mine[1]);
+        let l = dx.hypot(dz).max(1e-4);
+        let g = self.settings.row_gap;
+        Some(([theirs[0] - mine[0] + dx / l * g, theirs[1] - mine[1] + dz / l * g], theirs))
+    }
+
+    /// Where the selection joins a neighbour in a row: its end there, the neighbour's end and
+    /// the other end of the selection. Neighbours are objects outside the selection within half
+    /// the selection's length.
+    pub fn selection_link(&self) -> Option<([f32; 2], [f32; 2], [f32; 2])> {
+        let doc = self.doc.as_ref()?;
+        let w = &doc.world;
+        let items = self.selection_items();
+        let row = dz_core::objects::row_of(&items, true)?;
+        let reach = (row.step * 0.5).clamp(0.5, 4.0) + self.settings.row_gap.max(0.0);
+        let back = dz_core::objects::row_of(&items, false)?;
+        let mut others = Vec::new();
+        for end in [row.joint, back.joint] {
+            w.objects.for_each_in(end[0] - 12.0, end[1] - 12.0, end[0] + 12.0, end[1] + 12.0, |id, o| {
+                if !self.selection.contains(&id) && w.object_interactive(o) && !others.iter().any(|(i, _): &(u32, _)| *i == id) {
+                    others.push((id, *o));
+                }
+            });
+        }
+        let others: Vec<_> = others.into_iter().map(|(_, o)| (o, self.db.get(w.objects.model_path(&o)))).filter(|(_, i)| i.known).collect();
+        dz_core::objects::link_to(&items, &others, reach).map(|(k, mine, theirs)| (mine, theirs, if k == 0 { back.joint } else { row.joint }))
+    }
+
+    /// Moves the selection so its end meets the end of the neighbour it joins in a row.
+    pub fn join_selection_to_neighbour(&mut self) {
+        let Some((shift, _)) = self.join_shift() else {
+            self.warn(t("No object ends near the ends of the selection"));
+            return;
+        };
+        let Some(doc) = &mut self.doc else { return };
+        let w = &mut doc.world;
+        let mut change = Vec::new();
+        for id in self.selection.iter() {
+            let Some(o) = w.objects.get(*id).copied() else { continue };
+            let n = dz_core::objects::Obj { x: o.x + shift[0], z: o.z + shift[1], ..o };
+            if n != o {
+                w.objects.update(*id, n);
+                change.push((*id, Some(o), Some(n)));
+            }
+        }
+        let mut area: Option<Rect> = None;
+        for (id, _, _) in &change {
+            if let Some(r) = w.sync_attached(*id) { area = Some(area.map_or(r, |a| a.union(r))); }
+        }
+        if !change.is_empty() {
+            doc.history.push(t("Join to the neighbour"), Change::Objects(change));
+            doc.dirty.objects = true;
+            self.selection_rev += 1;
+        }
+        if let Some(r) = area { self.height_changed(r); }
+    }
+
+    /// Lays a copy of the selection one length further on along it, `ahead` or back, and
+    /// selects the copy, so pressing again goes on laying a row.
+    pub fn copy_selection_along(&mut self, ahead: bool) {
+        self.copy_selection_row(ahead, 1, 0.0);
+    }
+
+    /// Lays `count` copies of the selection in a row ahead of it or behind, the row turned by
+    /// `turn` degrees about where the selection ends, and selects the last copy, so the row
+    /// can go on from there.
+    pub fn copy_selection_row(&mut self, ahead: bool, count: usize, turn: f32) {
+        if self.whole.is_some() || self.selection.is_empty() || count == 0 {
+            return;
+        }
+        let ids: Vec<u32> = self.selection.iter().copied().collect();
+        let Some(doc) = &mut self.doc else { return };
+        let w = &mut doc.world;
+        let items: Vec<(dz_core::objects::Obj, dz_core::model_info::ModelInfo)> = ids.iter().filter_map(|id| {
+            let o = w.objects.get(*id).copied()?;
+            Some((o, self.db.get(w.objects.model_path(&o))))
+        }).collect();
+        if items.len() != ids.len() {
+            return;
+        }
+        let Some(row) = self.selection_row(&items, ahead) else { return };
+        let moved = dz_core::objects::row_copies(&items, &row, count, turn);
+        let Some(doc) = &mut self.doc else { return };
+        let w = &mut doc.world;
+        let before_mods = w.modifiers.clone();
+        let mut change = Vec::new();
+        let mut last = Vec::new();
+        let mut area: Option<Rect> = None;
+        for (k, to) in moved.iter().enumerate() {
+            let (old, id) = (&items[k % ids.len()].0, ids[k % ids.len()]);
+            let (c, map) = copy_objects(w, &[id]);
+            change.extend(c);
+            let Some(&n) = map.get(&id) else { continue };
+            if k / ids.len() + 1 == count { last.push(n); }
+            let mut o = *to;
+            // An object at a height of its own keeps it above the ground where it goes.
+            if o.flags & dz_core::objects::FLAG_ABSOLUTE != 0 {
+                o.elevation += w.height.sample(o.x, o.z) - w.height.sample(old.x, old.z);
+            }
+            if self.settings.align_to_ground && !self.db.get(w.objects.model_path(&o)).placement.skews() {
+                (o.pitch, o.roll) = dz_core::gen::slope_angles(&w.height, o.x, o.z, o.yaw);
+            }
+            w.objects.update(n, o);
+            if let Some(c) = change.iter_mut().find(|c| c.0 == n) { c.2 = Some(o); }
+            if let Some(r) = w.sync_attached(n) { area = Some(area.map_or(r, |a| a.union(r))); }
+        }
+        if change.is_empty() {
+            return;
+        }
+        let mut steps = vec![Change::Objects(change)];
+        if w.modifiers.len() != before_mods.len() {
+            steps.push(Change::Modifiers(before_mods));
+        }
+        doc.history.push(t("Copy on along the selection"), Change::Group(steps));
+        doc.dirty.objects = true;
+        self.selection = last.into_iter().collect();
+        self.selection_rev += 1;
+        if let Some(r) = area { self.height_changed(r); }
     }
 
     /// Copies the selection in place. A whole road or generator is copied as one, with what

@@ -338,7 +338,7 @@ pub(crate) fn toolbar_contents(app: &mut App, ui: &mut egui::Ui) {
             }
             ui.separator();
             ui.add_enabled_ui(app.mode == Mode::Select, |ui| {
-                for (g, icon, action) in [(Gizmo::Move, icons::ARROWS_OUT_CARDINAL, Action::GizmoMove), (Gizmo::Rotate, icons::ARROWS_CLOCKWISE, Action::GizmoRotate), (Gizmo::Scale, icons::ARROWS_OUT, Action::GizmoScale)] {
+                for (g, icon, action) in [(Gizmo::Move, icons::ARROWS_OUT_CARDINAL, Action::GizmoMove), (Gizmo::Rotate, icons::ARROWS_CLOCKWISE, Action::GizmoRotate), (Gizmo::Scale, icons::ARROWS_OUT, Action::GizmoScale), (Gizmo::Copy, icons::ARROW_FAT_LINES_RIGHT, Action::GizmoCopy)] {
                     if icon_tool(ui, app.gizmo == g, icon, None, keys.tip(action)).clicked() { app.gizmo = g; }
                 }
                 // World or local axes for moving and turning.
@@ -496,6 +496,15 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
             if ui.add_enabled(n > 0, egui::Button::new(icons::with(icons::TRASH, &t("Delete")))).clicked() { app.delete_selection(); }
             if ui.add_enabled(n > 0, egui::Button::new(icons::with(icons::PACKAGE, &t("Create prefab")))).on_hover_text(t("Saves the selected objects as a prefab of the library, to be placed again anywhere as one.")).clicked() { app.create_prefab(); }
         });
+        let objects = n > 0 && app.whole.is_none();
+        ui.horizontal_wrapped(|ui| {
+            let picking = app.pick_direction;
+            if ui.add_enabled(objects, egui::Button::new(icons::with(icons::EYEDROPPER, &t("Copy direction"))).selected(picking)).on_hover_text(t("Click another object afterwards: the selection turns the way it faces.")).clicked() {
+                app.pick_direction = !picking;
+                app.status = if app.pick_direction { t("Click an object to take its direction, Esc cancels") } else { String::new() };
+            }
+            if ui.add_enabled(objects, egui::Button::new(icons::with(icons::ARROWS_IN, &t("Reset scale")))).on_hover_text(t("Sets the selected objects back to their own size.")).clicked() { app.reset_selection_scale(); }
+        });
         row(ui, &t("Drag selects"), |ui| {
             let mut changed = false;
             if icon_tool(ui, !app.settings.lasso, icons::SELECTION, None, t("Box")).clicked() { app.settings.lasso = false; changed = true; }
@@ -504,6 +513,7 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
             if changed { app.settings.save(); }
         });
     });
+    rows_section(app, ui);
     section(ui, &icons::with(icons::SLIDERS_HORIZONTAL, &t("Options")), true, |ui| {
         ui.checkbox(&mut app.select_whole, t("Select whole roads and generators"));
         if ui.checkbox(&mut app.settings.drag_by_body, t("Move objects by dragging them")).on_hover_text(t("An object held by its shape slides over the ground, as with the dot of the gizmo.")).changed() { app.settings.save(); }
@@ -551,9 +561,13 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
         let k = &app.settings.keys;
         key_hints(ui, &[
             (format!("{} / {} / {}", k.text(Action::GizmoMove), k.text(Action::GizmoRotate), k.text(Action::GizmoScale)), t("Move, rotate, scale")),
+            (k.text(Action::GizmoCopy), t("Copy in a row: drag an arrow, aside to turn, Ctrl by steps; the ring turns about the joint")),
             (format!("{} ({})", k.hold(Hold::Precise).name(), t("during a drag")), t("Move and turn slowly")),
             (k.text(Action::Focus), t(Action::Focus.name())),
             (k.text(Action::Duplicate), t(Action::Duplicate.name())),
+            (k.text(Action::CopyAhead), t(Action::CopyAhead.name())),
+            (k.text(Action::CopyBehind), t(Action::CopyBehind.name())),
+            (k.text(Action::JoinNeighbour), t(Action::JoinNeighbour.name())),
             (k.text(Action::PasteHere), t(Action::PasteHere.name())),
             (k.text(Action::PasteLast), t(Action::PasteLast.name())),
             ("Shift".to_string(), t("Drag: turn")),
@@ -562,6 +576,29 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
             (k.text(Action::Underground), t(Action::Underground.name())),
             (k.text(Action::CameraBelow), t(Action::CameraBelow.name())),
         ]);
+    });
+}
+
+/// Walls and fences laid end to end: copies of the selection in a row, joining it to the
+/// object next to it, taking a direction, and the gap between them.
+fn rows_section(app: &mut App, ui: &mut egui::Ui) {
+    section(ui, &icons::with(icons::ARROW_FAT_LINES_RIGHT, &t("Rows of walls and fences")), true, |ui| {
+        about(ui, &t("Copies of the selection laid end to end along its long side, as walls and fences are."));
+        let objects = !app.selection.is_empty() && app.whole.is_none();
+        ui.horizontal_wrapped(|ui| {
+            let on = app.gizmo == Gizmo::Copy;
+            if icon_tool(ui, on, icons::ARROW_FAT_LINES_RIGHT, Some(&t("Copy in a row")), format!("{}\n{}", app.settings.keys.tip(Action::GizmoCopy), t("The gizmo shows arrows at the ends of the selection: drag one out to lay copies, aside to turn the row. The green ring turns the selection about where it joins its neighbour."))).clicked() {
+                app.gizmo = if on { Gizmo::Move } else { Gizmo::Copy };
+            }
+            let (back, ahead) = (app.settings.keys.tip(Action::CopyBehind), app.settings.keys.tip(Action::CopyAhead));
+            if ui.add_enabled(objects, egui::Button::new(icons::ARROW_LINE_LEFT)).on_hover_text(format!("{back}\n{}", t("A copy of the selection goes right behind it, along its long side, and is selected, so pressing again lays a row."))).clicked() { app.copy_selection_along(false); }
+            if ui.add_enabled(objects, egui::Button::new(icons::ARROW_LINE_RIGHT)).on_hover_text(format!("{ahead}\n{}", t("A copy of the selection goes right ahead of it, along its long side, and is selected, so pressing again lays a row."))).clicked() { app.copy_selection_along(true); }
+        });
+        if ui.add_enabled(objects, egui::Button::new(icons::with(icons::LINK_SIMPLE, &t("Join to the neighbour")))).on_hover_text(format!("{}\n{}", app.settings.keys.tip(Action::JoinNeighbour), t("Moves the selection so its end meets the end of the wall or fence next to it, as after turning it."))).clicked() { app.join_selection_to_neighbour(); }
+        let before = app.settings.row_gap;
+        slider(ui, &t("Gap"), &mut app.settings.row_gap, -3.0..=3.0, false);
+        ui.weak(t("Metres between copies and between joined neighbours. Negative values overlap them."));
+        if app.settings.row_gap != before { app.settings.save(); }
     });
 }
 

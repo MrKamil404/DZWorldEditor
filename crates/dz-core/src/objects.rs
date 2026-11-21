@@ -371,9 +371,191 @@ pub fn angles(m: &[[f32; 3]; 3]) -> (f32, f32, f32, f32) {
     (yaw.to_degrees(), pitch.to_degrees(), roll.to_degrees(), scale)
 }
 
+/// How copies of objects are laid in a row, as walls and fences are laid end to end: along
+/// the long side of the first object, forwards along its own axis or back against it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Row {
+    /// Where the objects end on that side, on the line through the first object: the joint the
+    /// row starts from and turns about.
+    pub joint: [f32; 2],
+    /// The way the row goes, of length 1.
+    pub dir: [f32; 2],
+    /// How far the objects reach together along that side, so copies touch each other.
+    pub step: f32,
+}
+
+/// The row of copies of `items`, each an object with its model's box, going `ahead` along the
+/// long side of the first object or back.
+pub fn row_of(items: &[(Obj, crate::model_info::ModelInfo)], ahead: bool) -> Option<Row> {
+    let (lead, info) = items.first()?;
+    let along_x = info.max[0] - info.min[0] >= info.max[2] - info.min[2];
+    let m = rotation(lead.yaw, lead.pitch, lead.roll, 1.0);
+    let k = if along_x { 0 } else { 2 };
+    let (ax, az) = (m[k][0], m[k][2]);
+    let len = ax.hypot(az);
+    if len < 1e-4 {
+        return None;
+    }
+    let (ax, az) = if ahead { (ax / len, az / len) } else { (-ax / len, -az / len) };
+    // How far the boxes of all the objects reach along the side.
+    let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+    for (o, i) in items {
+        let r = rotation(o.yaw, o.pitch, o.roll, o.scale);
+        for c in 0..8 {
+            let p = [if c & 1 == 0 { i.min[0] } else { i.max[0] }, if c & 2 == 0 { i.min[1] } else { i.max[1] }, if c & 4 == 0 { i.min[2] } else { i.max[2] }];
+            let x = o.x + p[0] * r[0][0] + p[1] * r[1][0] + p[2] * r[2][0];
+            let z = o.z + p[0] * r[0][2] + p[1] * r[1][2] + p[2] * r[2][2];
+            let d = x * ax + z * az;
+            (lo, hi) = (lo.min(d), hi.max(d));
+        }
+    }
+    // A model with no box still steps on by a metre.
+    let step = if hi > lo { (hi - lo).max(0.1) } else { 1.0 };
+    let along = hi - (lead.x * ax + lead.z * az);
+    Some(Row { joint: [lead.x + ax * along, lead.z + az * along], dir: [ax, az], step })
+}
+
+/// `count` copies of `items` laid in `row`, the whole row turned by `turn` degrees (clockwise
+/// seen from above, as yaw) about its joint: the first `items.len()` objects are the first
+/// copy, and so on.
+pub fn row_copies(items: &[(Obj, crate::model_info::ModelInfo)], row: &Row, count: usize, turn: f32) -> Vec<Obj> {
+    let (sin, cos) = turn.to_radians().sin_cos();
+    let mut out = Vec::with_capacity(items.len() * count);
+    for k in 1..=count {
+        let shift = row.step * k as f32;
+        for (o, _) in items {
+            let (rx, rz) = (o.x + row.dir[0] * shift - row.joint[0], o.z + row.dir[1] * shift - row.joint[1]);
+            out.push(Obj { x: row.joint[0] + rx * cos + rz * sin, z: row.joint[1] - rx * sin + rz * cos, yaw: o.yaw + turn, ..*o });
+        }
+    }
+    out
+}
+
+/// The number of copies and the turn of a row whose end is dragged to `to`: as many copies as
+/// fit up to it, turned towards it. Turns under `dead` degrees are none, so a row runs
+/// straight unless it is pulled clearly aside; `snap` turns by whole steps of degrees.
+pub fn row_to(row: &Row, to: [f32; 2], snap: Option<f32>, dead: f32) -> (usize, f32) {
+    let (dx, dz) = (to[0] - row.joint[0], to[1] - row.joint[1]);
+    let len = dx.hypot(dz);
+    if len < 1e-3 {
+        return (0, 0.0);
+    }
+    let mut turn = (dx.atan2(dz) - row.dir[0].atan2(row.dir[1])).to_degrees();
+    turn = (turn + 180.0).rem_euclid(360.0) - 180.0;
+    if let Some(s) = snap.filter(|s| *s > 0.0) {
+        turn = (turn / s).round() * s;
+    } else if turn.abs() < dead {
+        turn = 0.0;
+    }
+    ((len / row.step).round() as usize, turn)
+}
+
+/// Where the objects join a neighbour in a row: of the two ends of the objects (0 ahead, 1
+/// behind, see [`row_of`]) the one nearest to an end of one of `others`, each an object with
+/// its model's box, if they are under `reach` metres apart. Gives that end of the objects and
+/// the end of the neighbour it joins.
+pub fn link_to(items: &[(Obj, crate::model_info::ModelInfo)], others: &[(Obj, crate::model_info::ModelInfo)], reach: f32) -> Option<(usize, [f32; 2], [f32; 2])> {
+    let ours = [row_of(items, true)?.joint, row_of(items, false)?.joint];
+    let mut best: Option<(f32, usize, [f32; 2], [f32; 2])> = None;
+    for other in others {
+        let one = std::slice::from_ref(other);
+        for theirs in [row_of(one, true), row_of(one, false)].into_iter().flatten().map(|r| r.joint) {
+            for (k, mine) in ours.iter().enumerate() {
+                let d = (mine[0] - theirs[0]).hypot(mine[1] - theirs[1]);
+                if d < reach && best.is_none_or(|b| d < b.0) {
+                    best = Some((d, k, *mine, theirs));
+                }
+            }
+        }
+    }
+    best.map(|(_, k, mine, theirs)| (k, mine, theirs))
+}
+
+/// The objects moved by `shift` and then turned by `turn` degrees (clockwise seen from above,
+/// as yaw) about `pivot`.
+pub fn shift_and_turn(objects: &[Obj], shift: [f32; 2], pivot: [f32; 2], turn: f32) -> Vec<Obj> {
+    let (sin, cos) = turn.to_radians().sin_cos();
+    objects.iter().map(|o| {
+        let (rx, rz) = (o.x + shift[0] - pivot[0], o.z + shift[1] - pivot[1]);
+        Obj { x: pivot[0] + rx * cos + rz * sin, z: pivot[1] - rx * sin + rz * cos, yaw: o.yaw + turn, ..*o }
+    }).collect()
+}
+
+/// One copy of the objects laid right next to them, ahead or behind; see [`row_of`].
+pub fn copies_along(items: &[(Obj, crate::model_info::ModelInfo)], ahead: bool) -> Vec<Obj> {
+    row_of(items, ahead).map(|r| row_copies(items, &r, 1, 0.0)).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copies_along_touch_the_originals() {
+        use crate::model_info::ModelInfo;
+        // A wall 6 m long along x, 0.4 m thick, turned 90° so its length runs along the world's x... or z.
+        let wall = ModelInfo { min: [-3.0, 0.0, -0.2], max: [3.0, 2.0, 0.2], known: true, ..Default::default() };
+        let o = Obj { x: 100.0, z: 200.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        let ahead = copies_along(&[(o, wall)], true);
+        let back = copies_along(&[(o, wall)], false);
+        // Unturned, the model's x is the world's x.
+        assert!((ahead[0].x - 106.0).abs() < 1e-3 && (ahead[0].z - 200.0).abs() < 1e-3, "{:?}", ahead[0]);
+        assert!((back[0].x - 94.0).abs() < 1e-3, "{:?}", back[0]);
+        // Scaled up, the step grows with it; turned, it follows the wall.
+        let big = Obj { scale: 1.5, yaw: 90.0, ..o };
+        let c = copies_along(&[(big, wall)], true)[0];
+        assert!(((c.x - 100.0).hypot(c.z - 200.0) - 9.0).abs() < 1e-3, "{c:?}");
+        assert!((c.yaw - 90.0).abs() < 1e-6 && c.scale == 1.5);
+        // Two walls in a row step on by both of them.
+        let next = Obj { x: 106.0, ..o };
+        let two = copies_along(&[(o, wall), (next, wall)], true);
+        assert!((two[0].x - 112.0).abs() < 1e-3 && (two[1].x - 118.0).abs() < 1e-3, "{two:?}");
+    }
+
+    #[test]
+    fn a_wall_finds_where_it_joins_its_neighbour_and_turns_about_it() {
+        use crate::model_info::ModelInfo;
+        let wall = ModelInfo { min: [-3.0, 0.0, -0.2], max: [3.0, 2.0, 0.2], known: true, ..Default::default() };
+        let first = Obj { x: 100.0, z: 200.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        // The next wall was turned about its own middle, so its back end left the first wall's end.
+        let next = Obj { x: 106.0, yaw: 20.0, ..first };
+        let (end, mine, theirs) = link_to(&[(next, wall)], &[(first, wall)], 3.0).unwrap();
+        assert_eq!(end, 1);
+        assert!((theirs[0] - 103.0).abs() < 1e-3 && (theirs[1] - 200.0).abs() < 1e-3, "{theirs:?}");
+        // Moved back so its end meets the joint, then turned about it, it still meets it.
+        let shift = [theirs[0] - mine[0], theirs[1] - mine[1]];
+        let moved = shift_and_turn(&[next], shift, theirs, 15.0)[0];
+        let (_, back, _) = link_to(&[(moved, wall)], &[(first, wall)], 3.0).unwrap();
+        assert!((back[0] - 103.0).abs() < 1e-3 && (back[1] - 200.0).abs() < 1e-3, "{back:?}");
+        assert!((moved.yaw - 35.0).abs() < 1e-4);
+        // Nothing near: no joint.
+        assert!(link_to(&[(Obj { x: 200.0, ..first }, wall)], &[(first, wall)], 3.0).is_none());
+    }
+
+    #[test]
+    fn a_row_turns_about_its_joint() {
+        use crate::model_info::ModelInfo;
+        let wall = ModelInfo { min: [-3.0, 0.0, -0.2], max: [3.0, 2.0, 0.2], known: true, ..Default::default() };
+        let o = Obj { x: 100.0, z: 200.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        let row = row_of(&[(o, wall)], true).unwrap();
+        assert!((row.joint[0] - 103.0).abs() < 1e-3 && (row.joint[1] - 200.0).abs() < 1e-3 && (row.step - 6.0).abs() < 1e-3, "{row:?}");
+        // Dragged 20 m on along the wall: three copies, no turn.
+        assert_eq!(row_to(&row, [123.5, 200.4], None, 3.0), (3, 0.0));
+        // Dragged off at a right angle: the row turns 90° about the joint, so the first copy
+        // starts there and runs the new way.
+        let (n, turn) = row_to(&row, [103.0, 212.0], None, 3.0);
+        assert_eq!(n, 2);
+        assert!((turn.abs() - 90.0).abs() < 1e-3, "{turn}");
+        let c = row_copies(&[(o, wall)], &row, n, turn);
+        assert!((c[0].x - 103.0).abs() < 1e-3 && (c[0].z - 203.0).abs() < 1e-3, "{:?}", c[0]);
+        assert!((c[1].z - 209.0).abs() < 1e-3 && (c[1].yaw - turn).abs() < 1e-3, "{:?}", c[1]);
+        // With a step of 45° a turn of 50° goes to 45°.
+        let (_, t) = row_to(&row, [103.0 + 10.0 * 50f32.to_radians().cos(), 200.0 + 10.0 * 50f32.to_radians().sin()], Some(45.0), 3.0);
+        assert!((t.abs() - 45.0).abs() < 1e-3, "{t}");
+        // Back the other way the joint is at the other end.
+        let back = row_of(&[(o, wall)], false).unwrap();
+        assert!((back.joint[0] - 97.0).abs() < 1e-3 && (back.dir[0] + 1.0).abs() < 1e-3);
+    }
     #[test]
     fn a_drive_letter_is_dropped_from_a_model_path() {
         assert_eq!(ObjectStore::strip_drive("p:\\dz\\a.p3d"), "dz\\a.p3d");
