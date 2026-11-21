@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.7.2
+
+### New
+
+- **Rows of walls and fences.** A new section of the Select panel and a fourth gizmo, **Copy in a
+  row** (T), lay copies of the selection end to end along its long side:
+  - Drag one of the red arrows at the ends of the selection. Outlines show each copy that fits up to
+    the cursor. Pull aside to turn the row, or hold Ctrl to turn it by the angle step. When you let
+    go, the copies are laid and the last one is selected, so you can go on from there.
+  - The green ring turns the selection about the point where it joins the wall next to it. The
+    selection first moves back to meet that wall, so it stays joined.
+  - **Join to the neighbour** (J) moves the selection so its end meets the end of the object next
+    to it.
+  - The arrow buttons, or Ctrl+Shift+D and Ctrl+Shift+A, lay one copy ahead or behind.
+  - **Gap** sets the space between copies and between joined neighbours. Negative values overlap
+    them.
+- **Copy direction** (Select panel): click it, then click another object, and the selection turns
+  the way that object faces. Useful to line up a broken wall with the wall next to it.
+- **Reset scale** (Select panel) sets the selected objects back to their own size.
+- **Fence corners.** With *Join the pieces at corners* the fence generator has two more options:
+  - **Close the corners of thick walls**: the pieces reach past each corner, so the outer edge
+    closes. Where a wall has a pillar at one end, the pillar stands centred on the corner and the
+    other wall ends inside it. The panel shows how thick the pieces are at their ends, and you can
+    set the reach at corners by hand.
+  - **Corner object**: a post or corner piece (for example `Wall_IndVar1_Pole`) stands on every
+    corner, and the pieces stop at its sides.
+  - The start and end point of a closed line, such as the outline of a polygon, now counts as a
+    corner too.
+
+### Good to know
+
+- Projects saved in 0.2.7.2 still open in 0.2.7.1. The older version builds fences without the
+  new corner options.
+
 ## 0.2.7.1
 
 ### New
