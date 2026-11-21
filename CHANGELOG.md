@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.7.1
+
+### New
+
+- **Share your library.** Right-click generators, presets or prefabs in the library and choose
+  **Export to a file** to save them as a `.dzwelib` file. Do the same on a folder, on one of the
+  groups, or on the Library itself to export everything in it. **Import from a file** adds the
+  contents of such a file as new items, next to what you already have, so nothing is overwritten.
+  A generator takes the object presets it uses along with it. Models are not in the file, only
+  their paths, so the other person needs the same models on their work drive.
+
+### Fixed
+
+- Fence generator: the model fields no longer push their buttons out of view in a narrow panel.
+  The model box now sits under its label, across the full width, and still takes dragged models.
+  The label line holds only **Use selected** and the clear button. The gate and wicket header
+  shrinks to keep its buttons visible.
+
 ## 0.2.7
 
 ### New
