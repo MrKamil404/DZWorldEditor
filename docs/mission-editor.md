@@ -14,6 +14,10 @@ window with the tabs below.
 
 * **New mission for this map** makes every file a server needs, with the game's defaults,
   a blank `areaflags.map` over the map and one player spawn at the map's spawn point.
+* **New mission with the economy of the game** starts from the economy of a world of the game
+  (`DZ\worlds\<world>\ce`): its loot, events and prototypes, with map groups made from this map's
+  buildings and infected zones at its villages and towns. Vehicles, events and area flags are still
+  to be placed on the map.
 * **Import a mission** reads a mission folder as it is.
 * **Adapt a mission of another map** keeps the economy of a mission (types, events, globals,
   weather, prototypes...) and drops what was placed on the other map: event spawns, player
@@ -21,6 +25,10 @@ window with the tabs below.
   persistence.
 * **Export** (Mission editor, or *File > Export > Server mission*) writes the folder anywhere;
   **Play** starts the test server with it.
+
+The map carries its own Central Economy, as the worlds of the game do: export writes the project's
+mission to `<map>\ce` with a config of its own, `ceFiles` of the world config points at it, and the
+build packs it as `ce.pbo`. A `ce` folder the editor did not write is left alone.
 
 Files nobody edited are copied byte for byte. Edited files are rewritten with the indentation
 and line ends they had; comments and elements the editor does not know stay where they were.

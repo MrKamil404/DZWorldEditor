@@ -10,17 +10,22 @@ generate forests and rivers, edit the server mission, then build the map and sta
 ## Features
 
 - **Live 3D and 2D views** of the whole map with real DayZ models, textures, satellite image and water; a split view, a minimap, full screen and a view in a window of its own
+- **Getting around**: go to a key point, a map grid square or a position, saved camera views, a ruler for lengths, climbs and areas, and the sun at any time of day
 - **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces, terrain stamps (craters, hills, quarries, your own pictures or pieces of terrain) and non-destructive modifiers
-- **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile
+- **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile, and a view that shows the surfaces as the built map will
+- **Map surfaces** (`CfgSurfaces`): new surfaces for your own textures and changes to the game's, with grass, sounds and physics, and a material window for each layer
 - **Satellite image** editing: bake objects, roads and water into it, a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite, all as modifiers that can be hidden or deleted
-- **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, painting objects with a brush, prefabs and undo
+- **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, painting objects with a brush, prefabs, replacing models and undo
+- **Rows of walls and fences**: drag copies out in a row with the copy gizmo, turn them about their joint, join them to the next piece with a gap, and copy the direction of another object
 - **Roads and railways** fitted from the game's own parts, with embankments, bridges, level crossings and roundabouts
 - **Every vanilla road type** of Chernarus, Livonia, Sakhal and Takistan, and **crossroads** (`kr_*`) that roads start from or that go into a road
-- **Generators** for forests, rivers, ponds, coasts and beaches, cliffs, fields, road verges, railway surroundings, wrecks and road decals, things round buildings, settlements, fences, power lines and more
+- **Generators** for forests, rivers, ponds, coasts and beaches, cliffs, fields, road verges, railway surroundings, wrecks and road decals, things round buildings, settlements, fences (with closed corners and corner posts), power lines and more
+- **Library sharing**: export generators, presets and prefabs as `.dzwelib` files and import them on another computer
 - **Key points** for named places on the map, compatible with Terrain Builder
 - **Map config**: the `CfgWorlds` entry of the map, with its base world, map grid and main menu scenes
 - **Terrain Builder import**, including layers, shapes, roads, key points and terrain holes, and import of built WRP worlds
 - **One-click build and test**: export, binarise with AddonBuilder and start a local server and client, after a **map check** that finds missing models and textures, floating, buried and doubled objects and more
+- **Everything in the mod**: the map's own surfaces and Central Economy, extra folders such as your own buildings, and signed PBOs
 - **Automatic backups** and a built-in updater
 - **Mission editor** (experimental): the economy, loot, events, spawns and the rest of the server mission, see [docs/mission-editor.md](docs/mission-editor.md)
 - **Team work** (experimental): several people work on their own copies and merge their changes through a shared folder, see [docs/team-work.md](docs/team-work.md)
@@ -57,14 +62,14 @@ You need Windows 10 or 11 and a graphics card with OpenGL 3.3. The model library
 
 | Key | Tab | What it does |
 | --- | --- | --- |
-| 1 | Select | Select objects (box or lasso), W/E/R gizmo, terrain modifier under the selection, prefabs |
-| 2 | Sculpt | Raise, lower, smooth, flatten, noise, ramp and terrain holes; Ctrl inverts, Shift smooths |
-| 3 | Paint | Paint mask surfaces, with layers from `P:\dz\surfaces*` |
-| 4 | Place | Click, paint with a brush, or drag a model from the library |
+| 1 | Select | Select objects (box or lasso), W/E/R/T gizmo, rows of walls and fences, terrain modifier under the selection, prefabs |
+| 2 | Sculpt | Raise, lower, smooth, flatten, noise, ramp, set height, terrain holes and terrain stamps; Ctrl inverts, Shift smooths |
+| 3 | Paint | Paint mask surfaces, with layers from `P:\dz\surfaces*`; the map's own surfaces and layer materials |
+| 4 | Place | Click, paint a zone with a brush, or drag a model from the library |
 | 5 | Roads | Roads, railways and objects along a line, by points, live or piece by piece |
 | 6 | Shapes | Draw polygons, lines and points that generators can work on |
 | 7 | Key points | Add, move and edit named places |
-| 8 | Satellite | Bake objects into the satellite image, clone brush |
+| 8 | Satellite | Bake objects into the satellite image, clone brush, colour correction, satellite from the mask, surfaces from the satellite |
 | 9 | Mission | The server mission on the map (experimental) |
 
 **3D camera:** hold the right mouse button and use WASD/QE. Shift goes faster, and the wheel changes speed while the right button is held.
@@ -82,6 +87,9 @@ Generators are in the Content Browser at the bottom of the window. Drop one on a
 | Settlements and lines | Settlement, fence, power line |
 | Terrain | Terrain shape, hydraulic and thermal erosion, terraces, terrain along a line |
 | Surfaces and clean-up | Rule-based surface painting, removing objects by category or name |
+| Landscape | Coast, cliffs and rocks, fields |
+| Along roads | Road verges with bushes and signs, railway surroundings, wrecks and road decals |
+| Round buildings | Things round the buildings already on the map |
 
 ## Importing
 
@@ -95,7 +103,12 @@ Binarised worlds (`OPRW`) cannot be opened.
 ## Building a map
 
 **Build** (F7) exports the map to `P:\<map id>` and binarises its `world`, `data` and `navmesh` folders with AddonBuilder,
-one PBO each, into `P:\Mods\@<map id>\Addons`. Anything else in the folder belongs to your mod and is left alone.
+one PBO each, into `P:\Mods\@<map id>\Addons`. The map's own surfaces go into `surfaces.pbo` and its own Central Economy
+(the project's mission) into `ce.pbo`. Anything else in the folder belongs to your mod and is left alone.
+
+On the Build tab, **Also built into the mod** adds other folders of the work drive, such as your own buildings: each
+becomes a PBO of its own, binarised or packed as it is. **Signing** signs the PBOs with a `.biprivatekey` made with
+DSUtils, and copies the public key into `Keys` of the mod.
 
 **Play** (F5) also creates a test mission, or uses the project's own mission, and starts a `DayZDiag` server and client. Additional mod folders can be added on the Build tab.
 
@@ -127,12 +140,12 @@ cargo build --release -p dz-editor
 The program is `target/release/DZWorldEditor.exe`. Run the tests with:
 
 ```bash
-cargo test --workspace
+cargo test --workspace --release
 ```
 
 ## Adding a language
 
-A file `%LOCALAPPDATA%\DZWorldEditor\lang\<code>.json` of the form
+The editor starts in the language of Windows when it has it, and in English otherwise. A file `%LOCALAPPDATA%\DZWorldEditor\lang\<code>.json` of the form
 `{"__name__": "Language name", "File": "Translation"}` appears in the Language menu without rebuilding the program.
 `Language > Open language folder` opens that folder.
 

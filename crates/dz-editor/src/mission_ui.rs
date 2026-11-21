@@ -2954,6 +2954,8 @@ pub fn script(app: &mut App, arg: &str) {
     let (cmd, rest) = (it.next().unwrap_or(""), it.next().unwrap_or("").trim());
     match cmd {
         "new" => new_mission(app),
+        // A mission with the economy of a world of the game, such as chernarusplus.
+        "newgame" => new_mission_from_game(app, rest),
         "import" => import_from(app, rest.into(), false),
         "adapt" => import_from(app, rest.into(), true),
         "export" => export_to(app, std::path::Path::new(rest), false),

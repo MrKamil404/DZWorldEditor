@@ -10,8 +10,8 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 
 * **Menu bar**: File, Edit, View, Build, Team (with experimental features on), Language and Help.
   On the right, *Check for updates* and the installer of a new release.
-* **Toolbar**: Save, Undo and Redo, the nine tabs (keys 1-9), the gizmo (Move, Rotate, Scale and
-  World or Local axes), the views (3D, 2D, 3D | 2D) and **Build** and **Play**.
+* **Toolbar**: Save, Undo and Redo, the nine tabs (keys 1-9), the gizmo (Move, Rotate, Scale, Copy in
+  a row, and World or Local axes), the views (3D, 2D, 3D | 2D) and **Build** and **Play**.
 * **Left panel**: the settings of the current tab.
 * **View**: the map in 3D, in 2D, or both side by side.
 * **Outliner** (right): terrain, mask and satellite modifiers, generators, roads and object
@@ -55,8 +55,8 @@ off in the settings.
 
 ### 1 Select
 
-Click selects an object, a drag selects with a box or a lasso, Shift adds. W, E and R switch the
-gizmo between move, rotate and scale, L between world and local axes. With objects selected, a drag
+Click selects an object, a drag selects with a box or a lasso, Shift adds. W, E, R and T switch the
+gizmo between move, rotate, scale and copy in a row, L between world and local axes. With objects selected, a drag
 with Shift held turns them, Ctrl+Shift turns them by steps (the wheel changes the step) and Alt
 scales them.
 
@@ -73,6 +73,9 @@ scales them.
 * **Reset scale** sets the selected objects back to their own size.
 * **Create prefab** makes a reusable group of the selected objects in the library.
 * **Rows of walls and fences**, a section of its own, lays copies of the selection end to end:
+
+  ![A row of walls laid round a corner with the copy gizmo](screenshots/rows.jpg)
+
   * **Copy on ahead** (Ctrl+Shift+D) and **Copy on behind** (Ctrl+Shift+A), the arrow buttons, put a
     copy of the selection right next to it along its long side and select the copy. Press again to
     lay a row of walls or fences piece by piece.
@@ -89,6 +92,12 @@ scales them.
     them.
 * **Terrain under objects** adds a terrain modifier that levels the ground under the selection and
   follows the objects when they move. The sculpted terrain stays untouched.
+
+The **Details** under the outliner show the selected objects: position, angles and size, typed in,
+**Underground** and **Fixed height, ignores the terrain** (the height is then measured from sea
+level). **Replace model** puts another model in place of the selected objects: choose models in the
+Content Browser, or drop one on it. Where the objects stand, how they are turned and their size stay;
+with several models each object takes one of them.
 
 ### 2 Sculpt
 
@@ -147,6 +156,19 @@ worked out by the same code as the build.
 
 **Hard mask pixels** (off by default, in the same two places) draws each pixel of the mask as one
 surface, with hard edges and no blending between surfaces. Use it to see exactly what is painted where.
+
+**Material...** next to a layer opens its `.rvmat`: the colour and relief textures, a `_nopx` made from
+a normal map and a height map, repeats, lighting and the raw text. Layer textures can come from
+anywhere (PAA or pictures); export copies them into `<map>\data\surfaces` with their relief and
+material.
+
+**Map surfaces** (`CfgSurfaces`), lower in the panel, says which surface of the game each layer gets
+in the game: its grass, footstep sounds and physics. A texture that no surface of the game is named
+after has no grass in the game; **Make a surface for this layer** gives it one, built on a surface of
+the game, with its own grass (with previews), sounds and physics. **Change it for this map** changes a
+surface of the game for this map. **Read the map's CfgSurfaces...** takes the surfaces of an existing
+config into the project. Export writes them to `surfaces/config.cpp` of the map, and the build packs
+it as `surfaces.pbo`.
 
 ### 4 Place
 
@@ -328,6 +350,15 @@ every key, and which modifier keys the brushes use.
   be deleted from the list. Building checks the map first and waits on errors until they are
   fixed or you choose **Build anyway**; this can be turned off on the Build tab.
 
+The **Build** tab at the bottom shows what the build makes, its latest output and these settings:
+
+* **Also built into the mod**: other folders of the work drive (your own buildings, for example).
+  Each becomes a PBO of its own with its path as the prefix, binarised or packed as it is.
+* **Signing**: a `.biprivatekey` made with DSUtils signs the built PBOs; the public key is copied into
+  `Keys` of the mod.
+* **Playing**: whether **Play** starts the game client too, and other mods to load with the map.
+
 ### Language
 
-English, Polish and German, and any language added as a JSON file in the language folder.
+English, Polish and German, and any language added as a JSON file in the language folder. The editor
+starts in the language of Windows when it has it, and in English otherwise.
