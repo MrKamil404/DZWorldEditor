@@ -303,7 +303,11 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
   bushes, signals, a row of telegraph poles and now and then a small station with its platform.
 * **Wrecks and road decals** puts places with wrecks along roads: a jam of cars in a lane, a crash
   of two or three, or a car left on the verge, with oil stains under them, and cracks, patches and
-  tyre marks on paved roads.
+  tyre marks on paved roads. Cars face the way the traffic of their lane goes; **Turn of the
+  wrecks** turns them all (for models that face another way), and the random turn of cars in a
+  jam and on the verge can be set. **Most metres from the middle** limits how far decals lie from
+  the middle of the road, and **Keep decals inside the road** keeps wide ones nearer the middle so
+  their edges stay on the road.
 * **Things round buildings** dresses the buildings already on the map by their kind: woodpiles,
   bins and kennels at houses, pallets, barrels and tyres at works, sandbags and crates at military
   buildings, hay and logs at farms. Some stand against the walls, along them, the others free

@@ -67,12 +67,24 @@ pub struct WreckGen {
     /// Metres from the middle of the road to the middle of a lane, and to its edge.
     pub lane: f32,
     pub road_half: f32,
+    /// Degrees every wreck is turned by, for models whose front is not where the generator
+    /// expects it (along +z, the way the traffic of its lane goes).
+    pub wreck_turn: f32,
+    /// Most degrees a car of a jam, and a car left on the verge, is turned off the road at
+    /// random, either way.
+    pub jam_turn: f32,
+    pub verge_turn: f32,
     /// Stains laid under the wrecks (oil, burns), and the share of wrecks that get one.
     pub under: Vec<(String, f32)>,
     pub under_share: f32,
     /// Cracks, patches and tyre marks on the road, per kilometre.
     pub decals: ObjectSet,
     pub decals_per_km: f32,
+    /// Most metres from the middle of the road to the middle of a decal.
+    pub decal_reach: f32,
+    /// A decal stays inside the road: wide ones keep nearer the middle, as far as their own
+    /// half width allows.
+    pub decals_inside: bool,
     /// Decals only on paved roads, not on gravel and dirt tracks.
     pub decals_paved_only: bool,
     /// Which roads it follows when it works on the whole map.
@@ -91,10 +103,10 @@ impl Default for WreckGen {
         ]);
         Self {
             wrecks: ObjectSet { models: cars, random_yaw: false, scale_min: 1.0, scale_max: 1.0, align: true, ..Default::default() },
-            scenes_per_km: 1.5, jam_share: 0.2, crash_share: 0.3, jam_max: 7, lane: 2.0, road_half: 3.5,
+            scenes_per_km: 1.5, jam_share: 0.2, crash_share: 0.3, jam_max: 7, lane: 2.0, road_half: 3.5, wreck_turn: 0.0, jam_turn: 6.0, verge_turn: 15.0,
             under: models("wrecks\\vehicles", &["wreck_decal_small1", "wreck_decal_small2", "wreck_decal_big"]), under_share: 0.7,
             decals: ObjectSet { models: decals, random_yaw: false, scale_min: 0.9, scale_max: 1.1, align: true, ..Default::default() },
-            decals_per_km: 12.0, decals_paved_only: true, follow: Follow::Roads, seed: 1,
+            decals_per_km: 12.0, decal_reach: 2.5, decals_inside: true, decals_paved_only: true, follow: Follow::Roads, seed: 1,
         }
     }
 }
@@ -107,8 +119,9 @@ pub fn is_paved(family: &str) -> bool {
 }
 
 /// Wrecks in scenes along the roads, stains under them, and decals on the road. `paved` says
-/// for each line whether it is a paved road (missing ones are).
-pub fn wreck_objects(w: &mut World, g: &WreckGen, lines: &[Vec<[f32; 2]>], paved: &[bool], job: &Job) -> Result<Vec<Obj>> {
+/// for each line whether it is a paved road (missing ones are). `db` gives the sizes of the
+/// decals, so they can be kept inside the road.
+pub fn wreck_objects(w: &mut World, db: &ModelDb, g: &WreckGen, lines: &[Vec<[f32; 2]>], paved: &[bool], job: &Job) -> Result<Vec<Obj>> {
     let mut rng = StdRng::seed_from_u64(g.seed);
     let size = w.meta.size_m();
     let inside = |p: [f32; 2]| p[0] >= 0.0 && p[1] >= 0.0 && p[0] <= size && p[1] <= size;
@@ -139,14 +152,14 @@ pub fn wreck_objects(w: &mut World, g: &WreckGen, lines: &[Vec<[f32; 2]>], paved
                     let mut at = 0.0;
                     (0..n).map(|_| {
                         at += rng.gen_range(6.0..8.5);
-                        (at * -side, g.lane * side + rng.gen_range(-0.4..0.4), rng.gen_range(-6.0..6.0))
+                        (at * -side, g.lane * side + rng.gen_range(-0.4..0.4), rng.gen_range(-g.jam_turn.abs()..=g.jam_turn.abs()))
                     }).collect()
                 } else if roll < g.jam_share + g.crash_share {
                     let n = rng.gen_range(2..=3);
                     (0..n).map(|_| (rng.gen_range(-5.0..5.0), rng.gen_range(-g.road_half..g.road_half), rng.gen_range(-180.0..180.0))).collect()
                 } else {
                     // Left on the verge, more or less along the road.
-                    vec![(0.0, (g.road_half + 1.0) * side, rng.gen_range(-15.0..15.0))]
+                    vec![(0.0, (g.road_half + 1.0) * side, rng.gen_range(-g.verge_turn.abs()..=g.verge_turn.abs()))]
                 };
                 for (along, across, turn) in cars {
                     let Some((p, dir)) = point_at(line, (s + along).clamp(0.0, len)) else { continue };
@@ -154,7 +167,7 @@ pub fn wreck_objects(w: &mut World, g: &WreckGen, lines: &[Vec<[f32; 2]>], paved
                     if !inside([x, z]) || !spacing.claim(x, z) {
                         continue;
                     }
-                    let yaw = heading(dir) + if back { 180.0 } else { 0.0 } + turn;
+                    let yaw = heading(dir) + if back { 180.0 } else { 0.0 } + turn + g.wreck_turn;
                     let model = picker.model(&mut rng);
                     out.push(picker.object(w, &mut rng, model, x, z, Some(yaw)));
                     if let Some(u) = &under {
@@ -176,13 +189,21 @@ pub fn wreck_objects(w: &mut World, g: &WreckGen, lines: &[Vec<[f32; 2]>], paved
             let len = length(line);
             for _ in 0..count(&mut rng, len / 1000.0 * g.decals_per_km) {
                 let Some((p, dir)) = point_at(line, rng.gen_range(0.0..len.max(0.01))) else { continue };
-                let across = rng.gen_range(-(g.road_half - 1.0).max(0.0)..=(g.road_half - 1.0).max(0.0));
+                let model = picker.model(&mut rng);
+                // Laid along the road, a decal's own x runs across it.
+                let half = if g.decals_inside {
+                    let i = db.get(&w.objects.models[model as usize].path);
+                    if i.known { i.min[0].abs().max(i.max[0].abs()) * g.decals.scale_max.max(g.decals.scale_min) } else { 0.0 }
+                } else {
+                    0.0
+                };
+                let reach = if g.decals_inside { g.decal_reach.min(g.road_half - half) } else { g.decal_reach }.max(0.0);
+                let across = rng.gen_range(-reach..=reach);
                 let (x, z) = (p[0] + dir[1] * across, p[1] - dir[0] * across);
                 if !inside([x, z]) {
                     continue;
                 }
                 let yaw = heading(dir) + if rng.gen() { 0.0 } else { 180.0 };
-                let model = picker.model(&mut rng);
                 let mut o = picker.object(w, &mut rng, model, x, z, Some(yaw));
                 if g.decals.align {
                     (o.pitch, o.roll) = slope_angles(&w.height, x, z, yaw);
@@ -370,7 +391,7 @@ mod tests {
         let mut w = world();
         let road = vec![[100.0, 20.0], [100.0, 480.0]];
         let g = WreckGen { scenes_per_km: 20.0, jam_share: 1.0, crash_share: 0.0, decals_per_km: 0.0, under: Vec::new(), ..Default::default() };
-        let objects = wreck_objects(&mut w, &g, std::slice::from_ref(&road), &[], &Job::default()).unwrap();
+        let objects = wreck_objects(&mut w, &ModelDb::new("Z:/none"), &g, std::slice::from_ref(&road), &[], &Job::default()).unwrap();
         assert!(objects.len() >= 3, "{}", objects.len());
         // In a lane, along the road.
         assert!(objects.iter().all(|o| ((o.x - 100.0).abs() - 2.0).abs() < 0.5), "{:?}", objects.iter().map(|o| o.x).collect::<Vec<_>>());
@@ -378,15 +399,29 @@ mod tests {
     }
 
     #[test]
+    fn wrecks_can_be_turned_and_decals_kept_near_the_middle() {
+        let mut w = world();
+        let road = vec![[100.0, 20.0], [100.0, 480.0]];
+        // Every car of a jam turned a quarter, with no random turn.
+        let g = WreckGen { scenes_per_km: 20.0, jam_share: 1.0, crash_share: 0.0, decals_per_km: 0.0, under: Vec::new(), wreck_turn: 90.0, jam_turn: 0.0, ..Default::default() };
+        let objects = wreck_objects(&mut w, &ModelDb::new("Z:/none"), &g, std::slice::from_ref(&road), &[], &Job::default()).unwrap();
+        assert!(!objects.is_empty() && objects.iter().all(|o| (o.yaw.rem_euclid(180.0) - 90.0).abs() < 1e-3), "{:?}", objects.iter().map(|o| o.yaw).collect::<Vec<_>>());
+        // Decals within a metre of the middle.
+        let g = WreckGen { scenes_per_km: 0.0, decals_per_km: 80.0, decal_reach: 1.0, ..Default::default() };
+        let objects = wreck_objects(&mut w, &ModelDb::new("Z:/none"), &g, std::slice::from_ref(&road), &[], &Job::default()).unwrap();
+        assert!(objects.len() > 10 && objects.iter().all(|o| (o.x - 100.0).abs() <= 1.0 + 1e-3));
+    }
+
+    #[test]
     fn decals_lie_on_the_road() {
         let mut w = world();
         let road = vec![[100.0, 20.0], [100.0, 480.0]];
         let g = WreckGen { scenes_per_km: 0.0, decals_per_km: 60.0, ..Default::default() };
-        let objects = wreck_objects(&mut w, &g, std::slice::from_ref(&road), &[], &Job::default()).unwrap();
+        let objects = wreck_objects(&mut w, &ModelDb::new("Z:/none"), &g, std::slice::from_ref(&road), &[], &Job::default()).unwrap();
         assert!(objects.len() > 10);
         assert!(objects.iter().all(|o| (o.x - 100.0).abs() <= 2.5));
         // None on a gravel track.
-        let objects = wreck_objects(&mut w, &g, std::slice::from_ref(&road), &[false], &Job::default()).unwrap();
+        let objects = wreck_objects(&mut w, &ModelDb::new("Z:/none"), &g, std::slice::from_ref(&road), &[false], &Job::default()).unwrap();
         assert!(objects.is_empty());
         assert!(is_paved("asf2") && !is_paved("grav"));
     }
