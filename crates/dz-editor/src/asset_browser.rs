@@ -870,6 +870,10 @@ enum Act {
     RemoveTemplates(usize, Vec<String>),
     /// A folder of the library inside this one ("" for its top, or one of its groups).
     LibNewFolder(String),
+    /// Save these generators, presets and prefabs (ids) of the library to a file, named after the place.
+    LibExport(Vec<u64>, Vec<u64>, Vec<u64>, String),
+    /// Add the things of a library file, into this place of the library ("" keeps their folders).
+    LibImport(String),
     RoadCatalog,
     Rescan,
     LibDeleteFolder(String),
@@ -1142,6 +1146,7 @@ fn library_folder_row(ui: &mut egui::Ui, app: &App, name: &str, acts: &mut Vec<A
 fn library_new_menu(ui: &mut egui::Ui, app: &App, place: &str, acts: &mut Vec<Act>) {
     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
     if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(place.to_string())); ui.close_menu(); }
+    library_share_menu(ui, app, place, acts);
     if place.is_empty() {
         return;
     }
@@ -1160,6 +1165,15 @@ fn library_new_menu(ui: &mut egui::Ui, app: &App, place: &str, acts: &mut Vec<Ac
     if dz_core::library::library_folder_takes(place, LibraryItem::Preset) {
         if ui.button(t("New object preset")).on_hover_text(t("With the models selected in the browser.")).clicked() { acts.push(Act::Go(library_source(place))); acts.push(Act::NewPreset); ui.close_menu(); }
     }
+}
+
+/// Import and export of a place of the library: a file with its generators, presets and prefabs.
+fn library_share_menu(ui: &mut egui::Ui, app: &App, place: &str, acts: &mut Vec<Act>) {
+    let (g, p, f) = app.library.ids_in_library_folder(place);
+    let nothing = g.is_empty() && p.is_empty() && f.is_empty();
+    if ui.button(t("Import from a file...")).on_hover_text(t("Adds the generators, presets and prefabs of a library file (.dzwelib) here.")).clicked() { acts.push(Act::LibImport(place.to_string())); ui.close_menu(); }
+    let name = if place.is_empty() { t("Library") } else { place.rsplit('/').next().unwrap_or(place).trim_start_matches('#').to_string() };
+    if ui.add_enabled(!nothing, egui::Button::new(t("Export all of it to a file..."))).on_hover_text(t("Saves everything in here as a library file (.dzwelib) to give to others.")).clicked() { acts.push(Act::LibExport(g, p, f, name)); ui.close_menu(); }
 }
 
 /// What can be done to a folder of the library.
@@ -1196,7 +1210,7 @@ fn library_section(ui: &mut egui::Ui, app: &App, acts: &mut Vec<Act>, renamed: &
     egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
         .show_header(ui, |ui| {
             let r = source_row(ui, &app.browser.source, Source::Group(Group::Library), Source::Group(Group::Library).label(), acts);
-            r.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(String::new())); ui.close_menu(); } });
+            r.context_menu(|ui| { if ui.button(t("New folder")).clicked() { acts.push(Act::LibNewFolder(String::new())); ui.close_menu(); } library_share_menu(ui, app, "", acts); });
         })
         .body(|ui| {
             for (g, root) in [(Group::LibraryGenerators, GENERATORS_ROOT), (Group::LibraryPresets, PRESETS_ROOT), (Group::LibraryPrefabs, PREFABS_ROOT)] {
@@ -1537,6 +1551,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                             }
                                         });
                                     }
+                                    if !lib_gens.is_empty() || !lib_presets.is_empty() || !lib_prefabs.is_empty() {
+                                        let name = app.library.generators.iter().find(|g| lib_gens.first() == Some(&g.id)).map(|g| g.name.clone()).or_else(|| app.library.objects.iter().find(|p| lib_presets.first() == Some(&p.id)).map(|p| p.name.clone())).or_else(|| app.library.prefabs.iter().find(|p| lib_prefabs.first() == Some(&p.id)).map(|p| p.name.clone())).unwrap_or_default();
+                                        let name = if lib_gens.len() + lib_presets.len() + lib_prefabs.len() > 1 { t("Library") } else { name };
+                                        if ui.button(t("Export to a file...")).on_hover_text(t("Saves the selected generators, presets and prefabs as a library file (.dzwelib) to give to others.")).clicked() { acts.push(Act::LibExport(lib_gens.clone(), lib_presets.clone(), lib_prefabs.clone(), name)); ui.close_menu(); }
+                                    }
                                     if models.len() > 1 && ui.button(t("Make a preset of them")).clicked() { acts.push(Act::MakePreset(models.clone())); ui.close_menu(); }
                                     if let (Pick::Prefab(id), 1) = (pick, group.len()) { event_group_menu(ui, app, *id, &mut acts); }
                                     if group.len() == 1 {
@@ -1670,6 +1689,33 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                     if in_folder(f, &name) { app.browser.source = library_source(parent_folder(&name)); }
                 }
                 app.lib_dirty = true;
+            }
+            Act::LibExport(gens, presets, prefabs, name) => {
+                let bundle = app.library.export_bundle(&gens, &presets, &prefabs);
+                if bundle.is_empty() { continue; }
+                let file = name.chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' }).collect::<String>();
+                if let Some(path) = rfd::FileDialog::new().set_title(t("Export library items")).add_filter("DZ World Editor library", &["dzwelib"]).set_file_name(format!("{file}.dzwelib")).save_file() {
+                    match bundle.save(&path) {
+                        Ok(()) => app.info(tf("Exported {0} generators, {1} presets and {2} prefabs", &[&bundle.generators.len().to_string(), &bundle.objects.len().to_string(), &bundle.prefabs.len().to_string()])),
+                        Err(e) => app.error(format!("{e:#}")),
+                    }
+                }
+            }
+            Act::LibImport(place) => {
+                if let Some(path) = rfd::FileDialog::new().set_title(t("Import library items")).add_filter("DZ World Editor library", &["dzwelib"]).pick_file() {
+                    match dz_core::library::LibraryBundle::load(&path) {
+                        Ok(bundle) => {
+                            let r = app.library.import_bundle(bundle, &place);
+                            if r.total() == 0 {
+                                app.warn(t("The file holds no generators, presets or prefabs"));
+                            } else {
+                                app.lib_dirty = true;
+                                app.info(tf("Imported {0} generators, {1} presets and {2} prefabs", &[&r.generators.to_string(), &r.presets.to_string(), &r.prefabs.to_string()]));
+                            }
+                        }
+                        Err(e) => app.error(format!("{e:#}")),
+                    }
+                }
             }
             Act::NewPrefab => { app.create_prefab(); }
             Act::LibMovePrefabs(folder, ids) => {

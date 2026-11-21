@@ -1016,6 +1016,259 @@ impl Library {
     }
 }
 
+/// Marks a file made by [`Library::export_bundle`].
+pub const BUNDLE_FORMAT: &str = "DZWorldEditor library";
+
+/// Generators, object presets and prefabs taken out of a library to be given to somebody else
+/// (a `.dzwelib` file). Everything a generator needs from the library comes along: the object
+/// presets it uses. Models stay where they are on the work drive, only their paths are kept.
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LibraryBundle {
+    pub format: String,
+    pub version: u32,
+    pub generators: Vec<GeneratorPreset>,
+    pub objects: Vec<ObjectPreset>,
+    pub prefabs: Vec<Prefab>,
+    /// The folders the things lay in, so that they can be made again.
+    pub folders: Vec<String>,
+}
+
+/// How many things an import added.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImportReport {
+    pub generators: usize,
+    pub presets: usize,
+    pub prefabs: usize,
+}
+
+impl ImportReport {
+    pub fn total(&self) -> usize {
+        self.generators + self.presets + self.prefabs
+    }
+}
+
+/// Ids of the object presets a generator uses. Every field that holds a preset is called
+/// `preset`, so they are found by name, whatever the kind of generator.
+fn preset_refs(v: &serde_json::Value, out: &mut Vec<u64>) {
+    match v {
+        serde_json::Value::Object(m) => {
+            for (k, x) in m {
+                match (k.as_str(), x.as_u64()) {
+                    ("preset", Some(id)) => out.push(id),
+                    _ => preset_refs(x, out),
+                }
+            }
+        }
+        serde_json::Value::Array(a) => a.iter().for_each(|x| preset_refs(x, out)),
+        _ => {}
+    }
+}
+
+/// Points the preset fields of a generator to other ids.
+fn remap_preset_refs(v: &mut serde_json::Value, map: &std::collections::HashMap<u64, u64>) {
+    match v {
+        serde_json::Value::Object(m) => {
+            for (k, x) in m.iter_mut() {
+                match (k.as_str(), x.as_u64().and_then(|id| map.get(&id))) {
+                    ("preset", Some(new)) => *x = (*new).into(),
+                    _ => remap_preset_refs(x, map),
+                }
+            }
+        }
+        serde_json::Value::Array(a) => a.iter_mut().for_each(|x| remap_preset_refs(x, map)),
+        _ => {}
+    }
+}
+
+impl Library {
+    /// The generators, presets and prefabs that lie in a folder of the library, the ones in
+    /// the folders inside it too: "" is the whole library, a group or a folder is its part.
+    /// Returns their ids.
+    pub fn ids_in_library_folder(&self, name: &str) -> (Vec<u64>, Vec<u64>, Vec<u64>) {
+        let inside = |folder: &str, kind: LibraryItem| {
+            let home = self.library_home(folder, kind);
+            if name.is_empty() {
+                true
+            } else if name == GENERATORS_ROOT || name == PRESETS_ROOT || name == PREFABS_ROOT {
+                library_folder_takes(name, kind) && (home.is_empty() || in_folder(home, name))
+            } else {
+                !home.is_empty() && in_folder(home, name)
+            }
+        };
+        (
+            self.generators.iter().filter(|g| inside(&g.folder, LibraryItem::Generator)).map(|g| g.id).collect(),
+            self.objects.iter().filter(|p| inside(&p.folder, LibraryItem::Preset)).map(|p| p.id).collect(),
+            self.prefabs.iter().filter(|p| inside(&p.folder, LibraryItem::Prefab)).map(|p| p.id).collect(),
+        )
+    }
+
+    /// Copies of the chosen things, with the object presets the generators use.
+    pub fn export_bundle(&self, generators: &[u64], presets: &[u64], prefabs: &[u64]) -> LibraryBundle {
+        let mut b = LibraryBundle { format: BUNDLE_FORMAT.to_string(), version: 1, ..Default::default() };
+        let mut wanted: Vec<u64> = presets.to_vec();
+        for g in self.generators.iter().filter(|g| generators.contains(&g.id)) {
+            if let Ok(v) = serde_json::to_value(&g.kind) {
+                preset_refs(&v, &mut wanted);
+            }
+            b.generators.push(g.clone());
+        }
+        b.objects = self.objects.iter().filter(|p| wanted.contains(&p.id)).cloned().collect();
+        b.prefabs = self.prefabs.iter().filter(|p| prefabs.contains(&p.id)).cloned().collect();
+        let mut folders: Vec<String> = Vec::new();
+        for f in b.generators.iter().map(|g| &g.folder).chain(b.objects.iter().map(|p| &p.folder)).chain(b.prefabs.iter().map(|p| &p.folder)) {
+            let mut at = f.as_str();
+            while !at.is_empty() {
+                if self.library_folders.iter().any(|x| x == at) && !folders.iter().any(|x| x == at) {
+                    folders.push(at.to_string());
+                }
+                at = parent_folder(at);
+            }
+        }
+        folders.sort_by_key(|f| f.to_lowercase());
+        b.folders = folders;
+        b
+    }
+
+    /// Adds what a bundle holds, as new things with their own ids, next to what is there.
+    /// With `into` empty each thing goes back to the folder it came from (made when it is
+    /// missing); otherwise it goes into that folder, or stays in its group when the folder
+    /// does not take its kind.
+    pub fn import_bundle(&mut self, bundle: LibraryBundle, into: &str) -> ImportReport {
+        let mut report = ImportReport::default();
+        let keep_folders = into.is_empty();
+        if keep_folders {
+            for f in &bundle.folders {
+                let mut up = f.as_str();
+                let mut chain = Vec::new();
+                while !up.is_empty() && !self.library_folder_exists(up) {
+                    chain.push(up.to_string());
+                    up = parent_folder(up);
+                }
+                self.library_folders.extend(chain);
+            }
+            self.library_folders.sort_by_key(|f| f.to_lowercase());
+        }
+        let is_group = into == GENERATORS_ROOT || into == PRESETS_ROOT || into == PREFABS_ROOT;
+        let place = |lib: &Library, folder: &str, kind: LibraryItem| -> String {
+            if keep_folders {
+                lib.library_home(folder, kind).to_string()
+            } else if !is_group && lib.library_folder_exists(into) && library_folder_takes(into, kind) {
+                into.to_string()
+            } else {
+                String::new()
+            }
+        };
+        let mut ids: std::collections::HashMap<u64, u64> = std::collections::HashMap::new();
+        for mut p in bundle.objects {
+            let id = new_id();
+            ids.insert(p.id, id);
+            p.id = id;
+            p.folder = place(self, &p.folder, LibraryItem::Preset);
+            self.objects.push(p);
+            report.presets += 1;
+        }
+        for mut g in bundle.generators {
+            g.id = new_id();
+            g.folder = place(self, &g.folder, LibraryItem::Generator);
+            // Its presets are the new copies.
+            if let Ok(mut v) = serde_json::to_value(&g.kind) {
+                remap_preset_refs(&mut v, &ids);
+                if let Ok(kind) = serde_json::from_value(v) {
+                    g.kind = kind;
+                }
+            }
+            self.generators.push(g);
+            report.generators += 1;
+        }
+        for mut p in bundle.prefabs {
+            p.id = new_id();
+            p.folder = place(self, &p.folder, LibraryItem::Prefab);
+            self.prefabs.push(p);
+            report.prefabs += 1;
+        }
+        report
+    }
+}
+
+impl LibraryBundle {
+    pub fn is_empty(&self) -> bool {
+        self.generators.is_empty() && self.objects.is_empty() && self.prefabs.is_empty()
+    }
+    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
+        crate::fsutil::atomic_write(path, &serde_json::to_vec_pretty(self)?)
+    }
+    /// Reads a `.dzwelib` file. Anything else is refused with a reason.
+    pub fn load(path: &Path) -> anyhow::Result<Self> {
+        let bytes = std::fs::read(path)?;
+        let b: LibraryBundle = serde_json::from_slice(&bytes).map_err(|e| anyhow::anyhow!("not a library file: {e}"))?;
+        if b.format != BUNDLE_FORMAT {
+            anyhow::bail!("not a DZ World Editor library file");
+        }
+        Ok(b)
+    }
+}
+
+#[cfg(test)]
+mod bundle_tests {
+    use super::*;
+
+    fn library() -> Library {
+        let mut l = Library::default();
+        let f = l.new_library_folder(GENERATORS_ROOT, "Farm");
+        l.objects.push(ObjectPreset { id: 7, name: "Crates".into(), folder: String::new(), items: vec![("a.p3d".into(), 1.0)], scale_min: 1.0, scale_max: 1.0, random_yaw: true, align: false });
+        let kind = GeneratorKind::Fence(FenceGen { preset: Some(7), ..Default::default() });
+        l.generators.push(GeneratorPreset { id: 1, name: "Farm fence".into(), folder: f, kind });
+        l.prefabs.push(Prefab { id: 3, name: "Camp".into(), folder: String::new(), items: Vec::new() });
+        l
+    }
+
+    #[test]
+    fn a_generator_takes_its_object_preset_and_folder_along_and_gets_it_back_under_new_ids() {
+        let l = library();
+        let b = l.export_bundle(&[1], &[], &[]);
+        assert_eq!((b.generators.len(), b.objects.len(), b.prefabs.len()), (1, 1, 0), "the preset it uses comes along");
+        assert_eq!(b.folders, vec!["#generators/Farm".to_string()]);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("x.dzwelib");
+        b.save(&path).unwrap();
+        let mut other = Library::default();
+        let r = other.import_bundle(LibraryBundle::load(&path).unwrap(), "");
+        assert_eq!((r.generators, r.presets, r.prefabs), (1, 1, 0));
+        assert_eq!(other.generators[0].folder, "#generators/Farm");
+        assert!(other.library_folders.contains(&"#generators/Farm".to_string()));
+        let new_preset = other.objects[0].id;
+        assert_ne!(new_preset, 7, "its own id");
+        match &other.generators[0].kind {
+            GeneratorKind::Fence(g) => assert_eq!(g.preset, Some(new_preset), "points to the copy"),
+            _ => panic!("kind changed"),
+        }
+        // Importing again adds copies and never touches what is there.
+        other.import_bundle(b, "");
+        assert_eq!((other.generators.len(), other.objects.len()), (2, 2));
+    }
+
+    #[test]
+    fn a_folder_exports_what_lies_in_it_and_a_foreign_file_is_refused() {
+        let mut l = library();
+        let (g, p, f) = l.ids_in_library_folder("#generators/Farm");
+        assert_eq!((g, p, f), (vec![1], vec![], vec![]));
+        let (g, p, f) = l.ids_in_library_folder("");
+        assert_eq!((g.len(), p.len(), f.len()), (1, 1, 1));
+        let (g, _, f) = l.ids_in_library_folder(PREFABS_ROOT);
+        assert_eq!((g.len(), f.len()), (0, 1));
+        // Into a chosen folder.
+        let b = l.export_bundle(&[], &[7], &[3]);
+        let into = l.new_library_folder("", "Mine");
+        l.import_bundle(b, &into);
+        assert_eq!(l.objects.last().unwrap().folder, into);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("no.dzwelib");
+        std::fs::write(&path, br#"{"generators":[]}"#).unwrap();
+        assert!(LibraryBundle::load(&path).is_err());
+    }
+}
+
 /// The generators every installation starts with; they cannot be changed, only copied.
 pub fn built_in_generators() -> Vec<GeneratorPreset> {
     let rule = PaintRule::default();
