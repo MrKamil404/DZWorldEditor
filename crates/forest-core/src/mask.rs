@@ -39,11 +39,11 @@ impl MaskImage {
         // Maski mapowe bywają >500 MB po dekodowaniu (np. 15360x15360 RGBA) —
         // domyślny limit pamięci dekodera trzeba zdjąć.
         let mut reader = image::ImageReader::open(path)
-            .map_err(|e| format!("Nie udało się otworzyć maski: {e}"))?;
+            .map_err(|e| format!("Could not open the mask: {e}"))?;
         reader.no_limits();
         let img = reader
             .decode()
-            .map_err(|e| format!("Nie udało się wczytać maski: {e}"))?;
+            .map_err(|e| format!("Could not load the mask: {e}"))?;
         Ok(Self::from_dynamic(img))
     }
 

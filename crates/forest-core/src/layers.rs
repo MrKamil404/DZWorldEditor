@@ -36,7 +36,7 @@ impl LayerLibrary {
     /// Parsuj plik `layers.cfg` i wyciągnij kolory z sekcji `Legend > Colors`.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         let text = std::fs::read_to_string(path.as_ref())
-            .map_err(|e| format!("Odczyt layers.cfg: {e}"))?;
+            .map_err(|e| format!("Reading layers.cfg: {e}"))?;
         Self::parse(&text)
     }
 
@@ -47,11 +47,11 @@ impl LayerLibrary {
         // znajdź sekcję class Colors { ... } wewnątrz class Legend
         let colors_start = text
             .find("class Colors")
-            .ok_or("Brak sekcji 'class Colors' w layers.cfg")?;
+            .ok_or("No 'class Colors' section in layers.cfg")?;
         let brace_start = text[colors_start..]
             .find('{')
             .map(|i| colors_start + i + 1)
-            .ok_or("Brak '{' po 'class Colors'")?;
+            .ok_or("No '{' after 'class Colors'")?;
 
         // znajdź pasujący '}'
         let mut depth = 1;
@@ -81,7 +81,7 @@ impl LayerLibrary {
         }
 
         if layers.is_empty() {
-            return Err("Nie znaleziono żadnych warstw w sekcji Colors".into());
+            return Err("No layers found in the Colors section".into());
         }
 
         Ok(Self { layers })
@@ -106,7 +106,7 @@ impl LayerLibrary {
         }
         text.push_str("  };\n");
         text.push_str("};\n");
-        std::fs::write(path, text).map_err(|e| format!("Zapis layers.cfg: {e}"))
+        std::fs::write(path, text).map_err(|e| format!("Writing layers.cfg: {e}"))
     }
 }
 

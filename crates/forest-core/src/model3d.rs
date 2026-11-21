@@ -171,7 +171,7 @@ impl ModelMesh {
 /// Plik MLOD (źródłowy) ma inny format i nie da się go wczytać jako ODOL.
 fn describe_format_error(bytes: &[u8]) -> Option<String> {
     if bytes.starts_with(b"MLOD") {
-        Some("Model jest w formacie MLOD — podgląd obsługuje tylko binarne ODOL".into())
+        Some("The model is in MLOD format. The preview supports only binarized ODOL".into())
     } else {
         None
     }
@@ -475,12 +475,12 @@ pub fn load_model_detail(path: &Path, root: &Path, max_texture: u32, gpu_texture
         .map(|(i, _)| i)
         .collect();
     if visual.is_empty() {
-        return Err("Model nie ma LOD-u graficznego".into());
+        return Err("The model has no visual LOD".into());
     }
     let chosen = lod.min(visual.len() - 1);
     let index = visual[chosen];
     let mut lods = odol::read(&bytes, |i, _| i == index).map_err(|e| format!("{}: {e:#}", path.display()))?;
-    let data = lods.pop().ok_or("Model nie ma LOD-ów")?;
+    let data = lods.pop().ok_or("The model has no LODs")?;
     let mut mesh = build_mesh(&data, root, max_texture, gpu_texture)?;
     mesh.lod = chosen;
     mesh.lod_count = visual.len();
@@ -489,7 +489,7 @@ pub fn load_model_detail(path: &Path, root: &Path, max_texture: u32, gpu_texture
 
 fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32, gpu_texture: u32) -> Result<ModelMesh, String> {
     if lod.vertices.is_empty() || lod.faces.is_empty() {
-        return Err("LOD modelu jest pusty".into());
+        return Err("The model LOD is empty".into());
     }
 
     let mut mesh = ModelMesh::default();
@@ -613,7 +613,7 @@ fn build_mesh(lod: &odol::Lod, root: &Path, max_texture: u32, gpu_texture: u32) 
         mesh.indices.extend_from_slice(group);
     }
     if mesh.indices.is_empty() {
-        return Err("LOD modelu nie ma trójkątów".into());
+        return Err("The model LOD has no triangles".into());
     }
 
     mesh.min = [f32::MAX; 3];

@@ -33,9 +33,9 @@ fn fix_swizzle(kind: u16, mut order: [u8; 4]) -> [u8; 4] {
 
 /// The mipmaps with sides of at most `max` pixels, still compressed. Only DXT1 and DXT5 files.
 pub fn read_raw(b: &[u8], max: u32) -> Result<Raw> {
-    ensure!(b.len() > 8, "Plik PAA jest za krótki");
+    ensure!(b.len() > 8, "The PAA file is too short");
     let kind = u16::from_le_bytes([b[0], b[1]]);
-    ensure!(kind == 0xFF01 || kind == 0xFF05, "PAA bez kompresji DXT");
+    ensure!(kind == 0xFF01 || kind == 0xFF05, "PAA without DXT compression");
     let mut p = 2;
     let mut swizzle = [0, 1, 2, 3];
     while b.get(p..p + 4) == Some(b"GGAT") {
@@ -89,10 +89,10 @@ pub fn read_raw(b: &[u8], max: u32) -> Result<Raw> {
     }
     if mips.is_empty() {
         // Every level is larger than asked for: take the smallest of them.
-        let (w, h, lzo, data) = smallest.ok_or_else(|| anyhow::anyhow!("Brak mipmap w PAA"))?;
+        let (w, h, lzo, data) = smallest.ok_or_else(|| anyhow::anyhow!("No mipmaps in the PAA"))?;
         let expected = w.div_ceil(4) as usize * h.div_ceil(4) as usize * block;
         let blocks = if lzo { crate::odol::lzo1x_decompress(data, expected)?.0 } else { data.to_vec() };
-        ensure!(blocks.len() == expected, "Uszkodzony mipmap PAA");
+        ensure!(blocks.len() == expected, "Corrupt PAA mipmap");
         mips.push((w, h, blocks));
     }
     Ok(Raw { dxt5: kind == 0xFF05, swizzle: fix_swizzle(kind, swizzle), mips })
@@ -100,7 +100,7 @@ pub fn read_raw(b: &[u8], max: u32) -> Result<Raw> {
 
 /// Decodes the largest mipmap whose sides are at most `max` pixels (or the smallest one).
 pub fn decode(b: &[u8], max: u32) -> Result<Texture> {
-    ensure!(b.len() > 8, "Plik PAA jest za krótki");
+    ensure!(b.len() > 8, "The PAA file is too short");
     let kind = u16::from_le_bytes([b[0], b[1]]);
     let mut p = 2;
     let mut swizzle = None;
@@ -122,7 +122,7 @@ pub fn decode(b: &[u8], max: u32) -> Result<Texture> {
         }
         let size = u32::from_le_bytes([b[p + 4], b[p + 5], b[p + 6], 0]) as usize;
         let start = p + 7;
-        ensure!(start + size <= b.len(), "Uszkodzony mipmap PAA");
+        ensure!(start + size <= b.len(), "Corrupt PAA mipmap");
         let lzo = w & 0x8000 != 0;
         let (w, h) = ((w & 0x7fff) as u32, h as u32);
         chosen = Some((w, h, lzo, &b[start..start + size]));
@@ -132,7 +132,7 @@ pub fn decode(b: &[u8], max: u32) -> Result<Texture> {
         p = start + size;
     }
     let Some((w, h, lzo, data)) = chosen else {
-        bail!("Brak mipmap w PAA")
+        bail!("No mipmaps in the PAA")
     };
     let pixels = w as usize * h as usize;
     let blocks = w.div_ceil(4) as usize * h.div_ceil(4) as usize;
@@ -141,16 +141,16 @@ pub fn decode(b: &[u8], max: u32) -> Result<Texture> {
         0xFF05 => blocks * 16,
         0x8888 => pixels * 4,
         0x4444 | 0x1555 | 0x8080 => pixels * 2,
-        other => bail!("Nieobsługiwany format PAA {other:04X}"),
+        other => bail!("Unsupported PAA format {other:04X}"),
     };
     let data = if lzo {
         crate::odol::lzo1x_decompress(data, expected)?.0
     } else {
         // Uncompressed mipmaps only; LZSS-packed ARGB data is not supported.
-        ensure!(data.len() == expected, "Nieobsługiwana kompresja PAA");
+        ensure!(data.len() == expected, "Unsupported PAA compression");
         data.to_vec()
     };
-    ensure!(data.len() >= expected, "Uszkodzony mipmap PAA");
+    ensure!(data.len() >= expected, "Corrupt PAA mipmap");
     let mut rgba = vec![0u8; pixels * 4];
     match kind {
         0xFF01 | 0xFF05 => dxt(&data, w, h, kind == 0xFF05, &mut rgba),

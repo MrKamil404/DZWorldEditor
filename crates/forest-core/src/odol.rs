@@ -50,7 +50,7 @@ struct Reader<'a> {
 impl<'a> Reader<'a> {
     fn bytes(&mut self, n: usize) -> Result<&'a [u8]> {
         let end = self.p.checked_add(n).context("Rozmiar ODOL")?;
-        let s = self.b.get(self.p..end).context("Niepełny plik ODOL")?;
+        let s = self.b.get(self.p..end).context("Incomplete ODOL file")?;
         self.p = end;
         Ok(s)
     }
@@ -68,15 +68,15 @@ impl<'a> Reader<'a> {
     }
     fn count(&mut self) -> Result<usize> {
         let n = self.i32()?;
-        ensure!((0..=50_000_000).contains(&n), "Nieprawidłowa liczba elementów ODOL");
+        ensure!((0..=50_000_000).contains(&n), "Invalid ODOL element count");
         Ok(n as usize)
     }
     fn skip(&mut self, n: usize) -> Result<()> {
         self.bytes(n).map(|_| ())
     }
     fn cstring(&mut self) -> Result<String> {
-        let rest = self.b.get(self.p..).context("Niepełny plik ODOL")?;
-        let end = rest.iter().position(|&c| c == 0).context("Niezakończony napis ODOL")?;
+        let rest = self.b.get(self.p..).context("Incomplete ODOL file")?;
+        let end = rest.iter().position(|&c| c == 0).context("Unterminated ODOL string")?;
         let s = String::from_utf8_lossy(&rest[..end]).into_owned();
         self.p += end + 1;
         Ok(s)
@@ -86,7 +86,7 @@ impl<'a> Reader<'a> {
         if size < 1024 {
             return Ok(self.bytes(size)?.to_vec());
         }
-        let rest = self.b.get(self.p..).context("Niepełny plik ODOL")?;
+        let rest = self.b.get(self.p..).context("Incomplete ODOL file")?;
         let (data, used) = lzo1x_decompress(rest, size)?;
         self.p += used;
         Ok(data)
@@ -112,18 +112,18 @@ pub(crate) fn lzo1x_decompress(input: &[u8], expected: usize) -> Result<(Vec<u8>
     let mut out: Vec<u8> = Vec::with_capacity(expected);
     let mut ip = 0usize;
     let byte = |ip: &mut usize| -> Result<usize> {
-        let b = *input.get(*ip).context("Uszkodzone dane LZO")?;
+        let b = *input.get(*ip).context("Corrupt LZO data")?;
         *ip += 1;
         Ok(b as usize)
     };
     let copy_literal = |out: &mut Vec<u8>, ip: &mut usize, n: usize| -> Result<()> {
-        let s = input.get(*ip..*ip + n).context("Uszkodzone dane LZO")?;
+        let s = input.get(*ip..*ip + n).context("Corrupt LZO data")?;
         out.extend_from_slice(s);
         *ip += n;
         Ok(())
     };
     let copy_match = |out: &mut Vec<u8>, distance: usize, n: usize| -> Result<()> {
-        ensure!(distance >= 1 && distance <= out.len(), "Uszkodzone dane LZO");
+        ensure!(distance >= 1 && distance <= out.len(), "Corrupt LZO data");
         let start = out.len() - distance;
         for i in 0..n {
             let b = out[start + i];
@@ -133,7 +133,7 @@ pub(crate) fn lzo1x_decompress(input: &[u8], expected: usize) -> Result<(Vec<u8>
     };
     // Number of literals copied after the previous instruction (0–3), from its low bits.
     let mut state;
-    let first = *input.first().context("Puste dane LZO")? as usize;
+    let first = *input.first().context("Empty LZO data")? as usize;
     if first > 17 {
         ip += 1;
         let n = first - 17;
@@ -143,7 +143,7 @@ pub(crate) fn lzo1x_decompress(input: &[u8], expected: usize) -> Result<(Vec<u8>
         state = 0;
     }
     loop {
-        ensure!(out.len() <= expected, "Uszkodzone dane LZO");
+        ensure!(out.len() <= expected, "Corrupt LZO data");
         let t = byte(&mut ip)?;
         if t < 16 {
             if state == 0 {
@@ -219,7 +219,7 @@ pub(crate) fn lzo1x_decompress(input: &[u8], expected: usize) -> Result<(Vec<u8>
             copy_literal(&mut out, &mut ip, state)?;
         }
     }
-    ensure!(out.len() == expected, "Rozmiar danych LZO nie zgadza się z ODOL");
+    ensure!(out.len() == expected, "LZO data size does not match the ODOL");
     Ok((out, ip))
 }
 
@@ -229,12 +229,12 @@ pub(crate) fn lzo1x_decompress(input: &[u8], expected: usize) -> Result<(Vec<u8>
 /// ODOL version and (resolution, start, end) of every LOD.
 type LodTable = (u32, Vec<(f32, usize, usize)>);
 fn lod_table(b: &[u8]) -> Result<LodTable> {
-    ensure!(b.starts_with(b"ODOL"), "To nie jest model ODOL");
+    ensure!(b.starts_with(b"ODOL"), "This is not an ODOL model");
     let mut r = Reader { b, p: 4 };
     let version = r.u32()?;
-    ensure!((53..=60).contains(&version), "Nieobsługiwana wersja ODOL {version}");
+    ensure!((53..=60).contains(&version), "Unsupported ODOL version {version}");
     let n = r.count()?;
-    ensure!((1..=64).contains(&n), "Nieprawidłowa liczba LOD w ODOL");
+    ensure!((1..=64).contains(&n), "Invalid LOD count in ODOL");
     let resolutions: Vec<f32> = (0..n).map(|_| r.f32()).collect::<Result<_>>()?;
     let word = |p: usize| b.get(p..p + 4).map(|w| u32::from_le_bytes(w.try_into().unwrap()) as usize);
     'scan: for p in r.p..b.len().saturating_sub(n * 9) {
@@ -271,7 +271,7 @@ fn lod_table(b: &[u8]) -> Result<LodTable> {
             resolutions.into_iter().zip(ranges).map(|(res, (s, e))| (res, s, e)).collect(),
         ));
     }
-    bail!("Nie znaleziono tabeli LOD w ODOL")
+    bail!("LOD table not found in ODOL")
 }
 
 fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
@@ -414,7 +414,7 @@ fn read_lod(b: &[u8], start: usize, resolution: f32) -> Result<Lod> {
 /// Which of the two a file uses is told by the vectors coming out one unit long.
 fn read_normals(r: &mut Reader, vertices: usize) -> Result<Vec<[f32; 3]>> {
     let count = r.count()?;
-    ensure!(count == vertices && count > 0, "Liczba normalnych ODOL");
+    ensure!(count == vertices && count > 0, "ODOL normal count");
     let fill = r.u8()? != 0;
     let start = r.p;
     for size in [12usize, 4] {
@@ -456,7 +456,7 @@ fn read_normals(r: &mut Reader, vertices: usize) -> Result<Vec<[f32; 3]>> {
             return Ok((0..count).map(normal).collect());
         }
     }
-    bail!("Nieznany zapis normalnych ODOL")
+    bail!("Unknown ODOL normal encoding")
 }
 
 /// The stage holding the colour of a material, by the texture naming convention.
@@ -618,7 +618,7 @@ pub fn read(b: &[u8], want: impl Fn(usize, f32) -> bool) -> Result<Vec<Lod>> {
     for (i, &(resolution, start, end)) in table.iter().enumerate() {
         if want(i, resolution) {
             let lod = read_lod(&b[..end], start, resolution)
-                .with_context(|| format!("LOD {resolution} modelu ODOL"))?;
+                .with_context(|| format!("ODOL model LOD {resolution}"))?;
             lods.push(lod);
         }
     }

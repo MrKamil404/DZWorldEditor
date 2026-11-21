@@ -64,7 +64,7 @@ pub fn is_newer(tag: &str, current: &str) -> bool {
 
 fn agent() -> Result<ureq::Agent> {
     let tls = native_tls::TlsConnector::new()
-        .context("Nie udało się przygotować połączenia HTTPS")?;
+        .context("Could not set up the HTTPS connection")?;
     Ok(ureq::AgentBuilder::new()
         .tls_connector(Arc::new(tls))
         .timeout_connect(Duration::from_secs(10))
@@ -88,9 +88,9 @@ fn latest_from(url: &str) -> Result<Release> {
         .get(url)
         .set("Accept", "application/vnd.github+json")
         .call()
-        .context("Nie udało się połączyć z serwerem wydań")?
+        .context("Could not connect to the release server")?
         .into_json()
-        .context("Nieprawidłowa odpowiedź serwera wydań")
+        .context("The release server sent an invalid reply")
 }
 
 /// Plik do pobrania: nazwany jak działający program, program GUI albo jedyny `.exe`.
@@ -134,17 +134,17 @@ fn install(asset: &Asset, exe: &Path, progress: &AtomicU64) -> Result<()> {
     let response = agent()?
         .get(&asset.browser_download_url)
         .call()
-        .context("Nie udało się pobrać nowej wersji")?;
+        .context("Could not download the new version")?;
     let mut reader = response.into_reader();
     let mut file = std::fs::File::create(&new)
-        .with_context(|| format!("Nie można zapisać pliku {}", new.display()))?;
+        .with_context(|| format!("Cannot write file {}", new.display()))?;
     let mut buf = vec![0; 64 * 1024];
     let mut total = 0u64;
     let mut head = Vec::new();
     loop {
         let n = reader
             .read(&mut buf)
-            .context("Przerwano pobieranie nowej wersji")?;
+            .context("The download of the new version was interrupted")?;
         if n == 0 {
             break;
         }
@@ -160,11 +160,11 @@ fn install(asset: &Asset, exe: &Path, progress: &AtomicU64) -> Result<()> {
     let check = || -> Result<()> {
         ensure!(
             total == asset.size,
-            "Pobrano {} z {} bajtów nowej wersji",
+            "Downloaded {} of {} bytes of the new version",
             total,
             asset.size
         );
-        ensure!(head.starts_with(b"MZ"), "Pobrany plik nie jest programem Windows");
+        ensure!(head.starts_with(b"MZ"), "The downloaded file is not a Windows program");
         Ok(())
     };
     if let Err(e) = check() {
@@ -179,10 +179,10 @@ fn replace(exe: &Path, new: &Path) -> Result<()> {
     let old = previous(exe);
     let _ = std::fs::remove_file(&old);
     std::fs::rename(exe, &old)
-        .with_context(|| format!("Nie można zastąpić pliku {}", exe.display()))?;
+        .with_context(|| format!("Cannot replace file {}", exe.display()))?;
     if let Err(e) = std::fs::rename(new, exe) {
         let _ = std::fs::rename(&old, exe);
-        bail!("Nie można zastąpić pliku {}: {e}", exe.display());
+        bail!("Cannot replace file {}: {e}", exe.display());
     }
     Ok(())
 }
@@ -266,7 +266,7 @@ impl Updater {
                 Ok(Err(e)) => self.state = State::Failed(format!("{e:#}")),
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
-                    self.state = State::Failed("Przerwano sprawdzanie aktualizacji".into())
+                    self.state = State::Failed("The update check was interrupted".into())
                 }
             },
             State::Downloading(release, _, _, rx) => match rx.try_recv() {
@@ -292,7 +292,7 @@ impl Updater {
             return;
         };
         let Some(exe) = current_exe() else {
-            self.error = Some("Nie można ustalić ścieżki programu".into());
+            self.error = Some("Cannot find the program path".into());
             return;
         };
         let Some(asset) = asset(release, &exe_name()).cloned() else {

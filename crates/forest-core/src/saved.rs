@@ -45,8 +45,8 @@ pub fn save_sidecar(
         stats: stats.clone(),
     };
     let json =
-        serde_json::to_string(&data).map_err(|e| format!("Serializacja obiektów: {e}"))?;
-    std::fs::write(&path, json).map_err(|e| format!("Zapis obiektów: {e}"))?;
+        serde_json::to_string(&data).map_err(|e| format!("Serializing objects: {e}"))?;
+    std::fs::write(&path, json).map_err(|e| format!("Writing objects: {e}"))?;
     Ok(path)
 }
 
@@ -58,12 +58,12 @@ pub fn load_sidecar(project_path: &Path) -> Result<Option<SavedObjects>, String>
         return Ok(None);
     }
     let text =
-        std::fs::read_to_string(&path).map_err(|e| format!("Odczyt obiektów: {e}"))?;
+        std::fs::read_to_string(&path).map_err(|e| format!("Reading objects: {e}"))?;
     let data: SavedObjects =
-        serde_json::from_str(&text).map_err(|e| format!("Parse obiektów: {e}"))?;
+        serde_json::from_str(&text).map_err(|e| format!("Parsing objects: {e}"))?;
     if data.version != SIDECAR_VERSION {
         return Err(format!(
-            "Niezgodna wersja pliku obiektów ({}) — wygeneruj las ponownie",
+            "The objects file has a different version ({}). Generate the forest again",
             data.version
         ));
     }

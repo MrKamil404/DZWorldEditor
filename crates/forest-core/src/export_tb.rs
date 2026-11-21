@@ -59,9 +59,9 @@ pub fn write_tb_file(
     path: impl AsRef<std::path::Path>,
 ) -> Result<usize, String> {
     let file = std::fs::File::create(path)
-        .map_err(|e| format!("Nie można utworzyć pliku wyjściowego: {e}"))?;
+        .map_err(|e| format!("Cannot create the output file: {e}"))?;
     let mut buf = std::io::BufWriter::new(file);
-    write_tb_txt(objects, project, &mut buf).map_err(|e| format!("Zapis TXT: {e}"))
+    write_tb_txt(objects, project, &mut buf).map_err(|e| format!("Writing TXT: {e}"))
 }
 
 /// Wynik importu pliku TB TXT (tego samego formatu, który produkuje eksport).
@@ -95,12 +95,12 @@ pub fn parse_tb_txt(text: &str, project: &ForestProject) -> Result<TbImport, Str
         // "model";X;Y;yaw;pitch;roll;scale;elev;underground;(końcowy pusty)
         let parts: Vec<&str> = line.split(';').collect();
         if parts.len() < 9 {
-            fail("za mało pól (oczekiwano 9)");
+            fail("too few fields (expected 9)");
             continue;
         }
         let model = parts[0].trim().trim_matches('"');
         if model.is_empty() {
-            fail("pusta nazwa modelu");
+            fail("empty model name");
             continue;
         }
         let mut nums = [0.0f64; 7];
@@ -115,12 +115,12 @@ pub fn parse_tb_txt(text: &str, project: &ForestProject) -> Result<TbImport, Str
             }
         }
         if let Some(k) = bad {
-            fail(&format!("pole {k} nie jest liczbą"));
+            fail(&format!("field {k} is not a number"));
             continue;
         }
         if out.objects.len() >= MAX_TOTAL_OBJECTS {
             return Err(format!(
-                "Plik ma więcej niż {MAX_TOTAL_OBJECTS} obiektów — limit jak przy generowaniu"
+                "The file has more than {MAX_TOTAL_OBJECTS} objects, the same limit as for generating"
             ));
         }
         let species_index = find_species_in(&project.species, model).unwrap_or(usize::MAX);
@@ -141,7 +141,7 @@ pub fn parse_tb_txt(text: &str, project: &ForestProject) -> Result<TbImport, Str
         });
     }
     if out.objects.is_empty() {
-        return Err("Brak poprawnych wierszy obiektów w pliku".into());
+        return Err("The file has no valid object rows".into());
     }
     Ok(out)
 }
@@ -156,7 +156,7 @@ pub fn export_trees_png(
     path: impl AsRef<std::path::Path>,
 ) -> Result<u32, String> {
     if res == 0 {
-        return Err("Rozdzielczość musi być > 0".into());
+        return Err("Resolution must be > 0".into());
     }
     let mut rgba = vec![0u8; (res as usize) * (res as usize) * 4];
     let map = project.map_size_m;
@@ -185,7 +185,7 @@ pub fn export_trees_png(
             drawn += 1;
         }
         image::save_buffer(path, &rgba, res, res, image::ColorType::Rgba8)
-            .map_err(|e| format!("Zapis PNG: {e}"))?;
+            .map_err(|e| format!("Writing PNG: {e}"))?;
         return Ok(drawn);
     }
 
@@ -268,7 +268,7 @@ pub fn export_trees_png(
         res,
         image::ColorType::Rgba8,
     )
-    .map_err(|e| format!("Zapis PNG: {e}"))?;
+    .map_err(|e| format!("Writing PNG: {e}"))?;
     Ok(drawn)
 }
 
@@ -292,7 +292,7 @@ pub fn export_trees_png_with_layers(
     // Tryb Preview: identyczny jak podgląd (koło 2px, bez randomizacji) ale z kolorami warstw
     if project.png_settings.mode == PngMode::Preview {
         if res == 0 {
-            return Err("Rozdzielczość musi być > 0".into());
+            return Err("Resolution must be > 0".into());
         }
         let mut rgba = vec![0u8; (res as usize) * (res as usize) * 4];
         let map = project.map_size_m;
@@ -323,12 +323,12 @@ pub fn export_trees_png_with_layers(
             drawn += 1;
         }
         image::save_buffer(path, &rgba, res, res, image::ColorType::Rgba8)
-            .map_err(|e| format!("Zapis PNG: {e}"))?;
+            .map_err(|e| format!("Writing PNG: {e}"))?;
         return Ok(drawn);
     }
 
     if res == 0 {
-        return Err("Rozdzielczość musi być > 0".into());
+        return Err("Resolution must be > 0".into());
     }
     let mut rgba = vec![0u8; (res as usize) * (res as usize) * 4];
     let map = project.map_size_m;
@@ -419,7 +419,7 @@ pub fn export_trees_png_with_layers(
         res,
         image::ColorType::Rgba8,
     )
-    .map_err(|e| format!("Zapis PNG: {e}"))?;
+    .map_err(|e| format!("Writing PNG: {e}"))?;
     Ok(drawn)
 }
 
@@ -432,7 +432,7 @@ fn export_zones_png_with_layers(
     path: impl AsRef<std::path::Path>,
 ) -> Result<u32, String> {
     if res == 0 {
-        return Err("Rozdzielczość musi być > 0".into());
+        return Err("Resolution must be > 0".into());
     }
     // Zbuduj kolory stref z warstw: kolor strefy = kolor warstwy pierwszego gatunku strefy
     let zone_colors: Vec<[u8; 3]> = project
@@ -458,7 +458,7 @@ fn export_zones_png_with_layers(
             return export_zones_png(&mask, project, &zone_colors, res, path);
         }
     }
-    Err("Brak maski — tryb Strefy wymaga wczytanej maski.".into())
+    Err("No mask loaded. Zones mode needs a mask.".into())
 }
 
 /// Eksportuje warstwę stref lasu jako PNG (tryb Zones).
@@ -471,7 +471,7 @@ pub fn export_zones_png(
     path: impl AsRef<std::path::Path>,
 ) -> Result<u32, String> {
     if res == 0 {
-        return Err("Rozdzielczość musi być > 0".into());
+        return Err("Resolution must be > 0".into());
     }
 
     let mut rgba = vec![0u8; (res as usize) * (res as usize) * 4];
@@ -523,7 +523,7 @@ pub fn export_zones_png(
         res,
         image::ColorType::Rgba8,
     )
-    .map_err(|e| format!("Zapis PNG: {e}"))?;
+    .map_err(|e| format!("Writing PNG: {e}"))?;
     Ok(drawn)
 }
 

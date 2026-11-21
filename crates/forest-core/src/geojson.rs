@@ -25,7 +25,7 @@ impl GeoJsonData {
                 let feats = json
                     .get("features")
                     .and_then(|f| f.as_array())
-                    .ok_or("GeoJSON: brak 'features'")?;
+                    .ok_or("GeoJSON: no 'features'")?;
                 for f in feats {
                     if let Some(geom) = f.get("geometry") {
                         push_geometry(geom, &mut out)?;
@@ -38,14 +38,14 @@ impl GeoJsonData {
                 }
             }
             Some("Polygon") | Some("MultiPolygon") => push_geometry(&json, &mut out)?,
-            other => return Err(format!("GeoJSON: nieobsługiwany typ {other:?}")),
+            other => return Err(format!("GeoJSON: unsupported type {other:?}")),
         }
         Ok(out)
     }
 
     pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("Nie udało się wczytać GeoJSON: {e}"))?;
+            .map_err(|e| format!("Could not load the GeoJSON: {e}"))?;
         Self::parse(&text)
     }
 
@@ -94,10 +94,10 @@ fn push_geometry(geom: &serde_json::Value, out: &mut GeoJsonData) -> Result<(), 
     let ty = geom
         .get("type")
         .and_then(|t| t.as_str())
-        .ok_or("GeoJSON: geometria bez 'type'")?;
+        .ok_or("GeoJSON: geometry without 'type'")?;
     let coords = geom
         .get("coordinates")
-        .ok_or("GeoJSON: geometria bez 'coordinates'")?;
+        .ok_or("GeoJSON: geometry without 'coordinates'")?;
     match ty {
         "Polygon" => {
             let rings = parse_rings(coords)?;
@@ -110,7 +110,7 @@ fn push_geometry(geom: &serde_json::Value, out: &mut GeoJsonData) -> Result<(), 
         "MultiPolygon" => {
             let polys = coords
                 .as_array()
-                .ok_or("GeoJSON: MultiPolygon bez tablicy")?;
+                .ok_or("GeoJSON: MultiPolygon without an array")?;
             for poly in polys {
                 let rings = parse_rings(poly)?;
                 if !rings.is_empty() {
@@ -119,33 +119,33 @@ fn push_geometry(geom: &serde_json::Value, out: &mut GeoJsonData) -> Result<(), 
             }
             Ok(())
         }
-        other => Err(format!("GeoJSON: pomijam geometrię '{other}'")),
+        other => Err(format!("GeoJSON: skipping geometry '{other}'")),
     }
 }
 
 fn parse_rings(v: &serde_json::Value) -> Result<Vec<Vec<[f64; 2]>>, String> {
     let arr = v
         .as_array()
-        .ok_or("GeoJSON: pierścień bez tablicy współrzędnych")?;
+        .ok_or("GeoJSON: ring without a coordinate array")?;
     let mut rings = Vec::with_capacity(arr.len());
     for ring in arr {
         let pts = ring
             .as_array()
-            .ok_or("GeoJSON: pierścień bez punktów")?;
+            .ok_or("GeoJSON: ring without points")?;
         let mut r = Vec::with_capacity(pts.len());
         for pt in pts {
             let c = pt
                 .as_array()
-                .ok_or("GeoJSON: punkt bez współrzędnych")?;
+                .ok_or("GeoJSON: point without coordinates")?;
             if c.len() < 2 {
-                return Err("GeoJSON: punkt wymaga >= 2 współrzędnych".into());
+                return Err("GeoJSON: a point needs >= 2 coordinates".into());
             }
             let x = c[0]
                 .as_f64()
-                .ok_or("GeoJSON: x nie jest liczbą")?;
+                .ok_or("GeoJSON: x is not a number")?;
             let y = c[1]
                 .as_f64()
-                .ok_or("GeoJSON: y nie jest liczbą")?;
+                .ok_or("GeoJSON: y is not a number")?;
             r.push([x, y]);
         }
         if r.len() >= 3 {
@@ -270,13 +270,13 @@ pub fn areas_to_geojson(
         }));
     }
     if features.is_empty() {
-        return Err("Brak obszarów z poprawnym poligonem do eksportu".into());
+        return Err("No areas with a valid polygon to export".into());
     }
     serde_json::to_string_pretty(&serde_json::json!({
         "type": "FeatureCollection",
         "features": features,
     }))
-    .map_err(|e| format!("Serializacja GeoJSON: {e}"))
+    .map_err(|e| format!("Serializing GeoJSON: {e}"))
 }
 
 /// Obszar odczytany z GeoJSON — właściwości opcjonalne (pliki zewnętrzne
@@ -364,7 +364,7 @@ pub fn areas_from_geojson(text: &str) -> Result<Vec<ImportedArea>, String> {
             json.get("properties").unwrap_or(&null),
         )),
         Some("Polygon") | Some("MultiPolygon") => geoms.push((&json, &null)),
-        other => return Err(format!("GeoJSON: nieobsługiwany typ {other:?}")),
+        other => return Err(format!("GeoJSON: unsupported type {other:?}")),
     }
 
     let mut out = Vec::new();
