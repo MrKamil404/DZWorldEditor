@@ -8935,9 +8935,17 @@
   "de": "Ja",
   "pl": "Tak"
  },
+ "You changed {0}, which belongs to {1}. Undo (Ctrl+Z) if you did not mean to.": {
+  "de": "Du hast {0} geändert, das {1} gehört. Rückgängig (Strg+Z), falls das nicht gewollt war.",
+  "pl": "Zmieniono {0} (właściciel: {1}). Cofnij (Ctrl+Z), jeśli to pomyłka."
+ },
  "You deleted it, {0} changed it": {
   "de": "Du hast es gelöscht, {0} hat es geändert",
   "pl": "Usunięte u ciebie, zmienione przez: {0}"
+ },
+ "You deleted {0}, which belongs to {1}. Undo (Ctrl+Z) if you did not mean to.": {
+  "de": "Du hast {0} gelöscht, das {1} gehört. Rückgängig (Strg+Z), falls das nicht gewollt war.",
+  "pl": "Usunięto {0} (właściciel: {1}). Cofnij (Ctrl+Z), jeśli to pomyłka."
  },
  "You have the latest version": {
   "de": "Du hast die neueste Version",
@@ -9250,6 +9258,10 @@
  "{0} made of {1} objects": {
   "de": "{0} aus {1} Objekten erstellt",
   "pl": "Utworzono {0} z {1} obiektów"
+ },
+ "{0} made this. Delete it anyway? It goes from their copy too when they merge your changes.": {
+  "de": "Das hat {0} gemacht. Trotzdem löschen? Es verschwindet auch aus deren Kopie, wenn sie deine Änderungen zusammenführen.",
+  "pl": "Autor: {0}. Usunąć mimo to? Zniknie też z kopii tej osoby, gdy scali Twoje zmiany."
  },
  "{0} models": {
   "de": "{0} Modelle",

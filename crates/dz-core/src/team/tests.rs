@@ -347,6 +347,33 @@ fn as_person(w: &World, name: &str) -> World {
     w.note_authors();
     w
 }
+#[test]
+fn changes_of_what_others_made_are_found() {
+    use crate::edit::Change;
+    use crate::world::{ModMode, ModShape, TerrainModifier};
+    let mut w = World::new(crate::world::WorldMeta::new("Team", 64, 4.0), 10.0);
+    w.team_me = "Ania".into();
+    w.note_authors();
+    let m = TerrainModifier { id: 7, name: "Hill".into(), enabled: true, x: 100.0, z: 100.0, yaw: 0.0, shape: ModShape::Circle { radius: 20.0 }, mode: ModMode::Offset, target: None, amount: 2.0, falloff: 10.0, attached: None, follow: false };
+    w.modifiers.push(m.clone());
+    w.set_author(7, "Bartek");
+    let before = w.modifiers.clone();
+    // Ania moves Bartek's hill: found, as a change of his.
+    w.modifiers[0].x += 5.0;
+    let f = super::foreign_in(&Change::Modifiers(before.clone()), &w);
+    assert_eq!(f, vec![super::Foreign { key: "id:7".into(), owner: "Bartek".into(), name: "Hill".into(), removed: false }]);
+    // Deleted, inside a group.
+    w.modifiers.clear();
+    let f = super::foreign_in(&Change::Group(vec![Change::Modifiers(before.clone())]), &w);
+    assert!(f.len() == 1 && f[0].removed);
+    // Her own, or without team work: nothing.
+    w.set_author(7, "Ania");
+    assert!(super::foreign_in(&Change::Modifiers(before.clone()), &w).is_empty());
+    w.set_author(7, "Bartek");
+    w.team_me.clear();
+    assert!(super::foreign_in(&Change::Modifiers(before), &w).is_empty());
+}
+
 fn header_by(author: &str) -> PatchHeader {
     PatchHeader { author: author.into(), ..header() }
 }

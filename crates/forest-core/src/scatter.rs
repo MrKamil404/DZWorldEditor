@@ -49,25 +49,25 @@ pub struct GenStats {
 impl GenStats {
     pub fn summary(&self) -> String {
         let mut s = format!(
-            "Wygenerowano {} obiektów w {} ms",
+            "Placed {} objects in {} ms",
             self.total, self.elapsed_ms
         );
         if !self.per_source.is_empty() {
-            s.push_str("\nStrefy/obszary:");
+            s.push_str("\nZones and areas:");
             for (n, c) in &self.per_source {
                 s.push_str(&format!("\n  {n}: {c}"));
             }
         }
         if self.edge_count > 0 {
-            s.push_str(&format!("\nGranica lasu: {}", self.edge_count));
+            s.push_str(&format!("\nForest edge: {}", self.edge_count));
         }
         if self.removed_cut > 0 {
             s.push_str(&format!(
-                "\nWycięto strefami kolorów: {}",
+                "\nCut by colour zones: {}",
                 self.removed_cut
             ));
         }
-        s.push_str("\nGatunki:");
+        s.push_str("\nSpecies:");
         for (n, c) in &self.per_species {
             if *c > 0 {
                 s.push_str(&format!("\n  {n}: {c}"));
@@ -79,7 +79,7 @@ impl GenStats {
             + self.rejected_clearing;
         if rej > 0 {
             s.push_str(&format!(
-                "\nOdrzucone: {rej} (odstęp {}, filtry {}, wykluczenia {}, polany {})",
+                "\nLeft out: {rej} (spacing {}, filters {}, exclusions {}, clearings {})",
                 self.rejected_spacing,
                 self.rejected_filters,
                 self.rejected_exclusion,
@@ -940,23 +940,23 @@ pub fn generate(
     }
     if let Some(m) = mask {
         if m.width < 2 || m.height < 2 {
-            return Err("Maska jest zbyt mała".into());
+            return Err("The mask is too small".into());
         }
         let mask_used = (project.use_mask_zones && !project.zones.is_empty())
             || !project.cut_zones.is_empty();
         if mask_used && m.width != m.height {
             return Err(format!(
-                "Maska musi być kwadratowa jak mapa — wczytana ma {}x{} px",
+                "The mask must be square like the map; this one is {}x{} px",
                 m.width, m.height
             ));
         }
     }
     if heightmap.is_none() {
         if project.elevation_mode == ElevationMode::AbsoluteSampled {
-            return Err("Wysokość absolutna wymaga heightmapy ASC — wczytaj ją albo wybierz tryb względny".into());
+            return Err("Absolute height needs an ASC heightmap: load one or choose relative height".into());
         }
         if project.min_altitude.is_some() || project.max_altitude.is_some() {
-            return Err("Filtr wysokości wymaga heightmapy ASC — wczytaj ją albo wyłącz limity wysokości".into());
+            return Err("The height filter needs an ASC heightmap: load one or turn the height limits off".into());
         }
     }
     if project.zones.len() > MAX_ZONES {
@@ -1313,7 +1313,7 @@ pub fn generate(
         let (edge_dens, edge_w) = edge_effective(&project.edges);
         if edge_w.is_empty() {
             // niegotowy miks i pusta ręczna lista — nic do sadzenia
-            return Err("Granica lasu: brak gatunków (ustaw wagę > 0 albo dodaj preset)".into());
+            return Err("Forest edge: no species (give one a weight above 0 or add a preset)".into());
         }
         let ecum = cumulative(&edge_w);
         let blend = project.edges.blend;
@@ -1373,7 +1373,7 @@ pub fn generate(
                     let patch = patch_mask.clone();
                     jobs_mask.push(Job {
                         label: format!(
-                            "Granica – {} ({}/{})",
+                            "Edge – {} ({}/{})",
                             project.zones[*zi].label,
                             k + 1,
                             EDGE_STRIPS
@@ -1519,7 +1519,7 @@ pub fn generate(
                     let cf_samples = cf_samples.clone();
                     jobs_per_area[ai].push(Job {
                         label: format!(
-                            "Granica – {} ({}/{})",
+                            "Edge – {} ({}/{})",
                             area.label,
                             k + 1,
                             EDGE_STRIPS
@@ -1585,13 +1585,13 @@ pub fn generate(
 
     if total_target == 0 {
         return Err(
-            "Brak obszarów do zasiedlenia (maska nie zawiera pikseli stref / brak poligonów)"
+            "Nothing to fill: the mask has no pixels of the zones, or there are no polygons"
                 .into(),
         );
     }
     if total_target > MAX_TOTAL_OBJECTS {
         return Err(format!(
-            "Docelowa liczba obiektów ({total_target}) przekracza limit {MAX_TOTAL_OBJECTS} — zmniejsz gęstość"
+            "The forest would have {total_target} objects, more than the limit of {MAX_TOTAL_OBJECTS}: lower the density"
         ));
     }
 
@@ -1643,7 +1643,7 @@ pub fn generate(
     let apply_color_cut = |objects: &mut Vec<PlacedObject>, stats: &mut GenStats, trace: &mut JobTrace| -> Result<(), String> {
         if project.cut_zones.is_empty() { return Ok(()); }
         let Some(m) = mask else {
-            return Err("Projekt ma strefy wycinania po kolorze, ale nie wczytano maski — wycinanie wymaga maski do oceny kolorów.".into());
+            return Err("The project cuts by colour zones, but no mask is loaded: cutting needs the mask to read the colours.".into());
         };
         let mut cut_set: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let margins: Vec<usize> = project.cut_zones.iter().map(|cz| {
@@ -2193,7 +2193,7 @@ mod tests {
         let mut p = sharp_project();
         p.areas.push(sharp_area("Daleko", square_ring(2000.0, 2000.0, 2100.0, 2100.0), 100.0));
         let err = generate(&p, None, None, None, None, &|_| {}).unwrap_err();
-        assert!(err.contains("poza mapą"), "{err}");
+        assert!(err.contains("outside the map"), "{err}");
     }
 
     #[test]
@@ -2550,7 +2550,7 @@ mod tests {
             ..Default::default()
         });
         let err = generate(&proj, None, None, None, None, &|_| {}).unwrap_err();
-        assert!(err.contains("własna granica"), "{err}");
+        assert!(err.contains("own edge"), "{err}");
     }
 
     #[test]
@@ -2660,7 +2660,7 @@ mod tests {
             ..Default::default()
         });
         let err = proj.validate().unwrap_err();
-        assert!(err.contains("przecina sam siebie"), "{err}");
+        assert!(err.contains("crosses itself"), "{err}");
     }
 
     #[test]

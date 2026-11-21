@@ -362,10 +362,12 @@ pub struct History {
     /// Counts every edit; compares with the saved revision.
     pub revision: u64,
     pub saved_revision: u64,
+    /// Counts the steps pushed, not those undone or redone.
+    pub pushed: u64,
 }
 impl Default for History {
     fn default() -> Self {
-        Self { undo: Vec::new(), redo: Vec::new(), budget: 2 * 1024 * 1024 * 1024, revision: 0, saved_revision: 0 }
+        Self { undo: Vec::new(), redo: Vec::new(), budget: 2 * 1024 * 1024 * 1024, revision: 0, saved_revision: 0, pushed: 0 }
     }
 }
 impl Change {
@@ -400,10 +402,15 @@ impl History {
     pub fn mark_saved(&mut self) {
         self.saved_revision = self.revision;
     }
+    /// The newest `n` steps that can be undone, newest last.
+    pub fn recent(&self, n: usize) -> impl Iterator<Item = &Change> {
+        self.undo[self.undo.len().saturating_sub(n)..].iter().map(|(_, c)| c)
+    }
     pub fn push(&mut self, label: impl Into<String>, change: Change) {
         self.undo.push((label.into(), change));
         self.redo.clear();
         self.revision += 1;
+        self.pushed += 1;
         let mut total: usize = self.undo.iter().map(|(_, c)| c.bytes()).sum();
         while total > self.budget && self.undo.len() > 1 {
             total -= self.undo.remove(0).1.bytes();

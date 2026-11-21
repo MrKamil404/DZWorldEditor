@@ -761,7 +761,7 @@ impl ForestProject {
     /// Walidacja przed generowaniem; zwraca listę problemów.
     pub fn validate(&self) -> Result<(), String> {
         if self.map_size_m <= 0.0 {
-            return Err("Rozmiar mapy musi być > 0".into());
+            return Err("The map size must be above 0".into());
         }
         if !self.use_mask_zones && !self.use_areas {
             return Err(
@@ -774,57 +774,57 @@ impl ForestProject {
             return Err("Brak stref lasu (dodaj kolory z maski albo narysuj obszary)".into());
         }
         if self.scale_min <= 0.0 || self.scale_max <= 0.0 {
-            return Err("Zakres skali musi być > 0".into());
+            return Err("The scale range must be above 0".into());
         }
         if self.scale_min > self.scale_max {
-            return Err("Zakres skali: minimum nie może być większe od maksimum".into());
+            return Err("Scale range: the minimum cannot be larger than the maximum".into());
         }
         for s in &self.species {
             if s.scale_min > s.scale_max {
                 return Err(format!(
-                    "Gatunek '{}': minimalna skala nie może być większa od maksymalnej",
+                    "Species '{}': the smallest scale cannot be larger than the largest",
                     s.label
                 ));
             }
         }
         for (zi, z) in self.zones.iter().enumerate() {
             if z.density_per_ha <= 0.0 {
-                return Err(format!("Strefa {}: gęstość musi być > 0", zi + 1));
+                return Err(format!("Zone {}: the density must be above 0", zi + 1));
             }
             if z.species_weights.is_empty() {
-                return Err(format!("Strefa '{}': brak gatunków", z.label));
+                return Err(format!("Zone '{}': no species", z.label));
             }
             check_weights(&z.species_weights, self.species.len())
-                .map_err(|e| format!("Strefa '{}': {e}", z.label))?;
+                .map_err(|e| format!("Zone '{}': {e}", z.label))?;
         }
         for (ai, a) in self.areas.iter().enumerate() {
             if !a.enabled {
                 continue;
             }
             if a.polygon.len() < 3 {
-                return Err(format!("Obszar {}: poligon wymaga >= 3 punktów", ai + 1));
+                return Err(format!("Area {}: a polygon needs at least 3 points", ai + 1));
             }
             // wycinanie: nie wymaga gęstości ani gatunków, tylko poprawnego poligonu
             if a.cutting {
                 // sprawdź samoprzecięcia nawet dla wycinania
                 for (pi, pt) in a.polygon.iter().enumerate() {
                     if !pt[0].is_finite() || !pt[1].is_finite() {
-                        return Err(format!("Obszar {}: punkt {pi} ma nieprawidłowe współrzędne", ai + 1));
+                        return Err(format!("Area {}: point {pi} has invalid coordinates", ai + 1));
                     }
                 }
                 if let Some(ix) = crate::scatter::find_self_intersection(&a.polygon) {
                     return Err(format!(
-                        "Obszar '{}' (wycinanie): obrys przecina sam siebie — odcinki #{}–#{} i #{}–#{} \
-                         krzyżują się w punkcie ({:.1}, {:.1}). Zobacz czerwony znacznik na mapie; \
-                         usuń lub przesuń wierzchołki tak, aby obrys był prostym wielokątem.",
+                        "Area '{}' (cutting): its outline crosses itself; segments #{}-#{} and #{}-#{} \
+                         cross at ({:.1}, {:.1}). See the red mark on the map, and delete or move \
+                         points so the outline is a simple polygon.",
                         a.label, ix.seg_a, ix.seg_a + 1, ix.seg_b, ix.seg_b + 1, ix.point[0], ix.point[1]
                     ));
                 }
                 for (hi, hole) in a.holes.iter().enumerate() {
                     if let Some(ix) = crate::scatter::find_self_intersection(hole) {
                         return Err(format!(
-                            "Obszar '{}' (wycinanie): dziura {} przecina samą siebie — odcinki #{}–#{} i #{}–#{} \
-                             krzyżują się w punkcie ({:.1}, {:.1}). Popraw obrys dziury.",
+                            "Area '{}' (cutting): hole {} crosses itself; segments #{}-#{} and #{}-#{} \
+                             cross at ({:.1}, {:.1}). Fix the outline of the hole.",
                             a.label, hi + 1, ix.seg_a, ix.seg_a + 1, ix.seg_b, ix.seg_b + 1, ix.point[0], ix.point[1]
                         ));
                     }
@@ -838,7 +838,7 @@ impl ForestProject {
                 check_edge_settings(
                     e,
                     self.species.len(),
-                    &format!("Obszar '{}' (własna granica)", a.label),
+                    &format!("Area '{}' (own edge)", a.label),
                 )?;
             }
             // obszar nieskonfigurowany (bez presetu) — legalny, generuje 0 obiektów
@@ -847,22 +847,22 @@ impl ForestProject {
             }
             for (pi, pt) in a.polygon.iter().enumerate() {
                 if !pt[0].is_finite() || !pt[1].is_finite() {
-                    return Err(format!("Obszar {}: punkt {pi} ma nieprawidłowe współrzędne", ai + 1));
+                    return Err(format!("Area {}: point {pi} has invalid coordinates", ai + 1));
                 }
             }
             let (min_x, min_y, max_x, max_y) = crate::scatter::bbox_of(&a.polygon);
             if max_x <= 0.0 || max_y <= 0.0 || min_x >= self.map_size_m || min_y >= self.map_size_m {
                 return Err(format!(
-                    "Obszar '{}' leży całkowicie poza mapą (0–{:.0} m) — sprawdź układ \
-                     współrzędnych i offset easting albo wyłącz ten obszar.",
+                    "Area '{}' lies wholly outside the map (0-{:.0} m): check the coordinate \
+                     system and the easting offset, or turn this area off.",
                     a.label, self.map_size_m
                 ));
             }
             if let Some(ix) = crate::scatter::find_self_intersection(&a.polygon) {
                 return Err(format!(
-                    "Obszar '{}': obrys przecina sam siebie — odcinki #{}–#{} i #{}–#{} \
-                     krzyżują się w punkcie ({:.1}, {:.1}). Zobacz czerwony znacznik na mapie; \
-                     usuń lub przesuń wierzchołki tak, aby obrys był prostym wielokątem.",
+                    "Area '{}': its outline crosses itself; segments #{}-#{} and #{}-#{} \
+                     cross at ({:.1}, {:.1}). See the red mark on the map, and delete or move \
+                     points so the outline is a simple polygon.",
                     a.label,
                     ix.seg_a,
                     ix.seg_a + 1,
@@ -875,8 +875,8 @@ impl ForestProject {
             for (hi, hole) in a.holes.iter().enumerate() {
                 if let Some(ix) = crate::scatter::find_self_intersection(hole) {
                     return Err(format!(
-                        "Obszar '{}': dziura {} przecina samą siebie — odcinki #{}–#{} i #{}–#{} \
-                         krzyżują się w punkcie ({:.1}, {:.1}). Popraw obrys dziury.",
+                        "Area '{}': hole {} crosses itself; segments #{}-#{} and #{}-#{} \
+                         cross at ({:.1}, {:.1}). Fix the outline of the hole.",
                         a.label,
                         hi + 1,
                         ix.seg_a,
@@ -889,16 +889,16 @@ impl ForestProject {
                 }
             }
             if a.density_per_ha <= 0.0 {
-                return Err(format!("Obszar '{}': gęstość musi być > 0", a.label));
+                return Err(format!("Area '{}': the density must be above 0", a.label));
             }
             if a.species_weights.is_empty() {
-                return Err(format!("Obszar '{}': brak gatunków", a.label));
+                return Err(format!("Area '{}': no species", a.label));
             }
             check_weights(&a.species_weights, self.species.len())
-                .map_err(|e| format!("Obszar '{}': {e}", a.label))?;
+                .map_err(|e| format!("Area '{}': {e}", a.label))?;
         }
         if self.edges.enabled {
-            check_edge_settings(&self.edges, self.species.len(), "Granica lasu")?;
+            check_edge_settings(&self.edges, self.species.len(), "Forest edge")?;
         }
         Ok(())
     }
@@ -907,7 +907,7 @@ impl ForestProject {
 fn check_weights(weights: &[(usize, f32)], species_len: usize) -> Result<(), String> {
     for (i, _) in weights {
         if *i >= species_len {
-            return Err(format!("wskazuje nieistniejący gatunek #{}", i));
+            return Err(format!("points to species #{}, which does not exist", i));
         }
     }
     Ok(())
@@ -919,10 +919,10 @@ fn check_edge_settings(
     ctx: &str,
 ) -> Result<(), String> {
     if e.band_width_m <= 0.0 {
-        return Err(format!("{ctx}: szerokość pasa musi być > 0"));
+        return Err(format!("{ctx}: the width of the edge must be above 0"));
     }
     if e.density_per_ha <= 0.0 {
-        return Err(format!("{ctx}: gęstość musi być > 0"));
+        return Err(format!("{ctx}: the density must be above 0"));
     }
     // gatunki z ręcznej listy LUB z gotowego wpisu miksu presetów
     let manual_ok =
@@ -933,7 +933,7 @@ fn check_edge_settings(
         .any(|m| m.density_per_ha > 0.0 && !m.species_weights.is_empty());
     if !(manual_ok || mix_ok) {
         return Err(format!(
-            "{ctx}: brak gatunków (ustaw wagę > 0 dla przynajmniej jednego albo dodaj preset)"
+            "{ctx}: no species (give at least one a weight above 0 or add a preset)"
         ));
     }
     if manual_ok {
@@ -942,7 +942,7 @@ fn check_edge_settings(
     }
     for m in &e.preset_mix {
         check_weights(&m.species_weights, species_len)
-            .map_err(|er| format!("{ctx} (miks '{0}'): {er}", m.name))?;
+            .map_err(|er| format!("{ctx} (mix '{0}'): {er}", m.name))?;
     }
     Ok(())
 }
@@ -997,7 +997,7 @@ mod tests {
         });
         p.species[0].scale_min = 1.5;
         p.species[0].scale_max = 1.0;
-        assert!(p.validate().unwrap_err().contains("skala"));
+        assert!(p.validate().unwrap_err().contains("scale"));
         p.sanitize();
         assert_eq!((p.species[0].scale_min, p.species[0].scale_max), (1.0, 1.5));
         assert!(p.validate().is_ok());
@@ -1102,7 +1102,7 @@ mod tests {
         // same zera = brak udziału w losowaniu -> błąd zamiast NaN w silniku
         p.edges.species_weights = vec![(0, 0.0), (1, 0.0)];
         let err = p.validate().unwrap_err();
-        assert!(err.contains("Granica lasu"), "{err}");
+        assert!(err.contains("Forest edge"), "{err}");
     }
 
     #[test]
@@ -1133,12 +1133,12 @@ mod tests {
             ..Default::default()
         });
         let err = p.validate().unwrap_err();
-        assert!(err.contains("własna granica"), "{err}");
+        assert!(err.contains("own edge"), "{err}");
 
         // same zera zamiast pustej listy — ten sam błąd
         p.areas[0].edges.as_mut().unwrap().species_weights = vec![(0, 0.0)];
         let err = p.validate().unwrap_err();
-        assert!(err.contains("własna granica"), "{err}");
+        assert!(err.contains("own edge"), "{err}");
     }
 
     #[test]
@@ -1200,11 +1200,11 @@ mod tests {
         assert!(p.validate().is_ok());
         p.scale_min = 0.0;
         let err = p.validate().unwrap_err();
-        assert!(err.contains("skali"), "{err}");
+        assert!(err.to_lowercase().contains("scale"), "{err}");
         p.scale_min = 1.5;
         p.scale_max = 1.0;
         let err = p.validate().unwrap_err();
-        assert!(err.contains("skali"), "{err}");
+        assert!(err.to_lowercase().contains("scale"), "{err}");
     }
 
     #[test]

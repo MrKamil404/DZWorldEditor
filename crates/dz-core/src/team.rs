@@ -28,6 +28,116 @@ use std::path::{Path, PathBuf};
 
 /// Folder of the project with the team state and the shared versions.
 pub const TEAM_DIR: &str = ".team";
+
+/// Something that belongs to someone else in team work and that a step of the history
+/// changed or deleted.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Foreign {
+    /// Tells the things apart, such as `id:12`, `mask:3` or `layer:Trees`.
+    pub key: String,
+    /// Who it belongs to.
+    pub owner: String,
+    /// Its name.
+    pub name: String,
+    pub removed: bool,
+}
+
+/// Who owns the thing under `key` if that is someone else than the person working on `w`;
+/// empty otherwise and without team work.
+fn other_owner(w: &World, owner: &str) -> Option<String> {
+    (!w.team_me.is_empty() && !owner.is_empty() && owner != w.team_me).then(|| owner.to_string())
+}
+
+/// The things of others that `change` changed or deleted, `w` being the world after it.
+pub fn foreign_in(change: &crate::edit::Change, w: &World) -> Vec<Foreign> {
+    use crate::edit::Change;
+    let mut out: Vec<Foreign> = Vec::new();
+    let mut add = |key: String, owner: Option<String>, name: &str, removed: bool| {
+        if let Some(owner) = owner {
+            if !out.iter().any(|f| f.key == key) {
+                out.push(Foreign { key, owner, name: name.to_string(), removed });
+            }
+        }
+    };
+    // By id: what was there before and is now different or gone.
+    fn compare<T, I: PartialEq + Copy>(before: &[T], now: &[T], id: impl Fn(&T) -> I, same: impl Fn(&T, &T) -> bool, mut found: impl FnMut(&T, bool)) {
+        for b in before {
+            match now.iter().find(|n| id(n) == id(b)) {
+                None => found(b, true),
+                Some(n) if !same(b, n) => found(b, false),
+                _ => {}
+            }
+        }
+    }
+    let json_same = |a: &dyn erased::Json, b: &dyn erased::Json| a.json() == b.json();
+    match change {
+        Change::Group(steps) => {
+            for s in steps {
+                for f in foreign_in(s, w) {
+                    add(f.key, Some(f.owner), &f.name, f.removed);
+                }
+            }
+        }
+        Change::Modifiers(before) => {
+            // A modifier of a road or generator belongs to whoever made that.
+            let owner = |id: u64| {
+                let held = w.routes.iter().find(|r| r.modifier == Some(id)).map(|r| r.id).or_else(|| w.generators.iter().find(|g| g.modifier == Some(id)).map(|g| g.id));
+                other_owner(w, held.map_or_else(|| w.author(id), |h| w.author(h)))
+            };
+            compare(before, &w.modifiers, |m| m.id, |a, b| a == b, |m, gone| add(format!("id:{}", m.id), owner(m.id), &m.name, gone));
+            // New ones in a road or generator of someone else, as when it runs again.
+            for m in w.modifiers.iter().filter(|m| !before.iter().any(|b| b.id == m.id)) {
+                add(format!("id:{}", m.id), owner(m.id), &m.name, false);
+            }
+        }
+        Change::Routes(before) => compare(before, &w.routes, |r| r.id, |a, b| json_same(a, b), |r, gone| add(format!("id:{}", r.id), other_owner(w, w.author(r.id)), &r.name, gone)),
+        Change::Generators(before) => compare(before, &w.generators, |g| g.id, |a, b| json_same(a, b), |g, gone| add(format!("id:{}", g.id), other_owner(w, w.author(g.id)), &g.name, gone)),
+        Change::MaskMods(before) => {
+            let owner = |id: u32| match w.generators.iter().find(|g| g.mask_modifier == Some(id)) {
+                Some(g) => other_owner(w, w.author(g.id)),
+                None => other_owner(w, w.author(MASK_MOD_AUTHOR | id as u64)),
+            };
+            compare(before, &w.mask_mods.modifiers, |m| m.id, |a, b| a == b, |m, gone| add(format!("mask:{}", m.id), owner(m.id), &m.name, gone));
+            for m in w.mask_mods.modifiers.iter().filter(|m| !before.iter().any(|b| b.id == m.id)) {
+                add(format!("mask:{}", m.id), owner(m.id), &m.name, false);
+            }
+        }
+        Change::Satellite(before) => compare(before, &w.sat.modifiers, |m| m.id, |a, b| a == b, |m, gone| add(format!("sat:{}", m.id), other_owner(w, w.author(SAT_MOD_AUTHOR | m.id as u64)), &m.name, gone)),
+        Change::ObjectLayers(before) => {
+            for b in before {
+                match w.object_layers.iter().find(|n| n.name == b.name) {
+                    None => add(format!("layer:{}", b.name), other_owner(w, &b.owner), &b.name, true),
+                    Some(n) if n != b => add(format!("layer:{}", b.name), other_owner(w, &b.owner), &b.name, false),
+                    _ => {}
+                }
+            }
+        }
+        Change::Objects(list) => {
+            // Objects of a layer of someone else, which this person unlocked.
+            for (_, b, a) in list {
+                for o in [b, a].into_iter().flatten() {
+                    if let Some(l) = w.object_layers.get(o.layer() as usize) {
+                        add(format!("layer:{}", l.name), other_owner(w, &l.owner), &l.name, false);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Comparing things that have no `PartialEq` by what they save.
+mod erased {
+    pub trait Json {
+        fn json(&self) -> serde_json::Value;
+    }
+    impl<T: serde::Serialize> Json for T {
+        fn json(&self) -> serde_json::Value {
+            serde_json::to_value(self).unwrap_or_default()
+        }
+    }
+}
 /// Side of the terrain and mask tiles a patch carries.
 pub const TILE: usize = 64;
 /// Side of the satellite tiles, the tiles of the satellite modifiers.
