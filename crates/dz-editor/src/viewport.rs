@@ -5179,6 +5179,36 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             crate::team_ui::refresh(app);
         }
         "teamname" => app.settings.team_name = arg,
+        // Team work in memory only, for checks: who works here, who made modifier n, and the
+        // owner of the selected object's layer (unlocked for this person).
+        "teamme" => if let Some(d) = app.doc.as_mut() { d.world.team_me = arg.clone(); d.world.note_authors(); },
+        "setauthor" => {
+            let (n, name) = arg.split_once(' ').unwrap_or((arg.as_str(), ""));
+            if let Some(d) = app.doc.as_mut() {
+                // `g0` is the first generator, `0` the first terrain modifier.
+                let id = match n.strip_prefix('g') {
+                    Some(g) => g.parse::<usize>().ok().and_then(|n| d.world.generators.get(n)).map(|g| g.id),
+                    None => n.parse::<usize>().ok().and_then(|n| d.world.modifiers.get(n)).map(|m| m.id),
+                };
+                if let Some(id) = id { d.world.set_author(id, name); }
+            }
+        }
+        "layerowner" => {
+            if let (Some(id), Some(d)) = (app.selection.iter().next().copied(), app.doc.as_mut()) {
+                if let Some(l) = d.world.objects.get(id).map(|o| o.layer() as usize) {
+                    if let Some(layer) = d.world.object_layers.get_mut(l) { layer.owner = arg.clone(); let n = layer.name.clone(); d.world.team_unlocked.insert(n); }
+                }
+            }
+        }
+        "gendelete" => {
+            if let Some(id) = app.doc.as_ref().and_then(|d| d.world.generators.get(nums.first().map_or(0, |v| *v as usize))).map(|g| g.id) {
+                crate::deleting::request(app, crate::deleting::Target::Generator(id));
+            }
+        }
+        "logtail" => {
+            for l in app.log.iter().rev().take(4) { eprintln!("LOG {}", l.text); }
+            if let Some(d) = &app.doc { eprintln!("TEAM me={} pushed={} seen={} sel={}", d.world.team_me, d.history.pushed, app.team_seen, app.selection.len()); }
+        }
         "teamstart" => crate::team_ui::start(app, arg),
         "teamsend" => crate::team_ui::send(app),
         "teammerge" => {

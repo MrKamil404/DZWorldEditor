@@ -49,6 +49,11 @@ To split a map, for example one just imported from Terrain Builder, select an ar
 they have none. Every change of owner or author can be undone and travels with the next patch,
 also when nothing else of the thing changed.
 
+The editor says when you change or delete something of someone else. Deleting a modifier, road or
+generator another person made first asks whether to delete it anyway, naming who made it. Any other
+change of their things (moving their road, painting in their mask modifier, editing objects on a layer
+of theirs that you unlocked) shows a message once, with a reminder that Ctrl+Z undoes it.
+
 When both changed something that belongs to one of you, the merge suggests that person's
 version: Ania's tree on Ania's layer keeps her position unless you choose otherwise. Without an
 owner your own version is suggested, as before.

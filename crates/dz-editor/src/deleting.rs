@@ -49,6 +49,9 @@ pub struct Plan {
     pub target: Target,
     pub title: String,
     pub parts: Vec<Part>,
+    /// In team work, who made what is deleted when it is someone else, with the key the
+    /// warnings know it by.
+    pub owner: Option<(String, String)>,
 }
 
 impl Plan {
@@ -108,7 +111,13 @@ fn plan(app: &App, target: Target) -> Option<Plan> {
             tf("Delete mask modifier {0}", &[&w.mask_mods.modifiers[at].name])
         }
     };
-    Some(Plan { target, title, parts })
+    // Made by someone else in team work.
+    let (key, author) = match &target {
+        Target::Generator(id) | Target::Route(id) | Target::Modifier(id) => (format!("id:{id}"), w.author(*id)),
+        Target::MaskModifier(id) => (format!("mask:{id}"), w.mask_mod_author(*id)),
+    };
+    let owner = (!w.team_me.is_empty() && !author.is_empty() && author != w.team_me).then(|| (key, author.to_string()));
+    Some(Plan { target, title, parts, owner })
 }
 
 /// Deletes `target`; when anything else hangs on it, a window first asks what to keep.
@@ -116,7 +125,7 @@ pub fn request(app: &mut App, target: Target) {
     let Some(plan) = plan(app, target) else { return };
     // Only what a modifier belongs to is a real question; the effects of a generator or a
     // route are asked about too, as they may be worth keeping.
-    if plan.parts.is_empty() {
+    if plan.parts.is_empty() && plan.owner.is_none() {
         execute(app, &plan);
     } else {
         app.dialog = Dialog::Delete(plan);
@@ -127,6 +136,10 @@ pub fn request(app: &mut App, target: Target) {
 pub fn window(app: &mut App, ctx: &egui::Context, plan: &mut Plan, open: &mut bool) -> bool {
     let mut done = false;
     egui::Window::new(format!("{} {}", crate::icons::TRASH, plan.title)).collapsible(false).resizable(false).open(open).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+        if let Some((_, owner)) = &plan.owner {
+            ui.colored_label(crate::theme::WARN, tf("{0} made this. Delete it anyway? It goes from their copy too when they merge your changes.", &[owner]));
+            ui.add_space(4.0);
+        }
         if plan.parts.iter().any(|p| p.kind != Kind::KeepTerrain) {
             ui.label(t("Delete with it:"));
         }
@@ -160,6 +173,10 @@ pub fn window(app: &mut App, ctx: &egui::Context, plan: &mut Plan, open: &mut bo
 
 /// Deletes what the plan says, as one step of the history.
 pub fn execute(app: &mut App, plan: &Plan) {
+    // Asked about already: no second word after it is gone.
+    if let Some((key, _)) = &plan.owner {
+        app.team_warned.insert(key.clone());
+    }
     let Some(doc) = app.doc.as_mut() else { return };
     let w = &mut doc.world;
     let label = plan.title.clone();
