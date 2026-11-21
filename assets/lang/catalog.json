@@ -659,6 +659,10 @@
   "de": "Wird im Asset-Browser mit der rechten Maustaste auf einem Modell oder Ordner zugewiesen. Die Oberfläche oben gilt für die übrigen Modelle.",
   "pl": "Przypisuje się ją w przeglądarce assetów prawym przyciskiem na modelu lub folderze. Powierzchnia powyżej dotyczy pozostałych modeli."
  },
+ "At each corner the pieces on both sides reach past it by half the thickness of the fence, so the outer edge of a thick wall closes. Where one end of the wall has a pillar, the pillar stands centred on the corner and the thinner end of the other piece runs into its middle.": {
+  "de": "An jeder Ecke reichen die Teile auf beiden Seiten um die halbe Dicke des Zauns über sie hinaus, sodass sich die äußere Kante einer dicken Mauer schließt. Hat die Mauer an einem Ende einen Pfeiler, steht der Pfeiler mittig auf der Ecke und das dünnere Ende des anderen Teils endet in seiner Mitte.",
+  "pl": "Na każdym rogu odcinki z obu stron sięgają za niego o połowę grubości płotu, więc zewnętrzna krawędź grubego muru się domyka. Gdy mur ma filar na jednym końcu, filar staje środkiem na rogu, a cieńszy koniec drugiego odcinka kończy się w jego środku."
+ },
  "At the camera": {
   "de": "Bei der Kamera",
   "pl": "Przy kamerze"
@@ -1615,6 +1619,10 @@
   "de": "Klonpinsel {0}",
   "pl": "Pędzel klonujący {0}"
  },
+ "Close the corners of thick walls": {
+  "de": "Ecken dicker Mauern schließen",
+  "pl": "Domykaj rogi grubych murów"
+ },
  "Close up": {
   "de": "Nah",
   "pl": "Z bliska"
@@ -1782,6 +1790,10 @@
  "Copying the project to the team folder": {
   "de": "Projekt wird in den Teamordner kopiert",
   "pl": "Kopiowanie projektu do folderu zespołu"
+ },
+ "Corner object": {
+  "de": "Eckobjekt",
+  "pl": "Obiekt na rogach"
  },
  "Corner tower": {
   "de": "Eckmast",
@@ -4407,6 +4419,10 @@
   "de": "Meter pro Pixel",
   "pl": "Metry na piksel"
  },
+ "Metres each piece reaches past the corner. Negative values stop it short of the corner.": {
+  "de": "Meter, die jedes Teil über die Ecke hinausreicht. Negative Werte lassen es vor der Ecke enden.",
+  "pl": "Ile metrów każdy odcinek sięga za róg. Wartości ujemne kończą go przed rogiem."
+ },
  "Metres one repeat of a surface texture covers.": {
   "de": "Wie viele Meter eine Wiederholung der Oberflächentextur abdeckt.",
   "pl": "Ile metrów zajmuje jedno powtórzenie tekstury powierzchni."
@@ -5583,6 +5599,14 @@
   "de": "Bilder",
   "pl": "Obrazki"
  },
+ "Piece after the corner": {
+  "de": "Teil nach der Ecke",
+  "pl": "Odcinek za rogiem"
+ },
+ "Piece before the corner": {
+  "de": "Teil vor der Ecke",
+  "pl": "Odcinek przed rogiem"
+ },
  "Piece by piece": {
   "de": "Teil für Teil",
   "pl": "Part po parcie"
@@ -5590,6 +5614,10 @@
  "Pieces": {
   "de": "Stücke",
   "pl": "Części"
+ },
+ "Pieces are {0} m thick where they start and {1} m where they end.": {
+  "de": "Die Teile sind am Anfang {0} m und am Ende {1} m dick.",
+  "pl": "Odcinki mają {0} m grubości na początku i {1} m na końcu."
  },
  "Pin: keep this panel on screen.": {
   "de": "Anheften: dieses Feld auf dem Bildschirm behalten.",
@@ -6735,6 +6763,10 @@
   "de": "Spielerstart hier setzen",
   "pl": "Ustaw tu start gracza"
  },
+ "Set the reach at corners by hand": {
+  "de": "Überstand an den Ecken von Hand einstellen",
+  "pl": "Ustaw ręcznie wysunięcie na rogach"
+ },
  "Sets the flag in every cell inside the polygons selected in the Shapes mode.": {
   "de": "Setzt das Flag in jeder Zelle innerhalb der im Modus Formen ausgewählten Polygone.",
   "pl": "Ustawia flagę w każdej komórce wewnątrz wielokątów zaznaczonych w trybie Kształty."
@@ -7110,6 +7142,10 @@
  "Stones along the water": {
   "de": "Steine entlang des Wassers",
   "pl": "Kamienie wzdłuż wody"
+ },
+ "Stood on every corner of the line, such as a post or a corner piece of the same wall. The pieces stop at its sides.": {
+  "de": "Wird auf jede Ecke der Linie gestellt, etwa ein Pfosten oder ein Eckstück derselben Mauer. Die Teile enden an seinen Seiten.",
+  "pl": "Stawiany na każdym rogu linii, np. słupek albo narożnik tego samego muru. Odcinki kończą się przy jego bokach."
  },
  "Stop": {
   "de": "Stoppen",

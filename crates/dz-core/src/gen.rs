@@ -1862,11 +1862,53 @@ pub fn prepare_line(points: &[[f32; 2]], o: &crate::library::LineOptions) -> Vec
     }).collect()
 }
 
+/// How thick a fence piece is where it starts and where it ends along the line.
+fn piece_ends(db: &crate::model_info::ModelDb, path: &str, along_x: bool, depth: f32, yaw_offset: f32) -> [f32; 2] {
+    // Laid along x, a model's high x end comes first on the line; along z its low end.
+    let ends = match db.end_thickness(&crate::objects::ObjectStore::normalize_path(path), along_x) {
+        Some([low, high]) if along_x => [high, low],
+        Some(e) => e,
+        None => [depth.max(0.05); 2],
+    };
+    // Turned round, its ends swap.
+    if (yaw_offset.rem_euclid(360.0) - 180.0).abs() < 45.0 { [ends[1], ends[0]] } else { ends }
+}
+
+/// The thickest start and end of the pieces of a fence along its line, as the corners are
+/// closed with them.
+pub fn fence_ends(db: &crate::model_info::ModelDb, g: &crate::library::FenceGen) -> [f32; 2] {
+    let list: Vec<(String, f32)> = if g.resolved.is_empty() { vec![(g.model.clone(), 1.0)] } else { g.resolved.clone() };
+    list.iter().filter(|m| !m.0.is_empty() && m.1 > 0.0).fold([0.0f32; 2], |m, (path, _)| {
+        let info = db.get(&crate::objects::ObjectStore::normalize_path(path));
+        let (lx, lz) = if info.known { (info.max[0] - info.min[0], info.max[2] - info.min[2]) } else { (0.0, 4.0) };
+        let along_x = lx > lz;
+        let e = piece_ends(db, path, along_x, if along_x { lz } else { lx }, g.yaw_offset);
+        [m[0].max(e[0]), m[1].max(e[1])]
+    })
+}
+
+/// How far the piece coming into a corner and the piece leaving it reach past the corner,
+/// from the thickness of the end coming in (`ends[1]`) and the start going out (`ends[0]`),
+/// and the turn in radians.
+pub fn corner_reach(ends: [f32; 2], turn: f32) -> [f32; 2] {
+    let (out_of, into) = (ends[0], ends[1]);
+    let thick = into.max(out_of);
+    if (into - out_of).abs() <= thick * 0.15 {
+        // The outer edges of two pieces of thickness d meet d/2 * tan(turn/2) past the corner.
+        let reach = thick * 0.5 * (turn * 0.5).tan().min(2.0);
+        return [reach, reach];
+    }
+    // A pillar at the end of one piece stands centred on the corner, and the thinner end of
+    // the other runs into its middle, where the pillar hides it.
+    if into > out_of { [into * 0.5, 0.0] } else { [0.0, out_of * 0.5] }
+}
+
 /// Objects at regular steps along a line. Walls and fences have their pieces joined at corners.
 pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[f32; 2]], g: &crate::library::FenceGen) -> Vec<Obj> {
     use crate::library::LineMode;
     // `across` moves the model's middle onto the line; fence pieces keep their origin on it.
-    struct Piece { model: u32, length: f32, /* across the line */ depth: f32, along_x: bool, shift: f32, across: f32, weight: f32, skews: bool }
+    // `ends`: its thickness where it starts and where it ends along the line.
+    struct Piece { model: u32, length: f32, /* across the line */ depth: f32, ends: [f32; 2], along_x: bool, shift: f32, across: f32, weight: f32, skews: bool }
     let piece_along = |w: &mut World, path: &str, weight: f32, axis: Option<bool>| {
         let info = db.get(&crate::objects::ObjectStore::normalize_path(path));
         let (lx, lz) = if info.known { (info.max[0] - info.min[0], info.max[2] - info.min[2]) } else { (0.0, 4.0) };
@@ -1876,7 +1918,8 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         let length = if axis.is_some() { if along_x { lx } else { lz } } else { lx.max(lz) };
         let across = if axis.is_some() { if along_x { cz } else { cx } } else { 0.0 };
         let depth = if along_x { lz } else { lx };
-        Piece { model: w.objects.intern(path), length: length.max(0.5), depth: depth.max(0.05), along_x, shift: if along_x { -cx } else { cz }, across, weight, skews: info.placement.skews() }
+        let ends = piece_ends(db, path, along_x, depth, g.yaw_offset);
+        Piece { model: w.objects.intern(path), length: length.max(0.5), depth: depth.max(0.05), ends, along_x, shift: if along_x { -cx } else { cz }, across, weight, skews: info.placement.skews() }
     };
     let piece_of = |w: &mut World, path: &str, weight: f32| piece_along(w, path, weight, None);
     let list: Vec<(String, f32)> = if g.resolved.is_empty() { vec![(g.model.clone(), 1.0)] } else { g.resolved.clone() };
@@ -2009,14 +2052,64 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
         }
         None
     }
+    // Corners of joined pieces: an object standing on each, and how far the pieces keep off it.
+    let corner = (!g.corner_model.trim().is_empty()).then(|| piece_of(w, g.corner_model.trim(), 1.0));
+    let thickness = pieces.iter().map(|p| p.depth).fold(0.0f32, f32::max);
+    // The thickest start and end of the pieces.
+    let ends = pieces.iter().fold([0.0f32; 2], |m, p| [m[0].max(p.ends[0]), m[1].max(p.ends[1])]);
+    let unit = |a: [f32; 2], b: [f32; 2]| { let (x, z) = (b[0] - a[0], b[1] - a[1]); let l = x.hypot(z).max(1e-4); [x / l, z / l] };
+    // How far the piece coming into the corner at `v` (from `before`) and the one leaving it
+    // (towards `after`) stop short of it; negative reaches past it.
+    let corner_cut = |before: [f32; 2], v: [f32; 2], after: [f32; 2]| -> (f32, f32) {
+        let post = corner.as_ref().map_or(0.0, |p| p.length * 0.5);
+        if !g.close_corners {
+            return (post, post);
+        }
+        let reach = if g.corner_by_hand {
+            g.corner_reach
+        } else {
+            let (a, b) = (unit(before, v), unit(v, after));
+            let turn = (a[0] * b[0] + a[1] * b[1]).clamp(-1.0, 1.0).acos();
+            corner_reach([ends[0], ends[1].max(thickness * 0.25)], turn)
+        };
+        (post - reach[0], post - reach[1])
+    };
+    let corner_level = crate::library::FenceGen { follow_slope: false, ..g.clone() };
+    // A closed line, such as the outline of a polygon, starts and ends on the same corner.
+    let near = |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).hypot(a[1] - b[1]) < 0.05;
+    let n_full = full.len();
+    let closed = n_full > 3 && near(full[0], full[n_full - 1]);
     for line in stretches.iter().filter(|l| l.len() >= 2) {
     if g.join_corners && g.line.mode == LineMode::Polyline {
+        let m = line.len();
+        // The point before the first one and after the last one, when they are a corner too.
+        let before_start = (closed && near(line[0], full[0])).then(|| full[n_full - 2]);
+        let after_end = (closed && near(line[m - 1], full[n_full - 1])).then(|| full[1]);
+        // The corners: (point before, corner, point after).
+        let mut corners: Vec<([f32; 2], [f32; 2], [f32; 2])> = (1..m - 1).map(|i| (line[i - 1], line[i], line[i + 1])).collect();
+        if let Some(b) = before_start { corners.push((b, line[0], line[1])); }
+        // The corner objects, square to the middle of the turn.
+        if let Some(p) = &corner {
+            for &(before, v, after) in &corners {
+                let (a, b) = (unit(before, v), unit(v, after));
+                let mut d = [a[0] + b[0], a[1] + b[1]];
+                let l = d[0].hypot(d[1]);
+                d = if l < 1e-3 { b } else { [d[0] / l, d[1] / l] };
+                let half = p.length * 0.5;
+                place(w, &corner_level, &mut out, &mut rng, p, [v[0] - d[0] * half, v[1] - d[1] * half], [v[0] + d[0] * half, v[1] + d[1] * half]);
+            }
+        }
         // Each stretch is divided so its first and last piece end exactly on the corners.
-        for s in line.windows(2) {
+        for (k, s) in line.windows(2).enumerate() {
             let (dx, dz) = (s[1][0] - s[0][0], s[1][1] - s[0][1]);
-            let len = (dx * dx + dz * dz).sqrt();
+            let whole = (dx * dx + dz * dz).sqrt();
+            if whole < 0.05 { continue; }
+            let (ux, uz) = (dx / whole, dz / whole);
+            let cut_a = if k > 0 { corner_cut(line[k - 1], line[k], line[k + 1]).1 } else { before_start.map_or(0.0, |b| corner_cut(b, line[0], line[1]).1) };
+            let cut_b = if k + 2 < m { corner_cut(line[k], line[k + 1], line[k + 2]).0 } else { after_end.map_or(0.0, |a| corner_cut(line[m - 2], line[m - 1], a).0) };
+            let len = whole - cut_a - cut_b;
             if len < 0.05 { continue; }
-            let (ux, uz) = (dx / len, dz / len);
+            let s = [[s[0][0] + ux * cut_a, s[0][1] + uz * cut_a], [s[1][0] - ux * cut_b, s[1][1] - uz * cut_b]];
             let mut chosen = Vec::new();
             let mut covered = 0.0;
             while let Some(i) = choose(&mut rng) {
@@ -2892,6 +2985,50 @@ mod tests {
         assert_eq!(out.len(), 3 + 3);
         // First piece starts on the first corner, last of the stretch ends on the second.
         assert!((out[0].z - 102.0).abs() < 0.01 && (out[2].z - 109.0).abs() < 0.01, "{} {}", out[0].z, out[2].z);
+    }
+
+    #[test]
+    fn corners_can_be_closed_and_get_their_own_object() {
+        use crate::library::FenceGen;
+        let db = crate::model_info::ModelDb::new("Z:/none");
+        let line = [[0.0, 0.0], [0.0, 20.0], [20.0, 20.0]];
+        let run = |g: FenceGen| {
+            let mut w = World::new(crate::world::WorldMeta::new("C", 64, 4.0), 10.0);
+            let objects = fence_objects(&mut w, &db, &line, &FenceGen { model: "wall.p3d".into(), follow_slope: false, ..g });
+            objects.iter().map(|o| (w.objects.models[o.model as usize].path.clone(), o.x, o.z)).collect::<Vec<_>>()
+        };
+        let last_on_first_side = |objects: &[(String, f32, f32)]| objects.iter().filter(|o| o.0 == "wall.p3d" && o.1.abs() < 0.01).map(|o| o.2).fold(f32::MIN, f32::max);
+        // An unknown model is 4 m long and 0.05 m thick: at a right angle the pieces reach
+        // 0.025 m past the corner, so the last one ends at 20.025 instead of 20.
+        let plain = last_on_first_side(&run(FenceGen::default()));
+        let closed = last_on_first_side(&run(FenceGen { close_corners: true, ..Default::default() }));
+        assert!((plain - 18.0).abs() < 0.01 && (closed - 18.025).abs() < 0.01, "{plain} {closed}");
+        // A 4 m corner object stands on the corner and the walls stop at its sides.
+        let posted = run(FenceGen { corner_model: "post.p3d".into(), ..Default::default() });
+        let posts: Vec<_> = posted.iter().filter(|o| o.0 == "post.p3d").collect();
+        assert_eq!(posts.len(), 1);
+        assert!(posts[0].1.abs() < 0.01 && (posts[0].2 - 20.0).abs() < 0.01, "{posts:?}");
+        assert!((last_on_first_side(&posted) - 16.0).abs() < 0.01, "{}", last_on_first_side(&posted));
+        // By hand: the piece before the corner reaches 1 m past it, the one after stops 0.5 m short.
+        let by_hand = run(FenceGen { close_corners: true, corner_by_hand: true, corner_reach: [1.0, -0.5], ..Default::default() });
+        assert!((last_on_first_side(&by_hand) - 19.0).abs() < 0.01, "{}", last_on_first_side(&by_hand));
+        assert!(by_hand.iter().any(|o| o.0 == "wall.p3d" && (o.1 - 2.5).abs() < 0.01 && (o.2 - 20.0).abs() < 0.01), "{by_hand:?}");
+        // A pillar at the end coming in stands centred; the plain start going out ends in it.
+        assert_eq!(corner_reach([0.3, 0.7], 1.0), [0.35, 0.0]);
+        assert_eq!(corner_reach([0.7, 0.3], 1.0), [0.0, 0.35]);
+        // The line's ends are not corners: the fence still starts on the first point.
+        assert!(posted.iter().any(|o| o.0 == "wall.p3d" && o.1.abs() < 0.01 && (o.2 - 2.0).abs() < 0.01));
+        // A closed line turns a corner where it starts and ends as well: four posts on a square,
+        // and the walls keep off each of them.
+        let square = [[0.0, 0.0], [0.0, 20.0], [20.0, 20.0], [20.0, 0.0], [0.0, 0.0]];
+        let mut w = World::new(crate::world::WorldMeta::new("C", 64, 4.0), 10.0);
+        let objects = fence_objects(&mut w, &db, &square, &FenceGen { model: "wall.p3d".into(), corner_model: "post.p3d".into(), follow_slope: false, ..Default::default() });
+        let path = |o: &Obj| w.objects.models[o.model as usize].path.clone();
+        let posts: Vec<_> = objects.iter().filter(|o| path(o) == "post.p3d").map(|o| (o.x, o.z)).collect();
+        assert_eq!(posts.len(), 4, "{posts:?}");
+        assert!(posts.iter().any(|p| p.0.abs() < 0.01 && p.1.abs() < 0.01), "{posts:?}");
+        let first = objects.iter().filter(|o| path(o) == "wall.p3d" && o.x.abs() < 0.01).map(|o| o.z).fold(f32::MAX, f32::min);
+        assert!((first - 4.0).abs() < 0.01, "{first}");
     }
 
     #[test]

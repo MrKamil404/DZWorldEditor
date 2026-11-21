@@ -295,6 +295,40 @@ pub struct ModelDb {
     root: PathBuf,
     cache: Arc<Mutex<HashMap<String, ModelInfo>>>,
     caps: Arc<Mutex<HashMap<String, CapLayout>>>,
+    ends: Arc<Mutex<HashMap<(String, bool), Option<[f32; 2]>>>>,
+}
+
+/// How thick a long model (a wall, a fence) is at its two ends, at its low end along x (or z)
+/// first. Measured on the last 15 cm at each end, between 40 and 80 % of its height, so a
+/// foundation or a cap does not count. A wall with a pillar at one end is thicker there.
+/// `triangles` are the corners of the model's triangles, three by three.
+pub fn end_thickness(triangles: &[[f32; 3]], along_x: bool) -> Option<[f32; 2]> {
+    // Points spread over each triangle: a flat face has its corners only at its edges.
+    const N: usize = 6;
+    let mut positions = Vec::with_capacity(triangles.len() / 3 * (N + 1) * (N + 2) / 2);
+    for t in triangles.chunks_exact(3) {
+        for i in 0..=N {
+            for j in 0..=N - i {
+                let (u, v) = (i as f32 / N as f32, j as f32 / N as f32);
+                let w = 1.0 - u - v;
+                positions.push([0, 1, 2].map(|k| t[0][k] * w + t[1][k] * u + t[2][k] * v));
+            }
+        }
+    }
+    let positions = positions.as_slice();
+    let (long, across) = if along_x { (0, 2) } else { (2, 0) };
+    let range = |k: usize, f: &dyn Fn(&[f32; 3]) -> bool| positions.iter().filter(|p| f(p)).fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p[k]), b.max(p[k])));
+    let (lo, hi) = range(long, &|_| true);
+    let (bottom, top) = range(1, &|_| true);
+    if hi - lo < 0.5 || top <= bottom {
+        return None;
+    }
+    let band = |p: &[f32; 3]| p[1] >= bottom + (top - bottom) * 0.4 && p[1] <= bottom + (top - bottom) * 0.8;
+    let depth = |near: f32| {
+        let (a, b) = range(across, &|p| band(p) && (p[long] - near).abs() <= 0.15);
+        (b > a).then_some(b - a)
+    };
+    Some([depth(lo)?, depth(hi)?])
 }
 
 /// How the road of an end piece lies along it. The piece runs from its start port (local
@@ -411,7 +445,21 @@ fn read_cap_layout(file: &Path, root: &Path, start: f64, length: f64) -> CapLayo
 
 impl ModelDb {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into(), cache: Default::default(), caps: Default::default() }
+        Self { root: root.into(), cache: Default::default(), caps: Default::default(), ends: Default::default() }
+    }
+    /// [`end_thickness`] of a model, read once per model.
+    pub fn end_thickness(&self, model: &str, along_x: bool) -> Option<[f32; 2]> {
+        let key = (model.to_string(), along_x);
+        if let Some(e) = self.ends.lock().unwrap().get(&key) {
+            return *e;
+        }
+        let cache = dayz_road_tool::mesh3d::Cache::default();
+        let e = cache.mesh(&self.file(model)).and_then(|m| {
+            let positions: Vec<[f32; 3]> = m.surfaces.iter().flat_map(|s| s.positions.iter().copied()).collect();
+            end_thickness(&positions, along_x)
+        });
+        self.ends.lock().unwrap().insert(key, e);
+        e
     }
     /// How the road of end piece `model` lies along it, from its start port at z = `start` to its
     /// end port `length` further on; read once per model.
@@ -442,6 +490,21 @@ impl ModelDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_wall_with_a_pillar_is_thicker_at_that_end() {
+        // Two boxes as triangles: a 0.7 m pillar at x -3..-2.3 and a 0.3 m slab on to x 3.
+        fn cuboid(min: [f32; 3], max: [f32; 3]) -> Vec<[f32; 3]> {
+            let c = |i: usize| [if i & 1 == 0 { min[0] } else { max[0] }, if i & 2 == 0 { min[1] } else { max[1] }, if i & 4 == 0 { min[2] } else { max[2] }];
+            let faces = [[0, 1, 3, 2], [4, 5, 7, 6], [0, 1, 5, 4], [2, 3, 7, 6], [0, 2, 6, 4], [1, 3, 7, 5]];
+            faces.iter().flat_map(|f| [c(f[0]), c(f[1]), c(f[2]), c(f[0]), c(f[2]), c(f[3])]).collect()
+        }
+        let mut wall = cuboid([-3.0, 0.0, -0.35], [-2.3, 2.5, 0.35]);
+        wall.extend(cuboid([-2.3, 0.0, -0.15], [3.0, 2.2, 0.15]));
+        let [low, high] = end_thickness(&wall, true).unwrap();
+        assert!((low - 0.7).abs() < 0.01 && (high - 0.3).abs() < 0.01, "{low} {high}");
+        // Along z nothing is long enough to measure.
+        assert!(end_thickness(&cuboid([-0.1, 0.0, -0.1], [0.1, 1.0, 0.1]), false).is_none());
+    }
     #[test]
     fn a_tilted_barrier_stands_on_its_raised_end_whichever_end_that_is() {
         use crate::objects::{rotation, Obj};
