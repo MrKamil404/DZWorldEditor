@@ -3699,6 +3699,8 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         let row = |ui: &mut egui::Ui, label: String, v: &mut f32, range: std::ops::RangeInclusive<f32>| {
             ui.add(egui::Slider::new(v, range).text(label));
         };
+        let tip = app.settings.keys.tip(crate::keys::Action::CameraBelow);
+        ui.checkbox(&mut app.camera_under, t("Camera below the terrain")).on_hover_text(tip);
         row(ui, t("Field of view"), &mut app.settings.fov, 20.0..=120.0);
         app.camera.fov = app.settings.fov.to_radians();
         row(ui, t("Movement speed"), &mut app.settings.camera_speed, 1.0..=4000.0);
