@@ -51,21 +51,21 @@ impl AscHeightmap {
                 for tok in line.split_whitespace() {
                     let v: f32 = tok
                         .parse()
-                        .map_err(|_| format!("ASC: nieprawidłowa wartość '{tok}'"))?;
+                        .map_err(|_| format!("ASC: invalid value '{tok}'"))?;
                     values.push(v);
                 }
             }
         }
 
-        let ncols = ncols.ok_or("ASC: brak 'ncols'")?;
-        let nrows = nrows.ok_or("ASC: brak 'nrows'")?;
-        let cellsize = cellsize.ok_or("ASC: brak 'cellsize'")?;
+        let ncols = ncols.ok_or("ASC: missing 'ncols'")?;
+        let nrows = nrows.ok_or("ASC: missing 'nrows'")?;
+        let cellsize = cellsize.ok_or("ASC: missing 'cellsize'")?;
         if ncols == 0 || nrows == 0 || cellsize <= 0.0 {
-            return Err("ASC: nieprawidłowy nagłówek".into());
+            return Err("ASC: invalid header".into());
         }
         if values.len() != ncols * nrows {
             return Err(format!(
-                "ASC: oczekiwano {} wartości, wczytano {}",
+                "ASC: expected {} values, read {}",
                 ncols * nrows,
                 values.len()
             ));
@@ -93,7 +93,7 @@ impl AscHeightmap {
 
     pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("Nie udało się wczytać ASC: {e}"))?;
+            .map_err(|e| format!("Could not load the ASC: {e}"))?;
         Self::parse(&text)
     }
 
@@ -200,7 +200,7 @@ impl AscHeightmap {
 fn parse_hdr(line: &str, key: &str) -> Result<usize, String> {
     let v = parse_hdr_f(line, key)?;
     if v < 0.0 || v.fract() != 0.0 {
-        return Err(format!("ASC: {key} musi być nieujemną liczbą całkowitą"));
+        return Err(format!("ASC: {key} must be a non-negative whole number"));
     }
     Ok(v as usize)
 }
@@ -209,7 +209,7 @@ fn parse_hdr_f(line: &str, key: &str) -> Result<f64, String> {
     line[key.len()..]
         .trim()
         .parse()
-        .map_err(|_| format!("ASC: nieprawidłowa wartość dla '{key}'"))
+        .map_err(|_| format!("ASC: invalid value for '{key}'"))
 }
 
 #[cfg(test)]

@@ -17,23 +17,23 @@ pub struct ShapefileData {
 impl ShapefileData {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         let bytes =
-            std::fs::read(path).map_err(|e| format!("Nie udało się wczytać Shapefile: {e}"))?;
+            std::fs::read(path).map_err(|e| format!("Could not load the Shapefile: {e}"))?;
         Self::parse(&bytes)
     }
 
     pub fn parse(bytes: &[u8]) -> Result<Self, String> {
         if bytes.len() < 100 {
-            return Err("Shapefile: plik za krótki (brak nagłówka 100 B)".into());
+            return Err("Shapefile: file too short (no 100 B header)".into());
         }
         let file_code = read_i32_be(bytes, 0)?;
         if file_code != 9994 {
             return Err(format!(
-                "Shapefile: zły kod pliku ({file_code}) — oczekiwano 9994 (.shp)"
+                "Shapefile: wrong file code ({file_code}), expected 9994 (.shp)"
             ));
         }
         let version = read_i32_le(bytes, 28)?;
         if version != 1000 {
-            return Err(format!("Shapefile: nieobsługiwana wersja {version}"));
+            return Err(format!("Shapefile: unsupported version {version}"));
         }
 
         let mut out = Self::default();
@@ -47,9 +47,9 @@ impl ShapefileData {
             let start = off + 8;
             let end = start
                 .checked_add(content_len)
-                .ok_or("Shapefile: przepełnienie długości rekordu")?;
+                .ok_or("Shapefile: record length overflow")?;
             if end > bytes.len() {
-                return Err("Shapefile: rekord wykracza poza plik".into());
+                return Err("Shapefile: record runs past the end of the file".into());
             }
             out.polygons.extend(parse_record(&bytes[start..end])?);
             off = end;
@@ -57,7 +57,7 @@ impl ShapefileData {
 
         if out.polygons.is_empty() {
             return Err(
-                "Shapefile: nie znaleziono poligonów (obsługiwane: Polygon, PolygonZ, PolygonM)"
+                "Shapefile: no polygons found (supported: Polygon, PolygonZ, PolygonM)"
                     .into(),
             );
         }
@@ -140,7 +140,7 @@ fn parse_polygon(content: &[u8], mut off: usize) -> Result<Vec<Polygon>, String>
         return Ok(Vec::new());
     }
     if num_parts > 1_000_000 || num_points > 1_000_000 {
-        return Err("Shapefile: podejrzanie dużo części/punktów".into());
+        return Err("Shapefile: suspiciously many parts or points".into());
     }
 
     let mut parts = Vec::with_capacity(num_parts);
@@ -165,7 +165,7 @@ fn parse_polygon(content: &[u8], mut off: usize) -> Result<Vec<Polygon>, String>
             num_points
         };
         if p_start >= p_end || p_end > num_points {
-            return Err("Shapefile: błędne indeksy części poligonu".into());
+            return Err("Shapefile: invalid polygon part indices".into());
         }
         let ring: Vec<[f64; 2]> = points[p_start..p_end].to_vec();
         if ring.len() >= 3 {
@@ -179,21 +179,21 @@ fn parse_polygon(content: &[u8], mut off: usize) -> Result<Vec<Polygon>, String>
 fn read_i32_be(b: &[u8], off: usize) -> Result<i32, String> {
     let s = b
         .get(off..off + 4)
-        .ok_or("Shapefile: ucięty odczyt (i32 BE)")?;
+        .ok_or("Shapefile: truncated read (i32 BE)")?;
     Ok(i32::from_be_bytes([s[0], s[1], s[2], s[3]]))
 }
 
 fn read_i32_le(b: &[u8], off: usize) -> Result<i32, String> {
     let s = b
         .get(off..off + 4)
-        .ok_or("Shapefile: ucięty odczyt (i32 LE)")?;
+        .ok_or("Shapefile: truncated read (i32 LE)")?;
     Ok(i32::from_le_bytes([s[0], s[1], s[2], s[3]]))
 }
 
 fn read_f64_le(b: &[u8], off: usize) -> Result<f64, String> {
     let s = b
         .get(off..off + 8)
-        .ok_or("Shapefile: ucięty odczyt (f64 LE)")?;
+        .ok_or("Shapefile: truncated read (f64 LE)")?;
     Ok(f64::from_le_bytes([
         s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7],
     ]))
