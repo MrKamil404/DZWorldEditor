@@ -80,20 +80,20 @@ fn number64(ui: &mut egui::Ui, label: String, v: &mut f64, range: std::ops::Rang
 
 /// A model field: takes the model chosen in the browser, or one dropped on it.
 fn model_field(ui: &mut egui::Ui, label: String, value: &mut String, selected: &Option<String>) {
+    // The label and its buttons on one line, the drop box under them across the full width.
     row(ui, &label, |ui| {
-        let name = value.rsplit('\\').next().unwrap_or("").trim_end_matches(".p3d").to_string();
-        let width = (ui.available_width() - if value.is_empty() { 90.0 } else { 116.0 }).max(80.0);
-        let idle = if name.is_empty() { t("Drop a model here") } else { name };
-        let (shown, dropped) = crate::theme::model_drop_box(ui, egui::vec2(width, 22.0), &idle, &t("Drop to use"));
-        if !value.is_empty() { shown.on_hover_text(value.as_str()); }
-        if let Some(p) = dropped.last() {
-            *value = (**p).clone();
-        }
         if ui.small_button(t("Use selected")).clicked() {
             if let Some(m) = selected { *value = m.clone(); }
         }
-        if !value.is_empty() && ui.small_button("✖").clicked() { value.clear(); }
+        if !value.is_empty() && ui.small_button("✖").on_hover_text(t("Delete")).clicked() { value.clear(); }
     });
+    let name = value.rsplit('\\').next().unwrap_or("").trim_end_matches(".p3d").to_string();
+    let idle = if name.is_empty() { t("Drop a model here") } else { name };
+    let (shown, dropped) = crate::theme::model_drop_box(ui, egui::vec2(ui.available_width(), 22.0), &idle, &t("Drop to use"));
+    if !value.is_empty() { shown.on_hover_text(value.as_str()); }
+    if let Some(p) = dropped.last() {
+        *value = (**p).clone();
+    }
 }
 
 /// Chooses an object preset in place of a list of models.
@@ -169,11 +169,11 @@ fn line_ui(ui: &mut egui::Ui, o: &mut LineOptions) {
 }
 
 /// Wicket, gate in one object or gate of two leaves.
-fn opening_kind(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening) {
+fn opening_kind(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, room: f32) {
     let current = match (o.gate, o.two_leaves) { (false, _) => 0, (true, false) => 1, (true, true) => 2 };
     let names = [t("Wicket"), t("Gate in one object"), t("Gate of two leaves")];
     let mut chosen = current;
-    egui::ComboBox::from_id_salt("opening_kind").width(170.0).selected_text(names[current].clone()).show_ui(ui, |ui| {
+    egui::ComboBox::from_id_salt("opening_kind").width((ui.available_width() - room).clamp(90.0, 170.0)).selected_text(names[current].clone()).show_ui(ui, |ui| {
         for (k, n) in names.iter().enumerate() { ui.selectable_value(&mut chosen, k, n); }
     });
     if chosen != current {
@@ -559,7 +559,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 ui.push_id(("opening", k), |ui| {
                     egui::Frame::group(ui.style()).show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            opening_kind(ui, o);
+                            opening_kind(ui, o, 64.0);
                             if cx.can_pick && ui.small_button(crate::icons::MAP_PIN).on_hover_text(t("Place it with a click on the fence")).clicked() { cx.pick.set(Some(k)); }
                             if ui.small_button(crate::icons::TRASH).on_hover_text(t("Delete")).clicked() { drop = Some(k); }
                         });
@@ -582,7 +582,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             if let Some(o) = &mut g.road_gate {
                 ui.push_id("road_gate", |ui| {
                     egui::Frame::group(ui.style()).show(ui, |ui| {
-                        opening_kind(ui, o);
+                        opening_kind(ui, o, 8.0);
                         opening_ui(ui, o, cx);
                     });
                 });
