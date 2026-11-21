@@ -589,7 +589,7 @@ pub struct App {
     pub perf: Option<Vec<f32>>,
     /// The mission editor.
     pub mission: crate::mission_ui::MissionState,
-    /// Team work: sending and merging the changes of several people (experimental).
+    /// Team work: sending and merging the changes of several people.
     pub team: crate::team_ui::TeamUi,
 }
 

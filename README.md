@@ -28,7 +28,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Everything in the mod**: the map's own surfaces and Central Economy, extra folders such as your own buildings, and signed PBOs
 - **Automatic backups** and a built-in updater
 - **Mission editor** (experimental): the economy, loot, events, spawns and the rest of the server mission, see [docs/mission-editor.md](docs/mission-editor.md)
-- **Team work** (experimental): several people work on their own copies and merge their changes through a shared folder, see [docs/team-work.md](docs/team-work.md)
+- **Team work**: several people work on their own copies and merge their changes through a shared folder, see [docs/team-work.md](docs/team-work.md)
 
 The [editor guide](docs/guide.md) describes every tab, the views and the menus in more detail.
 
@@ -128,8 +128,8 @@ The interval, the number of copies and the folder are in `Edit > Settings > Back
 
 ## Experimental features
 
-The mission editor and team work are turned on with `Edit > Settings > General > Show experimental features`.
-They work, but may still change.
+The mission editor is turned on with `Edit > Settings > General > Show experimental features`.
+It works, but may still change.
 
 ## Building from source
 

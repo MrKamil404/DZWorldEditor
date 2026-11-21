@@ -2835,9 +2835,9 @@
   "de": "Formgröße",
   "pl": "Rozmiar form"
  },
- "Features still being worked on, which may change or not work fully yet. For now: the mission editor and team work.": {
-  "de": "Funktionen, an denen noch gearbeitet wird; sie können sich ändern oder noch nicht ganz funktionieren. Vorerst: der Missionseditor und Teamarbeit.",
-  "pl": "Funkcje, nad którymi trwają prace; mogą się zmieniać lub nie działać jeszcze w pełni. Na razie: edytor misji i praca zespołowa."
+ "Features still being worked on, which may change or not work fully yet. For now: the mission editor.": {
+  "de": "Funktionen, an denen noch gearbeitet wird; sie können sich ändern oder noch nicht ganz funktionieren. Derzeit: der Missionseditor.",
+  "pl": "Funkcje, nad którymi trwają prace; mogą się zmieniać lub nie działać jeszcze w pełni. Na razie: edytor misji."
  },
  "Fence": {
   "de": "Zaun",

@@ -1,4 +1,4 @@
-//! Team work (experimental): everyone works on their own copy of the map and the changes are
+//! Team work: everyone works on their own copy of the map and the changes are
 //! merged at the end of the day through a shared folder; see `dz_core::team`.
 use crate::app::{App, Finish};
 use crate::i18n::{t, tf};
@@ -490,12 +490,6 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
 }
 
 pub fn window(app: &mut App, ctx: &egui::Context) {
-    if !app.settings.experimental {
-        app.team.open = false;
-        app.team.merge = None;
-        set_me(app, String::new());
-        return;
-    }
     watch(app);
     // While the merge writes the project, what would be done in the editor would be lost.
     if app.team.merging {
