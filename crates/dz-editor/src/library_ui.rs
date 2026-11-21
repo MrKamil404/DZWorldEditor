@@ -48,6 +48,8 @@ struct KindContext {
     pick: std::cell::Cell<Option<usize>>,
     /// Where the game's models are, for the buildings of a settlement.
     work_drive: std::path::PathBuf,
+    /// Sizes of the game's models.
+    db: dz_core::model_info::ModelDb,
 }
 
 fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindContext {
@@ -67,6 +69,7 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
         can_pick: false,
         pick: Default::default(),
         work_drive: app.settings.tools.work_drive.clone(),
+        db: app.db.clone(),
     }
 }
 
@@ -542,6 +545,26 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             ui.checkbox(&mut g.random_rotation, t("Random rotation"));
             ui.checkbox(&mut g.follow_slope, t("Follow the slope"));
             ui.checkbox(&mut g.join_corners, t("Join the pieces at corners"));
+            if g.join_corners && g.line.mode == dz_core::library::LineMode::Polyline {
+                ui.checkbox(&mut g.close_corners, t("Close the corners of thick walls")).on_hover_text(t("At each corner the pieces on both sides reach past it by half the thickness of the fence, so the outer edge of a thick wall closes. Where one end of the wall has a pillar, the pillar stands centred on the corner and the thinner end of the other piece runs into its middle."));
+                if g.close_corners {
+                    // What the generator read from the model, and the reach it works out of it.
+                    let ends = gen::fence_ends(&cx.db, g);
+                    if g.preset.is_none() && ends[0] > 0.0 {
+                        ui.weak(tf("Pieces are {0} m thick where they start and {1} m where they end.", &[&format!("{:.2}", ends[0]), &format!("{:.2}", ends[1])]));
+                    }
+                    if ui.checkbox(&mut g.corner_by_hand, t("Set the reach at corners by hand")).changed() && g.corner_by_hand {
+                        g.corner_reach = gen::corner_reach(ends, std::f32::consts::FRAC_PI_2).map(|r| (r * 100.0).round() / 100.0);
+                    }
+                    if g.corner_by_hand {
+                        number(ui, t("Piece before the corner"), &mut g.corner_reach[0], -2.0..=2.0);
+                        number(ui, t("Piece after the corner"), &mut g.corner_reach[1], -2.0..=2.0);
+                        ui.weak(t("Metres each piece reaches past the corner. Negative values stop it short of the corner."));
+                    }
+                }
+                model_field(ui, t("Corner object"), &mut g.corner_model, &cx.model);
+                ui.weak(t("Stood on every corner of the line, such as a post or a corner piece of the same wall. The pieces stop at its sides."));
+            }
             group(ui, t("First and last object"), false, |ui| {
                 model_field(ui, t("First object"), &mut g.start_model, &cx.model);
                 if !g.start_model.is_empty() { ui.checkbox(&mut g.flip_start, t("Rotate the first object by 180°")); }

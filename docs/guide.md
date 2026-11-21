@@ -265,6 +265,14 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
 * **Settlement** can take the game's buildings of a village, town, farm, industrial area or
   military base from the work drive, gives each building a yard with its own surface, and fences
   some of the plots, leaving the side to the street open.
+* **Fence** sets wall or fence pieces along a line. With *Join the pieces at corners*, two more
+  options help thick walls: *Close the corners of thick walls* lets the pieces on both sides of a
+  corner reach past it by half the thickness of the wall, so the outer edge closes (where a wall has a
+  pillar at one end, the pillar stands centred on the corner and the other wall ends in its middle).
+  The panel shows how thick the pieces are at their ends, and *Set the reach at corners by hand* lets
+  you choose how far the piece before and the piece after a corner reach past it; *Corner object*
+  stands a post or corner piece (for example `Wall_IndVar1_Pole` or `Wall_CBrk_Corner`) on every
+  corner and stops the pieces at its sides. Both can be used together.
 
 ## Menus
 

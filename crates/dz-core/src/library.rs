@@ -145,6 +145,20 @@ pub struct FenceGen {
     /// The first and last object stand inside the line, between its end and the fence, instead
     /// of on its end with half of them beyond it.
     pub ends_inside: bool,
+    /// At each corner the pieces on both sides reach past it by half the thickness of the
+    /// fence, so thick walls close the outer edge of the corner instead of leaving a notch.
+    #[serde(default)]
+    pub close_corners: bool,
+    /// Stood on every corner of the line, turned halfway between its two sides; the pieces stop
+    /// at its sides. Empty for none.
+    #[serde(default)]
+    pub corner_model: String,
+    /// With `close_corners`: metres the piece before a corner and the piece after it reach past
+    /// the corner, set by hand instead of worked out from the thickness of their ends.
+    #[serde(default)]
+    pub corner_by_hand: bool,
+    #[serde(default)]
+    pub corner_reach: [f32; 2],
     pub seed: u64,
     pub line: LineOptions,
     /// Wickets and gates set into the fence.
@@ -197,7 +211,7 @@ impl Default for FenceOpening {
 
 impl Default for FenceGen {
     fn default() -> Self {
-        Self { model: r"dz\structures\walls\wall_cnc_5.p3d".into(), preset: None, resolved: Vec::new(), spacing: 0.0, yaw_offset: 0.0, random_rotation: false, follow_slope: true, join_corners: true, start_model: String::new(), end_model: String::new(), flip_start: false, flip_end: false, ends_inside: false, seed: 1, line: LineOptions::default(), openings: Vec::new(), road_gate: None, roads: Vec::new() }
+        Self { model: r"dz\structures\walls\wall_cnc_5.p3d".into(), preset: None, resolved: Vec::new(), spacing: 0.0, yaw_offset: 0.0, random_rotation: false, follow_slope: true, join_corners: true, start_model: String::new(), end_model: String::new(), flip_start: false, flip_end: false, ends_inside: false, close_corners: false, corner_model: String::new(), corner_by_hand: false, corner_reach: [0.0; 2], seed: 1, line: LineOptions::default(), openings: Vec::new(), road_gate: None, roads: Vec::new() }
     }
 }
 
