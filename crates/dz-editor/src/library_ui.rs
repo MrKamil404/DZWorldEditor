@@ -888,13 +888,27 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             row(ui, &t("Most cars in a jam"), |ui| { ui.add(egui::Slider::new(&mut g.jam_max, 3..=20)); });
             number(ui, t("Lane from the middle m"), &mut g.lane, 0.0..=10.0);
             number(ui, t("Half the road width m"), &mut g.road_half, 1.0..=15.0);
-            group(ui, t("Wrecks"), false, |ui| objects_ui(ui, &mut g.wrecks, cx));
+            group(ui, t("Wrecks"), false, |ui| {
+                row(ui, &t("Turn of the wrecks"), |ui| {
+                    ui.add(egui::Slider::new(&mut g.wreck_turn, -180.0..=180.0).suffix("°").step_by(1.0)).on_hover_text(t("Every wreck is turned by this much. Cars face the way the traffic of their lane goes; turn them when a model faces the other way or sideways."));
+                });
+                ui.horizontal_wrapped(|ui| {
+                    for a in [0.0f32, 90.0, 180.0, -90.0] {
+                        if ui.small_button(format!("{a:.0}°")).clicked() { g.wreck_turn = a; }
+                    }
+                });
+                number(ui, t("Random turn in a jam ±°"), &mut g.jam_turn, 0.0..=90.0);
+                number(ui, t("Random turn on the verge ±°"), &mut g.verge_turn, 0.0..=90.0);
+                objects_ui(ui, &mut g.wrecks, cx);
+            });
             group(ui, t("Stains under wrecks"), false, |ui| {
                 number(ui, t("Share of wrecks"), &mut g.under_share, 0.0..=1.0);
                 models_list(ui, &mut g.under, cx);
             });
             group(ui, t("Road decals"), false, |ui| {
                 number(ui, t("Per km"), &mut g.decals_per_km, 0.0..=200.0);
+                number(ui, t("Most metres from the middle"), &mut g.decal_reach, 0.0..=15.0);
+                ui.checkbox(&mut g.decals_inside, t("Keep decals inside the road")).on_hover_text(t("A wide decal stays nearer the middle, so its edge does not reach past half the road width."));
                 ui.checkbox(&mut g.decals_paved_only, t("Only on paved roads"));
                 objects_ui(ui, &mut g.decals, cx);
             });
@@ -1991,7 +2005,7 @@ fn run_dressing(app: &mut App, id: u64, label: String, kind: GeneratorKind, targ
                 return;
             }
             app.spawn(label, move |job| {
-                let objects = dz_core::dressing::wreck_objects(&mut lite, &g, &lines, &paved, job)?;
+                let objects = dz_core::dressing::wreck_objects(&mut lite, &db, &g, &lines, &paved, job)?;
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| { store_generated(a, id, models, objects); }) as Finish)
             });
