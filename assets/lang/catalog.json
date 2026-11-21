@@ -255,6 +255,10 @@
   "de": "Über",
   "pl": "O programie"
  },
+ "About half of the copies face the other way, so both sides of a wall or fence show along it.": {
+  "de": "Etwa die Hälfte der Kopien zeigt in die andere Richtung, sodass beide Seiten einer Mauer oder eines Zauns zu sehen sind.",
+  "pl": "Mniej więcej połowa kopii jest odwrócona, więc wzdłuż muru lub płotu widać obie jego strony."
+ },
  "Adapt a mission of another map...": {
   "de": "Mission einer anderen Karte anpassen...",
   "pl": "Dostosuj misję innej mapy..."
@@ -6055,6 +6059,10 @@
   "de": "Zufällige Drehung der Flecken",
   "pl": "Losowy obrót plam"
  },
+ "Random turn ±°": {
+  "de": "Zufällige Drehung ±°",
+  "pl": "Losowy obrót ±°"
+ },
  "Read the map's CfgSurfaces...": {
   "de": "CfgSurfaces der Karte lesen...",
   "pl": "Wczytaj CfgSurfaces mapy..."
@@ -6446,6 +6454,10 @@
  "Routes ({0})": {
   "de": "Routen ({0})",
   "pl": "Trasy ({0})"
+ },
+ "Row direction": {
+  "de": "Richtung der Reihe",
+  "pl": "Kierunek rzędu"
  },
  "Rows of walls and fences": {
   "de": "Reihen von Mauern und Zäunen",
@@ -8187,6 +8199,10 @@
   "de": "Das Wasser steht auf der Höhe des tiefsten Geländes rund um die Form.",
   "pl": "Woda stoi na poziomie najniższego terenu wokół kształtu."
  },
+ "The way the row goes, turned from the long side of the first object. For models whose copies belong another way, such as posts or gates.": {
+  "de": "Die Richtung der Reihe, gedreht gegenüber der langen Seite des ersten Objekts. Für Modelle, deren Kopien anders liegen sollen, etwa Pfosten oder Tore.",
+  "pl": "Kierunek, w którym idzie rząd, obrócony względem dłuższego boku pierwszego obiektu. Dla modeli, których kopie powinny iść inaczej, np. słupków lub bram."
+ },
  "The whole map": {
   "de": "Die ganze Karte",
   "pl": "Cała mapa"
@@ -8366,6 +8382,10 @@
  "Turn": {
   "de": "Drehung",
   "pl": "Obrót"
+ },
+ "Turn copies by 180° at random": {
+  "de": "Kopien zufällig um 180° drehen",
+  "pl": "Losowo obracaj kopie o 180°"
  },
  "Turn it off for a layer of wrecks, rubbish or fences, so baking objects into the satellite image leaves them out.": {
   "de": "Für eine Ebene mit Wracks, Müll oder Zäunen ausschalten, damit sie beim Einbrennen der Objekte in das Satellitenbild fehlen.",

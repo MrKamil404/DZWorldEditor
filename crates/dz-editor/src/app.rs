@@ -529,6 +529,8 @@ pub struct App {
     pub team_seen: u64,
     /// What of others this person was told about changing, so it is said once.
     pub team_warned: std::collections::HashSet<String>,
+    /// Picks the random turns of the next copies laid in a row, so the preview shows them.
+    pub row_seed: u64,
     pub outliner_filter: String,
     /// Opens (true) or closes every outliner section in the next frame.
     pub outliner_fold: Option<bool>,
@@ -636,7 +638,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
-            task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
+            task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
             settings,
         };
@@ -2191,9 +2193,16 @@ impl App {
     /// The row copies of the selection are laid in, ahead or behind, with the gap of the
     /// settings between them.
     pub fn selection_row(&self, items: &[(dz_core::objects::Obj, dz_core::model_info::ModelInfo)], ahead: bool) -> Option<dz_core::objects::Row> {
-        let mut row = dz_core::objects::row_of(items, ahead)?;
+        let mut row = dz_core::objects::row_of_turned(items, ahead, self.settings.row_angle)?;
         row.step = (row.step + self.settings.row_gap).max(0.1);
         Some(row)
+    }
+
+    /// Copies of a row turned at random as the settings say, the same way each time until
+    /// a row is laid.
+    pub fn row_random_turns(&self, copies: &mut [dz_core::objects::Obj], items: &[(dz_core::objects::Obj, dz_core::model_info::ModelInfo)]) {
+        let info: Vec<_> = items.iter().map(|(_, i)| *i).collect();
+        dz_core::objects::random_turns(copies, &info, self.settings.row_flip, self.settings.row_turn, self.row_seed);
     }
 
     /// How the selection moves to join its neighbour, with the gap of the settings between
@@ -2214,9 +2223,10 @@ impl App {
         let doc = self.doc.as_ref()?;
         let w = &doc.world;
         let items = self.selection_items();
-        let row = dz_core::objects::row_of(&items, true)?;
+        let angle = self.settings.row_angle;
+        let row = dz_core::objects::row_of_turned(&items, true, angle)?;
         let reach = (row.step * 0.5).clamp(0.5, 4.0) + self.settings.row_gap.max(0.0);
-        let back = dz_core::objects::row_of(&items, false)?;
+        let back = dz_core::objects::row_of_turned(&items, false, angle)?;
         let mut others = Vec::new();
         for end in [row.joint, back.joint] {
             w.objects.for_each_in(end[0] - 12.0, end[1] - 12.0, end[0] + 12.0, end[1] + 12.0, |id, o| {
@@ -2226,7 +2236,7 @@ impl App {
             });
         }
         let others: Vec<_> = others.into_iter().map(|(_, o)| (o, self.db.get(w.objects.model_path(&o)))).filter(|(_, i)| i.known).collect();
-        dz_core::objects::link_to(&items, &others, reach).map(|(k, mine, theirs)| (mine, theirs, if k == 0 { back.joint } else { row.joint }))
+        dz_core::objects::link_to_turned(&items, &others, reach, angle).map(|(k, mine, theirs)| (mine, theirs, if k == 0 { back.joint } else { row.joint }))
     }
 
     /// Moves the selection so its end meets the end of the neighbour it joins in a row.
@@ -2282,7 +2292,10 @@ impl App {
             return;
         }
         let Some(row) = self.selection_row(&items, ahead) else { return };
-        let moved = dz_core::objects::row_copies(&items, &row, count, turn);
+        let mut moved = dz_core::objects::row_copies(&items, &row, count, turn);
+        self.row_random_turns(&mut moved, &items);
+        // The next row turns its copies another way.
+        self.row_seed = self.row_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         let Some(doc) = &mut self.doc else { return };
         let w = &mut doc.world;
         let before_mods = w.modifiers.clone();

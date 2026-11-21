@@ -1573,7 +1573,7 @@ fn row_arrows(app: &App, v: &View) -> Vec<(Handle, Pos2, Pos2)> {
     let items = app.selection_items();
     let mut out = Vec::new();
     for (h, ahead) in [(Handle::RowAhead, true), (Handle::RowBehind, false)] {
-        let Some(row) = dz_core::objects::row_of(&items, ahead) else { continue };
+        let Some(row) = app.selection_row(&items, ahead) else { continue };
         let y = doc.world.height.sample(row.joint[0], row.joint[1]) + 0.3;
         let a = [row.joint[0], y, row.joint[1]];
         let len = gizmo_size(v, a) * 0.8;
@@ -1591,7 +1591,7 @@ fn turn_ring(app: &App, v: &View) -> Option<(V3, Vec<Pos2>)> {
     let doc = app.doc.as_ref()?;
     let at = match app.selection_link() {
         Some((_, theirs, _)) => theirs,
-        None => dz_core::objects::row_of(&app.selection_items(), false)?.joint,
+        None => app.selection_row(&app.selection_items(), false)?.joint,
     };
     let p = [at[0], doc.world.height.sample(at[0], at[1]) + 0.3, at[1]];
     let r = gizmo_size(v, p) * 0.45;
@@ -1606,7 +1606,9 @@ fn turn_ring(app: &App, v: &View) -> Option<(V3, Vec<Pos2>)> {
 fn row_preview(app: &App, drag: &ObjectDrag) -> Vec<Obj> {
     let items: Vec<_> = drag.before.iter().filter_map(|(_, o)| Some((*o, app.db.get(app.doc.as_ref()?.world.objects.model_path(o))))).collect();
     let Some(row) = app.selection_row(&items, drag.handle == Handle::RowAhead) else { return Vec::new() };
-    dz_core::objects::row_copies(&items, &row, drag.row.0, drag.row.1)
+    let mut copies = dz_core::objects::row_copies(&items, &row, drag.row.0, drag.row.1);
+    app.row_random_turns(&mut copies, &items);
+    copies
 }
 
 /// A point snapped so the line to it from `from` runs at a whole step of `step` degrees,

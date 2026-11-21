@@ -595,10 +595,20 @@ fn rows_section(app: &mut App, ui: &mut egui::Ui) {
             if ui.add_enabled(objects, egui::Button::new(icons::ARROW_LINE_RIGHT)).on_hover_text(format!("{ahead}\n{}", t("A copy of the selection goes right ahead of it, along its long side, and is selected, so pressing again lays a row."))).clicked() { app.copy_selection_along(true); }
         });
         if ui.add_enabled(objects, egui::Button::new(icons::with(icons::LINK_SIMPLE, &t("Join to the neighbour")))).on_hover_text(format!("{}\n{}", app.settings.keys.tip(Action::JoinNeighbour), t("Moves the selection so its end meets the end of the wall or fence next to it, as after turning it."))).clicked() { app.join_selection_to_neighbour(); }
-        let before = app.settings.row_gap;
+        let before = (app.settings.row_gap, app.settings.row_angle, app.settings.row_flip, app.settings.row_turn);
         slider(ui, &t("Gap"), &mut app.settings.row_gap, -3.0..=3.0, false);
         ui.weak(t("Metres between copies and between joined neighbours. Negative values overlap them."));
-        if app.settings.row_gap != before { app.settings.save(); }
+        row(ui, &t("Row direction"), |ui| {
+            ui.add(egui::Slider::new(&mut app.settings.row_angle, -180.0..=180.0).suffix("°").step_by(1.0)).on_hover_text(t("The way the row goes, turned from the long side of the first object. For models whose copies belong another way, such as posts or gates."));
+        });
+        ui.horizontal_wrapped(|ui| {
+            for a in [0.0f32, 90.0, 180.0, -90.0] {
+                if ui.small_button(format!("{a:.0}°")).clicked() { app.settings.row_angle = a; }
+            }
+        });
+        ui.checkbox(&mut app.settings.row_flip, t("Turn copies by 180° at random")).on_hover_text(t("About half of the copies face the other way, so both sides of a wall or fence show along it."));
+        slider(ui, &t("Random turn ±°"), &mut app.settings.row_turn, 0.0..=45.0, false);
+        if (app.settings.row_gap, app.settings.row_angle, app.settings.row_flip, app.settings.row_turn) != before { app.settings.save(); }
     });
 }
 
