@@ -140,7 +140,6 @@ pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
     if app.show_contours {
         row(ui, &t("Interval"), |ui| { ui.add(egui::DragValue::new(&mut app.contour_interval).speed(0.5).range(1.0..=200.0).suffix(" m")); });
     }
-    ui.checkbox(&mut app.camera_under, t("Camera below the terrain")).on_hover_text(keys.tip(Action::CameraBelow));
 }
 
 fn guard_close(app: &mut App, ctx: &egui::Context) {
@@ -235,6 +234,7 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 crate::layout::menu(app, ui);
                 ui.separator();
                 visibility_toggles(app, ui);
+                ui.checkbox(&mut app.camera_under, t("Camera below the terrain")).on_hover_text(keys.tip(Action::CameraBelow));
                 ui.separator();
                 ui.checkbox(&mut app.show_land_grid, t("Land grid"));
                 ui.checkbox(&mut app.show_tile_grid, t("Texture tiles"));
