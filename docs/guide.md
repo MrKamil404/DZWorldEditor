@@ -67,7 +67,26 @@ scales them.
 * **Stick to the ground** tilts moved objects with the ground; **Align to the ground** does it now.
 * **Duplicate** (Ctrl+D) and **Delete**. C copies the selection to the cursor, V copies the last
   selection there again.
+* **Copy direction**: click it, then click another object. The selection turns the way that object
+  faces, so a broken wall lines up with the wall next to it. With *Stick to the ground* only the
+  heading is taken and the objects tilt with the ground.
+* **Reset scale** sets the selected objects back to their own size.
 * **Create prefab** makes a reusable group of the selected objects in the library.
+* **Rows of walls and fences**, a section of its own, lays copies of the selection end to end:
+  * **Copy on ahead** (Ctrl+Shift+D) and **Copy on behind** (Ctrl+Shift+A), the arrow buttons, put a
+    copy of the selection right next to it along its long side and select the copy. Press again to
+    lay a row of walls or fences piece by piece.
+  * **Copy in a row** (T, the fourth gizmo button) shows two arrows where the selection ends along its
+    long side. Drag an arrow out: an outline shows each copy that fits up to the cursor. Pull aside to
+    turn the row about the end of the selection; with Ctrl it turns by the angle step (the wheel
+    changes the step). When you let go the copies are laid and the last one is selected, so the next
+    drag goes on from there, round a corner if you like. The green ring turns the selection about the
+    point where it joins the wall or fence next to it: grab it and the selection first moves back to
+    meet that end, then turns about it (with Ctrl by the angle step), so it stays joined.
+  * **Join to the neighbour** (J) moves the selection so its end meets the end of the object next to
+    it, for example after turning it with the usual gizmo.
+  * **Gap** sets the metres between copies and between joined neighbours; negative values overlap
+    them.
 * **Terrain under objects** adds a terrain modifier that levels the ground under the selection and
   follows the objects when they move. The sculpted terrain stays untouched.
 
