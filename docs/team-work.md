@@ -1,10 +1,9 @@
-# Team work (experimental)
+# Team work
 
 Several people can work on one map at the same time, each on their own copy, and merge their
 work at the end of the day. No server is needed: the changes travel as files through a shared
 folder that Dropbox, Google Drive, OneDrive or Syncthing keeps the same on every computer (or a
-pen drive). Turn it on with *Edit > Settings > General > Show experimental features*; it is in
-the **Team** menu.
+pen drive). It is in the **Team** menu.
 
 ## Setting up
 

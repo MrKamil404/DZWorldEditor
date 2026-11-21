@@ -250,9 +250,7 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                     if ui.button(t("Generate navmesh...")).clicked() { ui.close_menu(); app.generate_navmesh(); }
                 });
             });
-            if app.settings.experimental {
-                crate::team_ui::menu(app, ui);
-            }
+            crate::team_ui::menu(app, ui);
             ui.menu_button(t("Language"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 let cur = crate::i18n::current();
                 for (code, name) in crate::i18n::languages() {
@@ -2847,7 +2845,7 @@ fn settings_general(app: &mut App, ui: &mut egui::Ui) {
     about(ui, &t("0 turns autosave off."));
     ui.add_space(4.0);
     ui.checkbox(&mut app.settings.check_updates, t("Check for updates at start"));
-    ui.checkbox(&mut app.settings.experimental, t("Show experimental features")).on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor and team work."));
+    ui.checkbox(&mut app.settings.experimental, t("Show experimental features")).on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor."));
     about(ui, &t("For now: the mission editor and team work."));
 }
 

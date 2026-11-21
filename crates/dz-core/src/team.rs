@@ -1,4 +1,4 @@
-//! Several people working on one map at the same time (experimental).
+//! Several people working on one map at the same time.
 //!
 //! Everyone works on their own copy of the project. The project remembers the last version
 //! everyone shares, the *base*, in `.team/versions/<id>`. Sending writes what changed since the

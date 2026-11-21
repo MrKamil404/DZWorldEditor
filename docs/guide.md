@@ -8,7 +8,7 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 
 ## The window
 
-* **Menu bar**: File, Edit, View, Build, Team (with experimental features on), Language and Help.
+* **Menu bar**: File, Edit, View, Build, Team, Language and Help.
   On the right, *Check for updates* and the installer of a new release.
 * **Toolbar**: Save, Undo and Redo, the nine tabs (keys 1-9), the gizmo (Move, Rotate, Scale, Copy in
   a row, and World or Local axes), the views (3D, 2D, 3D | 2D) and **Build** and **Play**.
