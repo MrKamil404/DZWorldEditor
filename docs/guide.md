@@ -90,6 +90,12 @@ scales them.
     it, for example after turning it with the usual gizmo.
   * **Gap** sets the metres between copies and between joined neighbours; negative values overlap
     them.
+  * **Row direction** turns the way the row goes (and its arrows) from the long side of the first
+    object, by any angle: drag the slider, type a value, or click 0°, 90°, 180° or -90°. For models
+    whose copies belong another way, such as posts or gates.
+  * **Turn copies by 180° at random** and **Random turn ±°** turn the new copies about their own
+    middle, so a row shows both sides of a wall or looks less straight. The outlines while dragging
+    show the turns the copies will get.
 * **Terrain under objects** adds a terrain modifier that levels the ground under the selection and
   follows the objects when they move. The sculpted terrain stays untouched.
 

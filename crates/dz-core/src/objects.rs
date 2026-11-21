@@ -387,11 +387,21 @@ pub struct Row {
 /// The row of copies of `items`, each an object with its model's box, going `ahead` along the
 /// long side of the first object or back.
 pub fn row_of(items: &[(Obj, crate::model_info::ModelInfo)], ahead: bool) -> Option<Row> {
+    row_of_turned(items, ahead, 0.0)
+}
+
+/// [`row_of`] with the way the row goes turned by `angle` degrees (clockwise seen from above,
+/// as yaw) from the long side of the first object: 90 runs it along the short side, 180 the
+/// other way along the long side. For models whose copies belong another way than their long
+/// side. The step is how far the objects reach together that way.
+pub fn row_of_turned(items: &[(Obj, crate::model_info::ModelInfo)], ahead: bool, angle: f32) -> Option<Row> {
     let (lead, info) = items.first()?;
     let along_x = info.max[0] - info.min[0] >= info.max[2] - info.min[2];
     let m = rotation(lead.yaw, lead.pitch, lead.roll, 1.0);
     let k = if along_x { 0 } else { 2 };
-    let (ax, az) = (m[k][0], m[k][2]);
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let (lx, lz) = (m[k][0], m[k][2]);
+    let (ax, az) = (lx * cos + lz * sin, -lx * sin + lz * cos);
     let len = ax.hypot(az);
     if len < 1e-4 {
         return None;
@@ -455,7 +465,12 @@ pub fn row_to(row: &Row, to: [f32; 2], snap: Option<f32>, dead: f32) -> (usize, 
 /// its model's box, if they are under `reach` metres apart. Gives that end of the objects and
 /// the end of the neighbour it joins.
 pub fn link_to(items: &[(Obj, crate::model_info::ModelInfo)], others: &[(Obj, crate::model_info::ModelInfo)], reach: f32) -> Option<(usize, [f32; 2], [f32; 2])> {
-    let ours = [row_of(items, true)?.joint, row_of(items, false)?.joint];
+    link_to_turned(items, others, reach, 0.0)
+}
+
+/// [`link_to`] with the ends of the objects taken along a row turned as in [`row_of_turned`].
+pub fn link_to_turned(items: &[(Obj, crate::model_info::ModelInfo)], others: &[(Obj, crate::model_info::ModelInfo)], reach: f32, angle: f32) -> Option<(usize, [f32; 2], [f32; 2])> {
+    let ours = [row_of_turned(items, true, angle)?.joint, row_of_turned(items, false, angle)?.joint];
     let mut best: Option<(f32, usize, [f32; 2], [f32; 2])> = None;
     for other in others {
         let one = std::slice::from_ref(other);
@@ -479,6 +494,38 @@ pub fn shift_and_turn(objects: &[Obj], shift: [f32; 2], pivot: [f32; 2], turn: f
         let (rx, rz) = (o.x + shift[0] - pivot[0], o.z + shift[1] - pivot[1]);
         Obj { x: pivot[0] + rx * cos + rz * sin, z: pivot[1] - rx * sin + rz * cos, yaw: o.yaw + turn, ..*o }
     }).collect()
+}
+
+/// Turns objects at random about their own middle, so a row does not look laid by a machine:
+/// with `flip` about half of them by 180°, and each by up to `range` degrees either way.
+/// `info` gives each object its model's box (by index, again from the start when shorter).
+/// The same `seed` turns them the same way.
+pub fn random_turns(objects: &mut [Obj], info: &[crate::model_info::ModelInfo], flip: bool, range: f32, seed: u64) {
+    use rand::{Rng, SeedableRng};
+    if (!flip && range <= 0.0) || info.is_empty() {
+        return;
+    }
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    for (k, o) in objects.iter_mut().enumerate() {
+        let mut turn = if flip && rng.gen_bool(0.5) { 180.0 } else { 0.0 };
+        if range > 0.0 {
+            turn += rng.gen_range(-range..=range);
+        }
+        if turn == 0.0 {
+            continue;
+        }
+        // Where the middle of the box lies from the origin, before and after the turn.
+        let i = &info[k % info.len()];
+        let c = [(i.min[0] + i.max[0]) * 0.5, (i.min[2] + i.max[2]) * 0.5];
+        let at = |yaw: f32| {
+            let m = rotation(yaw, o.pitch, o.roll, o.scale);
+            [c[0] * m[0][0] + c[1] * m[2][0], c[0] * m[0][2] + c[1] * m[2][2]]
+        };
+        let (before, after) = (at(o.yaw), at(o.yaw + turn));
+        o.x += before[0] - after[0];
+        o.z += before[1] - after[1];
+        o.yaw += turn;
+    }
 }
 
 /// One copy of the objects laid right next to them, ahead or behind; see [`row_of`].
@@ -530,6 +577,40 @@ mod tests {
         assert!((moved.yaw - 35.0).abs() < 1e-4);
         // Nothing near: no joint.
         assert!(link_to(&[(Obj { x: 200.0, ..first }, wall)], &[(first, wall)], 3.0).is_none());
+    }
+
+    #[test]
+    fn a_row_can_go_another_way_and_turn_copies_at_random() {
+        use crate::model_info::ModelInfo;
+        // A box 6 m along x, its middle 1 m off the origin.
+        let wall = ModelInfo { min: [-2.0, 0.0, -0.2], max: [4.0, 2.0, 0.2], known: true, ..Default::default() };
+        let o = Obj { x: 100.0, z: 200.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        let items = [(o, wall)];
+        // A quarter turn runs the row along the short side (z), half a turn back along x.
+        let q1 = row_of_turned(&items, true, 90.0).unwrap();
+        assert!(q1.dir[0].abs() < 1e-4 && (q1.dir[1].abs() - 1.0).abs() < 1e-4 && (q1.step - 0.4).abs() < 1e-3, "{q1:?}");
+        let (q2, q0b) = (row_of_turned(&items, true, 180.0).unwrap(), row_of(&items, false).unwrap());
+        assert!((q2.joint[0] - q0b.joint[0]).abs() < 1e-3 && (q2.dir[0] - q0b.dir[0]).abs() < 1e-4 && (q2.step - q0b.step).abs() < 1e-3, "{q2:?} {q0b:?}");
+        // Any angle: 45° runs the row on the diagonal, as far as the box reaches that way.
+        let d = row_of_turned(&items, true, 45.0).unwrap();
+        assert!((d.dir[0] - d.dir[1].abs()).abs() < 1e-4 && d.step > 4.0 && d.step < 6.0, "{d:?}");
+        // Flipped by 180°, an object keeps its middle where it was.
+        let mut many = vec![o; 40];
+        random_turns(&mut many, &[wall], true, 0.0, 7);
+        let flipped: Vec<_> = many.iter().filter(|m| (m.yaw - 180.0).abs() < 1e-3).collect();
+        assert!(!flipped.is_empty() && flipped.len() < 40);
+        for m in &flipped {
+            // The middle (1 m along x from the origin) stays at x 101.
+            let r = rotation(m.yaw, 0.0, 0.0, 1.0);
+            assert!((m.x + 1.0 * r[0][0] - 101.0).abs() < 1e-3 && (m.z + 1.0 * r[0][2] - 200.0).abs() < 1e-3, "{m:?}");
+        }
+        // A range keeps every turn within it; the same seed gives the same turns.
+        let mut a = vec![o; 20];
+        random_turns(&mut a, &[wall], false, 5.0, 3);
+        assert!(a.iter().all(|m| m.yaw.abs() <= 5.0 + 1e-4) && a.iter().any(|m| m.yaw != 0.0));
+        let mut b = vec![o; 20];
+        random_turns(&mut b, &[wall], false, 5.0, 3);
+        assert_eq!(a, b);
     }
 
     #[test]
