@@ -502,6 +502,9 @@ pub struct App {
     /// A replaced model rests on the ground as the one before it did.
     pub replace_keep_ground: bool,
     pub grading_edit: Option<(Vec<dz_core::world::RoadRoute>, Vec<dz_core::world::TerrainModifier>)>,
+    /// The surface layers before a change of a mask colour that is still going on (the picker
+    /// dragged); one undo step once the mouse is let go.
+    pub layer_colour_edit: Option<Vec<dz_core::world::SurfaceLayer>>,
     /// The view takes the whole screen, with the panels sliding in at the edges.
     pub fullscreen: bool,
     /// Which edge panels of the full screen view are out: top, left, right, bottom.
@@ -639,7 +642,7 @@ impl App {
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
+            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
             settings,
@@ -798,6 +801,27 @@ impl App {
         d.history.push(label.clone(), Change::Routes(routes));
         d.history.push(label.clone(), Change::Modifiers(modifiers));
         d.history.group_last(2, label);
+    }
+
+    /// Sets the mask colour of a surface layer; the change is undone as one step with the rest
+    /// of the drag in the picker.
+    pub fn set_layer_colour(&mut self, layer: usize, colour: [u8; 3]) {
+        let Some(d) = &mut self.doc else { return };
+        if d.world.layers.get(layer).is_none_or(|l| l.color == colour) { return; }
+        if self.layer_colour_edit.is_none() { self.layer_colour_edit = Some(d.world.layers.clone()); }
+        d.world.layers[layer].color = colour;
+        d.history.revision += 1;
+        self.push_palette();
+    }
+
+    /// Puts a finished change of mask colours in the undo history.
+    pub fn finish_layer_colour_edit(&mut self, ctx: &egui::Context) {
+        if self.layer_colour_edit.is_none() || ctx.input(|i| i.pointer.any_down()) {
+            return;
+        }
+        let before = self.layer_colour_edit.take().unwrap();
+        let Some(d) = &mut self.doc else { return };
+        if before != d.world.layers { d.history.push(t("Mask colour"), Change::SurfaceLayers(before)); }
     }
 
     pub fn route_grading_changed(&mut self, i: usize) {
@@ -1647,6 +1671,9 @@ impl App {
         }
         if let Some(r) = t.satellite {
             self.satellite_changed(r);
+        }
+        if t.layers {
+            self.push_palette();
         }
         if t.objects {
             if let Some(d) = &mut self.doc {

@@ -198,6 +198,8 @@ pub enum Change {
     Objects(Vec<(u32, Option<Obj>, Option<Obj>)>),
     Modifiers(Vec<TerrainModifier>),
     ObjectLayers(Vec<crate::world::ObjectLayer>),
+    /// The surface layers (names, textures, mask colours) as they were.
+    SurfaceLayers(Vec<crate::world::SurfaceLayer>),
     Shapes(Vec<crate::shapes::ShapeLayer>),
     Routes(Vec<crate::world::RoadRoute>),
     Holes(crate::holes::Holes),
@@ -224,6 +226,8 @@ pub struct Touched {
     pub objects: bool,
     /// Pixels of the satellite image that changed.
     pub satellite: Option<crate::satmod::PixelRect>,
+    /// The surface layers changed: their colours on the mask, names or textures.
+    pub layers: bool,
 }
 impl Touched {
     fn merge(&mut self, o: Touched) {
@@ -236,6 +240,7 @@ impl Touched {
             (a, b) => a.or(b),
         };
         self.objects |= o.objects;
+        self.layers |= o.layers;
         self.satellite = match (self.satellite, o.satellite) {
             (Some(a), Some(b)) => Some(a.union(b)),
             (a, b) => a.or(b),
@@ -299,6 +304,10 @@ impl Change {
                 w.objects.revision += 1;
                 t.objects = true;
             }
+            Change::SurfaceLayers(prev) => {
+                std::mem::swap(prev, &mut w.layers);
+                t.layers = true;
+            }
             Change::Shapes(prev) => std::mem::swap(prev, &mut w.shape_layers),
             Change::KeyPoints(prev) => std::mem::swap(prev, &mut w.keypoints),
             Change::Mission(edits) => crate::mission::toggle(&mut w.mission, edits),
@@ -338,6 +347,7 @@ impl Change {
             Change::Objects(l) => l.len() * 80,
             Change::Modifiers(l) => l.len() * 96,
             Change::ObjectLayers(l) => l.len() * 64,
+            Change::SurfaceLayers(l) => l.len() * 160,
             Change::Authors(a) => a.as_ref().map_or(0, |a| a.len() * 48),
             Change::Routes(r) => r.iter().map(|x| x.points.len() * 8 + x.centerline.len() * 8 + x.objects.len() * 4).sum(),
             Change::Holes(h) => h.len() * 8,
@@ -648,6 +658,20 @@ mod tests {
         let (c, r) = (w.base.cols, w.base.rows);
         assert!(before.swap(&mut w.base.data, c, r).is_some_and(|a| a.x0 <= area.x0 && a.x1 >= area.x1));
         assert_eq!(w.base.sample(1000.0, 1000.0), 100.0);
+    }
+    #[test]
+    fn a_new_mask_colour_undoes_and_redoes() {
+        let mut w = world();
+        w.layers = (0..2).map(|k| crate::world::SurfaceLayer { name: format!("l{k}"), texture: String::new(), material: String::new(), color: [k as u8 * 100; 3] }).collect();
+        let mut h = History::default();
+        let before = w.layers.clone();
+        w.layers[1].color = [255, 0, 0];
+        h.push("Mask colour", Change::SurfaceLayers(before));
+        let t = h.undo(&mut w).unwrap();
+        assert!(t.layers);
+        assert_eq!(w.layers[1].color, [100; 3]);
+        h.redo(&mut w);
+        assert_eq!(w.layers[1].color, [255, 0, 0]);
     }
     #[test]
     fn steps_before_a_removed_layer_still_undo() {

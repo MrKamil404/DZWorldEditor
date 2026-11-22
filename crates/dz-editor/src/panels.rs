@@ -19,6 +19,7 @@ pub fn new_project_dialog() -> Dialog {
 pub fn ui(app: &mut App, ctx: &egui::Context) {
     guard_close(app, ctx);
     app.finish_grading_edit(ctx);
+    app.finish_layer_colour_edit(ctx);
     crate::library_ui::handle_file_drop(app, ctx);
     if app.lib_dirty && !ctx.input(|i| i.pointer.any_down()) {
         app.lib_dirty = false;
@@ -998,6 +999,7 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
     let side = 64.0;
     let mut changed = false;
     let mut chosen = None;
+    let mut recolour = None;
     egui::ScrollArea::vertical().id_salt("surface_tiles").max_height(330.0).auto_shrink([false, true]).show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
@@ -1045,15 +1047,24 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
                         copy_in = Some(i);
                         ui.close_menu();
                     }
-                    ui.horizontal(|ui| {
-                        ui.label(t("Mask colour"));
-                        if ui.color_edit_button_srgb(&mut l.color).changed() { changed = true; }
+                    // The picker sits in a submenu of its own: a colour button would open it as a
+                    // popup outside the menu, and the first click in it would close both.
+                    let mut title = egui::text::LayoutJob::default();
+                    title.append("\u{25a0}", 0.0, egui::TextFormat { font_id: egui::FontId::proportional(14.0), color: Color32::from_rgb(l.color[0], l.color[1], l.color[2]), ..Default::default() });
+                    title.append(&t("Mask colour"), 6.0, egui::TextFormat { font_id: egui::FontId::proportional(13.0), color: theme::TEXT, ..Default::default() });
+                    ui.menu_button(title, |ui| {
+                        let mut c = Color32::from_rgb(l.color[0], l.color[1], l.color[2]);
+                        if egui::color_picker::color_picker_color32(ui, &mut c, egui::color_picker::Alpha::Opaque) {
+                            recolour = Some((i, [c.r(), c.g(), c.b()]));
+                        }
                     });
                 });
             }
         });
     });
     if let Some(i) = chosen { app.paint.layer = i; }
+    if let Some((i, c)) = recolour { app.set_layer_colour(i, c); }
+    let Some(doc) = &mut app.doc else { return };
     if let Some(i) = copy_in {
         let source = root.join(doc.world.layers[i].texture.replace('\\', "/"));
         match dz_core::surfaces::import_layer_texture(&root, &id, &source) {
@@ -1160,17 +1171,27 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::PAINT_BRUSH_BROAD, &t("Brush")), true, |ui| {
         // What the brush paints: the colour of the layer on the mask, its name and number, and
         // the eyedropper that takes another from the map.
-        let colour = app.doc.as_ref().and_then(|d| d.world.layers.get(app.paint.layer)).map(|l| Color32::from_rgb(l.color[0], l.color[1], l.color[2]));
+        let layer = app.paint.layer;
+        let mut colour = app.doc.as_ref().and_then(|d| d.world.layers.get(layer)).map(|l| l.color);
+        let before = colour;
+        // Another layer with the same colour cannot be told apart on the mask of the map.
+        let shared = colour.is_some_and(|c| app.doc.as_ref().is_some_and(|d| d.world.layers.iter().enumerate().any(|(i, l)| i != layer && l.color == c)));
         ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(vec2(32.0, 32.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 4.0, theme::SECTION);
-            if let Some(c) = colour { ui.painter().rect_filled(rect.shrink(7.0), 2.0, c); }
+            // The colour of the layer on the mask: click it to change it.
+            match colour.as_mut() {
+                Some(c) => ui.scope(|ui| {
+                    ui.spacing_mut().interact_size = vec2(32.0, 32.0);
+                    ui.color_edit_button_srgb(c).on_hover_text(t("Mask colour"));
+                }).response,
+                None => ui.allocate_exact_size(vec2(32.0, 32.0), egui::Sense::hover()).1,
+            };
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 1.0;
                 match names.get(app.paint.layer) {
                     Some(n) => {
                         ui.add(egui::Label::new(RichText::new(n).font(icons::strong(14.0)).color(theme::TEXT_BRIGHT)).truncate());
                         ui.label(RichText::new(tf("Surface layer L{0}", &[&format!("{:02}", app.paint.layer)])).small().color(theme::TEXT_DIM));
+                        if shared { ui.label(RichText::new(t("Another layer has this colour")).small().color(theme::WARN)).on_hover_text(t("The mask of the map tells the surfaces apart by their colours. Give each layer a colour of its own.")); }
                     }
                     None => { ui.label(RichText::new(t("Choose a surface below")).color(theme::TEXT_DIM)); }
                 }
@@ -1179,6 +1200,9 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
                 if flat_tool(ui, app.paint.picking, icons::EYEDROPPER, None, format!("{}\n{}", t("Eyedropper"), t("Takes the surface under the cursor."))).clicked() { app.paint.picking = !app.paint.picking; }
             });
         });
+        if colour != before {
+            if let Some(c) = colour { app.set_layer_colour(layer, c); }
+        }
         ui.add_space(4.0);
         brush_tip(app, ui, true);
         slider(ui, &t("Radius"), &mut app.paint.radius, 0.5..=2000.0, true);
