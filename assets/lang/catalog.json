@@ -587,6 +587,10 @@
   "de": "Tiere",
   "pl": "Zwierzęta"
  },
+ "Another layer has this colour": {
+  "de": "Eine andere Ebene hat diese Farbe",
+  "pl": "Inna warstwa ma ten kolor"
+ },
  "Another task is still running": {
   "de": "Eine andere Aufgabe läuft noch",
   "pl": "Inne zadanie nadal trwa"
@@ -8002,6 +8006,10 @@
  "The mask colour painted under the model, by trees as their forest ground and by the tool that paints under objects.": {
   "de": "Die Maskenfarbe unter dem Modell: für Bäume als Waldboden und für das Werkzeug, das unter Objekte malt.",
   "pl": "Kolor maski malowany pod modelem: przez drzewa jako podłoże lasu i przez narzędzie malujące pod obiektami."
+ },
+ "The mask of the map tells the surfaces apart by their colours. Give each layer a colour of its own.": {
+  "de": "Die Maske der Karte unterscheidet die Oberflächen an ihren Farben. Gib jeder Ebene eine eigene Farbe.",
+  "pl": "Maska mapy rozróżnia powierzchnie po kolorach. Daj każdej warstwie własny kolor."
  },
  "The menus sit in the title bar, which the editor draws itself. Off, Windows draws its usual title bar.": {
   "de": "Die Menüs sitzen in der Titelleiste, die der Editor selbst zeichnet. Aus zeichnet Windows seine übliche Titelleiste.",
