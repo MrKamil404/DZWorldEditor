@@ -2039,6 +2039,10 @@
   "de": "DayZForests-Projekt...",
   "pl": "Projekt DayZForests..."
  },
+ "Decals too": {
+  "de": "Auch Decals",
+  "pl": "Także decale"
+ },
  "Decimals": {
   "de": "Nachkommastellen",
   "pl": "Miejsca po przecinku"
@@ -4607,6 +4611,10 @@
   "de": "Zusammenführen",
   "pl": "Scal"
  },
+ "Merge all brush modifiers": {
+  "de": "Alle Pinsel-Modifikatoren zusammenführen",
+  "pl": "Scal wszystkie modyfikatory pędzla"
+ },
  "Merge changes of others": {
   "de": "Änderungen anderer zusammenführen",
   "pl": "Scal zmiany innych"
@@ -4615,6 +4623,18 @@
   "de": "Änderungen anderer zusammenführen ({0})",
   "pl": "Scal zmiany innych ({0})"
  },
+ "Merge down": {
+  "de": "Mit dem darunter zusammenführen",
+  "pl": "Scal z niższym"
+ },
+ "Merge mask modifiers": {
+  "de": "Masken-Modifikatoren zusammenführen",
+  "pl": "Scalenie modyfikatorów maski"
+ },
+ "Merge satellite modifiers": {
+  "de": "Satelliten-Modifikatoren zusammenführen",
+  "pl": "Scalenie modyfikatorów satelity"
+ },
  "Merge the changes of {0}": {
   "de": "Änderungen von {0} zusammenführen",
   "pl": "Scal zmiany: {0}"
@@ -4622,6 +4642,22 @@
  "Merged the changes of {0}: {1}": {
   "de": "Änderungen von {0} zusammengeführt: {1}",
   "pl": "Scalono zmiany ({0}): {1}"
+ },
+ "Merges each run of neighbouring modifiers of brush strokes into one. The mask stays as it is. In team work only your own modifiers are merged.": {
+  "de": "Führt jede Folge benachbarter Modifikatoren aus Pinselstrichen zu einem zusammen. Die Maske bleibt, wie sie ist. Bei Teamarbeit werden nur deine eigenen Modifikatoren zusammengeführt.",
+  "pl": "Scala każdą grupę sąsiadujących modyfikatorów pociągnięć pędzla w jeden. Maska się nie zmienia. Przy pracy zespołowej scalane są tylko Twoje modyfikatory."
+ },
+ "Merges each run of neighbouring modifiers of one brush into one. The image stays as it is. In team work only your own modifiers are merged.": {
+  "de": "Führt jede Folge benachbarter Modifikatoren eines Pinsels zu einem zusammen. Das Bild bleibt, wie es ist. Bei Teamarbeit werden nur deine eigenen Modifikatoren zusammengeführt.",
+  "pl": "Scala każdą grupę sąsiadujących modyfikatorów jednego pędzla w jeden. Obraz się nie zmienia. Przy pracy zespołowej scalane są tylko Twoje modyfikatory."
+ },
+ "Merges the modifier into the one under it, if that one is of brush strokes too and both are shown.": {
+  "de": "Führt den Modifikator mit dem darunter zusammen, wenn auch dieser aus Pinselstrichen ist und beide sichtbar sind.",
+  "pl": "Scala modyfikator z tym pod nim, jeśli to też pociągnięcia pędzla i oba są widoczne."
+ },
+ "Merges the modifier into the one under it, if that one is of the same brush and both are shown.": {
+  "de": "Führt den Modifikator mit dem darunter zusammen, wenn dieser vom selben Pinsel ist und beide sichtbar sind.",
+  "pl": "Scala modyfikator z tym pod nim, jeśli jest z tego samego pędzla i oba są widoczne."
  },
  "Merging the changes": {
   "de": "Änderungen werden zusammengeführt",
@@ -5455,6 +5491,14 @@
   "de": "Nur innerhalb von Formen",
   "pl": "Tylko wewnątrz kształtów"
  },
+ "Only into a shown modifier of brush strokes right under it, and in team work only your own.": {
+  "de": "Nur mit einem sichtbaren Modifikator aus Pinselstrichen direkt darunter, und bei Teamarbeit nur mit deinen eigenen.",
+  "pl": "Tylko z widocznym modyfikatorem pociągnięć pędzla tuż pod nim, a przy pracy zespołowej tylko z Twoimi."
+ },
+ "Only into a shown modifier of the same brush right under it, and in team work only your own.": {
+  "de": "Nur mit einem sichtbaren Modifikator desselben Pinsels direkt darunter, und bei Teamarbeit nur mit deinen eigenen.",
+  "pl": "Tylko z widocznym modyfikatorem tego samego pędzla tuż pod nim, a przy pracy zespołowej tylko z Twoimi."
+ },
  "Only layers marked for export": {
   "de": "Nur zum Export markierte Ebenen",
   "pl": "Tylko warstwy oznaczone do eksportu"
@@ -5722,6 +5766,10 @@
  "Paints river and pond parts into the image, their water in the colour of water.": {
   "de": "Malt Fluss- und Teichteile ins Bild, ihr Wasser in der Farbe von Wasser.",
   "pl": "Wypala party rzek i stawów, ich wodę w kolorze wody."
+ },
+ "Paints road damage, manholes, crossings and the marks under wrecks into the image, with their see-through parts, over the roads under them.": {
+  "de": "Malt Straßenschäden, Schachtdeckel, Übergänge und die Spuren unter Wracks mit ihren durchsichtigen Teilen ins Bild, über die Straßen darunter.",
+  "pl": "Wypala w obrazie uszkodzenia dróg, studzienki, przejścia i ślady pod wrakami, z ich przezroczystymi częściami, na drogach pod nimi."
  },
  "Paints the asphalt and verges of the road models into the image, as they look from above.": {
   "de": "Malt Asphalt und Ränder der Straßenmodelle so ins Bild, wie sie von oben aussehen.",
@@ -9670,6 +9718,10 @@
  "{0} models, {1} other": {
   "de": "{0} Modelle, {1} andere",
   "pl": "{0} modeli, {1} innych"
+ },
+ "{0} modifiers merged into the ones under them": {
+  "de": "{0} Modifikatoren mit den darunterliegenden zusammengeführt",
+  "pl": "Scalono {0} modyfikatorów z tymi pod nimi"
  },
  "{0} notes": {
   "de": "{0} Hinweise",

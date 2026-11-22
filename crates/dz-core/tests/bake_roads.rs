@@ -117,3 +117,35 @@ fn the_outline_of_a_pier_follows_its_shape() {
     let far = s.distance(info.max[0] + 1.5, cz);
     assert!(far > 1.0 && far < 2.5, "{far}");
 }
+
+/// Decals are baked only when asked for, with the see-through parts of their pictures, and
+/// over a road part under them, when P: is mounted.
+#[test]
+fn decals_are_baked_over_the_road_on_request() {
+    let decal = "dz/structures/roads/decals/decal_damage_long1.p3d";
+    let road = "dz/structures/roads/parts/asf2_12.p3d";
+    if !std::path::Path::new("P:/").join(decal).exists() || !std::path::Path::new("P:/").join(road).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    assert!(dz_core::objects::is_decal_model(&decal.replace('/', "\\"), &db.get(decal)));
+    let at = |model: &str, y: f32| {
+        let o = dz_core::objects::Obj { x: 128.0, z: 131.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        dz_core::satmod::BakeObject { object: o, origin_y: y, model: model.into() }
+    };
+    // The decal first in the list: it is still drawn after the road.
+    let objects = [at(decal, 0.03), at(road, 0.0)];
+    let without = dz_core::satmod::bake_objects_with(&objects, &db, 256, 256, 256.0, |_| false, &Default::default(), &dz_core::Job::default());
+    let opts = dz_core::satmod::BakeOptions { decals: true, ..Default::default() };
+    let with = dz_core::satmod::bake_objects_with(&objects, &db, 256, 256, 256.0, |_| false, &opts, &dz_core::Job::default());
+    let empty = std::sync::Arc::new(vec![0u8; 128 * 128 * 4]);
+    let changed: usize = with.iter().map(|(k, t)| {
+        let u = without.get(k).unwrap_or(&empty);
+        t.chunks(4).zip(u.chunks(4)).filter(|(x, y)| x != y).count()
+    }).sum();
+    assert!(changed > 10, "{changed} px changed by the decal");
+    // Alone, the decal leaves soft edges: some pixels are only partly covered.
+    let alone = dz_core::satmod::bake_objects_with(&objects[..1], &db, 256, 256, 256.0, |_| false, &opts, &dz_core::Job::default());
+    let partial = alone.values().map(|t| t.chunks(4).filter(|p| p[3] > 0 && p[3] < 255).count()).sum::<usize>();
+    let any = baked_px(&alone);
+    assert!(any > 10, "{any} px of the decal");
+    eprintln!("decal: {any} px, {partial} partly covered, {changed} px changed over the road");
+}
