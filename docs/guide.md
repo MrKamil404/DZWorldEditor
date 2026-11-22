@@ -250,8 +250,10 @@ written to the `Names` of the world config on export, so the in-game map shows t
 ![The satellite tools](screenshots/satellite.jpg)
 
 * **Bake objects** draws the objects as seen from above into the satellite image: the selected ones
-  or all, optionally trees and bushes, road parts and water parts, only what is above the ground, with
-  a blending of the edges. Baking the whole map can leave things out, so wrecks, rubbish or fences do
+  or all, optionally trees and bushes, road parts, water parts and decals, only what is above the
+  ground, with a blending of the edges. **Decals too** paints road damage, manholes, crossings and
+  the marks under wrecks with the see-through parts of their pictures, over the roads baked with
+  them; only what stands clearly above a decal (a car, a roof, a tree) hides it. Baking the whole map can leave things out, so wrecks, rubbish or fences do
   not end up in the image: turn off **Bake into the satellite** in the menu of an object layer (the
   layers of a built map are sorted by kind), or right click a model in the Outliner or the Content
   Browser and choose **Leave out of the satellite bake**. The list of left out models and path
@@ -289,6 +291,14 @@ written to the `Names` of the world config on export, so the in-game map shows t
 Every bake, clone stroke, correction and generated image is a **satellite modifier** in the
 outliner: it can be hidden or deleted, and what it covered comes back. Everything the satellite and
 mask modifiers make is part of the map when it is built.
+
+Brushes can leave many modifiers behind. Right click a modifier of a brush (clone, adjust or colour
+brush on the satellite, brush strokes on the mask) in the outliner and choose **Merge down** to
+merge it into the one right under it, if that one is of the same brush and both are shown, or
+**Merge all brush modifiers** to merge each run of neighbouring modifiers of one brush into one.
+The image and the mask stay as they were; the merged modifier keeps the name of the lowest one, and
+undo splits them again. In team work only your own modifiers are merged: merging takes the upper
+one away, and a modifier of someone else would then go from their copy too.
 
 ### 9 Mission
 

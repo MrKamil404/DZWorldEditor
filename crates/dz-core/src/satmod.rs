@@ -38,6 +38,32 @@ pub enum SatKind {
     Generated,
 }
 
+impl SatKind {
+    /// Made by strokes and fills of a brush, so several can be merged into one.
+    pub fn is_brush(self) -> bool {
+        matches!(self, SatKind::Clone | SatKind::Adjust | SatKind::Paint)
+    }
+}
+
+/// `upper` laid over `lower` into one tile at full opacity, each first at its own opacity:
+/// over any picture the result looks as the two did one over the other.
+fn merge_tiles(lower: Option<(&Tile, u8)>, upper: Option<(&Tile, u8)>) -> Tile {
+    let mut out = vec![0u8; TILE * TILE * 4];
+    for p in 0..TILE * TILE {
+        let get = |t: Option<(&Tile, u8)>| t.map_or(([0f32; 3], 0f32), |(t, o)| ([t[p * 4] as f32, t[p * 4 + 1] as f32, t[p * 4 + 2] as f32], t[p * 4 + 3] as f32 / 255.0 * o as f32 / 255.0));
+        let ((a_rgb, a), (b_rgb, b)) = (get(lower), get(upper));
+        let cover = a + b - a * b;
+        if cover <= 0.0 {
+            continue;
+        }
+        for k in 0..3 {
+            out[p * 4 + k] = ((a_rgb[k] * a * (1.0 - b) + b_rgb[k] * b) / cover).round().clamp(0.0, 255.0) as u8;
+        }
+        out[p * 4 + 3] = (cover * 255.0).round() as u8;
+    }
+    Arc::new(out)
+}
+
 /// The settings of a correction modifier.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -141,6 +167,13 @@ impl SatLayers {
     /// The original pixels kept under a tile a modifier touches.
     pub fn base_tile(&self, key: Key) -> Option<&Tile> {
         self.base.get(&key)
+    }
+    /// The modifier just under `id` that it can be merged into: of the same brush kind, and
+    /// both shown, so the merged one looks the same.
+    pub fn merge_target(&self, id: u32) -> Option<u32> {
+        let at = self.position(id)?;
+        let (lower, upper) = (self.modifiers.get(at.checked_sub(1)?)?, &self.modifiers[at]);
+        (lower.kind == upper.kind && upper.kind.is_brush() && lower.enabled && upper.enabled).then_some(lower.id)
     }
     /// Adds an empty modifier and returns its id.
     pub fn add(&mut self, kind: SatKind, name: String) -> u32 {
@@ -390,6 +423,46 @@ impl World {
         let gone = self.sat.modifiers.remove(at);
         let keys = self.sat_mod_keys(&gone);
         self.sat_recompose(keys)
+    }
+
+    /// [`SatLayers::merge_target`], and in team work only when both are this person's own:
+    /// merging takes the upper one away, which would take it from its maker's copy too.
+    pub fn sat_merge_target(&self, id: u32) -> Option<u32> {
+        let mine = |id: u32| self.team_me.is_empty() || self.sat_mod_author(id) == self.team_me;
+        self.sat.merge_target(id).filter(|lower| mine(id) && mine(*lower))
+    }
+
+    /// Merges a brush modifier into the one under it (see [`World::sat_merge_target`]); the
+    /// lower one keeps its name and place. Tells whether they were merged.
+    pub fn sat_merge_down(&mut self, id: u32) -> (bool, Option<PixelRect>) {
+        let Some(lower) = self.sat_merge_target(id) else { return (false, None) };
+        let (lo, up) = (self.sat.position(lower).unwrap(), self.sat.position(id).unwrap());
+        let upper = self.sat.modifiers.remove(up);
+        let l = &mut self.sat.modifiers[lo];
+        let keys: BTreeSet<Key> = l.tiles.keys().chain(upper.tiles.keys()).copied().collect();
+        let tiles = keys.iter().map(|k| (*k, merge_tiles(l.tiles.get(k).map(|t| (t, l.opacity)), upper.tiles.get(k).map(|t| (t, upper.opacity))))).collect();
+        l.tiles = tiles;
+        l.opacity = 255;
+        (true, self.sat_recompose(keys))
+    }
+
+    /// Merges every brush modifier into the one under it where it can be, so each run of
+    /// neighbouring modifiers of one brush becomes one. Tells how many went into others.
+    pub fn sat_merge_brushes(&mut self) -> (usize, Option<PixelRect>) {
+        let (mut merged, mut touched) = (0, None::<PixelRect>);
+        let mut at = self.sat.modifiers.len();
+        while at > 1 {
+            at -= 1;
+            let id = self.sat.modifiers[at].id;
+            if let (true, r) = self.sat_merge_down(id) {
+                merged += 1;
+                touched = match (touched, r) {
+                    (Some(a), Some(b)) => Some(a.union(b)),
+                    (a, b) => a.or(b),
+                };
+            }
+        }
+        (merged, touched)
     }
 
     pub fn sat_set_enabled(&mut self, id: u32, enabled: bool) -> Option<PixelRect> {
@@ -915,6 +988,9 @@ pub struct BakeOptions {
     pub water: bool,
     /// Leaves out what lies under this ground, for objects sunk partly into the terrain.
     pub ground: Option<Arc<crate::terrain::Heightmap>>,
+    /// Draws decals ([`crate::objects::is_decal_model`]) with the see-through parts of their
+    /// pictures, over everything else that is baked and under anything standing above them.
+    pub decals: bool,
 }
 
 /// Water seen from above, from the colour of the game's river material lifted by the sky.
@@ -939,9 +1015,21 @@ fn sample(mesh: &ModelMesh, texture: usize, u: f32, v: f32) -> [f32; 4] {
     }
 }
 
-/// Colour of a point of a batch as the material combines its textures, or `None` where the
-/// texture is cut away.
-fn surface_color(mesh: &ModelMesh, batch: &model3d::Batch, uv: [f32; 2], uv2: [f32; 2], water: bool) -> Option<[f32; 3]> {
+/// Colour and cover (0 to 1) of a point of a batch as the material combines its textures, or
+/// `None` where the texture is cut away. Only a decal (`overlay`) keeps its see-through parts;
+/// other glass and overlays add next to nothing seen from above.
+fn surface_color(mesh: &ModelMesh, batch: &model3d::Batch, uv: [f32; 2], uv2: [f32; 2], water: bool, overlay: bool) -> Option<[f32; 4]> {
+    let solid = |c: [f32; 3]| [c[0], c[1], c[2], 1.0];
+    if overlay {
+        let c = batch.texture.map_or([0.5, 0.5, 0.5, 1.0], |t| sample(mesh, t, uv[0], uv[1]));
+        // The game lays decals on the ground with the alpha of their picture (`_ca`) as cover,
+        // whatever their material says.
+        return (c[3] > 0.004).then_some(c);
+    }
+    surface_rgb(mesh, batch, uv, uv2, water).map(solid)
+}
+
+fn surface_rgb(mesh: &ModelMesh, batch: &model3d::Batch, uv: [f32; 2], uv2: [f32; 2], water: bool) -> Option<[f32; 3]> {
     let shading = batch.shading.and_then(|i| mesh.shadings.get(i));
     let slot = |s: &model3d::Shading, k: usize| -> Option<[f32; 4]> {
         let b = if s.xo[k][2] % 2.0 > 0.5 { uv2 } else { uv };
@@ -1166,12 +1254,17 @@ pub fn bake_objects_with(objects: &[BakeObject], db: &ModelDb, width: usize, hei
         let n = (l[0] * l[0] + l[1] * l[1] + l[2] * l[2]).sqrt();
         [l[0] / n, l[1] / n, l[2] / n]
     };
-    for (index, b) in objects.iter().enumerate() {
-        if index % 256 == 0 {
+    // Decals go last, laid over what is already drawn under them.
+    let decal: Vec<bool> = objects.iter().map(|b| opts.decals && crate::objects::is_decal_model(&b.model, &db.get(&b.model))).collect();
+    let order: Vec<usize> = (0..objects.len()).filter(|i| !decal[*i]).chain((0..objects.len()).filter(|i| decal[*i])).collect();
+    for (n, &index) in order.iter().enumerate() {
+        let b = &objects[index];
+        let overlay = decal[index];
+        if n % 256 == 0 {
             if job.cancelled() {
                 break;
             }
-            job.set_progress(index as f32 / objects.len().max(1) as f32);
+            job.set_progress(n as f32 / objects.len().max(1) as f32);
         }
         let plant = is_plant(&b.model);
         let Some(bm) = meshes.entry(b.model.as_str()).or_insert_with(|| load_bake_mesh(db, &b.model, plant)) else { continue };
@@ -1222,17 +1315,34 @@ pub fn bake_objects_with(objects: &[BakeObject], db: &ModelDb, width: usize, hei
                         let key = ((x / TILE) as u16, (y / TILE) as u16);
                         let at = (y % TILE) * TILE + x % TILE;
                         let z = depth.entry(key).or_insert_with(|| vec![f32::MIN; TILE * TILE]);
-                        if top <= z[at] {
+                        // The game draws a decal on the surface under it, so only what stands
+                        // clearly above it (a car, a roof, a tree) hides it.
+                        if if overlay { top + 0.5 < z[at] } else { top <= z[at] } {
                             continue;
                         }
                         let mix2 = |a: [f32; 2], b: [f32; 2], c: [f32; 2]| [b0 * a[0] + b1 * b[0] + b2 * c[0], b0 * a[1] + b1 * b[1] + b2 * c[1]];
-                        let Some(c) = surface_color(&bm.mesh, batch, mix2(v[0].uv, v[1].uv, v[2].uv), mix2(v[0].uv2, v[1].uv2, v[2].uv2), opts.water) else { continue };
+                        let Some(c) = surface_color(&bm.mesh, batch, mix2(v[0].uv, v[1].uv, v[2].uv), mix2(v[0].uv2, v[1].uv2, v[2].uv2), opts.water, overlay) else { continue };
                         let n = turned(std::array::from_fn(|k| b0 * v[0].normal[k] + b1 * v[1].normal[k] + b2 * v[2].normal[k]));
                         // Leaves catch the light from both sides.
                         let facing = n[0] * light[0] + n[1] * light[1] + n[2] * light[2];
                         let lit = 0.55 + 0.55 * if plant { facing.abs() } else { facing.max(0.0) };
-                        z[at] = top;
                         let t = tiles.entry(key).or_insert_with(|| vec![0u8; TILE * TILE * 4]);
+                        if overlay {
+                            // Over what is drawn here already (its cover in the alpha); the
+                            // depth stays, so decals over each other all show.
+                            let (a, under) = (c[3], t[at * 4 + 3] as f32 / 255.0);
+                            let cover = a + under * (1.0 - a);
+                            if cover <= 0.0 {
+                                continue;
+                            }
+                            for k in 0..3 {
+                                let old = t[at * 4 + k] as f32 / 255.0;
+                                t[at * 4 + k] = (((c[k] * lit) * a + old * under * (1.0 - a)) / cover * 255.0).clamp(0.0, 255.0) as u8;
+                            }
+                            t[at * 4 + 3] = (cover * 255.0).round() as u8;
+                            continue;
+                        }
+                        z[at] = top;
                         for k in 0..3 {
                             t[at * 4 + k] = (c[k] * lit * 255.0).clamp(0.0, 255.0) as u8;
                         }
@@ -1310,6 +1420,30 @@ mod tests {
         let (middle, edge) = (pixel(&w, 50, 50)[0], pixel(&w, 58, 50)[0]);
         assert!(middle > 240, "{middle}");
         assert!(edge > 10 && edge < 120, "{edge}");
+    }
+
+    #[test]
+    fn neighbouring_brush_modifiers_merge_into_one_that_looks_the_same() {
+        let mut w = world();
+        let white = RgbImage::new(256, 256, [250, 240, 230]);
+        let red = RgbImage::new(256, 256, [200, 0, 0]);
+        let soft = CloneBrush { radius: 8.0, hardness: 0.2, opacity: 0.8 };
+        let a = w.sat.add(SatKind::Clone, "a".into());
+        w.sat_clone_dab(a, [40.5, 40.5], &soft, Some(&white), [0, 0]);
+        let b = w.sat.add(SatKind::Clone, "b".into());
+        w.sat_clone_dab(b, [46.5, 40.5], &soft, Some(&red), [0, 0]);
+        w.sat_set_opacity(b, 180);
+        let c = w.sat.add(SatKind::Bake, "c".into());
+        let shown = w.satellite.as_ref().unwrap().data.clone();
+        assert_eq!(w.sat.merge_target(c), None);
+        assert_eq!(w.sat.merge_target(b), Some(a));
+        assert_eq!(w.sat_merge_brushes().0, 1);
+        assert_eq!(w.sat.modifiers.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(), ["a", "c"]);
+        let after = &w.satellite.as_ref().unwrap().data;
+        let worst = shown.iter().zip(after).map(|(x, y)| (*x as i32 - *y as i32).abs()).max().unwrap();
+        assert!(worst <= 2, "merged differs by {worst}");
+        w.sat_set_enabled(a, false);
+        assert_eq!(pixel(&w, 43, 40), [10, 20, 30]);
     }
 
     #[test]

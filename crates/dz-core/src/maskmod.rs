@@ -62,6 +62,13 @@ impl MaskLayers {
         let next_id = modifiers.iter().map(|m| m.id.saturating_add(1)).max().unwrap_or(1);
         MaskLayers { modifiers, base: HashMap::new(), next_id }
     }
+    /// The modifier just under `id` that it can be merged into: both of brush strokes and
+    /// shown, so the merged one looks the same.
+    pub fn merge_target(&self, id: u32) -> Option<u32> {
+        let at = self.position(id)?;
+        let (lower, upper) = (self.modifiers.get(at.checked_sub(1)?)?, &self.modifiers[at]);
+        (lower.kind == MaskKind::Strokes && upper.kind == MaskKind::Strokes && lower.enabled && upper.enabled).then_some(lower.id)
+    }
     /// Adds an empty modifier and returns its id.
     pub fn add(&mut self, kind: MaskKind, name: String) -> u32 {
         // Random, so that two people working on copies of one map do not make the same id.
@@ -285,6 +292,51 @@ impl World {
         let at = self.mask_mods.position(id)?;
         let gone = self.mask_mods.modifiers.remove(at);
         self.mask_recompose(gone.tiles.keys().copied().collect::<Vec<_>>())
+    }
+
+    /// [`MaskLayers::merge_target`], and in team work only when both are this person's own:
+    /// merging takes the upper one away, which would take it from its maker's copy too.
+    pub fn mask_merge_target(&self, id: u32) -> Option<u32> {
+        let mine = |id: u32| self.team_me.is_empty() || self.mask_mod_author(id) == self.team_me;
+        self.mask_mods.merge_target(id).filter(|lower| mine(id) && mine(*lower))
+    }
+
+    /// Merges a modifier of brush strokes into the one under it (see
+    /// [`World::mask_merge_target`]); the lower one keeps its name and place. Tells whether
+    /// they were merged.
+    pub fn mask_merge_down(&mut self, id: u32) -> (bool, Option<Rect>) {
+        let Some(lower) = self.mask_merge_target(id) else { return (false, None) };
+        let (lo, up) = (self.mask_mods.position(lower).unwrap(), self.mask_mods.position(id).unwrap());
+        let upper = self.mask_mods.modifiers.remove(up);
+        let l = &mut self.mask_mods.modifiers[lo];
+        for (key, top) in &upper.tiles {
+            let mut t = l.tiles.get(key).map_or_else(|| vec![NONE; TILE * TILE], |t| t.to_vec());
+            for (v, u) in t.iter_mut().zip(top.iter()) {
+                if *u != NONE {
+                    *v = *u;
+                }
+            }
+            l.tiles.insert(*key, Arc::new(t));
+        }
+        (true, self.mask_recompose(upper.tiles.keys().copied().collect::<Vec<_>>()))
+    }
+
+    /// Merges every modifier of brush strokes into the one under it where it can be, so each
+    /// run of neighbouring ones becomes one. Tells how many went into others.
+    pub fn mask_merge_brushes(&mut self) -> (usize, Option<Rect>) {
+        let (mut merged, mut touched) = (0, None);
+        let mut at = self.mask_mods.modifiers.len();
+        while at > 1 {
+            at -= 1;
+            let id = self.mask_mods.modifiers[at].id;
+            if let (true, r) = self.mask_merge_down(id) {
+                merged += 1;
+                if let Some(r) = r {
+                    touched = union(touched, r);
+                }
+            }
+        }
+        (merged, touched)
     }
 
     pub fn mask_set_enabled(&mut self, id: u32, enabled: bool) -> Option<Rect> {
@@ -587,6 +639,48 @@ mod tests {
     }
     fn at(w: &World, x: usize, y: usize) -> u8 {
         w.mask.data[y * 256 + x]
+    }
+
+    #[test]
+    fn neighbouring_brush_modifiers_merge_into_one_that_looks_the_same() {
+        let mut w = world();
+        let paint = |w: &mut World, id: u32, x0: usize, v: u8| {
+            let r = Rect { x0, y0: 5, x1: x0 + 9, y1: 5 };
+            let before: Vec<u8> = w.mask.data[5 * 256 + x0..5 * 256 + x0 + 10].to_vec();
+            for x in x0..x0 + 10 { w.mask.data[5 * 256 + x] = v; }
+            w.mask_paint_into(id, r, &before);
+        };
+        let a = w.mask_mods.add(MaskKind::Strokes, "a".into());
+        paint(&mut w, a, 0, 2);
+        let b = w.mask_mods.add(MaskKind::Strokes, "b".into());
+        paint(&mut w, b, 5, 3);
+        let c = w.mask_mods.add(MaskKind::Satellite, "c".into());
+        let shown = w.mask.data.clone();
+        // Not into another kind, and not a modifier with nothing under it.
+        assert_eq!(w.mask_mods.merge_target(c), None);
+        assert_eq!(w.mask_mods.merge_target(a), None);
+        assert_eq!(w.mask_merge_brushes().0, 1);
+        assert_eq!(w.mask_mods.modifiers.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(), ["a", "c"]);
+        assert_eq!(w.mask.data, shown);
+        // Hidden, the merged one takes both strokes away.
+        w.mask_set_enabled(a, false);
+        assert_eq!((at(&w, 2, 5), at(&w, 12, 5)), (1, 1));
+    }
+
+    #[test]
+    fn in_team_work_only_your_own_brush_modifiers_merge() {
+        let mut w = world();
+        w.team_me = "anna".into();
+        w.note_authors();
+        let ids: Vec<u32> = (0..4).map(|i| w.mask_mods.add(MaskKind::Strokes, format!("s{i}"))).collect();
+        w.note_authors();
+        // s1 is Bob's: neither s1 into s0 nor s2 into s1.
+        w.set_author(crate::world::MASK_MOD_AUTHOR | ids[1] as u64, "bob");
+        assert_eq!(w.mask_merge_target(ids[1]), None);
+        assert_eq!(w.mask_merge_target(ids[2]), None);
+        assert_eq!(w.mask_merge_target(ids[3]), Some(ids[2]));
+        assert_eq!(w.mask_merge_brushes().0, 1);
+        assert_eq!(w.mask_mods.modifiers.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(), ["s0", "s1", "s2"]);
     }
 
     #[test]

@@ -235,19 +235,9 @@ impl ModelLoader {
     }
 }
 
-/// Decals laid on the ground: models named after decals (`Decal_*`, `Wreck_Decal_Small1`,
-/// `ShellCrater2_Decal`, ...) that lie flat. Signs and wall decals stand upright and stay models.
+/// See [`dz_core::objects::is_decal_model`].
 pub fn is_decal_model(path: &str, info: &dz_core::model_info::ModelInfo) -> bool {
-    let file = path.rsplit('\\').next().unwrap_or(path).to_ascii_lowercase();
-    let named = path.to_ascii_lowercase().contains("\\decals\\") || file.contains("decal");
-    if !named {
-        return false;
-    }
-    if !info.known {
-        return !path.to_ascii_lowercase().contains("\\signs\\") && !file.starts_with("sign_");
-    }
-    let (dx, dy, dz) = (info.max[0] - info.min[0], info.max[1] - info.min[1], info.max[2] - info.min[2]);
-    dy <= 0.25 && dx.min(dz) >= dy * 3.0
+    dz_core::objects::is_decal_model(path, info)
 }
 
 /// Rivers, ponds and streams; not the beds under them or buildings named after water.

@@ -97,6 +97,8 @@ pub struct SatTool {
     pub bake_selection: bool,
     /// River and pond parts too, their water in the colour of water.
     pub bake_water: bool,
+    /// Decals too, laid over the rest with their see-through parts.
+    pub bake_decals: bool,
     /// Leaves out what of an object lies in the ground.
     pub bake_above_ground: bool,
     /// How far baked objects are blended into the image under them, 0 to 1.
@@ -125,7 +127,7 @@ pub struct SatTool {
 
 impl Default for SatTool {
     fn default() -> Self {
-        Self { brush: SatBrush::Clone, adjust: Adjust::default(), blur: 0.0, colour: [122, 104, 78], blend: BlendMode::Tint, fill_layer: None, correct_whole: true, correcting: None, feather: 3.0, line_width: 4.0, radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, aligned: true, anchor: None, turn: 0.0, scale: 1.0, match_colour: false, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_above_ground: true, bake_blend: 0.35, blending: false, gen: Default::default(), gen_colours: Vec::new(), gen_whole: true, gen_mpp: 1.0, classify: Default::default(), classify_whole: true, class_small: None, class_preview: None, class_share: [0.0; dz_core::satgen::MAX_PICKED], class_find: 4, class_picture: false }
+        Self { brush: SatBrush::Clone, adjust: Adjust::default(), blur: 0.0, colour: [122, 104, 78], blend: BlendMode::Tint, fill_layer: None, correct_whole: true, correcting: None, feather: 3.0, line_width: 4.0, radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, aligned: true, anchor: None, turn: 0.0, scale: 1.0, match_colour: false, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_decals: false, bake_above_ground: true, bake_blend: 0.35, blending: false, gen: Default::default(), gen_colours: Vec::new(), gen_whole: true, gen_mpp: 1.0, classify: Default::default(), classify_whole: true, class_small: None, class_preview: None, class_share: [0.0; dz_core::satgen::MAX_PICKED], class_find: 4, class_picture: false }
     }
 }
 
@@ -353,21 +355,24 @@ pub fn bake(app: &mut App) {
     };
     let w = &d.world;
     let selected = app.sat.bake_selection && !app.selection.is_empty();
-    let (plants, roads, water) = (app.sat.bake_plants, app.sat.bake_roads, app.sat.bake_water);
+    let (plants, roads, water, decals) = (app.sat.bake_plants, app.sat.bake_roads, app.sat.bake_water, app.sat.bake_decals);
     let skip = w.meta.bake_skip.clone();
     let wanted = |path: &str| -> bool {
         // What was chosen by hand is baked as asked; the skip list is for baking the whole map.
         if !selected && dz_core::satmod::bake_skipped(&skip, path) {
             return false;
         }
-        // Decals lie flat on the image already; road and water parts only when asked for.
+        // Road, water and decal parts only when asked for.
         if path.contains("\\roads\\parts\\") {
             return roads;
         }
         if crate::models::is_water_model(path) {
             return water;
         }
-        !crate::models::is_decal_model(path, &app.db.get(path)) && (plants || !crate::viewport::is_plant(path))
+        if crate::models::is_decal_model(path, &app.db.get(path)) {
+            return decals;
+        }
+        plants || !crate::viewport::is_plant(path)
     };
     let mut objects = Vec::new();
     let mut add = |o: &dz_core::objects::Obj| {
@@ -396,7 +401,7 @@ pub fn bake(app: &mut App) {
     }
     let (db, size, count) = (app.db.clone(), w.meta.size_m(), objects.len());
     let opacity = ((1.0 - app.sat.bake_blend.clamp(0.0, 1.0)) * 255.0).round() as u8;
-    let opts = dz_core::satmod::BakeOptions { water, ground: app.sat.bake_above_ground.then(|| Arc::new(w.height.clone())) };
+    let opts = dz_core::satmod::BakeOptions { water, decals, ground: app.sat.bake_above_ground.then(|| Arc::new(w.height.clone())) };
     app.spawn(t("Baking objects into the satellite"), move |job| {
         job.stage("Baking objects into the satellite");
         let tiles = dz_core::satmod::bake_objects_with(&objects, &db, width, height, size, crate::viewport::is_plant, &opts, job);
@@ -481,7 +486,8 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
     let rows: Vec<(u32, String, bool, SatKind)> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter()
         .filter(|m| crate::team_ui::shown(app, d.world.sat_mod_author(m.id)))
         .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.sat_mod_author(m.id)), m.enabled, m.kind)).collect()).unwrap_or_default();
-    let (mut toggle, mut delete) = (None, None);
+    let (mut toggle, mut delete, mut merge) = (None, None, None);
+    let can_merge: std::collections::HashSet<u32> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter().filter(|m| d.world.sat_merge_target(m.id).is_some()).map(|m| m.id).collect()).unwrap_or_default();
     crate::panels::outliner_section(fold, "Satellite modifiers", crate::icons::with(crate::icons::IMAGE, &tf("Satellite modifiers ({0})", &[&rows.len().to_string()])), rows.len() == 0).show(ui, |ui| {
         for (id, name, enabled, kind) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
             ui.horizontal(|ui| {
@@ -503,6 +509,16 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                         delete = Some(*id);
                         ui.close_menu();
                     }
+                    if kind.is_brush() {
+                        if ui.add_enabled(can_merge.contains(id), egui::Button::new(t("Merge down"))).on_hover_text(t("Merges the modifier into the one under it, if that one is of the same brush and both are shown.")).on_disabled_hover_text(t("Only into a shown modifier of the same brush right under it, and in team work only your own.")).clicked() {
+                            merge = Some(Some(*id));
+                            ui.close_menu();
+                        }
+                        if ui.add_enabled(!can_merge.is_empty(), egui::Button::new(t("Merge all brush modifiers"))).on_hover_text(t("Merges each run of neighbouring modifiers of one brush into one. The image stays as it is. In team work only your own modifiers are merged.")).clicked() {
+                            merge = Some(None);
+                            ui.close_menu();
+                        }
+                    }
                     crate::team_ui::author_menu(app, ui, dz_core::world::SAT_MOD_AUTHOR | *id as u64);
                 });
             });
@@ -510,6 +526,29 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
     });
     let Some(d) = app.doc.as_mut() else { return };
     let before = d.world.sat.modifiers.clone();
+    if let Some(which) = merge {
+        let (n, touched) = match which {
+            Some(id) => {
+                let (done, r) = d.world.sat_merge_down(id);
+                (done as usize, r)
+            }
+            None => d.world.sat_merge_brushes(),
+        };
+        if n == 0 {
+            return;
+        }
+        d.history.push(t("Merge satellite modifiers"), Change::Satellite(before));
+        d.dirty.satellite = true;
+        // A modifier merged away is no longer the one the next strokes go into.
+        if app.sat.active.is_some_and(|id| d.world.sat.position(id).is_none()) {
+            app.sat.active = None;
+        }
+        if let Some(r) = touched {
+            app.satellite_changed(r);
+        }
+        app.info(tf("{0} modifiers merged into the ones under them", &[&n.to_string()]));
+        return;
+    }
     let touched = match (toggle, delete) {
         (_, Some(id)) => {
             let r = d.world.sat_remove(id);
@@ -1375,6 +1414,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         crate::theme::check_row(ui, &mut app.sat.bake_plants, t("Trees and bushes too"));
         crate::theme::check_row(ui, &mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
         crate::theme::check_row(ui, &mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
+        crate::theme::check_row(ui, &mut app.sat.bake_decals, t("Decals too")).on_hover_text(t("Paints road damage, manholes, crossings and the marks under wrecks into the image, with their see-through parts, over the roads under them."));
         bake_skip_ui(app, ui);
         crate::theme::check_row(ui, &mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
         // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.

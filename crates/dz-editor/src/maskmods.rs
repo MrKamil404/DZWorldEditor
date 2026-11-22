@@ -264,7 +264,8 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
     let rows: Vec<(u32, String, bool, bool)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter()
         .filter(|m| crate::team_ui::shown(app, d.world.mask_mod_author(m.id)))
         .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.mask_mod_author(m.id)), m.enabled, m.kind == MaskKind::Strokes)).collect()).unwrap_or_default();
-    let (mut toggle, mut delete) = (None, None);
+    let (mut toggle, mut delete, mut merge) = (None, None, None);
+    let can_merge: std::collections::HashSet<u32> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter().filter(|m| d.world.mask_merge_target(m.id).is_some()).map(|m| m.id).collect()).unwrap_or_default();
     crate::panels::outliner_section(fold, "Mask modifiers", crate::icons::with(crate::icons::STACK, &tf("Mask modifiers ({0})", &[&rows.len().to_string()])), rows.len() == 0).show(ui, |ui| {
         for (id, name, enabled, strokes) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
             ui.horizontal(|ui| {
@@ -287,12 +288,44 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                         delete = Some(*id);
                         ui.close_menu();
                     }
+                    if *strokes {
+                        if ui.add_enabled(can_merge.contains(id), egui::Button::new(t("Merge down"))).on_hover_text(t("Merges the modifier into the one under it, if that one is of brush strokes too and both are shown.")).on_disabled_hover_text(t("Only into a shown modifier of brush strokes right under it, and in team work only your own.")).clicked() {
+                            merge = Some(Some(*id));
+                            ui.close_menu();
+                        }
+                        if ui.add_enabled(!can_merge.is_empty(), egui::Button::new(t("Merge all brush modifiers"))).on_hover_text(t("Merges each run of neighbouring modifiers of brush strokes into one. The mask stays as it is. In team work only your own modifiers are merged.")).clicked() {
+                            merge = Some(None);
+                            ui.close_menu();
+                        }
+                    }
                     crate::team_ui::author_menu(app, ui, dz_core::world::MASK_MOD_AUTHOR | *id as u64);
                 });
             });
         }
     });
-    if let Some(id) = delete {
+    if let Some(which) = merge {
+        let Some(d) = app.doc.as_mut() else { return };
+        let before = d.world.mask_mods.modifiers.clone();
+        let (n, touched) = match which {
+            Some(id) => {
+                let (done, r) = d.world.mask_merge_down(id);
+                (done as usize, r)
+            }
+            None => d.world.mask_merge_brushes(),
+        };
+        if n == 0 {
+            return;
+        }
+        d.history.push(t("Merge mask modifiers"), Change::MaskMods(before));
+        // A modifier merged away is no longer the one the next strokes go into.
+        if app.paint.target.is_some_and(|id| d.world.mask_mods.position(id).is_none()) {
+            app.paint.target = None;
+        }
+        if let Some(r) = touched {
+            app.mask_recomposed(r);
+        }
+        app.info(tf("{0} modifiers merged into the ones under them", &[&n.to_string()]));
+    } else if let Some(id) = delete {
         crate::deleting::request(app, crate::deleting::Target::MaskModifier(id));
     } else if let Some((id, on)) = toggle {
         let Some(d) = app.doc.as_mut() else { return };
