@@ -4228,6 +4228,9 @@ fn welcome(app: &mut App, ui: &mut egui::Ui) {
         if ui.add_sized(size, egui::Button::new(t("New project..."))).clicked() {
             app.dialog = crate::panels::new_project_dialog();
         }
+        if ui.add_sized(size, egui::Button::new(t("New project from a real place..."))).clicked() {
+            app.dialog = crate::panels::real_place_dialog();
+        }
         if ui.add_sized(size, egui::Button::new(t("Open project..."))).clicked() {
             app.pick_and_open();
         }
@@ -4696,6 +4699,28 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "shot" => {
             app.pending_shot(arg, ctx);
         }
+        // satpicked n: the mask from n colours found in the satellite.
+        "satpicked" => {
+            if let Some(d) = app.doc.as_ref() {
+                if let Some(sat) = &d.world.satellite {
+                    let n = nums.first().map(|v| *v as usize).unwrap_or(4);
+                    let small = sat.resized(320, 320);
+                    app.sat.classify = dz_core::satgen::SatClassify::picked(&small, n, &d.world.layers);
+                    for p in &app.sat.classify.picked {
+                        eprintln!("PICKED {:?} -> {:?}", p.colour, p.surface.map(|i| d.world.layers[i].name.clone()));
+                    }
+                    app.sat.classify_whole = true;
+                    crate::satellite::classify_to_mask(app);
+                }
+            }
+        }
+        // The New project window for a real place, optionally at "lat lon".
+        "realplace" => {
+            app.dialog = crate::panels::real_place_dialog();
+            if let (crate::app::Dialog::NewProject(p), [lat, lon]) = (&mut app.dialog, &nums[..]) {
+                (p.place.lat, p.place.lon) = (*lat as f64, *lon as f64);
+            }
+        }
         // The window of its own the view is in.
         "shotview" => {
             app.shot_path_set(arg);
@@ -4844,6 +4869,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             let c = &mut app.sat.classify;
             c.adjust = dz_core::satmod::Adjust { brightness: nums[0], contrast: nums[1], legacy: true, ..Default::default() };
             c.surfaces = [None; 8];
+            c.mode = dz_core::satgen::ClassifyMode::Colours;
             for pair in nums[2..].chunks(2) {
                 if let [class, layer] = pair { c.surfaces[(*class as usize) & 7] = Some(*layer as usize); }
             }

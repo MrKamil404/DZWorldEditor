@@ -11,6 +11,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 
 - **Live 3D and 2D views** of the whole map with real DayZ models, textures, satellite image and water; a split view, a minimap, full screen and a view in a window of its own
 - **Getting around**: go to a key point, a map grid square or a position, saved camera views, a ruler for lengths, climbs and areas, and the sun at any time of day
+- **Maps of real places**: choose a place on the Earth and a DayZ map size, and the editor downloads its satellite picture, heights and OpenStreetMap shapes (roads, rivers, lakes, forests, land use, buildings) and reads a surface mask from the picture
 - **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces, terrain stamps (craters, hills, quarries, your own pictures or pieces of terrain) and non-destructive modifiers
 - **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile, and a view that shows the surfaces as the built map will
 - **Map surfaces** (`CfgSurfaces`): new surfaces for your own textures and changes to the game's, with grass, sounds and physics, and a material window for each layer
@@ -56,7 +57,7 @@ The [editor guide](docs/guide.md) describes every tab, the views and the menus i
 1. Install [DayZ](https://store.steampowered.com/app/221100/DayZ/) and DayZ Tools, and mount the `P:\` work drive.
 2. Download `DZWorldEditor.exe` from the [latest release](https://github.com/MrKamil404/DZWorldEditor/releases/latest) and run it.
 3. Check the DayZ and DayZ Tools folders in `Edit > Settings`.
-4. Create a new map with `File > New project`, or use `File > Import` to bring in a Terrain Builder project.
+4. Create a new map with `File > New project` (flat ground or a real place), or use `File > Import` to bring in a Terrain Builder project.
 
 You need Windows 10 or 11 and a graphics card with OpenGL 3.3. The model library and building a map need DayZ Tools and the `P:\` drive.
 

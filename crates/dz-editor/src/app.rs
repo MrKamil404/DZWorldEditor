@@ -247,6 +247,9 @@ pub struct NewProject {
     pub preset: usize,
     pub base: f32,
     pub folder: String,
+    /// Made from a real place instead of flat ground.
+    pub real: bool,
+    pub place: Box<crate::real_terrain_ui::RealPlace>,
 }
 
 /// (terrain vertices, cell size in metres)

@@ -903,6 +903,7 @@ dependencies = [
  "flate2",
  "forest-core",
  "image",
+ "native-tls",
  "rand 0.8.8",
  "rayon",
  "road-core",
@@ -910,6 +911,7 @@ dependencies = [
  "serde_json",
  "sha1_smol",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]

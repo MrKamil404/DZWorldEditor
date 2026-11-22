@@ -59,6 +59,9 @@ pub struct WorldMeta {
     /// (see `satmod::bake_skipped`): wrecks, rubbish, fences.
     #[serde(default)]
     pub bake_skip: Vec<String>,
+    /// The real place the map was made from, when it was (see `real_terrain`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geo: Option<crate::real_terrain::GeoArea>,
 }
 
 /// A place of the 3D camera: where it stands and which way it looks, in degrees.
@@ -194,7 +197,7 @@ impl WorldMeta {
         let map_id = if map_id.is_empty() { "NewMap".to_string() } else { map_id };
         let side = size as f32 * cell;
         Self {
-            max_tile_surfaces: 6, build_folders: Vec::new(), views: Vec::new(), bake_skip: Vec::new(), name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
+            max_tile_surfaces: 6, geo: None, build_folders: Vec::new(), views: Vec::new(), bake_skip: Vec::new(), name: name.to_string(), map_id, author: String::new(), terrain_size: size, terrain_cell: cell,
             sea_level: 0.0, easting: 200000.0, northing: 0.0, tile_px: 512, cells_per_tile: 8,
             spawn: [side / 2.0, side / 2.0], latitude: 54.0, longitude: 23.0, write_underground_flag: true, config: MapConfig::default(),
         }

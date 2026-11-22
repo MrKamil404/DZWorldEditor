@@ -21,6 +21,7 @@ mod mission_ui;
 mod models;
 mod occlusion;
 mod panels;
+mod real_terrain_ui;
 mod render;
 mod satellite;
 mod settings;

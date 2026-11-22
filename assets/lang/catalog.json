@@ -55,6 +55,10 @@
   "de": "1. Dateien exportieren",
   "pl": "1. Eksportuj pliki"
  },
+ "10 m pixels. CC BY 4.0: may be published, if the attribution is given.": {
+  "de": "10-m-Pixel. CC BY 4.0: darf veröffentlicht werden, wenn die Quelle genannt wird.",
+  "pl": "Piksele 10 m. CC BY 4.0: można publikować, podając autorów."
+ },
  "2. Build PBO": {
   "de": "2. PBO erstellen",
   "pl": "2. Zbuduj PBO"
@@ -158,6 +162,10 @@
  "A key point of the map, a square of the game's map grid (045 123) or metres east and north (4500, 12300).": {
   "de": "Ein Key Point der Karte, ein Feld des Spielkartenrasters (045 123) oder Meter nach Osten und Norden (4500, 12300).",
   "pl": "Key point mapy, kratka siatki mapy z gry (045 123) albo metry na wschód i na północ (4500, 12300)."
+ },
+ "A large picture: it needs about {0} GB of memory.": {
+  "de": "Ein großes Bild: Es braucht etwa {0} GB Speicher.",
+  "pl": "Duży obraz: potrzebuje około {0} GB pamięci."
  },
  "A list of objects Terrain Builder imports.": {
   "de": "Eine Objektliste, die Terrain Builder importiert.",
@@ -271,6 +279,10 @@
   "de": "Etwa die Hälfte der Kopien zeigt in die andere Richtung, sodass beide Seiten einer Mauer oder eines Zauns zu sehen sind.",
   "pl": "Mniej więcej połowa kopii jest odwrócona, więc wzdłuż muru lub płotu widać obie jego strony."
  },
+ "About {0} tiles to download.": {
+  "de": "Etwa {0} Kacheln zum Herunterladen.",
+  "pl": "Około {0} kafelków do pobrania."
+ },
  "Adapt a mission of another map...": {
   "de": "Mission einer anderen Karte anpassen...",
   "pl": "Dostosuj misję innej mapy..."
@@ -306,6 +318,10 @@
  "Add child": {
   "de": "Kind hinzufügen",
   "pl": "Dodaj dziecko"
+ },
+ "Add colour": {
+  "de": "Farbe hinzufügen",
+  "pl": "Dodaj kolor"
  },
  "Add correction": {
   "de": "Korrektur hinzufügen",
@@ -463,6 +479,10 @@
   "de": "Addons und zusätzliche Zeilen",
   "pl": "Addony i dodatkowe linie"
  },
+ "Address": {
+  "de": "Adresse",
+  "pl": "Adres"
+ },
  "Adds the generators, presets and prefabs of a library file (.dzwelib) here.": {
   "de": "Fügt die Generatoren, Presets und Prefabs einer Bibliotheksdatei (.dzwelib) hier hinzu.",
   "pl": "Dodaje tutaj generatory, presety i prefaby z pliku biblioteki (.dzwelib)."
@@ -554,6 +574,10 @@
  "Ambient occlusion": {
   "de": "Umgebungsverdeckung",
   "pl": "Okluzja otoczenia"
+ },
+ "An empty map at one height.": {
+  "de": "Eine leere Karte auf einer Höhe.",
+  "pl": "Pusta mapa na jednej wysokości."
  },
  "An even slope from where the stroke starts to the cursor.": {
   "de": "Eine gleichmäßige Steigung vom Anfang des Strichs bis zum Zeiger.",
@@ -706,6 +730,10 @@
  "Audibility": {
   "de": "Hörbarkeit",
   "pl": "Słyszalność"
+ },
+ "Austria only. 30 cm; CC BY 4.0: may be published, if basemap.at is named.": {
+  "de": "Nur Österreich. 30 cm; CC BY 4.0: darf veröffentlicht werden, wenn basemap.at genannt wird.",
+  "pl": "Tylko Austria. 30 cm; CC BY 4.0: można publikować, podając basemap.at."
  },
  "Author": {
   "de": "Autor",
@@ -1239,6 +1267,10 @@
   "de": "Beim Start nach Updates suchen",
   "pl": "Sprawdzaj aktualizacje przy starcie"
  },
+ "Check that the server's licence allows using its pictures in a map.": {
+  "de": "Prüfe, ob die Lizenz des Servers erlaubt, seine Bilder in einer Karte zu nutzen.",
+  "pl": "Sprawdź, czy licencja serwera pozwala użyć jego zdjęć w mapie."
+ },
  "Check the map": {
   "de": "Karte prüfen",
   "pl": "Sprawdź mapę"
@@ -1338,6 +1370,10 @@
  "Choose key...": {
   "de": "Schlüssel wählen...",
   "pl": "Wybierz klucz..."
+ },
+ "Choose something to download.": {
+  "de": "Wähle etwas zum Herunterladen.",
+  "pl": "Wybierz coś do pobrania."
  },
  "Choose the event first.": {
   "de": "Wähle zuerst das Event.",
@@ -1603,6 +1639,10 @@
   "de": "Klicke, um Punkte hinzuzufügen. Enter oder Doppelklick beendet, Rücktaste entfernt den letzten Punkt, Esc bricht ab.",
   "pl": "Klikaj, aby dodawać punkty. Enter lub dwuklik kończy, Backspace usuwa ostatni punkt, Esc anuluje."
  },
+ "Click to add the colour of this place": {
+  "de": "Klicken, um die Farbe dieser Stelle hinzuzufügen",
+  "pl": "Kliknij, aby dodać kolor tego miejsca"
+ },
  "Click to paint into this modifier": {
   "de": "Klicken, um in diesen Modifikator zu malen",
   "pl": "Kliknij, aby malować w tym modyfikatorze"
@@ -1706,6 +1746,10 @@
  "Colour correction {0}": {
   "de": "Farbkorrektur {0}",
   "pl": "Korekta kolorów {0}"
+ },
+ "Colour groups": {
+  "de": "Farbgruppen",
+  "pl": "Grupy kolorów"
  },
  "Colour texture": {
   "de": "Farbtextur",
@@ -1943,6 +1987,10 @@
   "de": "Cyan",
   "pl": "Cyjan"
  },
+ "Czechia only. Sharp; CC BY 4.0: may be published, if ČÚZK is named.": {
+  "de": "Nur Tschechien. Scharf; CC BY 4.0: darf veröffentlicht werden, wenn ČÚZK genannt wird.",
+  "pl": "Tylko Czechy. Ostre; CC BY 4.0: można publikować, podając ČÚZK."
+ },
  "DZ_Data and the addon of the base world are always there.": {
   "de": "DZ_Data und das Addon der Basiswelt sind immer dabei.",
   "pl": "DZ_Data i addon świata bazowego są zawsze dodane."
@@ -2135,6 +2183,10 @@
   "de": "Mit löschen:",
   "pl": "Usuń razem z nim:"
  },
+ "Dense forest": {
+  "de": "Dichter Wald",
+  "pl": "Gęsty las"
+ },
  "Density": {
   "de": "Dichte",
   "pl": "Gęstość"
@@ -2255,6 +2307,10 @@
   "de": "Doppelklick zum Öffnen",
   "pl": "Kliknij dwukrotnie, aby otworzyć"
  },
+ "Download and create": {
+  "de": "Herunterladen und erstellen",
+  "pl": "Pobierz i utwórz"
+ },
  "Download and install ({0} MB)": {
   "de": "Herunterladen und installieren ({0} MB)",
   "pl": "Pobierz i zainstaluj ({0} MB)"
@@ -2282,6 +2338,10 @@
  "Drag to make the minimap bigger or smaller.": {
   "de": "Ziehen, um die Minikarte zu vergrößern oder zu verkleinern.",
   "pl": "Przeciągnij, aby powiększyć lub pomniejszyć minimapę."
+ },
+ "Drag to move, scroll to zoom, double-click to put the map there.": {
+  "de": "Ziehen zum Verschieben, Mausrad zum Zoomen, Doppelklick setzt die Karte dorthin.",
+  "pl": "Przeciągnij, aby przesunąć, kółkiem przybliż, kliknij dwukrotnie, aby postawić tam mapę."
  },
  "Drag to turn the model, double-click to reset the view.": {
   "de": "Ziehen dreht das Modell, Doppelklick setzt die Ansicht zurück.",
@@ -2410,6 +2470,14 @@
  "Each one fills the whole shape as well, for example undergrowth under the trees.": {
   "de": "Jedes füllt ebenfalls die ganze Form, z. B. Unterholz unter den Bäumen.",
   "pl": "Każdy z nich też wypełnia cały kształt, np. ściółka pod drzewami."
+ },
+ "Each pixel gets the kind of ground its colour looks like. Lighter makes less forest and more grass and rock. Each kind can become a surface of the mask.": {
+  "de": "Jedes Pixel bekommt die Bodenart, nach der seine Farbe aussieht. Heller ergibt weniger Wald und mehr Gras und Fels. Jede Art kann eine Oberfläche der Maske werden.",
+  "pl": "Każdy piksel dostaje rodzaj podłoża, na jaki wygląda jego kolor. Jaśniej oznacza mniej lasu, a więcej trawy i skał. Każdy rodzaj może stać się powierzchnią maski."
+ },
+ "Each pixel takes the nearest of the colours below, so four colours make a mask of four surfaces. Click the picture to add the colour of that place.": {
+  "de": "Jedes Pixel bekommt die nächste der Farben unten, vier Farben ergeben also eine Maske aus vier Oberflächen. Klicke ins Bild, um die Farbe dieser Stelle hinzuzufügen.",
+  "pl": "Każdy piksel dostaje najbliższy z kolorów poniżej, więc cztery kolory dają maskę z czterech powierzchni. Kliknij obraz, aby dodać kolor tego miejsca."
  },
  "Each placed object gets a random size in this range.": {
   "de": "Jedes gesetzte Objekt bekommt eine zufällige Größe in diesem Bereich.",
@@ -2915,6 +2983,14 @@
   "de": "Bis zur Höhe auffüllen",
   "pl": "Nasyp do poziomu"
  },
+ "Find": {
+  "de": "Suchen",
+  "pl": "Znajdź"
+ },
+ "Find colours": {
+  "de": "Farben finden",
+  "pl": "Znajdź kolory"
+ },
  "Find water courses": {
   "de": "Wasserläufe finden",
   "pl": "Znajdź cieki wodne"
@@ -2922,6 +2998,10 @@
  "Finds the road through the clicked points within the grade limits, around water and forbidden areas, with bridges. Off: road parts follow the clicked line.": {
   "de": "Sucht die Straße durch die geklickten Punkte innerhalb der Steigung, um Wasser und Sperrgebiete herum, mit Brücken. Aus: Teile folgen der geklickten Linie.",
   "pl": "Szuka drogi przez kliknięte punkty w granicach nachylenia, omijając wodę i obszary zakazane, z mostami. Wyłączone: części drogi idą po klikniętej linii."
+ },
+ "Finds this many colours that stand for the picture best, each with the surface of the nearest colour.": {
+  "de": "Findet so viele Farben, die das Bild am besten wiedergeben, jede mit der Oberfläche der nächsten Farbe.",
+  "pl": "Znajduje tyle kolorów, ile najlepiej opisuje obraz, każdy z powierzchnią o najbliższym kolorze."
  },
  "Finish the road": {
   "de": "Straße abschließen",
@@ -2978,6 +3058,10 @@
  "Flat": {
   "de": "Flach",
   "pl": "Płaski"
+ },
+ "Flat ground": {
+  "de": "Flaches Gelände",
+  "pl": "Płaski teren"
  },
  "Flatten": {
   "de": "Einebnen",
@@ -3146,6 +3230,10 @@
  "From a normal map (_nohq or an image) and, if you choose one next, a height map; cancel the second for none": {
   "de": "Aus einer Normal Map (_nohq oder ein Bild) und, wenn als Nächstes gewählt, einer Höhenkarte; den zweiten Dialog abbrechen für keine",
   "pl": "Z normal mapy (_nohq albo obraz) i, jeśli wybierzesz ją w drugim oknie, mapy wysokości; anuluj drugie okno, by jej nie użyć"
+ },
+ "From the AWS Terrain Tiles: about 30 m detail (SRTM) in most places, finer in some countries.": {
+  "de": "Aus den AWS Terrain Tiles: meist etwa 30 m Auflösung (SRTM), in manchen Ländern feiner.",
+  "pl": "Z AWS Terrain Tiles: w większości miejsc dokładność około 30 m (SRTM), w niektórych krajach lepsza."
  },
  "From the camera": {
   "de": "Von der Kamera",
@@ -3486,6 +3574,10 @@
  "Heightmap, satellite, mask, layers.cfg, shapes and objects, each with its options": {
   "de": "Höhenkarte, Satellit, Maske, layers.cfg, Shapes und Objekte, jeweils mit Optionen",
   "pl": "Mapa wysokości, satelita, maska, layers.cfg, kształty i obiekty, każde z własnymi opcjami"
+ },
+ "Heights": {
+  "de": "Höhen",
+  "pl": "Wysokości"
  },
  "Heights along this route follow its grade, cut and fill limits. Change them in the route settings and fit again.": {
   "de": "Die Höhen dieser Route folgen den Grenzen für Steigung, Einschnitt und Damm. Ändere sie in den Routeneinstellungen und passe neu an.",
@@ -3895,6 +3987,10 @@
   "de": "Aufgetragen als",
   "pl": "Nakładany jako"
  },
+ "Lakes": {
+  "de": "Seen",
+  "pl": "Jeziora"
+ },
  "Land grid": {
   "de": "Geländeraster",
   "pl": "Siatka terenu"
@@ -3902,6 +3998,10 @@
  "Land grid {0}, cell {1} m, {2} tiles per side": {
   "de": "Geländeraster {0}, Zelle {1} m, {2} Kacheln pro Seite",
   "pl": "Siatka terenu {0}, komórka {1} m, kafli na bok: {2}"
+ },
+ "Land use": {
+  "de": "Landnutzung",
+  "pl": "Użytkowanie terenu"
  },
  "Landscape": {
   "de": "Landschaft",
@@ -4010,6 +4110,10 @@
  "Lays the brush over whole shapes at once: inside polygons, along lines as a band. Fields, clearings, field tracks.": {
   "de": "Trägt den Pinsel auf ganze Formen auf einmal auf: innerhalb von Polygonen, entlang von Linien als Band. Felder, Lichtungen, Feldwege.",
   "pl": "Nakłada pędzel na całe kształty naraz: wnętrze wielokątów, pas wzdłuż linii. Pola, polany, polne drogi."
+ },
+ "Leafy forest": {
+  "de": "Laubwald",
+  "pl": "Las liściasty"
  },
  "Least damage of spawned loot, 0..1.": {
   "de": "Geringster Schaden gespawnter Beute, 0..1.",
@@ -4195,6 +4299,10 @@
   "de": "Modelle werden geladen: {0}",
   "pl": "Wczytywanie modeli: {0}"
  },
+ "Loading...": {
+  "de": "Wird geladen...",
+  "pl": "Wczytywanie..."
+ },
  "Local": {
   "de": "Lokal",
   "pl": "Lokalnie"
@@ -4342,6 +4450,10 @@
  "Makes the image lighter or darker, or changes its colours, where you paint.": {
   "de": "Macht das Bild dort, wo du malst, heller oder dunkler oder ändert seine Farben.",
   "pl": "Rozjaśnia, przyciemnia albo zmienia kolory obrazu tam, gdzie malujesz."
+ },
+ "Making the map of a real place": {
+  "de": "Karte eines echten Ortes wird erstellt",
+  "pl": "Tworzenie mapy prawdziwego miejsca"
  },
  "Map ID": {
   "de": "Karten-ID",
@@ -4807,6 +4919,10 @@
   "de": "Namen der Intro-Missionen, durch Kommas getrennt; das Intro der Basiswelt zeigt deren Karte.",
   "pl": "Nazwy misji intro rozdzielone przecinkami; intro świata bazowego pokazuje jego mapę."
  },
+ "Natural colours": {
+  "de": "Natürliche Farben",
+  "pl": "Kolory naturalne"
+ },
  "Navmesh server started. Generate the mesh in NavMeshGenerator, save it as navmesh.nm in the map's navmesh folder, then build again.": {
   "de": "Navmesh-Server gestartet. Netz im NavMeshGenerator erzeugen, als navmesh.nm im navmesh-Ordner der Karte speichern und neu erstellen.",
   "pl": "Serwer navmesh uruchomiony. Wygeneruj siatkę w NavMeshGenerator, zapisz jako navmesh.nm w folderze navmesh mapy i zbuduj ponownie."
@@ -4902,6 +5018,10 @@
  "New project": {
   "de": "Neues Projekt",
   "pl": "Nowy projekt"
+ },
+ "New project from a real place...": {
+  "de": "Neues Projekt aus einem echten Ort...",
+  "pl": "Nowy projekt z prawdziwego miejsca..."
  },
  "New project...": {
   "de": "Neues Projekt...",
@@ -5126,6 +5246,10 @@
  "Nothing selected": {
   "de": "Nichts ausgewählt",
   "pl": "Nic nie zaznaczono"
+ },
+ "Nothing was found by that name": {
+  "de": "Unter diesem Namen wurde nichts gefunden",
+  "pl": "Nic nie znaleziono pod tą nazwą"
  },
  "Nothing was selected yet": {
   "de": "Es wurde noch nichts ausgewählt",
@@ -5423,6 +5547,10 @@
   "de": "Gebietsflags öffnen",
   "pl": "Otwórz flagi obszarów"
  },
+ "OpenStreetMap shapes": {
+  "de": "Formen aus OpenStreetMap",
+  "pl": "Kształty z OpenStreetMap"
+ },
  "Opened {0}": {
   "de": "{0} geöffnet",
   "pl": "Otwarto {0}"
@@ -5611,6 +5739,10 @@
   "de": "Malt das Satellitenbild in den Farben der Oberflächen der Maske, mit ihrem Muster, weichen Rändern dazwischen und der Schattierung der Hügel. Es ist ein Modifikator, der ausgeblendet, überblendet oder gelöscht werden kann.",
   "pl": "Maluje zdjęcie satelitarne w kolorach powierzchni z maski, z ich wzorem, miękkimi krawędziami między nimi i cieniowaniem wzgórz. To modyfikator, więc można go ukryć, przenikać lub usunąć."
  },
+ "Pale grass": {
+  "de": "Helles Gras",
+  "pl": "Jasna trawa"
+ },
  "Parallax": {
   "de": "Parallax",
   "pl": "Parallax"
@@ -5723,6 +5855,10 @@
   "de": "Oberfläche unter dem Cursor aufnehmen",
   "pl": "Pobierz powierzchnię spod kursora"
  },
+ "Picked colours": {
+  "de": "Gewählte Farben",
+  "pl": "Wybrane kolory"
+ },
  "Picture": {
   "de": "Bild",
   "pl": "Obraz"
@@ -5767,6 +5903,10 @@
   "de": "Pixel-Shader",
   "pl": "Pixel shader"
  },
+ "Pixel size": {
+  "de": "Pixelgröße",
+  "pl": "Rozmiar piksela"
+ },
  "Place": {
   "de": "Platzieren",
   "pl": "Stawianie"
@@ -5778,6 +5918,10 @@
  "Place it with a click on the fence": {
   "de": "Mit einem Klick auf den Zaun setzen",
   "pl": "Ustaw kliknięciem na płocie"
+ },
+ "Place name, or latitude, longitude": {
+  "de": "Ortsname oder Breite, Länge",
+  "pl": "Nazwa miejsca albo szerokość, długość"
  },
  "Place object": {
   "de": "Objekt platzieren",
@@ -5939,6 +6083,10 @@
   "de": "Punkte",
   "pl": "Punkty"
  },
+ "Poland only. Sharp; open data that may be used in a map, if GUGiK is named as the source.": {
+  "de": "Nur Polen. Scharf; offene Daten, die in einer Karte genutzt werden dürfen, wenn GUGiK als Quelle genannt wird.",
+  "pl": "Tylko Polska. Ostre; otwarte dane, które można użyć w mapie, podając GUGiK jako źródło."
+ },
  "Polygon": {
   "de": "Polygon",
   "pl": "Wielokąt"
@@ -6038,6 +6186,10 @@
  "Proxies in buildings": {
   "de": "Proxys in Gebäuden",
   "pl": "Proxy w budynkach"
+ },
+ "Pushes the image to eight strong colours. Good for pictures made of flat colours.": {
+  "de": "Reduziert das Bild auf acht kräftige Farben. Gut für Bilder aus flachen Farben.",
+  "pl": "Sprowadza obraz do ośmiu mocnych kolorów. Dobre dla obrazów z jednolitych barw."
  },
  "Put back the objects it removed ({0})": {
   "de": "Die entfernten Objekte zurücklegen ({0})",
@@ -6167,6 +6319,10 @@
   "de": "Liest einen Missionsordner unverändert, für diese oder eine andere Karte.",
   "pl": "Wczytuje folder misji bez zmian, dla tej lub innej mapy."
  },
+ "Real place": {
+  "de": "Echter Ort",
+  "pl": "Prawdziwe miejsce"
+ },
  "Recent projects": {
   "de": "Letzte Projekte",
   "pl": "Ostatnie projekty"
@@ -6226,6 +6382,10 @@
  "Remove objects": {
   "de": "Objekte entfernen",
   "pl": "Usuwanie obiektów"
+ },
+ "Remove the colour": {
+  "de": "Farbe entfernen",
+  "pl": "Usuń kolor"
  },
  "Remove the file from the mission": {
   "de": "Datei aus der Mission entfernen",
@@ -6375,6 +6535,10 @@
   "de": "Flüsse",
   "pl": "Rzeki"
  },
+ "Rivers and streams": {
+  "de": "Flüsse und Bäche",
+  "pl": "Rzeki i strumienie"
+ },
  "Road": {
   "de": "Straße",
   "pl": "Droga"
@@ -6439,6 +6603,10 @@
   "de": "Straßen und Linien ({0})",
   "pl": "Drogi i linie ({0})"
  },
+ "Roads and roofs": {
+  "de": "Straßen und Dächer",
+  "pl": "Drogi i dachy"
+ },
  "Roads and tracks": {
   "de": "Straßen und Gleise",
   "pl": "Drogi i tory"
@@ -6454,6 +6622,10 @@
  "Roads, pads and ponds cut into the terrain; without them the terrain as sculpted.": {
   "de": "Straßen, Flächen und Teiche im Gelände; ohne sie das Gelände wie modelliert.",
   "pl": "Drogi, wyrównania i stawy wcięte w teren; bez nich teren taki, jak wyrzeźbiony."
+ },
+ "Rock": {
+  "de": "Fels",
+  "pl": "Skały"
  },
  "Rock on shores steeper than °": {
   "de": "Fels an Ufern steiler als °",
@@ -6598,6 +6770,10 @@
  "Satellite modifiers ({0})": {
   "de": "Satelliten-Modifikatoren ({0})",
   "pl": "Modyfikatory satki ({0})"
+ },
+ "Satellite picture": {
+  "de": "Satellitenbild",
+  "pl": "Zdjęcie satelitarne"
  },
  "Saturation": {
   "de": "Sättigung",
@@ -7051,6 +7227,10 @@
   "de": "Gemeinsam",
   "pl": "Wspólne"
  },
+ "Sharp (about 0.5 to 1 m), but Esri's terms do not allow publishing it in a map. Use it to trace and for private tests.": {
+  "de": "Scharf (etwa 0,5 bis 1 m), aber die Bedingungen von Esri erlauben keine Veröffentlichung in einer Karte. Nutze es zum Nachzeichnen und für private Tests.",
+  "pl": "Ostre (około 0,5–1 m), ale warunki Esri nie pozwalają publikować go w mapie. Używaj go do odrysowywania i prywatnych testów."
+ },
  "Sharpness": {
   "de": "Schärfe",
   "pl": "Ostrość"
@@ -7134,6 +7314,14 @@
  "Show shapes and road lines": {
   "de": "Formen und Straßenlinien zeigen",
   "pl": "Pokaż kształty i linie dróg"
+ },
+ "Show the picture": {
+  "de": "Bild zeigen",
+  "pl": "Pokaż obraz"
+ },
+ "Shows the satellite instead of the colours, to pick from.": {
+  "de": "Zeigt den Satelliten statt der Farben, um daraus zu wählen.",
+  "pl": "Pokazuje satelitę zamiast kolorów, żeby z niego wybierać."
  },
  "Side by side": {
   "de": "Nebeneinander",
@@ -7219,6 +7407,10 @@
   "de": "Zeichnet das Bild unter dem Pinsel über diese Strecke weich: Nähte vom Klonen, harte Kanten gebackener Objekte.",
   "pl": "Zmiękcza obraz pod pędzlem na tej odległości: szwy po klonowaniu, ostre krawędzie wypalonych obiektów."
  },
+ "Soil": {
+  "de": "Erde",
+  "pl": "Gleba"
+ },
  "Some actions share a key; only the first of them will work.": {
   "de": "Einige Aktionen teilen eine Taste; nur die erste davon wirkt.",
   "pl": "Niektóre akcje mają ten sam klawisz; zadziała tylko pierwsza z nich."
@@ -7230,6 +7422,10 @@
  "Sounds like": {
   "de": "Klingt wie",
   "pl": "Brzmi jak"
+ },
+ "Source": {
+  "de": "Quelle",
+  "pl": "Źródło"
  },
  "Source code on GitHub": {
   "de": "Quellcode auf GitHub",
@@ -7455,6 +7651,10 @@
   "de": "Oberflächenmaske",
   "pl": "Maska nawierzchni"
  },
+ "Surface mask from the satellite picture": {
+  "de": "Oberflächenmaske aus dem Satellitenbild",
+  "pl": "Maska powierzchni ze zdjęcia satelitarnego"
+ },
  "Surface of the game {0}": {
   "de": "Oberfläche des Spiels {0}",
   "pl": "Powierzchnia gry {0}"
@@ -7646,6 +7846,10 @@
  "Telegraph poles, lamps: on the right of the line, turned towards it.": {
   "de": "Telegrafenmasten, Lampen: rechts der Linie, zu ihr gedreht.",
   "pl": "Słupy telegraficzne, latarnie: po prawej stronie linii, zwrócone do niej."
+ },
+ "Tells forest, grass, fields, soil, rock and roads apart in a real satellite photo.": {
+  "de": "Unterscheidet Wald, Gras, Felder, Erde, Fels und Straßen in einem echten Satellitenfoto.",
+  "pl": "Rozróżnia las, trawę, pola, glebę, skały i drogi na prawdziwym zdjęciu satelitarnym."
  },
  "Template libraries": {
   "de": "Vorlagenbibliotheken",
@@ -7850,6 +8054,10 @@
  "The active layer is hidden or locked": {
   "de": "Die aktive Ebene ist ausgeblendet oder gesperrt",
   "pl": "Aktywna warstwa jest ukryta lub zablokowana"
+ },
+ "The address of the tile server needs {z}, {x} and {y}.": {
+  "de": "Die Adresse des Kachelservers braucht {z}, {x} und {y}.",
+  "pl": "Adres serwera kafelków musi zawierać {z}, {x} i {y}."
  },
  "The average of the positions of the selected objects.": {
   "de": "Der Durchschnitt der Positionen der gewählten Objekte.",
@@ -8231,6 +8439,10 @@
   "de": "Das Satellitenbild der Karte.",
   "pl": "Obraz satelitarny mapy."
  },
+ "The satellite picture, heights and OpenStreetMap shapes of a real place.": {
+  "de": "Satellitenbild, Höhen und OpenStreetMap-Formen eines echten Ortes.",
+  "pl": "Zdjęcie satelitarne, wysokości i kształty z OpenStreetMap prawdziwego miejsca."
+ },
  "The secondary event (infected) of the event may spawn at this object.": {
   "de": "An diesem Objekt darf das Sekundärevent (Infizierte) spawnen.",
   "pl": "Przy tym obiekcie może pojawić się event wtórny (zarażeni)."
@@ -8594,6 +8806,10 @@
  "U sets the underground flag of the selection, B lets the camera below the terrain.": {
   "de": "U schaltet die Underground-Markierung der Auswahl um, B lässt die Kamera unter das Gelände.",
   "pl": "U przełącza flagę underground zaznaczenia, B pozwala kamerze zejść pod teren."
+ },
+ "USA only. About 1 m; public domain.": {
+  "de": "Nur USA. Etwa 1 m; gemeinfrei.",
+  "pl": "Tylko USA. Około 1 m; domena publiczna."
  },
  "Under buildings and other objects": {
   "de": "Unter Gebäuden und anderen Objekten",
@@ -9126,6 +9342,14 @@
  "Your name": {
   "de": "Dein Name",
   "pl": "Twoje imię"
+ },
+ "Your own list of colours: each pixel takes the nearest one.": {
+  "de": "Eine eigene Farbliste: Jedes Pixel bekommt die nächste.",
+  "pl": "Własna lista kolorów: każdy piksel dostaje najbliższy."
+ },
+ "Your own tile server": {
+  "de": "Eigener Kachelserver",
+  "pl": "Własny serwer kafelków"
  },
  "Your stamps": {
   "de": "Deine Stempel",
@@ -9666,5 +9890,9 @@
  "{0}°  ·  step {1}° (wheel)": {
   "de": "{0}°  ·  Schritt {1}° (Mausrad)",
   "pl": "{0}°  ·  skok {1}° (kółko)"
+ },
+ "© OpenStreetMap contributors, ODbL. Each kind of shape gets its own shape layer.": {
+  "de": "© OpenStreetMap-Mitwirkende, ODbL. Jede Art von Formen bekommt eine eigene Formebene.",
+  "pl": "© współtwórcy OpenStreetMap, ODbL. Każdy rodzaj kształtów dostaje własną warstwę."
  }
 }
