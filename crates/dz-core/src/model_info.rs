@@ -1,4 +1,11 @@
 //! Placement data of P3D models: bounding box and the bounding centre WRP positions use.
+//!
+//! The `placement` named property of a model tells the game how to fit it to the terrain. With
+//! `slopelandcontact` the game stands the model on the points of its LandContact LOD: their
+//! place on the ground sets its height, and the height stored with the object does not count, so
+//! such a model cannot be raised or sunk. About 200 vanilla models have it: most walls and
+//! fences, rail tracks, sidewalks, castle parts, timber piles. For many of them BI ships a copy
+//! without it, named `<model>_nolc.p3d` ("no land contact"), which keeps the height it is given.
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -207,7 +214,7 @@ fn read_land_contact(file: &[u8], info: &mut ModelInfo) {
 
 /// True when the game stands the model on its LandContact points: their place on the ground
 /// decides its height, and the height stored with the object does not count.
-fn stands_on_contacts(info: &ModelInfo) -> bool {
+pub fn stands_on_contacts(info: &ModelInfo) -> bool {
     info.placement == Placement::SlopeLandContact && info.contact_count >= 2
 }
 
@@ -235,6 +242,12 @@ pub fn tilted_lift(o: &crate::objects::Obj, info: &ModelInfo, height: &crate::te
         // Other placements keep their stored height unless a contact point would stick out.
         (seated + o.elevation - stored).min(0.0)
     }
+}
+
+/// How far over its stored height the game shows the origin of a model with a `placement`
+/// property, whether sheared (level) or seated on a contact point (tilted).
+pub fn shown_lift(o: &crate::objects::Obj, info: &ModelInfo, height: &crate::terrain::Heightmap) -> f32 {
+    skew(o, info, height).map_or_else(|| tilted_lift(o, info, height), |s| s.lift)
 }
 
 /// How the game shears a model over the terrain.
@@ -485,11 +498,45 @@ impl ModelDb {
         self.cache.lock().unwrap().insert(model.to_string(), info);
         info
     }
+    /// The copy of a model that keeps the height it is given (`<name>_nolc.p3d` next to it),
+    /// for a model the game stands on its land contact points. The path is written like `model`.
+    pub fn free_variant(&self, model: &str) -> Option<String> {
+        free_variant(&self.root, model)
+    }
+}
+
+/// See [`ModelDb::free_variant`].
+pub fn free_variant(root: &Path, model: &str) -> Option<String> {
+    let cut = model.rfind(['\\', '/']).map_or(0, |i| i + 1);
+    let (folder, file) = model.split_at(cut);
+    let stem = file.strip_suffix(".p3d").or_else(|| file.strip_suffix(".P3D")).unwrap_or(file);
+    if stem.to_ascii_lowercase().ends_with("_nolc") {
+        return None;
+    }
+    let want = format!("{}_nolc.p3d", stem.to_ascii_lowercase());
+    // Spelled as it is on the disk: BI writes it `_nolc` or `_NoLC`.
+    let dir = root.join(folder.replace('\\', "/"));
+    std::fs::read_dir(dir).ok()?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.to_ascii_lowercase() == want).map(|n| format!("{folder}{n}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_copy_without_land_contact_is_found_next_to_the_model() {
+        let root = std::env::temp_dir().join(format!("dzwe_nolc_{}", std::process::id()));
+        let dir = root.join("dz/structures/misc");
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in ["Wall_A.p3d", "Wall_A_NoLC.p3d", "Wall_B.p3d"] {
+            std::fs::write(dir.join(f), b"").unwrap();
+        }
+        assert_eq!(free_variant(&root, r"dz\structures\misc\wall_a.p3d").as_deref(), Some(r"dz\structures\misc\Wall_A_NoLC.p3d"));
+        assert_eq!(free_variant(&root, r"dz\structures\misc\wall_b.p3d"), None);
+        // The copy itself has none.
+        assert_eq!(free_variant(&root, r"dz\structures\misc\Wall_A_NoLC.p3d"), None);
+        assert_eq!(free_variant(&root, r"dz\nowhere\wall_a.p3d"), None);
+        std::fs::remove_dir_all(&root).ok();
+    }
     #[test]
     fn a_wall_with_a_pillar_is_thicker_at_that_end() {
         // Two boxes as triangles: a 0.7 m pillar at x -3..-2.3 and a 0.3 m slab on to x 3.

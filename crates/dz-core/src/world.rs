@@ -950,6 +950,23 @@ impl World {
     pub fn object_interactive(&self, o: &Obj) -> bool {
         self.object_layer(o).is_none_or(|l| l.interactive() && self.may_edit(l))
     }
+    /// The objects that tools may pick whose origin lies inside the closed outline (x, z).
+    pub fn objects_inside(&self, ring: &[[f32; 2]]) -> Vec<u32> {
+        if ring.len() < 3 {
+            return Vec::new();
+        }
+        let (mut x0, mut z0, mut x1, mut z1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for p in ring {
+            (x0, z0, x1, z1) = (x0.min(p[0]), z0.min(p[1]), x1.max(p[0]), z1.max(p[1]));
+        }
+        let mut found = Vec::new();
+        self.objects.for_each_in(x0, z0, x1, z1, |id, o| {
+            if self.object_interactive(o) && crate::shapes::point_in_polygon(ring, o.x, o.z) {
+                found.push(id);
+            }
+        });
+        found
+    }
     /// In team work, a layer of someone else is left alone unless this person unlocked it.
     pub fn may_edit(&self, l: &ObjectLayer) -> bool {
         l.owner.is_empty() || self.team_me.is_empty() || l.owner == self.team_me || self.team_unlocked.contains(&l.name)
@@ -1174,6 +1191,21 @@ mod tests {
         assert_eq!(&names[1..], &["Trees and bushes", "Buildings"]);
         let layer_of = |m: u32| w.objects.iter().filter(|(_, o)| o.model == m).map(|(_, o)| o.layer()).collect::<Vec<_>>();
         assert_eq!((layer_of(tree), layer_of(house), layer_of(chair)), (vec![1, 1], vec![2], vec![0]));
+    }
+    #[test]
+    fn objects_inside_an_outline_are_found() {
+        let mut w = World::new(WorldMeta::new("t", 128, 8.0), 10.0);
+        let obj = |x: f32, z: f32| crate::objects::Obj { x, z, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        // An L shape: the corner it leaves out has an object too.
+        let ring = [[100.0, 100.0], [300.0, 100.0], [300.0, 200.0], [200.0, 200.0], [200.0, 300.0], [100.0, 300.0]];
+        let a = w.objects.insert(obj(150.0, 150.0));
+        let b = w.objects.insert(obj(150.0, 250.0));
+        let _corner = w.objects.insert(obj(250.0, 250.0));
+        let _outside = w.objects.insert(obj(400.0, 150.0));
+        let mut found = w.objects_inside(&ring);
+        found.sort();
+        assert_eq!(found, vec![a, b]);
+        assert!(w.objects_inside(&ring[..2]).is_empty());
     }
     fn world() -> World {
         let mut w = World::new(WorldMeta::new("Test", 128, 8.0), 100.0);

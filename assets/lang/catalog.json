@@ -1583,9 +1583,9 @@
   "de": "Klick wählt eine Form aus. Ziehe einen Punkt zum Verschieben, Strg+Klick auf eine Kante fügt einen hinzu, Entf löscht den Punkt oder die Form.",
   "pl": "Kliknięcie zaznacza kształt. Przeciągnij wierzchołek, aby go przesunąć, Ctrl+klik na krawędzi dodaje nowy, Delete usuwa wierzchołek lub kształt."
  },
- "Click selects, a drag selects all inside, Shift adds to the selection.": {
-  "de": "Klick wählt aus, Ziehen wählt alles darin, Umschalt fügt hinzu.",
-  "pl": "Kliknięcie zaznacza, przeciągnięcie zaznacza wszystko w obszarze, Shift dodaje do zaznaczenia."
+ "Click selects, a drag selects all inside. Shift+click adds, Shift+Alt+drag adds all inside, Ctrl+drag takes it out.": {
+  "de": "Ein Klick wählt aus, Ziehen wählt alles darin aus. Shift+Klick fügt hinzu, Shift+Alt+Ziehen fügt alles darin hinzu, Strg+Ziehen nimmt es heraus.",
+  "pl": "Kliknięcie zaznacza, przeciągnięcie zaznacza wszystko w środku. Shift+klik dodaje, Shift+Alt+przeciągnięcie dodaje wszystko w środku, Ctrl+przeciągnięcie odejmuje."
  },
  "Click the points of the road; Enter fits the models along them.": {
   "de": "Klicke die Punkte der Straße; Enter passt die Modelle entlang ein.",
@@ -2287,9 +2287,17 @@
   "de": "Ziehen dreht das Modell, Doppelklick setzt die Ansicht zurück.",
   "pl": "Przeciągnij, aby obrócić model; dwuklik przywraca widok."
  },
+ "Drag: add to the selection": {
+  "de": "Ziehen: zur Auswahl hinzufügen",
+  "pl": "Przeciągnij: dodaj do zaznaczenia"
+ },
  "Drag: scale": {
   "de": "Ziehen: skalieren",
   "pl": "Przeciąganie: skalowanie"
+ },
+ "Drag: take out of the selection": {
+  "de": "Ziehen: aus der Auswahl entfernen",
+  "pl": "Przeciągnij: odejmij od zaznaczenia"
  },
  "Drag: turn": {
   "de": "Ziehen: drehen",
@@ -2402,6 +2410,10 @@
  "Each one fills the whole shape as well, for example undergrowth under the trees.": {
   "de": "Jedes füllt ebenfalls die ganze Form, z. B. Unterholz unter den Bäumen.",
   "pl": "Każdy z nich też wypełnia cały kształt, np. ściółka pod drzewami."
+ },
+ "Each placed object gets a random size in this range.": {
+  "de": "Jedes gesetzte Objekt bekommt eine zufällige Größe in diesem Bereich.",
+  "pl": "Każdy postawiony obiekt dostaje losowy rozmiar z tego zakresu."
  },
  "Each rule paints its surface where the height and slope fit; later rules paint over earlier ones.": {
   "de": "Jede Regel malt ihre Oberfläche, wo Höhe und Neigung passen; spätere Regeln übermalen frühere.",
@@ -6043,6 +6055,10 @@
   "de": "Setzt jedes Feld an seinen ursprünglichen Platz und in seine ursprüngliche Größe zurück.",
   "pl": "Przywraca każdy panel na jego pierwotne miejsce i w pierwotnym rozmiarze."
  },
+ "Puts the copy without land contact in place of the selected objects of this kind. They stay where they are shown.": {
+  "de": "Setzt die Kopie ohne Land Contact an die Stelle der ausgewählten Objekte dieser Art. Sie bleiben, wo sie angezeigt werden.",
+  "pl": "Wstawia kopię bez land contact w miejsce zaznaczonych obiektów tego rodzaju. Zostają tam, gdzie są widoczne."
+ },
  "Putting in a crossroad": {
   "de": "Kreuzung wird eingesetzt",
   "pl": "Wstawianie skrzyżowania"
@@ -6631,6 +6647,10 @@
   "de": "Gespeicherte Ansichten",
   "pl": "Zapisane widoki"
  },
+ "Saved with the preset {0}.": {
+  "de": "Wird mit dem Preset {0} gespeichert.",
+  "pl": "Zapisywane w presecie {0}."
+ },
  "Saved {0}": {
   "de": "{0} gespeichert",
   "pl": "Zapisano {0}"
@@ -6823,6 +6843,10 @@
   "de": "Wähle zuerst Objekte aus",
   "pl": "Najpierw zaznacz obiekty"
  },
+ "Select objects inside": {
+  "de": "Objekte darin auswählen",
+  "pl": "Zaznacz obiekty w środku"
+ },
  "Select objects, and place a spawn of the group first.": {
   "de": "Wähle Objekte und setze zuerst einen Spawn der Gruppe.",
   "pl": "Zaznacz obiekty i najpierw postaw spawn tej grupy."
@@ -6874,6 +6898,10 @@
  "Selection": {
   "de": "Auswahl",
   "pl": "Zaznaczenie"
+ },
+ "Selects the objects inside the selected areas and opens the Select tool. Hold Shift to add them to what is already selected.": {
+  "de": "Wählt die Objekte in den ausgewählten Flächen aus und öffnet das Auswahlwerkzeug. Halte Shift, um sie zur bisherigen Auswahl hinzuzufügen.",
+  "pl": "Zaznacza obiekty w zaznaczonych obszarach i otwiera narzędzie zaznaczania. Przytrzymaj Shift, aby dodać je do obecnego zaznaczenia."
  },
  "Send a full copy": {
   "de": "Vollständige Kopie senden",
@@ -7266,6 +7294,10 @@
  "Stand upright": {
   "de": "Aufrecht stehen",
   "pl": "Stoi prosto"
+ },
+ "Stands on the ground": {
+  "de": "Steht auf dem Boden",
+  "pl": "Stoi na ziemi"
  },
  "Start": {
   "de": "Anfang",
@@ -8363,6 +8395,10 @@
   "de": "Dieses Material liegt nicht im Ordner der Karte: Dateien des Spiels und anderer Mods werden hier nicht geändert.",
   "pl": "Ten materiał nie jest w folderze mapy: plików gry ani innych modów tu nie zmieniamy."
  },
+ "This model has placement = slopelandcontact: the game puts its land contact points on the ground and does not use the elevation, so it cannot be raised or sunk. Its copy without land contact (_nolc) keeps the elevation it is given.": {
+  "de": "Dieses Modell hat placement = slopelandcontact: Das Spiel setzt seine Land-Contact-Punkte auf den Boden und nutzt die Höhe nicht, daher kann es weder angehoben noch versenkt werden. Seine Kopie ohne Land Contact (_nolc) behält die angegebene Höhe.",
+  "pl": "Ten model ma placement = slopelandcontact: gra kładzie jego punkty LandContact na ziemi i nie używa wysokości, więc nie da się go podnieść ani zagłębić. Jego kopia bez land contact (_nolc) zachowuje podaną wysokość."
+ },
  "This preset has no models yet": {
   "de": "Dieses Preset hat noch keine Modelle",
   "pl": "Ten preset nie ma jeszcze modeli"
@@ -8650,6 +8686,10 @@
  "Use {0}": {
   "de": "{0} verwenden",
   "pl": "Użyj {0}"
+ },
+ "Use {0}, which can be raised": {
+  "de": "{0} verwenden, das sich anheben lässt",
+  "pl": "Użyj {0}, który da się podnieść"
  },
  "User map folder": {
   "de": "Ordner der Benutzerkarte",
@@ -9438,6 +9478,10 @@
  "{0} objects moved to the layer {1}": {
   "de": "{0} Objekte auf die Ebene {1} verschoben",
   "pl": "Przeniesiono obiekty ({0}) na warstwę {1}"
+ },
+ "{0} objects now use the copy that can be raised": {
+  "de": "{0} Objekte nutzen jetzt die Kopie, die sich anheben lässt",
+  "pl": "{0} obiektów używa teraz kopii, którą da się podnieść"
  },
  "{0} objects of a model that is not on the work drive: {1}": {
   "de": "{0} Objekte eines Modells, das nicht auf dem Arbeitslaufwerk ist: {1}",

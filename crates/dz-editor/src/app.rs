@@ -477,7 +477,8 @@ pub struct App {
     /// The selection the outliner last scrolled to.
     pub outliner_rev: u64,
     pub drag: Option<crate::viewport::ObjectDrag>,
-    pub box_select: Option<(egui::Pos2, egui::Pos2, bool)>,
+    /// The box or lasso being drawn: where it began, where the mouse is, and what it does.
+    pub box_select: Option<(egui::Pos2, egui::Pos2, crate::viewport::BoxOp)>,
     /// The outline drawn so far while selecting with the lasso, in screen points.
     pub lasso_points: Vec<egui::Pos2>,
     /// The modifier keys held this frame.
@@ -2054,6 +2055,41 @@ impl App {
         }
     }
 
+    /// Puts the copy without land contact (`_nolc`) in place of each selected model that the
+    /// game stands on the ground, where there is one. Each object stays where it was shown, and
+    /// from then on keeps the elevation it is given.
+    pub fn use_free_variants(&mut self) {
+        let Some(doc) = &mut self.doc else { return };
+        let w = &mut doc.world;
+        let mut change = Vec::new();
+        for &id in &self.selection {
+            let Some(old) = w.objects.get(id).copied() else { continue };
+            let path = w.objects.models[old.model as usize].path.clone();
+            let info = self.db.get(&path);
+            if !dz_core::model_info::stands_on_contacts(&info) {
+                continue;
+            }
+            let Some(free) = self.db.free_variant(&path) else { continue };
+            let mut new = old;
+            new.model = w.objects.intern(&free);
+            if old.flags & dz_core::objects::FLAG_ABSOLUTE == 0 {
+                new.elevation += dz_core::model_info::shown_lift(&old, &info, &w.height);
+            }
+            w.objects.update(id, new);
+            change.push((id, Some(old), Some(new)));
+        }
+        let n = change.len();
+        if n > 0 {
+            for (id, _, _) in &change {
+                w.sync_attached(*id);
+            }
+            doc.history.push(t("Replace objects"), Change::Objects(change));
+            doc.dirty.objects = true;
+            self.selection_rev += 1;
+        }
+        self.info(tf("{0} objects now use the copy that can be raised", &[&n.to_string()]));
+    }
+
     pub fn remember_selection(&mut self) {
         let Some(doc) = &self.doc else { return };
         if self.selection.is_empty() {
@@ -2761,6 +2797,36 @@ impl App {
                 app.info(tf("{0} water courses added as lines", &[&n.to_string()]));
             }) as Finish)
         });
+    }
+
+    /// The selected shapes that are closed areas, which objects can lie inside.
+    pub fn selected_areas(&self) -> usize {
+        let Some(doc) = &self.doc else { return 0 };
+        self.shape.selection.iter().filter(|(l, s)| doc.world.shape_layers.get(*l).and_then(|l| l.shapes.get(*s)).is_some_and(|s| s.kind == dz_core::shapes::ShapeKind::Polygon)).count()
+    }
+
+    /// Selects the objects inside the selected area shapes and goes to the Select tool, where they
+    /// can be moved or deleted. With `add` they join what is already selected.
+    pub fn select_inside_shapes(&mut self, add: bool) {
+        let Some(doc) = &self.doc else { return };
+        let world = &doc.world;
+        let mut found = Vec::new();
+        for (l, s) in &self.shape.selection {
+            if let Some(shape) = world.shape_layers.get(*l).and_then(|l| l.shapes.get(*s)).filter(|s| s.kind == dz_core::shapes::ShapeKind::Polygon) {
+                found.extend(world.objects_inside(&shape.points));
+            }
+        }
+        if !add {
+            self.selection.clear();
+            self.selected_modifier = None;
+            self.selected_generator = None;
+            self.whole = None;
+        }
+        self.selection.extend(found);
+        self.selection_rev += 1;
+        self.mode = Mode::Select;
+        let n = self.selection.len().to_string();
+        self.info(tf("{0} objects selected", &[&n]));
     }
 
     /// Removes the selected vertex, or the selected shapes.
