@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.2.9.1
+
+### New
+
+- **Select the objects inside a shape.** Select one or more polygons in Shapes and click **Select
+  objects inside** in Details (or in the right-click menu of the map). The objects inside are
+  selected and the Select tool opens, ready to move or delete them. Hold Shift to add them to what
+  is already selected.
+- **Shift+Alt with a drag adds to the selection** with a box or a lasso. Shift alone still turns the
+  selection while something is selected, so it could not add before.
+- **Models that stand on the ground say so.** Walls, fences, rail tracks, sidewalks, timber piles
+  and about 200 other vanilla models have `placement = slopelandcontact`: the game puts them on the
+  ground and does not use their elevation, so they cannot be raised. Details now shows
+  **Stands on the ground** for them. Where BI made a copy that can be raised (`_nolc`, for example
+  `Sidewalk3_Border_nolc`), a button puts that copy in place of the selected objects, right where
+  they were shown.
+
+### Fixed
+
+- **Ctrl with a box or a lasso takes objects out of the selection**, the same as Ctrl with a click.
+  Before, it added them. The box turns red while it takes objects out.
+- **Place: the scale range works with object presets.** A preset places its models with its own
+  scale range, and the panel showed the range of the tool instead, which was not used. While a
+  preset is chosen, **Rotation and size** now shows and changes the preset's settings. Without a
+  preset, each placed object gets a random size in the range, as before.
+
+### Good to know
+
+- Projects open in this version and in 0.2.9 alike; the project format did not change.
+- Swapping a model for its `_nolc` copy is one undo step (Ctrl+Z).
+
 ## 0.2.9
 
 ### New

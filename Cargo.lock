@@ -897,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "dz-core"
-version = "0.2.9"
+version = "0.2.9+1"
 dependencies = [
  "anyhow",
  "flate2",
@@ -914,7 +914,7 @@ dependencies = [
 
 [[package]]
 name = "dz-editor"
-version = "0.2.9"
+version = "0.2.9+1"
 dependencies = [
  "anyhow",
  "dz-core",
@@ -1291,7 +1291,7 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "forest-core"
-version = "0.2.9"
+version = "0.2.9+1"
 dependencies = [
  "anyhow",
  "image",
@@ -2870,7 +2870,7 @@ dependencies = [
 
 [[package]]
 name = "road-core"
-version = "0.2.9"
+version = "0.2.9+1"
 dependencies = [
  "anyhow",
  "crc32fast",
