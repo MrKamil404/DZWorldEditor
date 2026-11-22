@@ -74,11 +74,11 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
 }
 
 fn number(ui: &mut egui::Ui, label: String, v: &mut f32, range: std::ops::RangeInclusive<f32>) {
-    row(ui, &label, |ui| { ui.add(egui::Slider::new(v, range)); });
+    row(ui, &label, |ui| { ui.add(crate::theme::ValueField::new(v, range)); });
 }
 
 fn number64(ui: &mut egui::Ui, label: String, v: &mut f64, range: std::ops::RangeInclusive<f64>) {
-    row(ui, &label, |ui| { ui.add(egui::Slider::new(v, range)); });
+    row(ui, &label, |ui| { ui.add(crate::theme::ValueField::new(v, range)); });
 }
 
 /// A model field: takes the model chosen in the browser, or one dropped on it.
@@ -145,7 +145,7 @@ fn objects_ui(ui: &mut egui::Ui, set: &mut ObjectSet, cx: &KindContext) {
 }
 
 fn count_row(ui: &mut egui::Ui, label: String, v: &mut u32, range: std::ops::RangeInclusive<u32>) {
-    row(ui, &label, |ui| { ui.add(egui::Slider::new(v, range)); });
+    row(ui, &label, |ui| { ui.add(crate::theme::ValueField::new(v, range)); });
 }
 
 fn powerlines() -> PathBuf {
@@ -513,7 +513,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 if let Some(m) = &cx.model { if !s.buildings.contains(m) { s.buildings.push(m.clone()); } }
             }
             number(ui, t("Radius"), &mut s.radius, 40.0..=1500.0);
-            row(ui, &t("Streets"), |ui| { ui.add(egui::Slider::new(&mut s.streets, 1..=12)); });
+            row(ui, &t("Streets"), |ui| { ui.add(crate::theme::ValueField::new(&mut s.streets, 1..=12)); });
             number(ui, t("Plot size"), &mut s.plot, 10.0..=80.0);
             number(ui, t("Distance from street"), &mut s.setback, 2.0..=40.0);
             number(ui, t("Max slope"), &mut s.max_slope, 2.0..=45.0);
@@ -771,7 +771,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Base height"), &mut g.base, 0.0..=800.0);
             number(ui, t("Height range"), &mut g.amplitude, 1.0..=1500.0);
             number(ui, t("Feature size"), &mut g.feature, 100.0..=15000.0);
-            row(ui, &t("Detail"), |ui| { ui.add(egui::Slider::new(&mut g.octaves, 1..=12)); });
+            row(ui, &t("Detail"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.octaves, 1..=12)); });
             number(ui, t("Roughness"), &mut g.roughness, 0.2..=0.8);
             number(ui, t("Warp"), &mut g.warp, 0.0..=2000.0);
             number(ui, t("Worn slopes"), &mut g.erosion, 0.0..=1.5);
@@ -779,12 +779,12 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Edge blend in a shape"), &mut g.edge, 0.0..=1000.0);
         }
         GeneratorKind::Erosion(e) => {
-            row(ui, &t("Droplets"), |ui| { ui.add(egui::Slider::new(&mut e.droplets, 10_000..=4_000_000).logarithmic(true)); });
+            row(ui, &t("Droplets"), |ui| { ui.add(crate::theme::ValueField::new(&mut e.droplets, 10_000..=4_000_000).logarithmic(true)); });
             number(ui, t("Erosion rate"), &mut e.erode, 0.05..=0.9);
             number(ui, t("Deposition"), &mut e.deposit, 0.05..=0.9);
         }
         GeneratorKind::ThermalErosion { iterations, talus } => {
-            row(ui, &t("Passes"), |ui| { ui.add(egui::Slider::new(iterations, 1..=200)); });
+            row(ui, &t("Passes"), |ui| { ui.add(crate::theme::ValueField::new(iterations, 1..=200)); });
             number(ui, t("Slope limit"), talus, 10.0..=70.0);
         }
         GeneratorKind::Terraces { step, sharpness } => {
@@ -885,12 +885,12 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Places per km"), &mut g.scenes_per_km, 0.0..=20.0);
             number(ui, t("Share of jams"), &mut g.jam_share, 0.0..=1.0);
             number(ui, t("Share of crashes"), &mut g.crash_share, 0.0..=1.0);
-            row(ui, &t("Most cars in a jam"), |ui| { ui.add(egui::Slider::new(&mut g.jam_max, 3..=20)); });
+            row(ui, &t("Most cars in a jam"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.jam_max, 3..=20)); });
             number(ui, t("Lane from the middle m"), &mut g.lane, 0.0..=10.0);
             number(ui, t("Half the road width m"), &mut g.road_half, 1.0..=15.0);
             group(ui, t("Wrecks"), false, |ui| {
                 row(ui, &t("Turn of the wrecks"), |ui| {
-                    ui.add(egui::Slider::new(&mut g.wreck_turn, -180.0..=180.0).suffix("°").step_by(1.0)).on_hover_text(t("Every wreck is turned by this much. Cars face the way the traffic of their lane goes; turn them when a model faces the other way or sideways."));
+                    ui.add(crate::theme::ValueField::new(&mut g.wreck_turn, -180.0..=180.0).suffix("°").step_by(1.0)).on_hover_text(t("Every wreck is turned by this much. Cars face the way the traffic of their lane goes; turn them when a model faces the other way or sideways."));
                 });
                 ui.horizontal_wrapped(|ui| {
                     for a in [0.0f32, 90.0, 180.0, -90.0] {
@@ -1125,9 +1125,7 @@ fn whole_route_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     let Some(doc) = &app.doc else { return };
     let Some(index) = doc.world.routes.iter().position(|r| r.id == id) else { app.whole = None; return };
     let r = &doc.world.routes[index];
-    ui.strong(r.name.clone());
-    ui.weak(r.family.clone());
-    ui.label(tf("{0} models", &[&r.objects.len().to_string()]));
+    crate::theme::details_head(ui, crate::icons::ROAD_HORIZON, crate::theme::KIND_ROAD, &r.name, &format!("{}  ·  {}", r.family, tf("{0} models", &[&r.objects.len().to_string()])));
     let (mut edit, mut delete) = (false, false);
     ui.horizontal_wrapped(|ui| {
         edit = ui.button(t("Edit route")).clicked();
@@ -1445,7 +1443,7 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
     let mut action: Option<(u64, u8)> = None;
     let mut fly = None;
     for (id, name, kind, count) in rows.iter().filter(|r| r.1.to_ascii_lowercase().contains(filter)) {
-        let row = ui.selectable_label(app.selected_generator == Some(*id), format!("{name}  [{}]  ({count})", t(kind)));
+        let row = crate::theme::list_row(ui, app.selected_generator == Some(*id), crate::icons::MAGIC_WAND, crate::theme::KIND_GENERATOR, format!("{name}  ·  {}", t(kind)), &count.to_string());
         if row.clicked() { action = Some((*id, 0)); }
         row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             let spot = app.doc.as_ref().and_then(|d| dz_core::goto::generator_spot(&d.world, d.world.generators.iter().find(|g| g.id == *id)?));

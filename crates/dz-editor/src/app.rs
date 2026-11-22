@@ -574,6 +574,8 @@ pub struct App {
     /// Shape layers opened in the outliner.
     pub shape_open: BTreeSet<usize>,
     pub last_autosave: Instant,
+    /// When the project was last saved, shown in the status bar.
+    pub saved_at: Option<Instant>,
     pub last_backup: Instant,
     /// Edit count of the project when the last backup was made.
     pub backup_revision: u64,
@@ -639,7 +641,7 @@ impl App {
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
-            last_autosave: Instant::now(), last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
+            last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
             settings,
         };
         app.rescan_assets();
@@ -1596,6 +1598,7 @@ impl App {
                 doc.dirty = Dirty::default();
                 doc.dir = Some(dir.clone());
                 doc.history.mark_saved();
+                self.saved_at = Some(Instant::now());
                 self.settings.remember(dir.clone());
                 self.settings.save();
                 self.info(tf("Saved {0}", &[&dir.display().to_string()]));

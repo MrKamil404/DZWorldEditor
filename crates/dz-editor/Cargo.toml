@@ -15,6 +15,7 @@ forest-core = { path = "../forest-core" }
 road-core = { path = "../road-core" }
 eframe = "0.31.1"
 egui-phosphor = "0.9"
+egui_dock = { version = "0.16", features = ["serde"] }
 rfd = "0.15.4"
 anyhow.workspace = true
 serde.workspace = true

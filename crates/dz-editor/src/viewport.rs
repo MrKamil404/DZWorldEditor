@@ -1726,6 +1726,12 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
             if let Some(p) = pick_terrain(&world.height, o, d, v.ortho).or(on_level) {
                 dx = p[0] + drag.grab_offset[0] - drag.pivot[0];
                 dz = p[2] + drag.grab_offset[1] - drag.pivot[2];
+                // With the grid on, the middle of the selection lands on its points.
+                if app.settings.grid_snap {
+                    let g = app.settings.grid_step.max(0.01);
+                    dx = ((drag.pivot[0] + dx) / g).round() * g - drag.pivot[0];
+                    dz = ((drag.pivot[2] + dz) / g).round() * g - drag.pivot[2];
+                }
             }
         }
         Handle::Spin => {
@@ -1751,7 +1757,8 @@ fn apply_object_drag(app: &mut App, v: &View, mouse: Pos2, snap: bool) {
         }
         Handle::X | Handle::Y | Handle::Z => {
             let along = delta.dot(drag.axis.0) * drag.axis.2;
-            let along = if snap { (along).round() } else { along };
+            // Ctrl, or the grid while it is on, moves by whole steps: metres, or the grid's.
+            let along = if app.settings.grid_snap { let g = app.settings.grid_step.max(0.01); (along / g).round() * g } else if snap { along.round() } else { along };
             dx = drag.axis.1[0] * along;
             dy = drag.axis.1[1] * along;
             dz = drag.axis.1[2] * along;
@@ -3653,7 +3660,7 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     if !top {
         child.checkbox(&mut app.wireframe, crate::icons::with(crate::icons::CUBE_TRANSPARENT, &t("Wireframe")));
         let mut speed = app.camera.speed;
-        child.add(egui::Slider::new(&mut speed, 1.0..=4000.0).logarithmic(true).suffix(" m/s").show_value(true).text(""));
+        child.add(crate::theme::ValueField::new(&mut speed, 1.0..=4000.0).logarithmic(true).suffix(" m/s").show_value(true).text(""));
         app.camera.speed = speed;
         lighting_menu(app, &mut child);
         show_menu(app, &mut child);
@@ -3699,7 +3706,7 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
     ui.menu_button(crate::icons::with(crate::icons::CAMERA, &t("Camera")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
         ui.set_min_width(280.0);
         let row = |ui: &mut egui::Ui, label: String, v: &mut f32, range: std::ops::RangeInclusive<f32>| {
-            ui.add(egui::Slider::new(v, range).text(label));
+            ui.add(crate::theme::ValueField::new(v, range).text(label));
         };
         let tip = app.settings.keys.tip(crate::keys::Action::CameraBelow);
         ui.checkbox(&mut app.camera_under, t("Camera below the terrain")).on_hover_text(tip);
@@ -3713,7 +3720,7 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         surface_relief_ui(ui, &mut app.settings);
         row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=1.0);
         ui.weak(t("How far the swell runs up the shore and back; the game's MaxWave is 0.25 m."));
-        ui.add_enabled(!app.settings.tide_cycle, egui::Slider::new(&mut app.settings.sea_tide, -MAX_TIDE..=MAX_TIDE).text(t("Tide m")));
+        ui.add_enabled(!app.settings.tide_cycle, crate::theme::ValueField::new(&mut app.settings.sea_tide, -MAX_TIDE..=MAX_TIDE).text(t("Tide m")));
         ui.checkbox(&mut app.settings.tide_cycle, t("Tide rises and falls")).on_hover_text(t("Runs through the whole tide of the game, up to MaxTide 1.5 m, in two minutes."));
     });
 }
@@ -3738,22 +3745,22 @@ fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
         // The sun of an hour of the map's day, at its latitude.
         let (lat, day) = app.doc.as_ref().map(|d| (d.world.meta.latitude, start_day(&d.world.meta.config.start_date))).unwrap_or((50.0, 240));
         let mut changed = false;
-        theme::row(ui, &t("Time of day"), |ui| { changed |= ui.add(egui::Slider::new(&mut app.time_of_day, 4.0..=21.0).custom_formatter(|v, _| format!("{}:{:02}", v as u32, ((v.fract()) * 60.0) as u32))).changed(); });
-        theme::row(ui, &t("Overcast"), |ui| { changed |= ui.add(egui::Slider::new(&mut app.overcast, 0.0..=1.0)).changed(); });
+        theme::row(ui, &t("Time of day"), |ui| { changed |= ui.add(crate::theme::ValueField::new(&mut app.time_of_day, 4.0..=21.0).custom_formatter(|v, _| format!("{}:{:02}", v as u32, ((v.fract()) * 60.0) as u32))).changed(); });
+        theme::row(ui, &t("Overcast"), |ui| { changed |= ui.add(crate::theme::ValueField::new(&mut app.overcast, 0.0..=1.0)).changed(); });
         if changed {
             *l = Lighting::at(app.time_of_day, app.overcast, lat, day);
         }
         ui.weak(t("The sun of that hour at the map's latitude and start date (Map config)."));
         ui.separator();
-        theme::row(ui, &t("Sun azimuth"), |ui| { ui.add(egui::Slider::new(&mut l.azimuth, 0.0..=360.0).suffix("°")); });
-        theme::row(ui, &t("Sun elevation"), |ui| { ui.add(egui::Slider::new(&mut l.elevation, -10.0..=90.0).suffix("°")); });
-        theme::row(ui, &t("Sun strength"), |ui| { ui.add(egui::Slider::new(&mut l.strength, 0.0..=2.0)); });
+        theme::row(ui, &t("Sun azimuth"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.azimuth, 0.0..=360.0).suffix("°")); });
+        theme::row(ui, &t("Sun elevation"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.elevation, -10.0..=90.0).suffix("°")); });
+        theme::row(ui, &t("Sun strength"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.strength, 0.0..=2.0)); });
         theme::row(ui, &t("Sun colour"), |ui| { ui.color_edit_button_rgb(&mut l.color); });
-        theme::row(ui, &t("Ambient"), |ui| { ui.add(egui::Slider::new(&mut l.ambient, 0.0..=2.0)); });
-        theme::row(ui, &t("Exposure"), |ui| { ui.add(egui::Slider::new(&mut l.exposure, 0.25..=2.5)); });
-        theme::row(ui, &t("Fog"), |ui| { ui.add(egui::Slider::new(&mut l.fog, 0.0..=6.0)); });
+        theme::row(ui, &t("Ambient"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.ambient, 0.0..=2.0)); });
+        theme::row(ui, &t("Exposure"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.exposure, 0.25..=2.5)); });
+        theme::row(ui, &t("Fog"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.fog, 0.0..=6.0)); });
         ui.checkbox(&mut app.show_shadows, t("Shadows"));
-        theme::row(ui, &t("Shadow range"), |ui| { ui.add(egui::Slider::new(&mut l.shadow_range, 60.0..=2000.0).logarithmic(true).suffix(" m")); });
+        theme::row(ui, &t("Shadow range"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.shadow_range, 60.0..=2000.0).logarithmic(true).suffix(" m")); });
         if ui.button(t("Reset")).clicked() {
             app.settings.lighting = Lighting::default();
         }
@@ -3777,8 +3784,8 @@ pub fn surface_relief_ui(ui: &mut egui::Ui, s: &mut crate::settings::Settings) {
     // Turned on or off, the ground is uploaded again by the app (see `App::sync_game_surfaces`).
     ui.checkbox(&mut s.game_surfaces, t("Surfaces as the game shows them")).on_hover_text(t("The ground shows the surfaces the built map will have: at most the surfaces a texture tile may hold, and two in each block of 4 metres, as the game's compressed masks keep them. Specks of a third surface at an edge go, as in the game. The Mask shading shows the same."));
     ui.checkbox(&mut s.surface_pixels, t("Hard mask pixels")).on_hover_text(t("The ground shows each pixel of the mask as one surface, with hard edges and no blending: to see exactly what is painted where."));
-    ui.add(egui::Slider::new(&mut s.surface_parallax, 0.0..=15.0).text(t("Surface parallax cm"))).on_hover_text(t("How deep the relief in the alpha channel of the surface textures looks close up; 0 leaves them flat."));
-    ui.add(egui::Slider::new(&mut s.surface_blend, 0.0..=1.0).text(t("Surface blend by relief"))).on_hover_text(t("Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper."));
+    ui.add(crate::theme::ValueField::new(&mut s.surface_parallax, 0.0..=15.0).text(t("Surface parallax cm"))).on_hover_text(t("How deep the relief in the alpha channel of the surface textures looks close up; 0 leaves them flat."));
+    ui.add(crate::theme::ValueField::new(&mut s.surface_blend, 0.0..=1.0).text(t("Surface blend by relief"))).on_hover_text(t("Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper."));
 }
 
 fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {

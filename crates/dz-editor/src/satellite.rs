@@ -482,13 +482,13 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
         for (id, name, enabled, kind) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if ui.add(egui::Button::new("👁").small().selected(*enabled)).on_hover_text(t("Visible")).clicked() {
+                if crate::theme::row_switch(ui, *enabled, crate::icons::EYE, crate::icons::EYE_SLASH, t("Visible")).clicked() {
                     toggle = Some((*id, !*enabled));
                 }
-                if ui.add(egui::Button::new("✖").small()).on_hover_text(t("Delete the modifier; what it covered comes back")).clicked() {
+                if crate::theme::row_switch(ui, true, crate::icons::TRASH, "", t("Delete the modifier; what it covered comes back")).clicked() {
                     delete = Some(*id);
                 }
-                let row = ui.selectable_label(app.sat.active == Some(*id), name);
+                let row = crate::theme::list_row(ui, app.sat.active == Some(*id), crate::icons::IMAGE, crate::theme::KIND_IMAGE, name.as_str(), "");
                 if row.clicked() {
                     app.sat.active = Some(*id);
                     let _ = kind;
@@ -623,28 +623,20 @@ fn preview(app: &mut App, ui: &mut egui::Ui) {
 /// Size, softness and strength of the brush, shared by both brushes.
 fn brush_size_rows(app: &mut App, ui: &mut egui::Ui) {
     row(ui, &t("Radius"), |ui| {
-        ui.add(egui::Slider::new(&mut app.sat.radius, 0.5..=500.0).logarithmic(true).suffix(" m"));
+        ui.add(crate::theme::ValueField::new(&mut app.sat.radius, 0.5..=500.0).logarithmic(true).suffix(" m"));
     });
     row(ui, &t("Hardness"), |ui| {
-        ui.add(egui::Slider::new(&mut app.sat.hardness, 0.0..=1.0));
+        ui.add(crate::theme::ValueField::new(&mut app.sat.hardness, 0.0..=1.0));
     });
     row(ui, &t("Opacity"), |ui| {
-        ui.add(egui::Slider::new(&mut app.sat.opacity, 0.05..=1.0));
+        ui.add(crate::theme::ValueField::new(&mut app.sat.opacity, 0.05..=1.0));
     });
 }
 
 /// The modifier of `kind` the strokes go on into, and a way to start a new one.
 fn strokes_go_to(app: &mut App, ui: &mut egui::Ui, kind: SatKind) {
     let active = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == kind)).map(|m| m.name.clone()));
-    ui.horizontal(|ui| {
-        ui.weak(match &active {
-            Some(name) => tf("Strokes go to: {0}", &[name]),
-            None => t("The next stroke starts a new modifier"),
-        });
-        if active.is_some() && ui.small_button(t("New modifier")).clicked() {
-            app.sat.active = None;
-        }
-    });
+    if crate::theme::strokes_target_row(ui, active.as_deref()) { app.sat.active = None; }
 }
 
 fn brush_rows(app: &mut App, ui: &mut egui::Ui, kind: SatKind) {
@@ -677,8 +669,8 @@ fn adjust_swatch(app: &App, ui: &mut egui::Ui) {
 
 /// A brightness or contrast slider from -1 to 1; in the legacy mode it reads as Photoshop's
 /// numbers (`scale` at the ends).
-fn bc_slider(v: &mut f32, legacy: bool, scale: f64) -> egui::Slider<'_> {
-    let s = egui::Slider::new(v, -1.0..=1.0);
+fn bc_slider(v: &mut f32, legacy: bool, scale: f64) -> crate::theme::ValueField<'_> {
+    let s = crate::theme::ValueField::new(v, -1.0..=1.0);
     if legacy {
         s.custom_formatter(move |v, _| format!("{:.0}", v * scale)).custom_parser(move |text| text.trim().parse::<f64>().ok().map(|v| v / scale))
     } else {
@@ -698,10 +690,10 @@ fn adjust_panel(app: &mut App, ui: &mut egui::Ui) {
     row(ui, &t("Brightness"), |ui| { ui.add(bc_slider(&mut a.brightness, legacy, 150.0)); });
     row(ui, &t("Contrast"), |ui| { ui.add(bc_slider(&mut a.contrast, legacy, 100.0)); });
     legacy_box(ui, &mut a.legacy);
-    row(ui, &t("Saturation"), |ui| { ui.add(egui::Slider::new(&mut a.saturation, -1.0..=1.0)); });
-    row(ui, &t("Warmth"), |ui| { ui.add(egui::Slider::new(&mut a.warmth, -1.0..=1.0)).on_hover_text(t("Towards yellow to the right, towards blue to the left.")); });
-    row(ui, &t("Hue"), |ui| { ui.add(egui::Slider::new(&mut a.hue, -180.0..=180.0).suffix("°")); });
-    row(ui, &t("Blur"), |ui| { ui.add(egui::Slider::new(&mut app.sat.blur, 0.0..=30.0).suffix(" m")).on_hover_text(t("Softens the image under the brush over this distance: seams of cloning, hard edges of baked objects.")); });
+    row(ui, &t("Saturation"), |ui| { ui.add(crate::theme::ValueField::new(&mut a.saturation, -1.0..=1.0)); });
+    row(ui, &t("Warmth"), |ui| { ui.add(crate::theme::ValueField::new(&mut a.warmth, -1.0..=1.0)).on_hover_text(t("Towards yellow to the right, towards blue to the left.")); });
+    row(ui, &t("Hue"), |ui| { ui.add(crate::theme::ValueField::new(&mut a.hue, -180.0..=180.0).suffix("°")); });
+    row(ui, &t("Blur"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.sat.blur, 0.0..=30.0).suffix(" m")).on_hover_text(t("Softens the image under the brush over this distance: seams of cloning, hard edges of baked objects.")); });
     ui.horizontal_wrapped(|ui| {
         // Ready settings for what is done most often.
         for (label, preset) in [
@@ -746,8 +738,8 @@ fn fill_section(app: &mut App, ui: &mut egui::Ui) {
     ui.collapsing(t("Fill shapes"), |ui| {
         ui.weak(t("Lays the brush over whole shapes at once: inside polygons, along lines as a band. Fields, clearings, field tracks."));
         shapes_row(app, ui, "sat_fill_layer");
-        row(ui, &t("Soft edge m"), |ui| { ui.add(egui::Slider::new(&mut app.sat.feather, 0.0..=40.0)); });
-        row(ui, &t("Line width m"), |ui| { ui.add(egui::Slider::new(&mut app.sat.line_width, 0.5..=40.0).logarithmic(true)); });
+        row(ui, &t("Soft edge m"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.sat.feather, 0.0..=40.0)); });
+        row(ui, &t("Line width m"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.sat.line_width, 0.5..=40.0).logarithmic(true)); });
         if ui.button(crate::icons::with(crate::icons::PAINT_BRUSH, &t("Fill"))).on_hover_text(t("Uses the brush's settings and its opacity, into the modifier its strokes go to.")).clicked() {
             fill_shapes(app);
         }
@@ -811,7 +803,7 @@ fn correction_section(app: &mut App, ui: &mut egui::Ui) {
                 if app.sat.correcting.map(|e| e.0) != Some(id) { app.sat.correcting = Some((id, c.adjust)); }
                 let mut a = app.sat.correcting.map(|e| e.1).unwrap_or_default();
                 let mut apply = false;
-                let mut slider = |ui: &mut egui::Ui, label: String, s: egui::Slider| {
+                let mut slider = |ui: &mut egui::Ui, label: String, s: crate::theme::ValueField| {
                     row(ui, &label, |ui| {
                         let r = ui.add(s);
                         apply |= r.drag_stopped() || (r.changed() && !r.dragged());
@@ -820,9 +812,9 @@ fn correction_section(app: &mut App, ui: &mut egui::Ui) {
                 let legacy = a.legacy;
                 slider(ui, t("Brightness"), bc_slider(&mut a.brightness, legacy, 150.0));
                 slider(ui, t("Contrast"), bc_slider(&mut a.contrast, legacy, 100.0));
-                slider(ui, t("Saturation"), egui::Slider::new(&mut a.saturation, -1.0..=1.0));
-                slider(ui, t("Warmth"), egui::Slider::new(&mut a.warmth, -1.0..=1.0));
-                slider(ui, t("Hue"), egui::Slider::new(&mut a.hue, -180.0..=180.0).suffix("°"));
+                slider(ui, t("Saturation"), crate::theme::ValueField::new(&mut a.saturation, -1.0..=1.0));
+                slider(ui, t("Warmth"), crate::theme::ValueField::new(&mut a.warmth, -1.0..=1.0));
+                slider(ui, t("Hue"), crate::theme::ValueField::new(&mut a.hue, -180.0..=180.0).suffix("°"));
                 apply |= legacy_box(ui, &mut a.legacy);
                 app.sat.correcting = Some((id, a));
                 ui.horizontal(|ui| {
@@ -852,7 +844,7 @@ fn correction_section(app: &mut App, ui: &mut egui::Ui) {
                 });
                 if !app.sat.correct_whole {
                     shapes_row(app, ui, "correct_shapes");
-                    row(ui, &t("Soft edge m"), |ui| { ui.add(egui::Slider::new(&mut app.sat.feather, 0.0..=40.0)); });
+                    row(ui, &t("Soft edge m"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.sat.feather, 0.0..=40.0)); });
                 } else {
                     ui.weak(t("Over the whole image the original is kept in memory, which takes about as much again as the image."));
                 }
@@ -958,16 +950,16 @@ fn generate_section(app: &mut App, ui: &mut egui::Ui) {
         ui.weak(t("Paints the satellite image in the colours of the surfaces of the mask, with their pattern, soft edges between them and the shading of the hills. It is a modifier, so it can be hidden, blended or deleted."));
         app.sat.gen_whole = area_row(app, ui, app.sat.gen_whole, "gen_shapes");
         if !app.sat.gen_whole {
-            row(ui, &t("Soft edge m"), |ui| { ui.add(egui::Slider::new(&mut app.sat.feather, 0.0..=40.0)); });
+            row(ui, &t("Soft edge m"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.sat.feather, 0.0..=40.0)); });
         }
         let g = &mut app.sat.gen;
-        row(ui, &t("Texture size m"), |ui| { ui.add(egui::Slider::new(&mut g.texture_m, 1.0..=64.0).logarithmic(true)).on_hover_text(t("Metres one repeat of a surface texture covers.")); });
-        row(ui, &t("Texture pattern"), |ui| { ui.add(egui::Slider::new(&mut g.detail, 0.0..=1.0)).on_hover_text(t("How much of the light and dark pattern of the surface texture shows.")); });
-        row(ui, &t("Edge between surfaces m"), |ui| { ui.add(egui::Slider::new(&mut g.blend_m, 0.0..=20.0)).on_hover_text(t("Width of the ragged, soft edge where one surface meets another.")); });
-        row(ui, &t("Patches"), |ui| { ui.add(egui::Slider::new(&mut g.variation, 0.0..=0.6)).on_hover_text(t("Larger areas a little lighter or darker, as real ground is.")); });
-        row(ui, &t("Patch size m"), |ui| { ui.add(egui::Slider::new(&mut g.variation_m, 10.0..=1000.0).logarithmic(true)); });
-        row(ui, &t("Hill shading"), |ui| { ui.add(egui::Slider::new(&mut g.hillshade, 0.0..=1.0)); });
-        row(ui, &t("Sun from"), |ui| { ui.add(egui::Slider::new(&mut g.sun_deg, 0.0..=360.0).suffix("°")).on_hover_text(t("Where the sun stands that shades the hills: 0 north, 90 east.")); });
+        row(ui, &t("Texture size m"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.texture_m, 1.0..=64.0).logarithmic(true)).on_hover_text(t("Metres one repeat of a surface texture covers.")); });
+        row(ui, &t("Texture pattern"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.detail, 0.0..=1.0)).on_hover_text(t("How much of the light and dark pattern of the surface texture shows.")); });
+        row(ui, &t("Edge between surfaces m"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.blend_m, 0.0..=20.0)).on_hover_text(t("Width of the ragged, soft edge where one surface meets another.")); });
+        row(ui, &t("Patches"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.variation, 0.0..=0.6)).on_hover_text(t("Larger areas a little lighter or darker, as real ground is.")); });
+        row(ui, &t("Patch size m"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.variation_m, 10.0..=1000.0).logarithmic(true)); });
+        row(ui, &t("Hill shading"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.hillshade, 0.0..=1.0)); });
+        row(ui, &t("Sun from"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.sun_deg, 0.0..=360.0).suffix("°")).on_hover_text(t("Where the sun stands that shades the hills: 0 north, 90 east.")); });
         ui.horizontal(|ui| {
             ui.checkbox(&mut g.water, t("Water under the sea level"));
             if g.water { ui.color_edit_button_srgb(&mut g.water_colour); }
@@ -976,7 +968,7 @@ fn generate_section(app: &mut App, ui: &mut egui::Ui) {
         surface_colours(app, ui);
         let has = app.doc.as_ref().is_some_and(|d| d.world.satellite.is_some());
         if !has {
-            row(ui, &t("Metres a pixel"), |ui| { ui.add(egui::Slider::new(&mut app.sat.gen_mpp, 0.25..=4.0).logarithmic(true)).on_hover_text(t("The project has no satellite image yet: a new one is made at this resolution.")); });
+            row(ui, &t("Metres a pixel"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.sat.gen_mpp, 0.25..=4.0).logarithmic(true)).on_hover_text(t("The project has no satellite image yet: a new one is made at this resolution.")); });
         }
         if ui.button(crate::icons::with(crate::icons::MAGIC_WAND, &t("Make the satellite"))).clicked() {
             generate_from_mask(app);
@@ -1110,7 +1102,7 @@ fn classify_section(app: &mut App, ui: &mut egui::Ui) {
         row(ui, &t("Brightness"), |ui| { ui.add(bc_slider(&mut c.adjust.brightness, legacy, 150.0)); });
         row(ui, &t("Contrast"), |ui| { ui.add(bc_slider(&mut c.adjust.contrast, legacy, 100.0)); });
         legacy_box(ui, &mut c.adjust.legacy);
-        row(ui, &t("Smoothing"), |ui| { ui.add(egui::Slider::new(&mut c.smooth, 0..=6).suffix(" px")).on_hover_text(t("Takes away specks: each pixel of the mask takes the colour most pixels round it have.")); });
+        row(ui, &t("Smoothing"), |ui| { ui.add(crate::theme::ValueField::new(&mut c.smooth, 0..=6).suffix(" px")).on_hover_text(t("Takes away specks: each pixel of the mask takes the colour most pixels round it have.")); });
         // The preview follows the settings.
         let key = {
             use std::hash::{Hash, Hasher};
@@ -1219,9 +1211,11 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &crate::icons::with(crate::icons::PAINT_BRUSH, &t("Brush")), true, |ui| {
         row(ui, &t("Paints"), |ui| {
             let before = app.sat.brush;
-            ui.selectable_value(&mut app.sat.brush, SatBrush::Clone, t("Clone")).on_hover_text(t("Copies another part of the image, or of a picture, onto the map."));
-            ui.selectable_value(&mut app.sat.brush, SatBrush::Adjust, t("Adjust")).on_hover_text(t("Makes the image lighter or darker, or changes its colours, where you paint."));
-            ui.selectable_value(&mut app.sat.brush, SatBrush::Colour, t("Colour")).on_hover_text(t("Paints a colour, plain or as a tint that keeps the pattern of the image."));
+            crate::theme::segmented(ui, &mut app.sat.brush, &[
+                (SatBrush::Clone, t("Clone"), t("Copies another part of the image, or of a picture, onto the map.")),
+                (SatBrush::Adjust, t("Adjust"), t("Makes the image lighter or darker, or changes its colours, where you paint.")),
+                (SatBrush::Colour, t("Colour"), t("Paints a colour, plain or as a tint that keeps the pattern of the image.")),
+            ]);
             // Strokes go on into a modifier of the brush's own kind.
             if before != app.sat.brush { app.sat.active = None; }
         });
@@ -1235,8 +1229,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         crate::panels::about(ui, &tf("Click in the preview, or on the map with {0} held, to choose where to copy from, then paint on the map. Wheel zooms the preview, dragging moves it.", &[k.hold(crate::keys::Hold::Pick).name()]));
         row(ui, &t("Copy from"), |ui| {
             let before = app.sat.from_file;
-            ui.selectable_value(&mut app.sat.from_file, false, t("Satellite"));
-            ui.selectable_value(&mut app.sat.from_file, true, t("Picture"));
+            crate::theme::segmented(ui, &mut app.sat.from_file, &[(false, t("Satellite"), String::new()), (true, t("Picture"), String::new())]);
             if before != app.sat.from_file {
                 // Another picture: its own point and view.
                 app.sat.source = None;
@@ -1281,13 +1274,13 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             };
         });
         brush_size_rows(app, ui);
-        ui.checkbox(&mut app.sat.aligned, t("Aligned")).on_hover_text(t("The source keeps its distance from the brush from one stroke to the next. Off: every stroke starts copying from the source point again."));
-        ui.checkbox(&mut app.sat.match_colour, t("Match the colour")).on_hover_text(t("The copy takes on the average colour of where it is painted, so a patch from elsewhere blends in. The pattern of the source stays."));
+        crate::theme::check_row(ui, &mut app.sat.aligned, t("Aligned")).on_hover_text(t("The source keeps its distance from the brush from one stroke to the next. Off: every stroke starts copying from the source point again."));
+        crate::theme::check_row(ui, &mut app.sat.match_colour, t("Match the colour")).on_hover_text(t("The copy takes on the average colour of where it is painted, so a patch from elsewhere blends in. The pattern of the source stays."));
         row(ui, &t("Turn"), |ui| {
-            ui.add(egui::Slider::new(&mut app.sat.turn, -180.0..=180.0).suffix("°")).on_hover_text(t("Turns what is copied about the source point, to lay fields or rows another way."));
+            ui.add(crate::theme::ValueField::new(&mut app.sat.turn, -180.0..=180.0).suffix("°")).on_hover_text(t("Turns what is copied about the source point, to lay fields or rows another way."));
         });
         row(ui, &t("Size of the copy"), |ui| {
-            ui.add(egui::Slider::new(&mut app.sat.scale, 0.25..=4.0).logarithmic(true).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).on_hover_text(t("How large the copy comes out against the source: to fit a picture of another resolution, or to make fields larger or smaller."));
+            ui.add(crate::theme::ValueField::new(&mut app.sat.scale, 0.25..=4.0).logarithmic(true).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).on_hover_text(t("How large the copy comes out against the source: to fit a picture of another resolution, or to make fields larger or smaller."));
         });
         if (app.sat.turn != 0.0 || app.sat.scale != 1.0) && ui.small_button(t("Straight and at full size")).clicked() {
             app.sat.turn = 0.0;
@@ -1301,12 +1294,12 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &crate::icons::with(crate::icons::STAMP, &t("Bake objects")), false, |ui| {
         ui.weak(t("Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted."));
         let selected = app.selection.len();
-        ui.checkbox(&mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
-        ui.checkbox(&mut app.sat.bake_plants, t("Trees and bushes too"));
-        ui.checkbox(&mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
-        ui.checkbox(&mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
+        crate::theme::check_row(ui, &mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
+        crate::theme::check_row(ui, &mut app.sat.bake_plants, t("Trees and bushes too"));
+        crate::theme::check_row(ui, &mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
+        crate::theme::check_row(ui, &mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
         bake_skip_ui(app, ui);
-        ui.checkbox(&mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
+        crate::theme::check_row(ui, &mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
         // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.
         let chosen = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == SatKind::Bake)).map(|m| (m.id, m.name.clone(), 1.0 - m.opacity as f32 / 255.0)));
         if let Some((_, _, blend)) = &chosen {
@@ -1316,7 +1309,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         }
         let mut changed = None;
         row(ui, &t("Blending"), |ui| {
-            let resp = ui.add(egui::Slider::new(&mut app.sat.bake_blend, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).on_hover_text(t("How far the baked objects fade into the satellite image under them."));
+            let resp = ui.add(crate::theme::ValueField::new(&mut app.sat.bake_blend, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).on_hover_text(t("How far the baked objects fade into the satellite image under them."));
             if resp.changed() {
                 changed = Some(resp.drag_started() || !resp.dragged());
             }

@@ -498,8 +498,12 @@ fn lock_icon(p: &egui::Painter, at: egui::Pos2, size: f32) {
     p.text(r.center(), egui::Align2::CENTER_CENTER, crate::icons::LOCK_SIMPLE, egui::FontId::proportional(size * 1.05), Color32::from_rgb(240, 200, 90));
 }
 
+/// The colour of folders, a quiet blue grey as in Workbench, so the models stand out.
+const FOLDER: Color32 = Color32::from_rgb(124, 146, 176);
+
 fn folder_icon(p: &egui::Painter, r: Rect, locked: bool) {
-    let c = if locked { Color32::from_rgb(150, 132, 96) } else { Color32::from_rgb(196, 160, 88) };
+    let r = r.shrink(r.width() * 0.1);
+    let c = if locked { Color32::from_rgb(98, 108, 122) } else { FOLDER };
     let tab = Rect::from_min_size(r.min + vec2(r.width() * 0.12, r.height() * 0.2), vec2(r.width() * 0.32, r.height() * 0.12));
     p.rect_filled(tab, 3.0, c.gamma_multiply(0.85));
     let body = Rect::from_min_max(r.min + vec2(r.width() * 0.1, r.height() * 0.28), r.max - vec2(r.width() * 0.1, r.height() * 0.16));
@@ -511,7 +515,7 @@ fn folder_icon(p: &egui::Painter, r: Rect, locked: bool) {
 
 fn draw_tile(ui: &egui::Ui, rect: Rect, side: f32, look: &Look, selected: bool, hovered: bool, folder: bool) {
     let p = ui.painter();
-    p.rect_filled(rect, 3.0, if selected { theme::ACCENT_SOFT } else if hovered { theme::HOVER } else { Color32::from_rgb(42, 42, 44) });
+    p.rect_filled(rect, 3.0, if selected { theme::ACCENT_SOFT } else if hovered { theme::HOVER } else if folder { Color32::TRANSPARENT } else { Color32::from_rgb(30, 30, 30) });
     if selected {
         p.rect_stroke(rect, 3.0, Stroke::new(1.0f32, theme::ACCENT), egui::StrokeKind::Inside);
     }
@@ -558,8 +562,11 @@ fn draw_tile(ui: &egui::Ui, rect: Rect, side: f32, look: &Look, selected: bool, 
         p.rect_filled(mark, 2.0, c);
         p.rect_stroke(mark, 2.0, Stroke::new(1.0f32, Color32::BLACK), egui::StrokeKind::Outside);
     }
-    let short: String = if look.name.chars().count() > 16 { look.name.chars().take(15).chain(['…']).collect() } else { look.name.clone() };
-    p.text(pos2(rect.center().x, rect.bottom() - 10.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::TEXT);
+    // The name cut to the width of the tile, so that names of narrow tiles do not run together.
+    let mut job = egui::text::LayoutJob::simple_singleline(look.name.clone(), egui::FontId::proportional(11.0), theme::TEXT);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(rect.width() - 6.0);
+    let galley = p.layout_job(job);
+    p.galley(pos2(rect.center().x - galley.size().x * 0.5, rect.bottom() - 10.0 - galley.size().y * 0.5), galley, theme::TEXT);
 }
 
 /// Models of a forest preset, the heaviest first.
@@ -992,7 +999,7 @@ fn source_row(ui: &mut egui::Ui, current: &Source, s: Source, text: String, acts
         _ => None,
     };
     if let Some(icon) = icon {
-        ui.label(egui::RichText::new(icon).color(Color32::from_rgb(214, 178, 100)));
+        ui.label(egui::RichText::new(icon).color(FOLDER));
     }
     let width = ui.fonts(|f| f.layout_no_wrap(text.clone(), egui::TextStyle::Button.resolve(ui.style()), Color32::WHITE).size().x);
     let cut = width + ui.spacing().button_padding.x * 2.0 > ui.available_width();
@@ -1007,8 +1014,9 @@ fn source_row(ui: &mut egui::Ui, current: &Source, s: Source, text: String, acts
 /// A row of the sources, with a padlock before what is built in.
 fn locked_row(ui: &mut egui::Ui, current: &Source, s: Source, text: String, acts: &mut Vec<Act>) -> egui::Response {
     if s.locked() {
+        // A quiet padlock in the tree; the yellow one marks locked tiles.
         let (r, _) = ui.allocate_exact_size(vec2(12.0, 14.0), egui::Sense::hover());
-        lock_icon(ui.painter(), r.min + vec2(0.0, 1.0), 11.0);
+        ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, crate::icons::LOCK_SIMPLE, egui::FontId::proportional(11.0), theme::TEXT_DIM);
     }
     source_row(ui, current, s, text, acts)
 }
@@ -1315,33 +1323,41 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
     // The bar with the way back, the path and the search.
     let source = app.browser.source.clone();
-    ui.horizontal(|ui| {
+    // One row of one height: the buttons, the path, the search, the filter and the tile size
+    // all stand on the same line.
+    const H: f32 = 24.0;
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), H + 2.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.set_min_height(H + 2.0);
+        ui.spacing_mut().interact_size.y = H;
         // The search and the filter keep their place at the right; the path is cut short before them.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // The size of the tiles, as in the Unreal content browser.
+                ui.spacing_mut().slider_width = 70.0;
+                ui.add(crate::theme::ValueField::new(&mut app.settings.library_tile, 48.0..=240.0).show_value(false)).on_hover_text(t("Tile size"));
+                ui.label(egui::RichText::new(crate::icons::MAGNIFYING_GLASS_PLUS).color(crate::theme::TEXT_DIM));
                 egui::ComboBox::from_id_salt("asset_kind").width(110.0).selected_text(t(["All models", "Trees and bushes", "Other models"][app.browser.kind as usize])).show_ui(ui, |ui| {
                     for (k, n) in ["All models", "Trees and bushes", "Other models"].iter().enumerate() {
                         ui.selectable_value(&mut app.browser.kind, k as u8, t(n));
                     }
                 });
-                let search = ui.add(egui::TextEdit::singleline(&mut app.filter).hint_text(format!("{} {}", crate::icons::MAGNIFYING_GLASS, tf("Search in {0}...", &[&source.label()]))).desired_width((ui.available_width() * 0.35).clamp(70.0, 200.0)));
+                let search = ui.add(egui::TextEdit::singleline(&mut app.filter).hint_text(format!("{} {}", crate::icons::MAGNIFYING_GLASS, tf("Search in {0}...", &[&source.label()]))).desired_width((ui.available_width() * 0.35).clamp(70.0, 200.0)).min_size(vec2(0.0, H)).vertical_align(egui::Align::Center));
                 if std::mem::take(&mut app.focus_search) { search.request_focus(); }
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
-                if ui.add_enabled(!app.browser.back.is_empty(), egui::Button::new(crate::icons::CARET_LEFT).small()).on_hover_text(t("Back")).clicked() {
+                if ui.add_enabled(!app.browser.back.is_empty(), egui::Button::new(crate::icons::CARET_LEFT).min_size(vec2(H, H))).on_hover_text(t("Back")).clicked() {
                     if let Some(s) = app.browser.back.pop() { app.browser.forward.push(std::mem::replace(&mut app.browser.source, s)); }
                 }
-                if ui.add_enabled(!app.browser.forward.is_empty(), egui::Button::new(crate::icons::CARET_RIGHT).small()).on_hover_text(t("Forward")).clicked() {
+                if ui.add_enabled(!app.browser.forward.is_empty(), egui::Button::new(crate::icons::CARET_RIGHT).min_size(vec2(H, H))).on_hover_text(t("Forward")).clicked() {
                     if let Some(s) = app.browser.forward.pop() { app.browser.back.push(std::mem::replace(&mut app.browser.source, s)); }
                 }
-                if ui.add_enabled(source.parent().is_some(), egui::Button::new(crate::icons::ARROW_UP).small()).on_hover_text(t("Up")).clicked() {
+                if ui.add_enabled(source.parent().is_some(), egui::Button::new(crate::icons::ARROW_UP).min_size(vec2(H, H))).on_hover_text(t("Up")).clicked() {
                     if let Some(p) = source.parent() { acts.push(Act::Go(p)); }
                 }
                 let crumbs = source.crumbs();
                 let n = crumbs.len();
                 for (k, (label, s)) in crumbs.into_iter().enumerate() {
                     if s.locked() && k == 0 {
-                        let (r, _) = ui.allocate_exact_size(vec2(12.0, 14.0), egui::Sense::hover());
-                        lock_icon(ui.painter(), r.min + vec2(0.0, 1.0), 11.0);
+                        ui.label(egui::RichText::new(crate::icons::LOCK_SIMPLE).size(11.0).color(theme::TEXT_DIM));
                     }
                     let r = ui.add(egui::Button::new(egui::RichText::new(label).strong()).frame(false));
                     if r.clicked() { acts.push(Act::Go(s.clone())); }
@@ -2478,8 +2494,9 @@ pub fn script(app: &mut App, cmd: &str, arg: &str) {
 
 fn locked_note(ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
+        // A quiet padlock in the tree; the yellow one marks locked tiles.
         let (r, _) = ui.allocate_exact_size(vec2(12.0, 14.0), egui::Sense::hover());
-        lock_icon(ui.painter(), r.min + vec2(0.0, 1.0), 11.0);
+        ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, crate::icons::LOCK_SIMPLE, egui::FontId::proportional(11.0), theme::TEXT_DIM);
         ui.weak(t("Built in: it cannot be changed, only duplicated."));
     });
 }
