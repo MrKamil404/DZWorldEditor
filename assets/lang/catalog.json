@@ -35,6 +35,10 @@
   "de": "1 lässt Essen verderben.",
   "pl": "1 pozwala jedzeniu się psuć."
  },
+ "1 object selected": {
+  "de": "1 Objekt ausgewählt",
+  "pl": "Zaznaczono 1 obiekt"
+ },
  "1 puts loot on the proxies of buildings.": {
   "de": "1 legt Beute auf die Proxys der Gebäude.",
   "pl": "1 kładzie loot na proxy budynków."
@@ -182,6 +186,10 @@
  "A new mission with the economy of {0}: {1} infected zones at the key points of villages and towns. Vehicles, events and area flags are still to be placed on this map.": {
   "de": "Neue Mission mit der Wirtschaft von {0}: {1} Infizierten-Zonen an den Key Points der Dörfer und Städte. Fahrzeuge, Events und Area Flags sind auf dieser Karte noch zu setzen.",
   "pl": "Nowa misja z ekonomią {0}: {1} stref zombie w key pointach wsi i miast. Pojazdy, eventy i area flags trzeba jeszcze rozstawić na tej mapie."
+ },
+ "A new modifier": {
+  "de": "Ein neuer Modifikator",
+  "pl": "Nowy modyfikator"
  },
  "A new surface for this texture": {
   "de": "Neue Oberfläche für diese Textur",
@@ -951,10 +959,6 @@
   "de": "Beide Seiten",
   "pl": "Obie strony"
  },
- "Bottom": {
-  "de": "Unten",
-  "pl": "Dół"
- },
  "Bounciness": {
   "de": "Rückprall",
   "pl": "Odbijanie"
@@ -1643,6 +1647,10 @@
   "de": "Klonpinsel {0}",
   "pl": "Pędzel klonujący {0}"
  },
+ "Close": {
+  "de": "Schließen",
+  "pl": "Zamknij"
+ },
  "Close the corners of thick walls": {
   "de": "Ecken dicker Mauern schließen",
   "pl": "Domykaj rogi grubych murów"
@@ -1718,10 +1726,6 @@
  "Content Browser": {
   "de": "Inhaltsbrowser",
   "pl": "Biblioteka"
- },
- "Content browser and log": {
-  "de": "Inhaltsbrowser und Protokoll",
-  "pl": "Przeglądarka zasobów i dziennik"
  },
  "Contour lines": {
   "de": "Höhenlinien",
@@ -2254,6 +2258,10 @@
  "Downloading {0}": {
   "de": "{0} wird heruntergeladen",
   "pl": "Pobieranie {0}"
+ },
+ "Drag a tab by its title to move it, to the edge of a panel to split it, or out of the window to float.": {
+  "de": "Ziehe einen Tab an seinem Titel, um ihn zu verschieben, an den Rand eines Bereichs, um ihn zu teilen, oder aus dem Fenster, damit er frei schwebt.",
+  "pl": "Przeciągnij zakładkę za tytuł, żeby ją przenieść, na krawędź panelu, żeby go podzielić, albo poza okno, żeby pływała osobno."
  },
  "Drag on the map paints the flag; with Shift it erases.": {
   "de": "Ziehen auf der Karte malt das Flag; mit Umschalt wird radiert.",
@@ -2967,6 +2975,10 @@
   "de": "Ebnen (Rechteck)",
   "pl": "Wyrównanie (prostokąt)"
  },
+ "Float in a window": {
+  "de": "In eigenem Fenster",
+  "pl": "Osobne okno"
+ },
  "Fly back": {
   "de": "Zurück fliegen",
   "pl": "Leć do tyłu"
@@ -3327,6 +3339,10 @@
   "de": "Rasterfeld {0} {1}",
   "pl": "Kratka {0} {1}"
  },
+ "Ground": {
+  "de": "Boden",
+  "pl": "Teren"
+ },
  "Ground colour on grass": {
   "de": "Bodenfarbe auf Gras",
   "pl": "Wpływ koloru satki na trawę"
@@ -3467,10 +3483,6 @@
   "de": "Hilfe",
   "pl": "Pomoc"
  },
- "Hidden": {
-  "de": "Ausgeblendet",
-  "pl": "Ukryte"
- },
  "High": {
   "de": "Hoch",
   "pl": "Wysokie"
@@ -3506,6 +3518,10 @@
  "Hold the button to paint objects.": {
   "de": "Taste halten, um Objekte zu malen.",
   "pl": "Przytrzymaj przycisk, aby malować obiekty."
+ },
+ "Holes": {
+  "de": "Löcher",
+  "pl": "Dziury"
  },
  "Hollows and ridges m": {
   "de": "Senken und Kämme m",
@@ -4167,6 +4183,10 @@
   "de": "Lokal",
   "pl": "Lokalnie"
  },
+ "Location": {
+  "de": "Position",
+  "pl": "Położenie"
+ },
  "Log": {
   "de": "Protokoll",
   "pl": "Dziennik"
@@ -4431,6 +4451,10 @@
   "de": "Max. Steigung %",
   "pl": "Maks. nachylenie %"
  },
+ "Maximise": {
+  "de": "Maximieren",
+  "pl": "Maksymalizuj"
+ },
  "Me ({0})": {
   "de": "Ich ({0})",
   "pl": "Ja ({0})"
@@ -4542,6 +4566,10 @@
  "Minimap": {
   "de": "Minikarte",
   "pl": "Minimapa"
+ },
+ "Minimise": {
+  "de": "Minimieren",
+  "pl": "Minimalizuj"
  },
  "Minimum distance": {
   "de": "Mindestabstand",
@@ -4730,6 +4758,10 @@
  "Moves them to a layer of the one you choose, made when they have none. Select an area of the map to give it.": {
   "de": "Verschiebt sie auf eine Ebene der gewählten Person, die angelegt wird, wenn sie keine hat. Wähle einen Bereich der Karte aus, um ihn zu übergeben.",
   "pl": "Przenosi je na warstwę wybranej osoby, tworząc ją, jeśli osoba żadnej nie ma. Zaznacz obszar mapy, aby go oddać."
+ },
+ "Moving along an arrow or over the ground goes by whole steps of the grid. Without it, Ctrl does the same while held.": {
+  "de": "Verschieben entlang eines Pfeils oder über den Boden geht in ganzen Rasterschritten. Ohne dies tut gedrücktes Strg dasselbe.",
+  "pl": "Przesuwanie wzdłuż strzałki albo po ziemi idzie pełnymi krokami siatki. Bez tego to samo robi wciśnięty Ctrl."
  },
  "My folders": {
   "de": "Meine Ordner",
@@ -5359,6 +5391,10 @@
   "de": "Textur der offenen Karte",
   "pl": "Tekstura otwartej mapy"
  },
+ "Open or create a project": {
+  "de": "Öffne oder erstelle ein Projekt",
+  "pl": "Otwórz albo utwórz projekt"
+ },
  "Open project": {
   "de": "Projekt öffnen",
   "pl": "Otwórz projekt"
@@ -5399,10 +5435,6 @@
   "de": "Gliederung",
   "pl": "Hierarchia"
  },
- "Outliner and details": {
-  "de": "Gliederung und Details",
-  "pl": "Konspekt i szczegóły"
- },
  "Output Log": {
   "de": "Ausgabeprotokoll",
   "pl": "Dziennik"
@@ -5442,6 +5474,10 @@
  "Own map centre": {
   "de": "Eigene Kartenmitte",
   "pl": "Własny środek mapy"
+ },
+ "Own title bar": {
+  "de": "Eigene Titelleiste",
+  "pl": "Własny pasek tytułu"
  },
  "Owner": {
   "de": "Besitzer",
@@ -5558,10 +5594,6 @@
  "Paints the satellite image in the colours of the surfaces of the mask, with their pattern, soft edges between them and the shading of the hills. It is a modifier, so it can be hidden, blended or deleted.": {
   "de": "Malt das Satellitenbild in den Farben der Oberflächen der Maske, mit ihrem Muster, weichen Rändern dazwischen und der Schattierung der Hügel. Es ist ein Modifikator, der ausgeblendet, überblendet oder gelöscht werden kann.",
   "pl": "Maluje zdjęcie satelitarne w kolorach powierzchni z maski, z ich wzorem, miękkimi krawędziami między nimi i cieniowaniem wzgórz. To modyfikator, więc można go ukryć, przenikać lub usunąć."
- },
- "Paints {0} (L{1})": {
-  "de": "Malt {0} (L{1})",
-  "pl": "Maluje {0} (L{1})"
  },
  "Parallax": {
   "de": "Parallax",
@@ -5782,6 +5814,10 @@
  "Placed {0} objects": {
   "de": "{0} Objekte platziert",
   "pl": "Postawiono obiektów: {0}"
+ },
+ "Placement": {
+  "de": "Platzierung",
+  "pl": "Umieszczenie"
  },
  "Places one": {
   "de": "Setzt eins",
@@ -6267,6 +6303,10 @@
   "de": "Restock",
   "pl": "Restock"
  },
+ "Restore": {
+  "de": "Wiederherstellen",
+  "pl": "Przywróć"
+ },
  "Reverse": {
   "de": "Umkehren",
   "pl": "Odwróć"
@@ -6435,6 +6475,10 @@
   "de": "Letztes Objekt um 180° drehen",
   "pl": "Obróć ostatni obiekt o 180°"
  },
+ "Rotation": {
+  "de": "Drehung",
+  "pl": "Obrót"
+ },
  "Rotation and size": {
   "de": "Drehung und Größe",
   "pl": "Obrót i rozmiar"
@@ -6575,6 +6619,10 @@
   "de": "In der Generatorbibliothek gespeichert",
   "pl": "Zapisano w bibliotece generatorów"
  },
+ "Saved just now": {
+  "de": "Gerade gespeichert",
+  "pl": "Zapisano przed chwilą"
+ },
  "Saved views": {
   "de": "Gespeicherte Ansichten",
   "pl": "Zapisane widoki"
@@ -6582,6 +6630,10 @@
  "Saved {0}": {
   "de": "{0} gespeichert",
   "pl": "Zapisano {0}"
+ },
+ "Saved {0} min ago": {
+  "de": "Vor {0} Min. gespeichert",
+  "pl": "Zapisano {0} min temu"
  },
  "Saves everything in here as a library file (.dzwelib) to give to others.": {
   "de": "Speichert alles hier als Bibliotheksdatei (.dzwelib) zum Weitergeben.",
@@ -6839,10 +6891,6 @@
   "de": "{0} gesendet: {1}",
   "pl": "Wysłano {0}: {1}"
  },
- "Separate window": {
-  "de": "Eigenes Fenster",
-  "pl": "Osobne okno"
- },
  "Server mission": {
   "de": "Servermission",
   "pl": "Misja serwera"
@@ -6918,6 +6966,10 @@
  "Shadows and effects": {
   "de": "Schatten und Effekte",
   "pl": "Cienie i efekty"
+ },
+ "Shape": {
+  "de": "Form",
+  "pl": "Kształt"
  },
  "Shape layers ({0})": {
   "de": "Formebenen ({0})",
@@ -7123,6 +7175,10 @@
   "de": "An Winkelschritten einrasten",
   "pl": "Przyciąganie do skoku kąta"
  },
+ "Snap to the grid": {
+  "de": "Am Raster einrasten",
+  "pl": "Przyciągaj do siatki"
+ },
  "Soft edge m": {
   "de": "Weiche Kante m",
   "pl": "Miękka krawędź m"
@@ -7307,9 +7363,9 @@
   "de": "Striche gehen in einen Maskenmodifikator, der ausgeblendet, teilweise gelöscht oder entfernt werden kann und sich in der Teamarbeit sauber zusammenführen lässt, wenn jede Person in ihrem eigenen malt. Aus: Striche gehen direkt auf die Maske, unter die Modifikatoren.",
   "pl": "Pociągnięcia trafiają do modyfikatora maski, który można ukryć, częściowo wymazać albo usunąć i który czysto łączy się w pracy zespołowej, gdy każdy maluje we własnym. Wyłączone: pociągnięcia trafiają prosto na maskę, pod modyfikatory."
  },
- "Strokes go to: {0}": {
-  "de": "Striche gehen in: {0}",
-  "pl": "Pociągnięcia trafiają do: {0}"
+ "Strokes go to": {
+  "de": "Striche gehen in",
+  "pl": "Pociągnięcia trafiają do"
  },
  "Stronger brush": {
   "de": "Stärkerer Pinsel",
@@ -7350,6 +7406,10 @@
  "Surface detail distance": {
   "de": "Oberflächen-Detailentfernung",
   "pl": "Zasięg detali powierzchni"
+ },
+ "Surface layer L{0}": {
+  "de": "Oberflächenebene L{0}",
+  "pl": "Warstwa powierzchni L{0}"
  },
  "Surface layers": {
   "de": "Oberflächenebenen",
@@ -7943,6 +8003,10 @@
   "de": "Die Maskenfarbe unter dem Modell: für Bäume als Waldboden und für das Werkzeug, das unter Objekte malt.",
   "pl": "Kolor maski malowany pod modelem: przez drzewa jako podłoże lasu i przez narzędzie malujące pod obiektami."
  },
+ "The menus sit in the title bar, which the editor draws itself. Off, Windows draws its usual title bar.": {
+  "de": "Die Menüs sitzen in der Titelleiste, die der Editor selbst zeichnet. Aus zeichnet Windows seine übliche Titelleiste.",
+  "pl": "Menu są w pasku tytułu, który rysuje edytor. Po wyłączeniu Windows rysuje swój zwykły pasek tytułu."
+ },
  "The middle of the box that holds the positions of the selected objects.": {
   "de": "Die Mitte des Rahmens, der die Positionen der gewählten Objekte enthält.",
   "pl": "Środek ramki, w której mieszczą się położenia zaznaczonych obiektów."
@@ -8210,6 +8274,10 @@
  "The variants of the objects made for dynamic events end in _DE (StaticObj_Wreck_BMP2_DE). Check the names below: they are guessed from the models.": {
   "de": "Die Varianten der Objekte für dynamische Events enden auf _DE (StaticObj_Wreck_BMP2_DE). Prüfe die Namen unten: sie sind aus den Modellen geraten.",
   "pl": "Warianty obiektów dla eventów dynamicznych kończą się na _DE (StaticObj_Wreck_BMP2_DE). Sprawdź nazwy poniżej: są zgadywane z modeli."
+ },
+ "The view cannot be closed.": {
+  "de": "Die Ansicht kann nicht geschlossen werden.",
+  "pl": "Widoku nie można zamknąć."
  },
  "The view is in a window of its own.": {
   "de": "Die Ansicht ist in einem eigenen Fenster.",
@@ -8642,6 +8710,10 @@
  "View {0}": {
   "de": "Ansicht {0}",
   "pl": "Widok {0}"
+ },
+ "Viewport": {
+  "de": "Ansicht",
+  "pl": "Widok"
  },
  "Village": {
   "de": "Dorf",

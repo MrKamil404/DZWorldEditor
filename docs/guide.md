@@ -8,17 +8,32 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 
 ## The window
 
-* **Menu bar**: File, Edit, View, Build, Team, Language and Help.
-  On the right, *Check for updates* and the installer of a new release.
+* **Title bar**: the editor draws its own, as Workbench does, with the menus in it: File, Edit,
+  View, Build, Team, Language and Help, the name of the project in the middle (a yellow dot while it
+  has unsaved changes), *Check for updates* and the buttons of the window. Drag it to move the window,
+  double click it to fill the screen. `Edit > Settings > Display > Own title bar` brings back the
+  usual Windows title bar.
 * **Toolbar**: Save, Undo and Redo, the nine tabs (keys 1-9), the gizmo (Move, Rotate, Scale, Copy in
-  a row, and World or Local axes), the views (3D, 2D, 3D | 2D) and **Build** and **Play**.
-* **Left panel**: the settings of the current tab.
-* **View**: the map in 3D, in 2D, or both side by side.
+  a row, and World or Local axes), snapping (the grid: when on, moving along an arrow or over the
+  ground goes by its step, 1 m at first, as Ctrl does while held; the angle step that Ctrl turns
+  by; and Ground, objects that stick to the ground), the views (3D, 2D, 3D | 2D) and **Build** and **Play**.
+* **Tools** (left): the settings of the current tab. The panel is named after the tab.
+* **Viewport**: the map in 3D, in 2D, or both side by side, with a thin yellow frame.
 * **Outliner** (right): terrain, mask and satellite modifiers, generators, roads and object
   layers. Click one to select it; the **Details** below it shows and changes what is selected.
-* **Bottom panel**: the **Content Browser**, the **Output Log** and the **Build** tab.
+* **Content Browser**, **Output Log** and **Build** under the view.
 * **Status bar**: the position, height, slope and surface under the pointer, the map and the number
   of objects, and what the renderer draws.
+
+Every panel is a tab, as in Unreal and Workbench. Drag a tab by its title onto another panel to put
+them together, onto the edge of a panel to split it, or out of the window to let it float. Right
+click a tab to close it or float it. **View > Window layout** opens closed panels again and has
+**Default layout**, which puts everything back. The layout is kept for the next start.
+
+Numbers in the panels are dark fields that fill with blue up to their value: drag across a field to
+change it, or click it to type a value and press Enter (Esc leaves it as it was). The tools of a tab
+are tiles with their picture over their name; the line under them tells what the chosen one does,
+in full under the pointer.
 
 ## Views and camera
 

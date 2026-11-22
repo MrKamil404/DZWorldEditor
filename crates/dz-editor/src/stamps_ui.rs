@@ -220,7 +220,7 @@ pub fn lay(app: &mut App, x: f32, z: f32) {
 
 /// The size, height and turn of a stamp, in the details of its modifier.
 pub fn details(ui: &mut egui::Ui, size: &mut f32, height: &mut f32, yaw: &mut f32) {
-    row(ui, &t("Size m"), |ui| { ui.add(egui::Slider::new(size, 4.0..=4000.0).logarithmic(true)); });
-    row(ui, &t("Height m"), |ui| { ui.add(egui::Slider::new(height, -300.0..=300.0)).on_hover_text(t("How high the highest part of the stamp rises; less than 0 turns it upside down.")); });
-    row(ui, &t("Turn"), |ui| { ui.add(egui::Slider::new(yaw, -180.0..=180.0).suffix("°")); });
+    row(ui, &t("Size m"), |ui| { ui.add(crate::theme::ValueField::new(size, 4.0..=4000.0).logarithmic(true)); });
+    row(ui, &t("Height m"), |ui| { ui.add(crate::theme::ValueField::new(height, -300.0..=300.0)).on_hover_text(t("How high the highest part of the stamp rises; less than 0 turns it upside down.")); });
+    row(ui, &t("Turn"), |ui| { ui.add(crate::theme::ValueField::new(yaw, -180.0..=180.0).suffix("°")); });
 }

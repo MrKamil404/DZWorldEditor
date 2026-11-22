@@ -241,7 +241,7 @@ pub fn give_selection(app: &mut App, person: String) {
     }
 }
 
-/// The choice of whose work the outliner shows.
+/// The choice of whose work the outliner shows, in the bar over it, left of the fold button.
 pub fn filter_ui(app: &mut App, ui: &mut egui::Ui) {
     if !active(app) {
         app.team.filter = None;
@@ -254,15 +254,14 @@ pub fn filter_ui(app: &mut App, ui: &mut egui::Ui) {
         Some(n) if *n == me => tf("Mine ({0})", &[n]),
         Some(n) => n.clone(),
     };
-    ui.horizontal(|ui| {
-        ui.label(icons::USERS).on_hover_text(t("Whose work the outliner shows: layers by their owner, modifiers, roads and generators by who made them."));
-        egui::ComboBox::from_id_salt("team_filter").selected_text(name(&app.team.filter)).show_ui(ui, |ui| {
-            ui.selectable_value(&mut app.team.filter, None, name(&None));
-            for p in &people {
-                ui.selectable_value(&mut app.team.filter, Some(p.clone()), name(&Some(p.clone())));
-            }
-        });
+    // Laid out right to left, in the bar over the outliner: the list, then its icon before it.
+    egui::ComboBox::from_id_salt("team_filter").width(110.0).selected_text(name(&app.team.filter)).show_ui(ui, |ui| {
+        ui.selectable_value(&mut app.team.filter, None, name(&None));
+        for p in &people {
+            ui.selectable_value(&mut app.team.filter, Some(p.clone()), name(&Some(p.clone())));
+        }
     });
+    ui.label(egui::RichText::new(icons::USERS).color(crate::theme::TEXT_DIM)).on_hover_text(t("Whose work the outliner shows: layers by their owner, modifiers, roads and generators by who made them."));
 }
 
 /// A copy of the world without the pixels of the satellite image, which team work leaves out.

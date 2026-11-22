@@ -108,9 +108,11 @@ pub enum TipAction {
 pub fn tip_row(ui: &mut egui::Ui, brushes: &mut Vec<CustomBrush>, shape: &mut BrushShape, picture: &mut Option<String>) -> TipAction {
     use dz_core::edit::BrushShape as B;
     let mut action = TipAction::None;
-    ui.horizontal_wrapped(|ui| {
+    // The tips side by side in the value column of a row named Shape, all of one size.
+    crate::theme::row(ui, &t("Shape"), |ui| { ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(3.0, 3.0);
         for (s, icon, name) in [(B::Circle, crate::tool_icons::Glyph::Circle, "Round"), (B::Square, crate::tool_icons::Glyph::Square, "Square"), (B::Diamond, crate::tool_icons::Glyph::Diamond, "Diamond")] {
-            if crate::tool_icons::button(ui, picture.is_none() && *shape == s, icon, t(name)).clicked() {
+            if crate::theme::choice(ui, picture.is_none() && *shape == s, t(name), |p, r, on| crate::tool_icons::draw(p, r, icon, on)).clicked() {
                 *shape = s;
                 *picture = None;
             }
@@ -121,9 +123,12 @@ pub fn tip_row(ui: &mut egui::Ui, brushes: &mut Vec<CustomBrush>, shape: &mut Br
                 let size = [b.preview.width() as usize, b.preview.height() as usize];
                 ui.ctx().load_texture(format!("brush-{}", b.path.display()), egui::ColorImage::from_rgba_unmultiplied(size, b.preview.as_raw()), egui::TextureOptions::LINEAR)
             });
-            let image = egui::Image::new(egui::load::SizedTexture::new(tex.id(), egui::vec2(22.0, 22.0)));
+            let id = tex.id();
             let chosen = picture.as_deref() == Some(b.name.as_str());
-            let r = ui.add(egui::Button::image(image).selected(chosen)).on_hover_text(&b.name);
+            let r = crate::theme::choice(ui, chosen, b.name.as_str(), |p, r, _| {
+                let side = r.height() + 2.0;
+                p.image(id, egui::Rect::from_center_size(r.center(), egui::vec2(side, side)), egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+            });
             if r.clicked() {
                 *picture = Some(b.name.clone());
             }
@@ -144,7 +149,7 @@ pub fn tip_row(ui: &mut egui::Ui, brushes: &mut Vec<CustomBrush>, shape: &mut Br
             }
         }
         let add_tip = tf("Add your own brushes: grey pictures, white works fully, black not at all. They are copied to {0}", &[&folder().display().to_string()]);
-        if ui.button(crate::icons::PLUS).on_hover_text(add_tip).clicked() {
+        if crate::theme::choice(ui, false, add_tip, |p, r, _| { p.text(r.center(), egui::Align2::CENTER_CENTER, crate::icons::PLUS, egui::FontId::proportional(14.0), crate::theme::TEXT); }).clicked() {
             if let Some(files) = rfd::FileDialog::new().set_title(t("Choose brush pictures")).add_filter(t("Pictures"), &EXTENSIONS).pick_files() {
                 let (last, problems) = add(brushes, files);
                 if last.is_some() {
@@ -155,18 +160,18 @@ pub fn tip_row(ui: &mut egui::Ui, brushes: &mut Vec<CustomBrush>, shape: &mut Br
                 }
             }
         }
-    });
+    }); });
     action
 }
 
 /// The spray switch and its density.
 pub fn spray_row(ui: &mut egui::Ui, on: &mut bool, density: &mut f32) {
-    ui.horizontal(|ui| {
-        let tip = format!("{}
-{}", t("Spray"), t("Sprays scattered dots that fill in while the button is held, instead of covering the whole brush."));
-        if crate::tool_icons::button(ui, *on, crate::tool_icons::Glyph::Spray, tip).clicked() { *on = !*on; }
+    // A switch named Spray; while on, its density fills the rest of the row.
+    crate::theme::row(ui, &t("Spray"), |ui| {
+        let tip = t("Sprays scattered dots that fill in while the button is held, instead of covering the whole brush.");
+        if crate::theme::choice(ui, *on, tip, |p, r, active| crate::tool_icons::draw(p, r, crate::tool_icons::Glyph::Spray, active)).clicked() { *on = !*on; }
         if *on {
-            ui.add(egui::Slider::new(density, 0.01..=0.6).logarithmic(true).show_value(false)).on_hover_text(t("Density"));
+            ui.add(crate::theme::ValueField::new(density, 0.01..=0.6).logarithmic(true).custom_formatter(|v, _| format!("{:.0}%", v * 100.0)).custom_parser(|s| s.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v| v / 100.0))).on_hover_text(t("Density"));
         }
     });
 }

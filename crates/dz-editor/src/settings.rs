@@ -84,6 +84,9 @@ pub struct Settings {
     pub layout: crate::layout::Layout,
     pub language: String,
     pub ui_scale: f32,
+    /// The editor draws its own title bar, with the menus in it, as Workbench and Unreal do.
+    /// Off, Windows draws its usual one.
+    pub own_title_bar: bool,
     pub tools: ToolPaths,
     pub recent: Vec<PathBuf>,
     pub terrain_quality: f32,
@@ -150,6 +153,10 @@ pub struct Settings {
     pub lasso: bool,
     /// The step lines and turns snap to while the snap key is held, in degrees.
     pub angle_step: f32,
+    /// Moving along an arrow of the gizmo or over the ground goes by whole steps of the grid.
+    pub grid_snap: bool,
+    /// The step of the grid, in metres.
+    pub grid_step: f32,
     /// Moved and turned objects take the tilt of the ground under them.
     pub align_to_ground: bool,
     /// Key help in the panels: the key tables and the lines telling what clicks and keys do.
@@ -252,9 +259,9 @@ impl Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            language: String::new(), ui_scale: 1.0, tools: ToolPaths::default(), recent: Vec::new(),
+            language: String::new(), ui_scale: 1.0, own_title_bar: true, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
-            check_updates: true, experimental: false, team_name: String::new(), extra_mods: String::new(), with_client: true, check_before_build: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, game_surfaces: true, surface_pixels: false, row_gap: 0.0, row_angle: 0.0, row_flip: false, row_turn: 0.0, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, pivot_mode: PivotMode::default(), turn_about_press: false, lasso: false, layout: Default::default(), occlusion: false, show_fps: true, angle_step: 15.0, align_to_ground: false, show_hints: true, split_ratio: 0.5, split_stacked: false, split_swapped: false, top_follow: false, top_models: true, minimap: true, minimap_size: 200.0, camera_speed: 60.0, lighting: Lighting::default(),
+            check_updates: true, experimental: false, team_name: String::new(), extra_mods: String::new(), with_client: true, check_before_build: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, game_surfaces: true, surface_pixels: false, row_gap: 0.0, row_angle: 0.0, row_flip: false, row_turn: 0.0, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, pivot_mode: PivotMode::default(), turn_about_press: false, lasso: false, layout: Default::default(), occlusion: false, show_fps: true, angle_step: 15.0, grid_snap: false, grid_step: 1.0, align_to_ground: false, show_hints: true, split_ratio: 0.5, split_stacked: false, split_swapped: false, top_follow: false, top_models: true, minimap: true, minimap_size: 200.0, camera_speed: 60.0, lighting: Lighting::default(),
             texture_size: 2048, model_memory: 0, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6, keys: Default::default(), export: Default::default(),
         }
     }

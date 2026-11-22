@@ -42,10 +42,15 @@ pub enum Glyph {
 pub fn button(ui: &mut egui::Ui, active: bool, glyph: Glyph, tip: String) -> egui::Response {
     let (rect, r) = ui.allocate_exact_size(vec2(34.0, 30.0), egui::Sense::click());
     let hovered = r.hovered();
-    let fill = if active { theme::ACCENT } else if hovered { Color32::from_rgb(70, 70, 70) } else { Color32::from_rgb(56, 56, 56) };
+    let fill = if active { theme::ACCENT } else if hovered { theme::HOVER } else { theme::SECTION };
     ui.painter().rect_filled(rect, 4.0, fill);
     draw(ui.painter(), rect.shrink2(vec2(5.0, 4.0)), glyph, active);
     r.on_hover_text(tip)
+}
+
+/// A tool as a tile, its picture over its name, as the tools of a mode are shown.
+pub fn tile(ui: &mut egui::Ui, active: bool, glyph: Glyph, name: &str, tip: String) -> egui::Response {
+    theme::tool_tile(ui, active, name, tip, |p, r, on| draw(p, r, glyph, on))
 }
 
 /// One picture in `rect`.

@@ -217,10 +217,10 @@ pub fn stamp_ui(ui: &mut egui::Ui, s: &mut StampSettings, salt: &str, geometry: 
         ui.weak(t("The patch then follows the outline of each model seen from above, and its size is the margin round it."));
     }
     row(ui, &t("Patch size"), |ui| {
-        ui.add(egui::Slider::new(&mut s.size_m, 0.5..=30.0).logarithmic(true).suffix(" m"));
+        ui.add(crate::theme::ValueField::new(&mut s.size_m, 0.5..=30.0).logarithmic(true).suffix(" m"));
     });
     row(ui, &t("Size variation"), |ui| {
-        ui.add(egui::Slider::new(&mut s.randomize_size, 0.0..=0.9));
+        ui.add(crate::theme::ValueField::new(&mut s.randomize_size, 0.0..=0.9));
     });
     ui.checkbox(&mut s.randomize_rotation, t("Random rotation of patches"));
     ui.checkbox(&mut s.follow_scale, t("Patch grows with the object"));
@@ -269,14 +269,14 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
         for (id, name, enabled, strokes) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                if ui.add(egui::Button::new(crate::icons::EYE).small().selected(*enabled)).on_hover_text(t("Visible")).clicked() {
+                if crate::theme::row_switch(ui, *enabled, crate::icons::EYE, crate::icons::EYE_SLASH, t("Visible")).clicked() {
                     toggle = Some((*id, !*enabled));
                 }
-                if ui.add(egui::Button::new(crate::icons::TRASH).small()).on_hover_text(t("Delete the modifier; what it covered comes back")).clicked() {
+                if crate::theme::row_switch(ui, true, crate::icons::TRASH, "", t("Delete the modifier; what it covered comes back")).clicked() {
                     delete = Some(*id);
                 }
                 // A modifier of brush strokes can be chosen for the next strokes to go into.
-                let row = if *strokes { ui.selectable_label(app.paint.target == Some(*id), name).on_hover_text(t("Click to paint into this modifier")) } else { ui.label(name) };
+                let row = if *strokes { crate::theme::list_row(ui, app.paint.target == Some(*id), crate::icons::PAINT_BRUSH, crate::theme::KIND_LAYER, name.as_str(), "").on_hover_text(t("Click to paint into this modifier")) } else { crate::theme::list_row(ui, false, crate::icons::STACK, crate::theme::KIND_LAYER, name.as_str(), "") };
                 if *strokes && row.clicked() {
                     app.paint.target = Some(*id);
                     app.paint.into_modifier = true;
