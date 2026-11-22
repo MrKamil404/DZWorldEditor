@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.2.9
+
+### New
+
+- **A new look.** Darker panels on a darker ground, one blue for what is active, the Segoe UI
+  font of Windows, and a thin yellow frame round the view.
+- **Every panel is a tab.** Drag a tab by its title onto another panel to put them together, onto
+  the edge of a panel to split it, or out of the window to let it float. Right click a tab to close
+  or float it. **View > Window layout** opens closed panels again and has **Default layout**. Your
+  layout is kept for the next start.
+- **The editor draws its own title bar**, with the menus, the name of the project (a yellow dot
+  while it has unsaved changes) and the buttons of the window. Drag it to move the window, double
+  click it to fill the screen; the edges of the window resize it.
+  `Edit > Settings > Display > Own title bar` brings back the usual Windows title bar.
+- **A new toolbar:** the modes as icons over their names, the gizmo, the views as 3D / 2D / 3D | 2D,
+  and **Build** (with its key) and **Play** at the right.
+- **Snap to the grid.** A new switch in the toolbar: while it is on, moving along an arrow of the
+  gizmo or over the ground goes by whole steps of the grid (1 m at first; the step can be changed
+  next to the switch). Without it, Ctrl does the same while held, as before. The angle step and
+  **Ground** (objects stick to the ground) sit next to it.
+- **Tidier panels:**
+  - Numbers are dark fields that fill with blue up to their value: drag across a field to change
+    it, or click it to type a value.
+  - Names sit in one column and values in the next; every other row is a shade lighter.
+    Switches are in the column of values.
+  - The tools of Sculpt, Shapes, Roads and Key points are tiles with their picture over their name.
+  - The line telling what a tool does is one quiet line; the whole text shows under the pointer
+    (or in full with *Show key help* on).
+- **Outliner:** rows as wide as the panel with an icon in the colour of their kind (roads,
+  generators, layers, models...), the number of objects at the right, and icons to show and edit
+  layers. The team filter sits in the bar over it.
+- **Details:** the model with its folder at the top, then **Transform** with Location, Rotation and
+  Scale as X, Y and Z fields in the colours of the axes, then **Placement** (layer, ground).
+- **Paint:** the brush shows the colour, name and number of the layer it paints, with the
+  eyedropper beside it. Shape, Spray and where the strokes go are rows of their own.
+- **Content Browser:** quieter blue-grey folders, names cut to the width of their tile, the tile
+  size next to the search, and the bar over it all on one line.
+- The status bar tells when the project was last saved.
+
+### Fixed
+
+- **The mask colour of a surface layer can be changed again.** The colour button in the menu of a
+  layer closed the menu as soon as you clicked the picker. The picker is now in a submenu of its
+  own, and the colour square at the top of the Paint panel opens it too.
+- **A changed mask colour can be undone** with Ctrl+Z.
+- A warning shows when two surface layers have the same colour, which the mask of the map cannot
+  tell apart.
+- "1 objects selected" reads "1 object selected", and values that round to zero no longer show a
+  minus ("-0.0", "-0.000").
+- A long message keeps to one line of the status bar; all of it shows under the pointer.
+- The README and the guide show the new look, with a new picture of the forest generator.
+
+### Good to know
+
+- Projects are saved as before: projects of 0.2.9 open in 0.2.8 and the other way round.
+- The window layout of older versions is read once: panels you had on another side start there.
+  An older version still opens with its own layout, ignoring the tabs.
+- In full screen (F11) the panels still slide in from the edges as before; tabs floated out of the
+  window are not shown there.
+
 ## 0.2.8
 
 ### New

@@ -8,7 +8,7 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 
 ## The window
 
-* **Title bar**: the editor draws its own, as Workbench does, with the menus in it: File, Edit,
+* **Title bar**: the editor draws its own, with the menus in it: File, Edit,
   View, Build, Team, Language and Help, the name of the project in the middle (a yellow dot while it
   has unsaved changes), *Check for updates* and the buttons of the window. Drag it to move the window,
   double click it to fill the screen. `Edit > Settings > Display > Own title bar` brings back the
@@ -25,7 +25,7 @@ For the server mission see [mission-editor.md](mission-editor.md), for several p
 * **Status bar**: the position, height, slope and surface under the pointer, the map and the number
   of objects, and what the renderer draws.
 
-Every panel is a tab, as in Unreal and Workbench. Drag a tab by its title onto another panel to put
+Every panel is a tab. Drag a tab by its title onto another panel to put
 them together, onto the edge of a panel to split it, or out of the window to let it float. Right
 click a tab to close it or float it. **View > Window layout** opens closed panels again and has
 **Default layout**, which puts everything back. The layout is kept for the next start.
@@ -287,6 +287,8 @@ The Content Browser at the bottom holds:
 A generator is dropped on a shape, a road or the map (or select the shape first and double-click
 the generator). It appears in the outliner, where its settings can be changed and it can be run
 again.
+
+![A forest generator and its settings in the Details](screenshots/forest.jpg)
 
 The rules of Surface painting and of the Scatter generator have **More conditions** besides height
 and slope: hollows and ridges (how far the ground lies below the ground round it), wetness (where

@@ -683,7 +683,13 @@ fn status_bar(app: &mut App, ctx: &egui::Context) {
                 ui.add(egui::ProgressBar::new(task.job.progress()).desired_width(220.0).text(format!("{}: {}", task.title, task.job.current_stage())));
                 cancel = ui.small_button(t("Cancel")).clicked();
             } else {
-                ui.label(RichText::new(&app.status).small());
+                // One line: the first of the message, cut to the room left; all of it under the pointer.
+                let first = app.status.lines().next().unwrap_or_default();
+                let room = ui.available_width() * 0.5;
+                ui.scope(|ui| {
+                    ui.set_max_width(room);
+                    ui.add(egui::Label::new(RichText::new(first).small()).truncate()).on_hover_text(&app.status);
+                });
             }
             if cancel {
                 if let Some(task) = &app.task { task.job.cancel(); }

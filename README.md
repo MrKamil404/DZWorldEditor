@@ -46,6 +46,8 @@ The [editor guide](docs/guide.md) describes every tab, the views and the menus i
 | **Generators** in the Content Browser | **Key points** imported from Terrain Builder |
 | ![The mission editor](docs/screenshots/mission.jpg) | ![A stone bridge over a river](docs/screenshots/bridge.jpg) |
 | **Mission editor** with the loot table of a mission | **Bridges and rivers** from a Terrain Builder project |
+| ![A forest generator](docs/screenshots/forest.jpg) | ![A row of walls](docs/screenshots/rows.jpg) |
+| **Forest generator** filling an area, its settings in the Details | **Rows of walls and fences** laid with the copy gizmo |
 
 *Screenshots show the Balticrus map, imported from its Terrain Builder project.*
 

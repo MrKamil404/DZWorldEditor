@@ -238,7 +238,12 @@ pub fn vector_row(ui: &mut egui::Ui, label: &str, fields: &mut [(&mut f32, f64, 
         for (v, speed, color, tip) in fields.iter_mut() {
             // A turned and turned back value may be -0, shown as "-0.0"; it is the same as 0.
             if **v == 0.0 { **v = 0.0; }
-            let r = ui.add_sized([width, 22.0], egui::DragValue::new(&mut **v).speed(*speed).max_decimals(3));
+            // Shown with up to three decimals, and without a minus for what rounds to zero.
+            let r = ui.add_sized([width, 22.0], egui::DragValue::new(&mut **v).speed(*speed).custom_formatter(|n, _| {
+                let s = format!("{n:.3}");
+                let s = s.trim_end_matches('0').trim_end_matches('.').to_string();
+                if s == "-0" { "0".to_string() } else { s }
+            }));
             let bar = egui::Rect::from_min_size(r.rect.min, egui::vec2(3.0, r.rect.height()));
             ui.painter().rect_filled(bar, CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }, *color);
             done |= r.drag_stopped() || r.lost_focus();
