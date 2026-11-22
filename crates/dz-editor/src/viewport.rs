@@ -2318,9 +2318,10 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                 }
                 // Held keys make a drag anywhere turn or scale the selection about its middle:
                 // Shift turns it, Ctrl+Shift turns it by steps, Alt scales it. A click without
-                // moving still selects, Shift adding to the selection.
+                // moving still selects, Shift adding to the selection. Shift+Alt leaves the
+                // selection alone and draws a box or lasso that adds to it.
                 let stepped = modifiers.shift && (modifiers.ctrl || modifiers.command);
-                let turn = modifiers.shift && !(modifiers.ctrl || modifiers.command);
+                let turn = modifiers.shift && !modifiers.alt && !(modifiers.ctrl || modifiers.command);
                 let scale = modifiers.alt && !modifiers.shift && !(modifiers.ctrl || modifiers.command) && handle_allowed(app, Handle::Scale);
                 if let (true, Some(mut p)) = (turn || stepped || scale, pivot) {
                     // A turn can take the spot of the press for its centre.
@@ -2360,7 +2361,10 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                         return;
                     }
                 }
-                app.box_select = Some((mouse, mouse, modifiers.shift || modifiers.ctrl));
+                // Shift (or Shift+Alt while something is selected, since Shift alone turns it)
+                // adds what the box takes in, Ctrl takes it out, as a click with them does.
+                let op = if modifiers.ctrl || modifiers.command { BoxOp::Remove } else if modifiers.shift { BoxOp::Add } else { BoxOp::Replace };
+                app.box_select = Some((mouse, mouse, op));
                 app.lasso_points = if app.settings.lasso { vec![mouse] } else { Vec::new() };
             }
             let whole = app.whole.is_some();
@@ -2394,13 +2398,13 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     app.lasso_points.push(mouse);
                 }
                 if !primary_down {
-                    let (a, b, add_mode) = app.box_select.take().unwrap();
+                    let (a, b, op) = app.box_select.take().unwrap();
                     let outline = std::mem::take(&mut app.lasso_points);
                     if outline.len() >= 3 {
                         let r = outline.iter().fold(Rect::NOTHING, |r, p| r.union(Rect::from_min_max(*p, *p)));
-                        finish_selection_in(app, v, r.min, r.max, add_mode, Some(&outline));
+                        finish_selection_in(app, v, r.min, r.max, op, Some(&outline));
                     } else {
-                        finish_selection(app, v, a, b, add_mode);
+                        finish_selection_in(app, v, a, b, op, None);
                     }
                 }
                 ctx.request_repaint();
@@ -2446,12 +2450,25 @@ fn inside_outline(outline: &[Pos2], p: Pos2) -> bool {
     inside
 }
 
-fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
-    finish_selection_in(app, v, a, b, add_mode, None);
+/// What a box or lasso does with the selection.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BoxOp {
+    /// Picks only what it takes in.
+    Replace,
+    /// Adds what it takes in (Shift).
+    Add,
+    /// Takes what it takes in out of the selection (Ctrl).
+    Remove,
 }
 
-/// Selects what is in the box from `a` to `b`, or within `outline` when one is drawn.
-fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool, outline: Option<&[Pos2]>) {
+fn finish_selection(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool) {
+    finish_selection_in(app, v, a, b, if add_mode { BoxOp::Add } else { BoxOp::Replace }, None);
+}
+
+/// Selects what is in the box from `a` to `b`, or within `outline` when one is drawn. A click
+/// (a box too small to count) with Shift or Ctrl turns the object under it on or off.
+fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, op: BoxOp, outline: Option<&[Pos2]>) {
+    let add_mode = op != BoxOp::Replace;
     app.leave_browser();
     // The one object picked before, for a click on the same spot to go to the one under it.
     let only = (app.selection.len() == 1).then(|| app.selection.iter().next().copied()).flatten();
@@ -2540,7 +2557,13 @@ fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, add_mode: bool
                 }
             }
         });
-        app.selection.extend(found);
+        if op == BoxOp::Remove {
+            for id in found {
+                app.selection.remove(&id);
+            }
+        } else {
+            app.selection.extend(found);
+        }
     }
     app.selection_rev += 1;
 }
@@ -3520,15 +3543,17 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
             crate::road_draw::draw(app, &painter, v, world, cursor);
         }
     }
-    if let Some((a, b, _)) = app.box_select {
+    if let Some((a, b, op)) = app.box_select {
+        // A box that takes objects out is drawn red.
+        let (line, fill) = if op == BoxOp::Remove { (Color32::from_rgb(230, 80, 70), Color32::from_rgba_unmultiplied(224, 60, 50, 40)) } else { (theme::ACCENT, Color32::from_rgba_unmultiplied(0, 112, 224, 40)) };
         if app.lasso_points.len() >= 2 {
             // The outline drawn so far, closed back to where it began.
             let mut pts = app.lasso_points.clone();
             pts.push(pts[0]);
-            painter.add(egui::Shape::line(pts, Stroke::new(1.5_f32, theme::ACCENT)));
+            painter.add(egui::Shape::line(pts, Stroke::new(1.5_f32, line)));
         } else if !app.settings.lasso {
             let r = Rect::from_two_pos(a, b);
-            painter.rect(r, 0.0, Color32::from_rgba_unmultiplied(0, 112, 224, 40), Stroke::new(1.0_f32, theme::ACCENT), egui::StrokeKind::Inside);
+            painter.rect(r, 0.0, fill, Stroke::new(1.0_f32, line), egui::StrokeKind::Inside);
         }
     }
     if app.mode == Mode::Select {
@@ -3940,7 +3965,16 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let shown_model = app.selected_model();
     let mut reveal = None;
     let mut make_prefab = false;
+    let areas = if app.mode == Mode::Shapes { app.selected_areas() } else { 0 };
+    let mut select_inside = None;
     resp.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        if areas > 0 {
+            if ui.button(crate::icons::with(crate::icons::SELECTION_ALL, &t("Select objects inside"))).on_hover_text(t("Selects the objects inside the selected areas and opens the Select tool. Hold Shift to add them to what is already selected.")).clicked() {
+                select_inside = Some(ui.input(|i| i.modifiers.shift));
+                ui.close_menu();
+            }
+            ui.separator();
+        }
         if let Some(m) = &shown_model {
             if ui.button(crate::icons::with(crate::icons::PACKAGE, &t("Create prefab from the selection"))).clicked() {
                 make_prefab = true;
@@ -3978,6 +4012,9 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     }
     if make_prefab {
         app.create_prefab();
+    }
+    if let Some(add) = select_inside {
+        app.select_inside_shapes(add);
     }
 }
 
@@ -5006,6 +5043,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "model" => app.place.model = Some(arg),
+        // The scale range of the Place tool: `placescale 0.8 1.4`.
+        "placescale" if nums.len() >= 2 => (app.place.scale_min, app.place.scale_max) = (nums[0], nums[1]),
         "undo" => app.undo(),
         "pad" => { let f = app.place.pad_falloff; app.add_pads_for_selection(f); }
         "gen" => match arg.as_str() {

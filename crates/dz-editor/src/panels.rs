@@ -765,7 +765,7 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::CURSOR_CLICK, &t("Selection")), true, |ui| {
         let n = app.selection.len();
         status(ui, &if n == 0 { t("Nothing selected") } else { selected_text(n) }, n > 0);
-        about(ui, &t("Click selects, a drag selects all inside, Shift adds to the selection."));
+        about(ui, &t("Click selects, a drag selects all inside. Shift+click adds, Shift+Alt+drag adds all inside, Ctrl+drag takes it out."));
         theme::button_columns(ui, 3, |c| {
             let w = c[0].available_width();
             let wide = |b: egui::Button<'static>| b.min_size(vec2(w, 24.0));
@@ -851,6 +851,8 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
             ("Shift".to_string(), t("Drag: turn")),
             ("Ctrl+Shift".to_string(), t("Drag: turn by steps")),
             ("Alt".to_string(), t("Drag: scale")),
+            ("Shift+Alt".to_string(), t("Drag: add to the selection")),
+            ("Ctrl".to_string(), t("Drag: take out of the selection")),
             (k.text(Action::Underground), t(Action::Underground.name())),
             (k.text(Action::CameraBelow), t(Action::CameraBelow.name())),
         ]);
@@ -1290,13 +1292,33 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
         }
     });
     section(ui, &icons::with(icons::ARROWS_CLOCKWISE, &t("Rotation and size")), true, |ui| {
-        theme::check_row(ui, &mut app.place.random_yaw, t("Random rotation"));
-        theme::check_row(ui, &mut app.place.align, t("Align to slope"));
+        // A preset places its models with its own options, so those are the ones shown here.
+        let preset = app.place.preset.and_then(|id| app.library.objects.iter().position(|p| p.id == id));
+        let (mut random, mut align, mut lo, mut hi) = match preset {
+            Some(i) => { let p = &app.library.objects[i]; (p.random_yaw, p.align, p.scale_min, p.scale_max) }
+            None => (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max),
+        };
+        if let Some(i) = preset {
+            about(ui, &tf("Saved with the preset {0}.", &[&app.library.objects[i].name]));
+        }
+        theme::check_row(ui, &mut random, t("Random rotation"));
+        theme::check_row(ui, &mut align, t("Align to slope"));
         row(ui, &t("Scale"), |ui| {
-            ui.add(egui::DragValue::new(&mut app.place.scale_min).range(0.1..=4.0).speed(0.01).prefix(format!("{} ", t("from"))));
-            ui.add(egui::DragValue::new(&mut app.place.scale_max).range(0.1..=4.0).speed(0.01).prefix(format!("{} ", t("to"))));
+            let tip = t("Each placed object gets a random size in this range.");
+            ui.add(egui::DragValue::new(&mut lo).range(0.1..=4.0).speed(0.01).prefix(format!("{} ", t("from")))).on_hover_text(&tip);
+            ui.add(egui::DragValue::new(&mut hi).range(0.1..=4.0).speed(0.01).prefix(format!("{} ", t("to")))).on_hover_text(&tip);
         });
-        if app.place.scale_max < app.place.scale_min { app.place.scale_max = app.place.scale_min; }
+        if hi < lo { hi = lo; }
+        match preset {
+            Some(i) => {
+                let p = &mut app.library.objects[i];
+                if (p.random_yaw, p.align, p.scale_min, p.scale_max) != (random, align, lo, hi) {
+                    (p.random_yaw, p.align, p.scale_min, p.scale_max) = (random, align, lo, hi);
+                    app.lib_dirty = true;
+                }
+            }
+            None => (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = (random, align, lo, hi),
+        }
     });
     section(ui, &icons::with(icons::STACK, &t("Terrain under objects")), false, |ui| {
         theme::check_row(ui, &mut app.place.auto_pad, t("Level the ground when placing"));
@@ -1520,6 +1542,11 @@ fn shape_details(app: &mut App, ui: &mut egui::Ui) {
             to_line = Some(shape.points.clone());
         }
     }
+    let mut select_inside = None;
+    if app.selected_areas() > 0 {
+        let r = ui.button(crate::icons::with(crate::icons::SELECTION_ALL, &t("Select objects inside"))).on_hover_text(t("Selects the objects inside the selected areas and opens the Select tool. Hold Shift to add them to what is already selected."));
+        if r.clicked() { select_inside = Some(ui.input(|i| i.modifiers.shift)); }
+    }
     if ui.button(t("Delete shape")).clicked() { remove = true; }
     if changed {
         layers[first.0].shapes[first.1] = shape;
@@ -1560,6 +1587,8 @@ fn shape_details(app: &mut App, ui: &mut egui::Ui) {
     if remove {
         app.shape.vertex = None;
         app.delete_shape_part();
+    } else if let Some(add) = select_inside {
+        app.select_inside_shapes(add);
     }
 }
 
@@ -2452,6 +2481,7 @@ fn object_details(app: &mut App, ui: &mut egui::Ui) {
     let mut o = before;
     let path = doc.world.objects.model_path(&o).to_string();
     let mut done = false;
+    let mut free_variant = false;
     let file = path.rsplit('\\').next().unwrap_or(&path).to_string();
     let folder = path[..path.len() - file.len()].trim_end_matches('\\').to_string();
     theme::details_head(ui, icons::CUBE, theme::KIND_MODEL, &file, &folder);
@@ -2470,7 +2500,24 @@ fn object_details(app: &mut App, ui: &mut egui::Ui) {
             o.flags ^= FLAG_ABSOLUTE;
             done = true;
         }
+        // The game sets the height of these from the ground under their land contact points.
+        let info = app.db.get(&path);
+        if dz_core::model_info::stands_on_contacts(&info) && o.flags & FLAG_ABSOLUTE == 0 {
+            ui.add_space(2.0);
+            ui.colored_label(theme::WARN, icons::with(icons::INFO, &t("Stands on the ground")))
+                .on_hover_text(t("This model has placement = slopelandcontact: the game puts its land contact points on the ground and does not use the elevation, so it cannot be raised or sunk. Its copy without land contact (_nolc) keeps the elevation it is given."));
+            if let Some(free) = app.db.free_variant(&path) {
+                let name = free.rsplit('\\').next().unwrap_or(&free).trim_end_matches(".p3d").to_string();
+                if ui.button(tf("Use {0}, which can be raised", &[&name])).on_hover_text(t("Puts the copy without land contact in place of the selected objects of this kind. They stay where they are shown.")).clicked() {
+                    free_variant = true;
+                }
+            }
+        }
     });
+    if free_variant {
+        app.use_free_variants();
+        return;
+    }
     if o != before {
         doc.world.objects.update(id, o);
         doc.dirty.objects = true;
