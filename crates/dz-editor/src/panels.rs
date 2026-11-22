@@ -13,7 +13,17 @@ use dz_core::world::{ModMode, ModShape, SurfaceLayer};
 use eframe::egui::{self, pos2, vec2, Color32, Rect, RichText};
 
 pub fn new_project_dialog() -> Dialog {
-    Dialog::NewProject(NewProject { name: "NewMap".into(), preset: 4, base: 60.0, folder: String::new() })
+    Dialog::NewProject(NewProject { name: "NewMap".into(), preset: 4, base: 60.0, folder: String::new(), real: false, place: Default::default() })
+}
+
+/// The New project window set to make the map of a real place.
+pub fn real_place_dialog() -> Dialog {
+    let mut d = new_project_dialog();
+    if let Dialog::NewProject(p) = &mut d {
+        p.real = true;
+        p.name = "RealMap".into();
+    }
+    d
 }
 
 pub fn ui(app: &mut App, ctx: &egui::Context) {
@@ -254,6 +264,7 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
             let keys = app.settings.keys.clone();
             ui.menu_button(t("File"), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                 if ui.add(egui::Button::new(icons::with(icons::FILE_PLUS, &t("New project..."))).shortcut_text(keys.text(Action::NewProject))).clicked() { app.dialog = new_project_dialog(); ui.close_menu(); }
+                if ui.button(icons::with(icons::GLOBE_HEMISPHERE_EAST, &t("New project from a real place..."))).clicked() { app.dialog = real_place_dialog(); ui.close_menu(); }
                 if ui.add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Open project..."))).shortcut_text(keys.text(Action::Open))).clicked() { ui.close_menu(); app.pick_and_open(); }
                 ui.menu_button(icons::with(icons::CLOCK, &t("Recent projects")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
                     for d in app.settings.recent.clone() {
@@ -2936,6 +2947,31 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
         Dialog::None => {}
         Dialog::NewProject(p) => {
             egui::Window::new(t("New project")).collapsible(false).resizable(false).open(&mut open).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+                theme::segmented(ui, &mut p.real, &[
+                    (false, crate::icons::with(crate::icons::SQUARE, &t("Flat ground")), t("An empty map at one height.")),
+                    (true, crate::icons::with(crate::icons::GLOBE_HEMISPHERE_EAST, &t("Real place")), t("The satellite picture, heights and OpenStreetMap shapes of a real place.")),
+                ]);
+                ui.add_space(4.0);
+                if p.real {
+                    row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut p.name); });
+                    row(ui, &t("Folder"), |ui| {
+                        ui.add(egui::TextEdit::singleline(&mut p.folder).desired_width(200.0));
+                        if ui.button("…").clicked() {
+                            if let Some(d) = rfd::FileDialog::new().pick_folder() { p.folder = d.display().to_string(); }
+                        }
+                    });
+                    ui.add_space(4.0);
+                    crate::real_terrain_ui::ui(ui, p);
+                    ui.add_space(6.0);
+                    let ready = crate::real_terrain_ui::ready(p);
+                    let r = ui.add_enabled(ready.is_ok() && app.task.is_none(), egui::Button::new(crate::icons::with(crate::icons::DOWNLOAD_SIMPLE, &t("Download and create"))));
+                    let r = match &ready { Err(e) => r.on_disabled_hover_text(e), Ok(()) => r };
+                    if r.clicked() {
+                        crate::real_terrain_ui::create(app, p);
+                        close = true;
+                    }
+                    return;
+                }
                 row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut p.name); });
                 row(ui, &t("Size"), |ui| {
                     let text = |i: usize| { let (n, c) = SIZE_PRESETS[i]; format!("{n} × {c} m  =  {} m", n as f32 * c) };

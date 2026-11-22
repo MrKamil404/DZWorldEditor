@@ -116,12 +116,16 @@ pub struct SatTool {
     pub classify_whole: bool,
     class_small: Option<(u64, Arc<RgbImage>)>,
     class_preview: Option<(egui::TextureHandle, u64)>,
-    class_share: [f32; 8],
+    class_share: [f32; dz_core::satgen::MAX_PICKED],
+    /// How many colours "Find colours" looks for.
+    class_find: usize,
+    /// The preview of picked colours shows the satellite itself, to pick from.
+    class_picture: bool,
 }
 
 impl Default for SatTool {
     fn default() -> Self {
-        Self { brush: SatBrush::Clone, adjust: Adjust::default(), blur: 0.0, colour: [122, 104, 78], blend: BlendMode::Tint, fill_layer: None, correct_whole: true, correcting: None, feather: 3.0, line_width: 4.0, radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, aligned: true, anchor: None, turn: 0.0, scale: 1.0, match_colour: false, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_above_ground: true, bake_blend: 0.35, blending: false, gen: Default::default(), gen_colours: Vec::new(), gen_whole: true, gen_mpp: 1.0, classify: Default::default(), classify_whole: true, class_small: None, class_preview: None, class_share: [0.0; 8] }
+        Self { brush: SatBrush::Clone, adjust: Adjust::default(), blur: 0.0, colour: [122, 104, 78], blend: BlendMode::Tint, fill_layer: None, correct_whole: true, correcting: None, feather: 3.0, line_width: 4.0, radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, aligned: true, anchor: None, turn: 0.0, scale: 1.0, match_colour: false, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_above_ground: true, bake_blend: 0.35, blending: false, gen: Default::default(), gen_colours: Vec::new(), gen_whole: true, gen_mpp: 1.0, classify: Default::default(), classify_whole: true, class_small: None, class_preview: None, class_share: [0.0; dz_core::satgen::MAX_PICKED], class_find: 4, class_picture: false }
     }
 }
 
@@ -1086,8 +1090,8 @@ const CLASS_PREVIEW: usize = 320;
 
 /// The settings of surfaces read from the satellite, with a preview of its colour classes.
 fn classify_section(app: &mut App, ui: &mut egui::Ui) {
+    use dz_core::satgen::{ClassifyMode, PickedColour, SatClassify, MAX_PICKED};
     section(ui, &crate::icons::with(crate::icons::PALETTE, &t("Surfaces from the satellite")), false, |ui| {
-        ui.weak(t("Brightness and contrast push the satellite image to a few strong colours, as Photoshop's legacy brightness and contrast does. Each colour that comes out can become a surface of the mask."));
         let Some(sat) = app.doc.as_ref().and_then(|d| d.world.satellite.as_ref()) else {
             ui.colored_label(crate::theme::WARN, t("The project has no satellite image"));
             return;
@@ -1097,59 +1101,132 @@ fn classify_section(app: &mut App, ui: &mut egui::Ui) {
             app.sat.class_small = Some((app.sat.revision, Arc::new(sat.resized(CLASS_PREVIEW, CLASS_PREVIEW))));
             app.sat.class_preview = None;
         }
+        let small = app.sat.class_small.as_ref().map(|s| s.1.clone()).expect("made above");
+        let layers = app.doc.as_ref().map(|d| d.world.layers.clone()).unwrap_or_default();
+        let mut mode = app.sat.classify.mode;
+        let changed = crate::theme::segmented(ui, &mut mode, &[
+            (ClassifyMode::Colours, t("Colour groups"), t("Pushes the image to eight strong colours. Good for pictures made of flat colours.")),
+            (ClassifyMode::Natural, t("Natural colours"), t("Tells forest, grass, fields, soil, rock and roads apart in a real satellite photo.")),
+            (ClassifyMode::Picked, t("Picked colours"), t("Your own list of colours: each pixel takes the nearest one.")),
+        ]);
+        if changed {
+            app.sat.classify = match mode {
+                ClassifyMode::Colours => SatClassify::default(),
+                ClassifyMode::Natural => SatClassify::natural(&layers),
+                ClassifyMode::Picked => SatClassify::picked(&small, 4, &layers),
+            };
+        }
+        ui.weak(match mode {
+            ClassifyMode::Colours => t("Brightness and contrast push the satellite image to a few strong colours, as Photoshop's legacy brightness and contrast does. Each colour that comes out can become a surface of the mask."),
+            ClassifyMode::Natural => t("Each pixel gets the kind of ground its colour looks like. Lighter makes less forest and more grass and rock. Each kind can become a surface of the mask."),
+            ClassifyMode::Picked => t("Each pixel takes the nearest of the colours below, so four colours make a mask of four surfaces. Click the picture to add the colour of that place."),
+        });
         let c = &mut app.sat.classify;
-        let legacy = c.adjust.legacy;
-        row(ui, &t("Brightness"), |ui| { ui.add(bc_slider(&mut c.adjust.brightness, legacy, 150.0)); });
-        row(ui, &t("Contrast"), |ui| { ui.add(bc_slider(&mut c.adjust.contrast, legacy, 100.0)); });
-        legacy_box(ui, &mut c.adjust.legacy);
+        if c.mode != ClassifyMode::Picked {
+            let legacy = c.adjust.legacy;
+            row(ui, &t("Brightness"), |ui| { ui.add(bc_slider(&mut c.adjust.brightness, legacy, 150.0)); });
+            row(ui, &t("Contrast"), |ui| { ui.add(bc_slider(&mut c.adjust.contrast, legacy, 100.0)); });
+            if c.mode == ClassifyMode::Colours {
+                legacy_box(ui, &mut c.adjust.legacy);
+            }
+        }
         row(ui, &t("Smoothing"), |ui| { ui.add(crate::theme::ValueField::new(&mut c.smooth, 0..=6).suffix(" px")).on_hover_text(t("Takes away specks: each pixel of the mask takes the colour most pixels round it have.")); });
+        if c.mode == ClassifyMode::Picked {
+            ui.horizontal(|ui| {
+                let n = &mut app.sat.class_find;
+                if ui.button(crate::icons::with(crate::icons::MAGIC_WAND, &t("Find colours"))).on_hover_text(t("Finds this many colours that stand for the picture best, each with the surface of the nearest colour.")).clicked() {
+                    *c = SatClassify { smooth: c.smooth, ..SatClassify::picked(&small, *n, &layers) };
+                }
+                ui.add(crate::theme::ValueField::new(n, 2..=MAX_PICKED));
+                ui.checkbox(&mut app.sat.class_picture, t("Show the picture")).on_hover_text(t("Shows the satellite instead of the colours, to pick from."));
+            });
+        }
         // The preview follows the settings.
+        let picture = c.mode == ClassifyMode::Picked && app.sat.class_picture;
         let key = {
             use std::hash::{Hash, Hasher};
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            serde_json::to_string(&(&c.adjust, c.smooth)).unwrap_or_default().hash(&mut h);
+            serde_json::to_string(&(&c.adjust, c.smooth, c.mode, &c.picked, picture)).unwrap_or_default().hash(&mut h);
             app.sat.revision.hash(&mut h);
             h.finish()
         };
         if app.sat.class_preview.as_ref().map(|p| p.1) != Some(key) {
-            if let Some((_, small)) = &app.sat.class_small {
-                let cls = dz_core::satgen::classes(small, &c.adjust, CLASS_PREVIEW, CLASS_PREVIEW);
-                let cls = dz_core::satgen::smooth_classes(&cls, CLASS_PREVIEW, CLASS_PREVIEW, c.smooth.min(2));
-                let mut share = [0.0f32; 8];
-                let mut rgba = Vec::with_capacity(cls.len() * 4);
-                for k in &cls {
-                    share[*k as usize] += 1.0 / cls.len() as f32;
-                    let col = dz_core::satgen::CLASS_COLOURS[*k as usize];
-                    rgba.extend([col[0], col[1], col[2], 255]);
-                }
-                app.sat.class_share = share;
-                let image = egui::ColorImage::from_rgba_unmultiplied([CLASS_PREVIEW, CLASS_PREVIEW], &rgba);
-                app.sat.class_preview = Some((ui.ctx().load_texture("sat_classes", image, egui::TextureOptions::NEAREST), key));
+            let cls = c.classes(&small, CLASS_PREVIEW, CLASS_PREVIEW);
+            let cls = dz_core::satgen::smooth_classes(&cls, CLASS_PREVIEW, CLASS_PREVIEW, c.smooth.min(2));
+            let mut share = [0.0f32; MAX_PICKED];
+            let mut rgba = Vec::with_capacity(cls.len() * 4);
+            for (i, k) in cls.iter().enumerate() {
+                share[(*k as usize).min(MAX_PICKED - 1)] += 1.0 / cls.len() as f32;
+                let col = if picture { [small.data[i * 3], small.data[i * 3 + 1], small.data[i * 3 + 2]] } else { c.colour(*k as usize) };
+                rgba.extend([col[0], col[1], col[2], 255]);
             }
+            app.sat.class_share = share;
+            let image = egui::ColorImage::from_rgba_unmultiplied([CLASS_PREVIEW, CLASS_PREVIEW], &rgba);
+            app.sat.class_preview = Some((ui.ctx().load_texture("sat_classes", image, egui::TextureOptions::NEAREST), key));
         }
         if let Some((tex, _)) = &app.sat.class_preview {
             let side = ui.available_width().clamp(160.0, 320.0);
-            ui.image((tex.id(), egui::vec2(side, side)));
+            let picking = c.mode == ClassifyMode::Picked && c.picked.len() < MAX_PICKED;
+            let r = ui.add(egui::Image::new((tex.id(), egui::vec2(side, side))).sense(if picking { egui::Sense::click() } else { egui::Sense::hover() }));
+            if picking {
+                let r = r.on_hover_cursor(egui::CursorIcon::Crosshair).on_hover_text(t("Click to add the colour of this place"));
+                if let Some(p) = r.interact_pointer_pos().filter(|_| r.clicked()) {
+                    // The average of the pixels round the click, so one odd pixel does not count.
+                    let at = |v: f32, lo: f32| (((v - lo) / side * CLASS_PREVIEW as f32) as i64).clamp(0, CLASS_PREVIEW as i64 - 1);
+                    let (x, y) = (at(p.x, r.rect.left()), at(p.y, r.rect.top()));
+                    let mut sum = [0u32; 4];
+                    for dy in -1..=1i64 {
+                        for dx in -1..=1i64 {
+                            let (xx, yy) = ((x + dx).clamp(0, CLASS_PREVIEW as i64 - 1) as usize, (y + dy).clamp(0, CLASS_PREVIEW as i64 - 1) as usize);
+                            let q = (yy * CLASS_PREVIEW + xx) * 3;
+                            for k in 0..3 {
+                                sum[k] += small.data[q + k] as u32;
+                            }
+                            sum[3] += 1;
+                        }
+                    }
+                    let colour = [(sum[0] / sum[3]) as u8, (sum[1] / sum[3]) as u8, (sum[2] / sum[3]) as u8];
+                    c.picked.push(PickedColour { colour, surface: dz_core::satgen::guess_surface(&small, colour, &layers) });
+                }
+            }
         }
-        let layers: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
+        let names: Vec<String> = layers.iter().map(|l| l.name.clone()).collect();
         let leave = t("Leave as it is");
-        for k in 0..8 {
-            if app.sat.class_share[k] < 0.001 && app.sat.classify.surfaces[k].is_none() {
+        let mut remove = None;
+        for k in 0..app.sat.classify.count() {
+            let c = &mut app.sat.classify;
+            let picked = c.mode == ClassifyMode::Picked;
+            if !picked && app.sat.class_share[k] < 0.001 && c.surface(k).is_none() {
                 continue;
             }
             ui.horizontal(|ui| {
-                let col = dz_core::satgen::CLASS_COLOURS[k];
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-                ui.painter().rect_filled(rect, 2.0, egui::Color32::from_rgb(col[0], col[1], col[2]));
-                ui.painter().rect_stroke(rect, 2.0, egui::Stroke::new(1.0_f32, egui::Color32::GRAY), egui::StrokeKind::Inside);
-                ui.label(format!("{} {:.0}%", t(dz_core::satgen::CLASS_NAMES[k]), app.sat.class_share[k] * 100.0));
-                let target = &mut app.sat.classify.surfaces[k];
-                let shown = target.and_then(|i| layers.get(i).cloned()).unwrap_or_else(|| leave.clone());
-                egui::ComboBox::from_id_salt(("sat_class", k)).selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
+                if picked {
+                    ui.color_edit_button_srgb(&mut c.picked[k].colour);
+                    ui.label(format!("{:.0}%", app.sat.class_share[k] * 100.0));
+                } else {
+                    let col = c.colour(k);
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 2.0, egui::Color32::from_rgb(col[0], col[1], col[2]));
+                    ui.painter().rect_stroke(rect, 2.0, egui::Stroke::new(1.0_f32, egui::Color32::GRAY), egui::StrokeKind::Inside);
+                    ui.label(format!("{} {:.0}%", t(c.names()[k]), app.sat.class_share[k] * 100.0));
+                }
+                let width = ui.available_width() - if picked { 26.0 } else { 0.0 };
+                let target = if picked { &mut c.picked[k].surface } else { &mut c.surfaces[k] };
+                let shown = target.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| leave.clone());
+                egui::ComboBox::from_id_salt(("sat_class", k)).selected_text(shown).width(width).show_ui(ui, |ui| {
                     ui.selectable_value(target, None, &leave);
-                    for (i, n) in layers.iter().enumerate() { ui.selectable_value(target, Some(i), n); }
+                    for (i, n) in names.iter().enumerate() { ui.selectable_value(target, Some(i), n); }
                 });
+                if picked && ui.small_button(crate::icons::X).on_hover_text(t("Remove the colour")).clicked() {
+                    remove = Some(k);
+                }
             });
+        }
+        if let Some(k) = remove {
+            app.sat.classify.picked.remove(k);
+        }
+        if app.sat.classify.mode == ClassifyMode::Picked && app.sat.classify.picked.len() < MAX_PICKED && ui.button(crate::icons::with(crate::icons::PLUS, &t("Add colour"))).clicked() {
+            app.sat.classify.picked.push(PickedColour { colour: [128, 128, 128], surface: None });
         }
         app.sat.classify_whole = area_row(app, ui, app.sat.classify_whole, "classify_shapes");
         if ui.button(crate::icons::with(crate::icons::PALETTE, &t("Paint the surfaces"))).clicked() {
@@ -1166,7 +1243,7 @@ pub fn classify_to_mask(app: &mut App) {
         app.warn(t("The project has no satellite image"));
         return;
     };
-    if app.sat.classify.surfaces.iter().all(|s| s.is_none()) {
+    if (0..app.sat.classify.count()).all(|k| app.sat.classify.surface(k).is_none()) {
         app.warn(t("Choose a surface for at least one colour"));
         return;
     }
@@ -1188,7 +1265,7 @@ pub fn classify_to_mask(app: &mut App) {
     let label = t("Surfaces from the satellite");
     app.spawn(label.clone(), move |job| {
         job.stage("Sorting the colours of the satellite");
-        let cls = dz_core::satgen::classes(&small, &settings.adjust, mw, mh);
+        let cls = settings.classes(&small, mw, mh);
         let cls = dz_core::satgen::smooth_classes(&cls, mw, mh, settings.smooth);
         let test = area.as_ref().map(|a| move |x: f32, z: f32| a.contains(x, z));
         let data = dz_core::satgen::mask_from_classes(&lite, &cls, &settings, test.as_ref().map(|f| f as &(dyn Fn(f32, f32) -> bool + Sync)));

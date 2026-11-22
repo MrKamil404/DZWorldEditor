@@ -356,12 +356,247 @@ pub struct SatClassify {
     /// Radius in mask pixels of the smoothing that takes away specks: each pixel takes the
     /// class most pixels round it have.
     pub smooth: u32,
+    /// How the pixels are sorted into classes.
+    pub mode: ClassifyMode,
+    /// The colours of [`ClassifyMode::Picked`], each with its surface; at most [`MAX_PICKED`].
+    pub picked: Vec<PickedColour>,
 }
+
+/// How the pixels of the satellite are sorted into classes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ClassifyMode {
+    /// Brightness and contrast push each channel off or full: eight strong colours.
+    #[default]
+    Colours,
+    /// Kinds of ground of a real photo ([`natural_classes`]).
+    Natural,
+    /// Each pixel takes the nearest of colours the user chose ([`picked_classes`]).
+    Picked,
+}
+
+/// A colour of [`ClassifyMode::Picked`] and the surface it becomes.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PickedColour {
+    pub colour: [u8; 3],
+    pub surface: Option<usize>,
+}
+
+/// Most colours of [`ClassifyMode::Picked`].
+pub const MAX_PICKED: usize = 16;
 
 impl Default for SatClassify {
     fn default() -> Self {
-        Self { adjust: Adjust { brightness: 0.37, contrast: 1.0, legacy: true, ..Adjust::default() }, surfaces: [None; 8], smooth: 1 }
+        Self { adjust: Adjust { brightness: 0.37, contrast: 1.0, legacy: true, ..Adjust::default() }, surfaces: [None; 8], smooth: 1, mode: ClassifyMode::Colours, picked: Vec::new() }
     }
+}
+
+impl SatClassify {
+    /// Kinds of ground of a real photo, each given to the surface whose name fits it.
+    pub fn natural(layers: &[crate::world::SurfaceLayer]) -> Self {
+        Self { adjust: Adjust::default(), surfaces: natural_surfaces(layers), smooth: 2, mode: ClassifyMode::Natural, picked: Vec::new() }
+    }
+    /// `n` colours found in the satellite ([`find_colours`]), each given a surface by
+    /// [`guess_surface`].
+    pub fn picked(sat: &RgbImage, n: usize, layers: &[crate::world::SurfaceLayer]) -> Self {
+        let picked = find_colours(sat, n).into_iter().map(|colour| PickedColour { colour, surface: guess_surface(sat, colour, layers) }).collect();
+        Self { adjust: Adjust::default(), surfaces: [None; 8], smooth: 2, mode: ClassifyMode::Picked, picked }
+    }
+    /// How many classes there are.
+    pub fn count(&self) -> usize {
+        match self.mode {
+            ClassifyMode::Picked => self.picked.len().min(MAX_PICKED),
+            _ => 8,
+        }
+    }
+    /// The surface class `k` becomes.
+    pub fn surface(&self, k: usize) -> Option<usize> {
+        match self.mode {
+            ClassifyMode::Picked => self.picked.get(k).and_then(|p| p.surface),
+            _ => self.surfaces.get(k).copied().flatten(),
+        }
+    }
+    /// The class of every pixel of the satellite at `width` × `height`.
+    pub fn classes(&self, sat: &RgbImage, width: usize, height: usize) -> Vec<u8> {
+        match self.mode {
+            ClassifyMode::Colours => classes(sat, &self.adjust, width, height),
+            ClassifyMode::Natural => natural_classes(sat, &self.adjust, width, height),
+            ClassifyMode::Picked => picked_classes(sat, &self.picked.iter().take(MAX_PICKED).map(|p| p.colour).collect::<Vec<_>>(), width, height),
+        }
+    }
+    /// Names of the classes, in English for the interface to translate; none for picked colours.
+    pub fn names(&self) -> &'static [&'static str] {
+        match self.mode {
+            ClassifyMode::Colours => &CLASS_NAMES,
+            ClassifyMode::Natural => &NATURAL_NAMES,
+            ClassifyMode::Picked => &[],
+        }
+    }
+    /// The colour class `k` is shown in.
+    pub fn colour(&self, k: usize) -> [u8; 3] {
+        match self.mode {
+            ClassifyMode::Colours => CLASS_COLOURS[k & 7],
+            ClassifyMode::Natural => NATURAL_COLOURS[k & 7],
+            ClassifyMode::Picked => self.picked.get(k).map_or([0, 0, 0], |p| p.colour),
+        }
+    }
+}
+
+/// A colour in CIE L*a*b*, where equal distances look about equally different.
+fn lab(c: [u8; 3]) -> [f32; 3] {
+    let lin = |v: u8| {
+        let v = v as f32 / 255.0;
+        if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    };
+    let (r, g, b) = (lin(c[0]), lin(c[1]), lin(c[2]));
+    let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047;
+    let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883;
+    let f = |t: f32| if t > 0.008856 { t.cbrt() } else { 7.787 * t + 16.0 / 116.0 };
+    let (fx, fy, fz) = (f(x), f(y), f(z));
+    [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
+}
+
+fn lab_distance(a: [f32; 3], b: [f32; 3]) -> f32 {
+    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
+}
+
+/// Each pixel of the satellite at `width` × `height` takes the nearest of `colours` (by how
+/// different they look), so a mask of four surfaces needs only four colours.
+pub fn picked_classes(sat: &RgbImage, colours: &[[u8; 3]], width: usize, height: usize) -> Vec<u8> {
+    let small = if sat.width == width && sat.height == height { sat.clone() } else { sat.resized(width, height) };
+    if colours.is_empty() {
+        return vec![0; width * height];
+    }
+    let targets: Vec<[f32; 3]> = colours.iter().map(|c| lab(*c)).collect();
+    small
+        .data
+        .par_chunks(3)
+        .map(|c| {
+            let l = lab([c[0], c[1], c[2]]);
+            let mut best = (0usize, f32::MAX);
+            for (k, t) in targets.iter().enumerate() {
+                let d = lab_distance(l, *t);
+                if d < best.1 {
+                    best = (k, d);
+                }
+            }
+            best.0 as u8
+        })
+        .collect()
+}
+
+/// The `n` colours that stand for the satellite best (k-means in L*a*b* over a sample of its
+/// pixels), darkest first. The same picture always gives the same colours.
+pub fn find_colours(sat: &RgbImage, n: usize) -> Vec<[u8; 3]> {
+    use rand::{Rng, SeedableRng};
+    let n = n.clamp(1, MAX_PICKED);
+    let px = sat.data.len() / 3;
+    if px == 0 {
+        return vec![[128, 128, 128]; n];
+    }
+    let step = (px / 40_000).max(1);
+    let rgb: Vec<[u8; 3]> = (0..px).step_by(step).map(|i| [sat.data[i * 3], sat.data[i * 3 + 1], sat.data[i * 3 + 2]]).collect();
+    let sample: Vec<[f32; 3]> = rgb.iter().map(|c| lab(*c)).collect();
+    let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+    // k-means++: each next centre far from those already taken.
+    let mut centres = vec![sample[rng.gen_range(0..sample.len())]];
+    let mut near = vec![f32::MAX; sample.len()];
+    while centres.len() < n {
+        let last = *centres.last().unwrap();
+        for (d, s) in near.iter_mut().zip(&sample) {
+            *d = d.min(lab_distance(*s, last));
+        }
+        let total: f32 = near.iter().sum();
+        if total <= 0.0 {
+            break;
+        }
+        let mut pick = rng.gen_range(0.0..total);
+        let mut chosen = sample.len() - 1;
+        for (i, d) in near.iter().enumerate() {
+            if pick < *d {
+                chosen = i;
+                break;
+            }
+            pick -= d;
+        }
+        centres.push(sample[chosen]);
+    }
+    let k = centres.len();
+    let mut owner = vec![0usize; sample.len()];
+    for _ in 0..25 {
+        owner.par_iter_mut().zip(&sample).for_each(|(o, s)| {
+            *o = (0..k).min_by(|a, b| lab_distance(*s, centres[*a]).total_cmp(&lab_distance(*s, centres[*b]))).unwrap_or(0);
+        });
+        let mut sum = vec![[0f32; 4]; k];
+        for (o, s) in owner.iter().zip(&sample) {
+            for c in 0..3 {
+                sum[*o][c] += s[c];
+            }
+            sum[*o][3] += 1.0;
+        }
+        for (c, s) in centres.iter_mut().zip(&sum) {
+            if s[3] > 0.0 {
+                *c = [s[0] / s[3], s[1] / s[3], s[2] / s[3]];
+            }
+        }
+    }
+    // Each colour is the average of the real pixels it took, darkest first.
+    let mut sum = vec![[0u64; 4]; k];
+    for (o, c) in owner.iter().zip(&rgb) {
+        for i in 0..3 {
+            sum[*o][i] += c[i] as u64;
+        }
+        sum[*o][3] += 1;
+    }
+    let mut out: Vec<([u8; 3], f32)> = sum.iter().zip(&centres).filter(|(s, _)| s[3] > 0).map(|(s, c)| ([(s[0] / s[3]) as u8, (s[1] / s[3]) as u8, (s[2] / s[3]) as u8], c[0])).collect();
+    out.sort_by(|a, b| a.1.total_cmp(&b.1));
+    out.into_iter().map(|o| o.0).collect()
+}
+
+/// The surface a colour of the satellite most likely is: the kind of ground it looks like in
+/// that picture ([`natural_kinds`]) given to the surface whose name fits, or else the surface
+/// whose colour is nearest.
+pub fn guess_surface(sat: &RgbImage, colour: [u8; 3], layers: &[crate::world::SurfaceLayer]) -> Option<usize> {
+    let kind = natural_kinds(sat, &[colour])[0];
+    natural_surfaces(layers)[kind as usize].or_else(|| nearest_layer(colour, layers))
+}
+
+/// The surface whose colour looks nearest to `colour`.
+pub fn nearest_layer(colour: [u8; 3], layers: &[crate::world::SurfaceLayer]) -> Option<usize> {
+    let c = lab(colour);
+    (0..layers.len()).min_by(|a, b| lab_distance(c, lab(layers[*a].color)).total_cmp(&lab_distance(c, lab(layers[*b].color))))
+}
+
+/// Names of the kinds of ground of [`natural`], in English for the interface to translate.
+pub const NATURAL_NAMES: [&str; 8] = ["Dense forest", "Leafy forest", "Grass", "Pale grass", "Soil", "Fields", "Rock", "Roads and roofs"];
+
+/// Colours the kinds of ground of [`natural`] are shown in.
+pub const NATURAL_COLOURS: [[u8; 3]; 8] = [[30, 70, 34], [92, 120, 40], [90, 170, 60], [170, 210, 120], [140, 100, 60], [225, 200, 90], [190, 190, 190], [80, 80, 90]];
+
+/// The surface each kind of ground of [`natural`] goes to, found by words in the names of
+/// the layers (`forest_con`, `cp_broadleaf_dense1`, `en_stubble`...); `None` where none fits.
+pub fn natural_surfaces(layers: &[crate::world::SurfaceLayer]) -> [Option<usize>; 8] {
+    const WORDS: [&[&str]; 8] = [
+        &["forest_con", "conifer", "spruce", "pine", "forest"],
+        &["forest_dec", "broadleaf", "decid", "leaf", "forest"],
+        &["grass1", "grass"],
+        &["grass2", "grass_dry", "dry", "meadow", "tall", "grass"],
+        &["soil", "dirt", "mud", "ground"],
+        &["stubble", "field", "farm", "crop", "wheat"],
+        &["stone", "rock", "gravel", "cliff"],
+        &["tarmac", "asphalt", "concrete", "paving", "stone"],
+    ];
+    let names: Vec<String> = layers.iter().map(|l| l.name.to_ascii_lowercase()).collect();
+    let mut out = [None; 8];
+    for (k, words) in WORDS.iter().enumerate() {
+        // The first word some layer has; a layer another kind already took only if nothing else fits.
+        out[k] = words.iter().find_map(|w| {
+            let mut hits = names.iter().enumerate().filter(|(_, n)| n.contains(w)).map(|(i, _)| i);
+            let all: Vec<usize> = hits.by_ref().collect();
+            all.iter().copied().find(|i| !out.contains(&Some(*i))).or(all.first().copied())
+        });
+    }
+    out
 }
 
 /// The class of every pixel of an image of `width` × `height` made from the satellite (each
@@ -369,6 +604,74 @@ impl Default for SatClassify {
 pub fn classes(sat: &RgbImage, adjust: &Adjust, width: usize, height: usize) -> Vec<u8> {
     let small = if sat.width == width && sat.height == height { sat.clone() } else { sat.resized(width, height) };
     small.data.par_chunks(3).map(|c| colour_class(adjust.apply([c[0], c[1], c[2]]))).collect()
+}
+
+/// Kinds of ground of a real (natural colour) satellite photo, from
+/// [`natural_classes`].
+pub mod natural {
+    pub const DENSE_FOREST: u8 = 0;
+    pub const FOREST: u8 = 1;
+    pub const GRASS: u8 = 2;
+    pub const PALE_GRASS: u8 = 3;
+    pub const SOIL: u8 = 4;
+    pub const FIELD: u8 = 5;
+    pub const ROCK: u8 = 6;
+    pub const PAVED: u8 = 7;
+}
+
+/// The kind of ground (see [`natural`]) of every pixel of a real satellite photo at
+/// `width` × `height`. Photos differ in brightness, so lightness is measured against the
+/// darkest and lightest twentieth of the picture; plants are told apart by how much greener
+/// than red and blue they are, bare ground by how much redder than blue, and rock and paving
+/// by having little colour. `adjust` changes the colours after that measure is taken, so
+/// lighter makes less forest and more grass and rock.
+pub fn natural_classes(sat: &RgbImage, adjust: &Adjust, width: usize, height: usize) -> Vec<u8> {
+    let small = if sat.width == width && sat.height == height { sat.clone() } else { sat.resized(width, height) };
+    let range = lightness_range(&small);
+    small.data.par_chunks(3).map(|c| natural_kind(adjust.apply([c[0], c[1], c[2]]), range)).collect()
+}
+
+/// The kind of ground (see [`natural`]) each colour looks like in this satellite photo.
+pub fn natural_kinds(sat: &RgbImage, colours: &[[u8; 3]]) -> Vec<u8> {
+    let range = lightness_range(sat);
+    colours.iter().map(|c| natural_kind(*c, range)).collect()
+}
+
+fn lum(c: [u8; 3]) -> f32 {
+    (c[0] as f32 + c[1] as f32 + c[2] as f32) / 3.0
+}
+
+/// The lightness of the darkest and the lightest twentieth of a picture.
+fn lightness_range(img: &RgbImage) -> (f32, f32) {
+    let mut sample: Vec<f32> = img.data.chunks(3).step_by(((img.data.len() / 3) / 200_000).max(1)).map(|c| lum([c[0], c[1], c[2]])).collect();
+    sample.sort_by(f32::total_cmp);
+    let at = |q: f32| sample.get(((sample.len() as f32 - 1.0) * q) as usize).copied().unwrap_or(0.0);
+    (at(0.05), at(0.95).max(at(0.05) + 1.0))
+}
+
+fn natural_kind(c: [u8; 3], (lo, hi): (f32, f32)) -> u8 {
+    use natural::*;
+    let (r, g, b) = (c[0] as f32, c[1] as f32, c[2] as f32);
+    let sum = r + g + b + 1.0;
+    let l = ((lum(c) - lo) / (hi - lo)).clamp(0.0, 1.0);
+    let green = (2.0 * g - r - b) / sum;
+    let red = (r - b) / sum;
+    let chroma = (r.max(g).max(b) - r.min(g).min(b)) / (r.max(g).max(b) + 1.0);
+    if l < 0.22 {
+        if red > 0.12 { FOREST } else { DENSE_FOREST }
+    } else if chroma < 0.12 && l > 0.45 {
+        if l > 0.75 { ROCK } else { PAVED }
+    } else if green > 0.06 {
+        if l > 0.6 { PALE_GRASS } else if l < 0.35 { FOREST } else { GRASS }
+    } else if red > 0.1 {
+        if l > 0.5 { FIELD } else if l < 0.35 { FOREST } else { SOIL }
+    } else if l > 0.65 {
+        ROCK
+    } else if l < 0.35 {
+        FOREST
+    } else {
+        PALE_GRASS
+    }
 }
 
 /// Each pixel takes the class most pixels within `radius` have, which takes away specks.
@@ -380,7 +683,7 @@ pub fn smooth_classes(classes: &[u8], width: usize, height: usize, radius: u32) 
     let mut out = vec![0u8; classes.len()];
     out.par_chunks_mut(width).enumerate().for_each(|(y, row)| {
         for (x, v) in row.iter_mut().enumerate() {
-            let mut count = [0u16; 8];
+            let mut count = [0u16; MAX_PICKED];
             for dy in -r..=r {
                 let yy = (y as i64 + dy).clamp(0, height as i64 - 1) as usize;
                 for dx in -r..=r {
@@ -388,13 +691,13 @@ pub fn smooth_classes(classes: &[u8], width: usize, height: usize, radius: u32) 
                         continue;
                     }
                     let xx = (x as i64 + dx).clamp(0, width as i64 - 1) as usize;
-                    count[(classes[yy * width + xx] & 7) as usize] += 1;
+                    count[(classes[yy * width + xx] as usize).min(MAX_PICKED - 1)] += 1;
                 }
             }
-            let own = classes[y * width + x] & 7;
+            let own = classes[y * width + x].min(MAX_PICKED as u8 - 1);
             // The pixel's own class wins a tie, so edges do not creep.
             let mut best = own;
-            for k in 0..8u8 {
+            for k in 0..MAX_PICKED as u8 {
                 if count[k as usize] > count[best as usize] {
                     best = k;
                 }
@@ -416,7 +719,7 @@ pub fn mask_from_classes(w: &World, classes: &[u8], c: &SatClassify, area: Optio
         let wz = (1.0 - (y as f32 + 0.5) / mh as f32) * size;
         for (x, v) in row.iter_mut().enumerate() {
             let Some(class) = classes.get(y * mw + x) else { continue };
-            let Some(layer) = c.surfaces[(*class & 7) as usize].filter(|l| *l < layers) else { continue };
+            let Some(layer) = c.surface(*class as usize).filter(|l| *l < layers) else { continue };
             if let Some(a) = area {
                 if !a((x as f32 + 0.5) / mw as f32 * size, wz) {
                     continue;
@@ -492,6 +795,30 @@ mod tests {
         assert_eq!(colour_class(a.apply([200, 190, 40])), 3); // yellow
         assert_eq!(colour_class(a.apply([30, 40, 20])), 0); // black
         assert_eq!(colour_class(a.apply([140, 60, 50])), 1); // red
+    }
+
+    #[test]
+    fn picked_colours_split_the_picture() {
+        // Dark forest on the left, a pale field on the right, with some noise.
+        let mut img = RgbImage::new(64, 32, [0, 0, 0]);
+        for y in 0..32 {
+            for x in 0..64 {
+                let n = ((x * 7 + y * 13) % 9) as u8;
+                let c = if x < 32 { [30 + n, 50 + n, 30] } else { [195 + n, 165, 110 + n] };
+                img.data[(y * 64 + x) * 3..(y * 64 + x) * 3 + 3].copy_from_slice(&c);
+            }
+        }
+        let found = find_colours(&img, 2);
+        assert_eq!(found.len(), 2);
+        assert!(found[0][1] < 60 && found[1][0] > 180, "{found:?}");
+        let cls = picked_classes(&img, &found, 64, 32);
+        assert_eq!((cls[5], cls[60]), (0, 1));
+        let w = world();
+        let c = SatClassify::picked(&img, 2, &w.layers);
+        assert_eq!(c.count(), 2);
+        // The field looks like none of the named kinds the layers have, so it takes the nearest
+        // colour: the sand, not the grass.
+        assert_eq!(c.surface(1), Some(1));
     }
 
     #[test]

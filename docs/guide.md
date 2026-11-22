@@ -267,10 +267,24 @@ written to the `Names` of the world config on export, so the in-game map shows t
   shading of the hills and water under the sea level. Each surface gets its colour in **Colours of
   the surfaces**: guessed from its name, or taken from the satellite image the map already has. A
   project without a satellite image gets one. It works on the whole map or on shapes.
-* **Surfaces from the satellite** reads the mask from the satellite image. Brightness and contrast
-  (legacy) push the image to a few strong colours, as *Image > Adjustments > Brightness/Contrast*
-  with *Use Legacy* does in Photoshop; the preview shows them, and each colour can be given a
-  surface. Smoothing takes away specks. The result is a mask modifier.
+* **Surfaces from the satellite** reads the mask from the satellite image, in one of three ways:
+  * **Colour groups**: brightness and contrast (legacy) push the image to a few strong colours, as
+    *Image > Adjustments > Brightness/Contrast* with *Use Legacy* does in Photoshop. Good for
+    pictures made of flat colours.
+  * **Natural colours**: for a real satellite photo. Each pixel gets the kind of ground its colour
+    looks like: dense forest, leafy forest, grass, pale grass, soil, fields, rock, and roads and
+    roofs. Each kind is first given the surface whose name fits it (`forest_con`, `cp_conifer...`,
+    `grass`, `stubble`...). Brightness moves the line between them: lighter makes less forest and
+    more grass and rock.
+  * **Picked colours**: your own list of up to 16 colours, each with its surface. Each pixel takes
+    the colour nearest to its own (by how different they look), so four colours make a mask of
+    four surfaces. **Find colours** finds the given number of colours that stand for the picture
+    best. Click the preview to add the colour of that place (**Show the picture** shows the
+    satellite there to pick from), change a colour with its colour button, or remove it with the
+    cross. Brightness and contrast are not used here.
+
+  The preview shows the classes, and each one can be given a surface. Smoothing takes away specks.
+  The result is a mask modifier.
 
 Every bake, clone stroke, correction and generated image is a **satellite modifier** in the
 outliner: it can be hidden or deleted, and what it covered comes back. Everything the satellite and
@@ -359,6 +373,34 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
 ### File
 
 * **New project**, **Open project**, **Recent projects**, **Save** and **Save as**.
+* **New project from a real place** (or **Real place** in the New project window): makes a map of a
+  real square of the Earth, of one of the DayZ map sizes.
+  * Find the place by name or type its latitude and longitude (`49.27, 19.98`). On the picture,
+    drag to move, scroll to zoom and double-click to put the map there. The blue square is the map.
+  * **Satellite picture**, from:
+    * Esri World Imagery: sharp, the whole world, but its terms do not allow publishing it in a
+      map, so use it to trace and for tests;
+    * Sentinel-2 cloudless 2016: the whole world, 10 m pixels, CC BY 4.0 (may be published with
+      its attribution);
+    * national orthophotos, sharp and open, each only for its own country: Poland (Geoportal,
+      GUGiK), Czechia (ČÚZK), Austria (basemap.at) and the USA (USGS);
+    * your own tile server: an address with `{z}`, `{x}` and `{y}`.
+
+    The window shows the licence of each source and the attribution to give. Choose the pixel size; the window says when the picture needs a
+    lot of memory.
+  * **Surface mask from the satellite picture**: each pixel gets the surface its colour looks like
+    (dense or leafy forest, grass, pale grass, soil, fields, rock, roads and roofs). Fix it later
+    with the Paint tab, or read it again with **Surfaces from the satellite** in the Satellite tab,
+    which is set to **Natural colours** for the new project.
+  * **Heights** come from the AWS Terrain Tiles: about 30 m detail (SRTM) in most places, finer in
+    some countries. The sea is at 0 m and the sea floor stops at -100 m.
+  * **OpenStreetMap shapes**: roads, railways, rivers and streams, lakes, forests, land use and
+    buildings, each kind in its own shape layer with the OpenStreetMap tags as attributes. They are
+    cut to the map. Use them for generators, roads and masks. The data is © OpenStreetMap
+    contributors (ODbL).
+  * The map's latitude and longitude are set to the place, so the sun and stars are right in the
+    game. Downloaded tiles are kept in `%LOCALAPPDATA%\DZWorldEditor\tiles`, so the same place
+    downloads quickly the second time.
 * **Import**: a Terrain Builder or built map folder, a WRP world, and to an open project a heightmap
   (ASC), satellite image, mask image, `layers.cfg`, Terrain Builder layers (TV4L) and objects (TXT),
   DayZForests and Road Studio projects, roads from TV4P and shapes (SHP, TV4S).
