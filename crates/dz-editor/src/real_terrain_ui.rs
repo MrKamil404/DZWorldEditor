@@ -467,7 +467,7 @@ fn generators_ui(ui: &mut egui::Ui, place: &mut RealPlace) {
         return;
     }
     let g = &mut place.generators;
-    let presets: Vec<crate::theme::PickItem<String>> = forest_core::species::zone_presets().iter().map(|z| crate::theme::PickItem { key: z.name.to_string(), name: z.name.to_string(), note: z.group.to_string(), model: None }).collect();
+    let presets: Vec<crate::theme::PickItem<String>> = forest_core::species::zone_presets().iter().map(|z| crate::theme::PickItem { key: z.name.to_string(), name: z.name.to_string(), note: z.group.to_string(), model: None, picture: None }).collect();
     let forest = |ui: &mut egui::Ui, label: String, id: &str, value: &mut Option<String>, default: &str| {
         let mut on = value.is_some();
         ui.horizontal(|ui| {
@@ -503,7 +503,7 @@ fn mask_ui(ui: &mut egui::Ui, place: &mut RealPlace, size_m: f64) {
         let mut classify = std::mem::take(&mut place.classify);
         let mut view = std::mem::take(&mut place.class_view);
         match place.crop(size_m) {
-            Some((small, rev)) => crate::satellite::classify_fields(ui, &mut classify, small, rev, &layers, &mut view, "real"),
+            Some((small, rev)) => crate::satellite::classify_fields(ui, &mut classify, small, rev, &layers, &[], &mut view, "real"),
             None => { ui.weak(t("The settings show once the picture of the place is loaded.")); }
         }
         (place.classify, place.class_view) = (classify, view);
@@ -519,12 +519,7 @@ fn mask_ui(ui: &mut egui::Ui, place: &mut RealPlace, size_m: f64) {
         egui::Grid::new("shape_mask").num_columns(3).spacing(egui::vec2(6.0, 3.0)).show(ui, |ui| {
             for (k, class) in rt::SHAPE_CLASSES.iter().enumerate() {
                 ui.label(t(class.name));
-                let target = &mut m.surfaces[k];
-                let shown = target.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| leave.clone());
-                egui::ComboBox::from_id_salt(("shape_surface", k)).width(110.0).selected_text(shown).show_ui(ui, |ui| {
-                    ui.selectable_value(target, None, &leave);
-                    for (i, n) in names.iter().enumerate() { ui.selectable_value(target, Some(i), n); }
-                });
+                crate::theme::surface_pick(ui, ("shape_surface", k), &mut m.surfaces[k], Some((None, leave.clone())), &names, &[], |i, _| Some(i), 110.0);
                 if class.width > 0.0 {
                     ui.add(crate::theme::ValueField::new(&mut m.widths[k], 0.5..=30.0).suffix(" m")).on_hover_text(t("How wide the line is painted."));
                 } else {

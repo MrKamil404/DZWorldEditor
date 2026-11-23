@@ -67,12 +67,12 @@ You need Windows 10 or 11 and a graphics card with OpenGL 3.3. The model library
 | --- | --- | --- |
 | 1 | Select | Select objects (box or lasso), W/E/R/T gizmo, rows of walls and fences, terrain modifier under the selection, prefabs |
 | 2 | Sculpt | Raise, lower, smooth, flatten, noise, ramp, set height, terrain holes and terrain stamps; Ctrl inverts, Shift smooths |
-| 3 | Paint | Paint mask surfaces, with layers from `P:\dz\surfaces*`; the map's own surfaces and layer materials |
+| 3 | Paint | Paint mask surfaces, with layers from `P:\dz\surfaces*`; surfaces from the satellite; the map's own surfaces and layer materials |
 | 4 | Place | Click, paint a zone with a brush, or drag a model from the library |
 | 5 | Roads | Roads, railways and objects along a line, by points, live or piece by piece |
 | 6 | Shapes | Draw polygons, lines and points that generators can work on |
 | 7 | Key points | Add, move and edit named places |
-| 8 | Satellite | Bake objects into the satellite image, clone brush, colour correction, satellite from the mask, surfaces from the satellite |
+| 8 | Satellite | Bake objects into the satellite image, clone brush, colour correction, satellite from the mask |
 | 9 | Mission | The server mission on the map (experimental) |
 
 **3D camera:** hold the right mouse button and use WASD/QE. Shift goes faster, and the wheel changes speed while the right button is held.

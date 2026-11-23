@@ -232,14 +232,10 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         ui.weak(t("Paints a surface under objects as a mask modifier, which can be hidden or deleted in the outliner."));
         let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
         row(ui, &t("Surface"), |ui| {
-            let shown = names.get(app.mask_tool.surface).cloned().unwrap_or_else(|| t("(none)"));
-            egui::ComboBox::from_id_salt("under_surface").selected_text(shown).show_ui(ui, |ui| {
-                // Only the models with a surface of their own are then painted under.
-                ui.selectable_value(&mut app.mask_tool.surface, usize::MAX, t("(none)"));
-                for (i, n) in names.iter().enumerate() {
-                    ui.selectable_value(&mut app.mask_tool.surface, i, n);
-                }
-            });
+            // With none, only the models with a surface of their own are painted under.
+            let pics: Vec<_> = app.layer_thumbs.iter().map(|t| t.as_ref().map(|t| t.id())).collect();
+            let w = ui.available_width();
+            crate::theme::surface_pick(ui, "under_surface", &mut app.mask_tool.surface, Some((usize::MAX, t("(none)"))), &names, &pics, |i, _| i, w);
         });
         let selected = app.selection.len();
         ui.checkbox(&mut app.mask_tool.selection_only, tf("Only the selected objects ({0})", &[&selected.to_string()]));

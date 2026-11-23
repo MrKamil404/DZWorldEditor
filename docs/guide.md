@@ -174,7 +174,7 @@ Paints the surface mask with the layers of the project, which come from the surf
 `P:\dz\surfaces*` or a `layers.cfg`. The brush has the same shapes as in Sculpt, with edge noise and
 spray; the **Eyedropper** (or Alt) picks the surface under the pointer, and **Paint only on** limits
 the brush to one surface. **Surface under objects** stamps a surface under the objects, buildings by
-their footprint.
+their footprint. The lists of surfaces show the texture of each and have a search field.
 
 The game can draw only a limited number of surfaces on one texture tile. The brush does not add a
 surface to a tile that already has as many as the project allows (up to six), so what you paint is
@@ -189,6 +189,25 @@ worked out by the same code as the build.
 
 **Hard mask pixels** (off by default, in the same two places) draws each pixel of the mask as one
 surface, with hard edges and no blending between surfaces. Use it to see exactly what is painted where.
+
+**Surfaces from the satellite** reads the mask from the satellite image, in one of three ways:
+* **Colour groups**: brightness and contrast (legacy) push the image to a few strong colours, as
+  *Image > Adjustments > Brightness/Contrast* with *Use Legacy* does in Photoshop. Good for
+  pictures made of flat colours.
+* **Natural colours**: for a real satellite photo. Each pixel gets the kind of ground its colour
+  looks like: dense forest, leafy forest, grass, pale grass, soil, fields, rock, and roads and
+  roofs. Each kind is first given the surface whose name fits it (`forest_con`, `cp_conifer...`,
+  `grass`, `stubble`...). Brightness moves the line between them: lighter makes less forest and
+  more grass and rock.
+* **Picked colours**: your own list of up to 16 colours, each with its surface. Each pixel takes
+  the colour nearest to its own (by how different they look), so four colours make a mask of
+  four surfaces. **Find colours** finds the given number of colours that stand for the picture
+  best. Click the preview to add the colour of that place (**Show the picture** shows the
+  satellite there to pick from), change a colour with its colour button, or remove it with the
+  cross. Brightness and contrast are not used here.
+
+The preview shows the classes, and each one can be given a surface. Smoothing takes away specks.
+The result is a mask modifier.
 
 **Material...** next to a layer opens its `.rvmat`: the colour and relief textures, a `_nopx` made from
 a normal map and a height map, repeats, lighting and the raw text. Layer textures can come from
@@ -274,24 +293,6 @@ written to the `Names` of the world config on export, so the in-game map shows t
   shading of the hills and water under the sea level. Each surface gets its colour in **Colours of
   the surfaces**: guessed from its name, or taken from the satellite image the map already has. A
   project without a satellite image gets one. It works on the whole map or on shapes.
-* **Surfaces from the satellite** reads the mask from the satellite image, in one of three ways:
-  * **Colour groups**: brightness and contrast (legacy) push the image to a few strong colours, as
-    *Image > Adjustments > Brightness/Contrast* with *Use Legacy* does in Photoshop. Good for
-    pictures made of flat colours.
-  * **Natural colours**: for a real satellite photo. Each pixel gets the kind of ground its colour
-    looks like: dense forest, leafy forest, grass, pale grass, soil, fields, rock, and roads and
-    roofs. Each kind is first given the surface whose name fits it (`forest_con`, `cp_conifer...`,
-    `grass`, `stubble`...). Brightness moves the line between them: lighter makes less forest and
-    more grass and rock.
-  * **Picked colours**: your own list of up to 16 colours, each with its surface. Each pixel takes
-    the colour nearest to its own (by how different they look), so four colours make a mask of
-    four surfaces. **Find colours** finds the given number of colours that stand for the picture
-    best. Click the preview to add the colour of that place (**Show the picture** shows the
-    satellite there to pick from), change a colour with its colour button, or remove it with the
-    cross. Brightness and contrast are not used here.
-
-  The preview shows the classes, and each one can be given a surface. Smoothing takes away specks.
-  The result is a mask modifier.
 
 Every bake, clone stroke, correction and generated image is a **satellite modifier** in the
 outliner: it can be hidden or deleted, and what it covered comes back. Everything the satellite and

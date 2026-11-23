@@ -651,6 +651,21 @@ pub struct PickItem<K> {
     pub note: String,
     /// The model whose picture stands for it.
     pub model: Option<String>,
+    /// A picture of its own (the texture of a surface), in place of a model's.
+    pub picture: Option<egui::TextureId>,
+}
+
+/// The surface layers named `names` as choices of [`search_pick`], each with the picture of
+/// its texture (`pictures`, by layer, where it is loaded) and the key `key` gives it.
+pub fn surface_items<K>(names: &[String], pictures: &[Option<egui::TextureId>], key: impl Fn(usize, &str) -> K) -> Vec<PickItem<K>> {
+    names.iter().enumerate().map(|(i, n)| PickItem { key: key(i, n), name: n.clone(), note: String::new(), model: None, picture: pictures.get(i).copied().flatten() }).collect()
+}
+
+/// A list to choose a surface layer from, with the picture of each surface and a search.
+#[allow(clippy::too_many_arguments)]
+pub fn surface_pick<K: PartialEq + Clone>(ui: &mut egui::Ui, id: impl std::hash::Hash, value: &mut K, none: Option<(K, String)>, names: &[String], pictures: &[Option<egui::TextureId>], key: impl Fn(usize, &str) -> K, width: f32) -> bool {
+    let items = surface_items(names, pictures, key);
+    search_pick(ui, id, value, none, &items, &|_| None, width)
 }
 
 /// A drop-down to choose among many: a search field on top and a list with a picture of each
@@ -698,7 +713,7 @@ pub fn search_pick<K: PartialEq + Clone>(ui: &mut egui::Ui, id: impl std::hash::
                 let bg = ui.painter().add(egui::Shape::Noop);
                 let r = ui.horizontal(|ui| {
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(36.0, 36.0), egui::Sense::hover());
-                    match item.model.as_deref().and_then(thumb) {
+                    match item.picture.or_else(|| item.model.as_deref().and_then(thumb)) {
                         Some(tex) => { ui.painter().image(tex, rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE); }
                         None => { ui.painter().rect_filled(rect, 3.0, Color32::from_gray(38)); }
                     }

@@ -1143,7 +1143,7 @@ impl Default for ClassifyView {
 /// its settings, a preview of the classes made from `small` (a small copy of the picture,
 /// whose `revision` changes with it) and the surface of each class among `layers`. Used by the
 /// Satellite tool and by a new project of a real place.
-pub fn classify_fields(ui: &mut egui::Ui, c: &mut dz_core::satgen::SatClassify, small: &RgbImage, revision: u64, layers: &[dz_core::world::SurfaceLayer], view: &mut ClassifyView, salt: &str) {
+pub fn classify_fields(ui: &mut egui::Ui, c: &mut dz_core::satgen::SatClassify, small: &RgbImage, revision: u64, layers: &[dz_core::world::SurfaceLayer], pictures: &[Option<egui::TextureId>], view: &mut ClassifyView, salt: &str) {
     use dz_core::satgen::{ClassifyMode, PickedColour, SatClassify, MAX_PICKED};
     let mut mode = c.mode;
     let changed = crate::theme::segmented(ui, &mut mode, &[
@@ -1253,11 +1253,7 @@ pub fn classify_fields(ui: &mut egui::Ui, c: &mut dz_core::satgen::SatClassify, 
             }
             let width = ui.available_width() - if picked { 26.0 } else { 0.0 };
             let target = if picked { &mut c.picked[k].surface } else { &mut c.surfaces[k] };
-            let shown = target.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| leave.clone());
-            egui::ComboBox::from_id_salt(("sat_class", salt, k)).selected_text(shown).width(width).show_ui(ui, |ui| {
-                ui.selectable_value(target, None, &leave);
-                for (i, n) in names.iter().enumerate() { ui.selectable_value(target, Some(i), n); }
-            });
+            crate::theme::surface_pick(ui, ("sat_class", salt, k), target, Some((None, leave.clone())), &names, pictures, |i, _| Some(i), width);
             if picked && ui.small_button(crate::icons::X).on_hover_text(t("Remove the colour")).clicked() {
                 remove = Some(k);
             }
@@ -1272,7 +1268,7 @@ pub fn classify_fields(ui: &mut egui::Ui, c: &mut dz_core::satgen::SatClassify, 
 }
 
 /// The settings of surfaces read from the satellite, with a preview of its colour classes.
-fn classify_section(app: &mut App, ui: &mut egui::Ui) {
+pub fn classify_section(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &crate::icons::with(crate::icons::PALETTE, &t("Surfaces from the satellite")), false, |ui| {
         let Some(sat) = app.doc.as_ref().and_then(|d| d.world.satellite.as_ref()) else {
             ui.colored_label(crate::theme::WARN, t("The project has no satellite image"));
@@ -1284,7 +1280,8 @@ fn classify_section(app: &mut App, ui: &mut egui::Ui) {
         }
         let small = app.sat.class_small.as_ref().map(|s| s.1.clone()).expect("made above");
         let layers = app.doc.as_ref().map(|d| d.world.layers.clone()).unwrap_or_default();
-        classify_fields(ui, &mut app.sat.classify, &small, app.sat.revision, &layers, &mut app.sat.class_view, "tool");
+        let pics: Vec<_> = app.layer_thumbs.iter().map(|t| t.as_ref().map(|t| t.id())).collect();
+        classify_fields(ui, &mut app.sat.classify, &small, app.sat.revision, &layers, &pics, &mut app.sat.class_view, "tool");
         app.sat.classify_whole = area_row(app, ui, app.sat.classify_whole, "classify_shapes");
         if ui.button(crate::icons::with(crate::icons::PALETTE, &t("Paint the surfaces"))).clicked() {
             classify_to_mask(app);
@@ -1424,7 +1421,6 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     });
     correction_section(app, ui);
     generate_section(app, ui);
-    classify_section(app, ui);
     section(ui, &crate::icons::with(crate::icons::STAMP, &t("Bake objects")), false, |ui| {
         ui.weak(t("Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted."));
         let selected = app.selection.len();
