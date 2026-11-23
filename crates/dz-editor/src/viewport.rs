@@ -1607,6 +1607,7 @@ fn row_preview(app: &App, drag: &ObjectDrag) -> Vec<Obj> {
     let items: Vec<_> = drag.before.iter().filter_map(|(_, o)| Some((*o, app.db.get(app.doc.as_ref()?.world.objects.model_path(o))))).collect();
     let Some(row) = app.selection_row(&items, drag.handle == Handle::RowAhead) else { return Vec::new() };
     let mut copies = dz_core::objects::row_copies(&items, &row, drag.row.0, drag.row.1);
+    app.row_models(&mut copies);
     app.row_random_turns(&mut copies, &items);
     copies
 }

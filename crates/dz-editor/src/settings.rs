@@ -137,6 +137,9 @@ pub struct Settings {
     pub row_flip: bool,
     /// Copies laid in a row are turned at random by up to this many degrees either way.
     pub row_turn: f32,
+    /// Copies laid in a row take their models from this object preset, by its weights, in place
+    /// of the models of the selection.
+    pub row_preset: Option<u64>,
     /// Height of the sea swell in metres.
     pub sea_waves: f32,
     /// How far the tide lifts (or with less than 0, lowers) the sea, up to the game's MaxTide.
@@ -261,7 +264,7 @@ impl Default for Settings {
         Self {
             language: String::new(), ui_scale: 1.0, own_title_bar: true, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
-            check_updates: true, experimental: false, team_name: String::new(), extra_mods: String::new(), with_client: true, check_before_build: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, game_surfaces: true, surface_pixels: false, row_gap: 0.0, row_angle: 0.0, row_flip: false, row_turn: 0.0, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, pivot_mode: PivotMode::default(), turn_about_press: false, lasso: false, layout: Default::default(), occlusion: false, show_fps: true, angle_step: 15.0, grid_snap: false, grid_step: 1.0, align_to_ground: false, show_hints: true, split_ratio: 0.5, split_stacked: false, split_swapped: false, top_follow: false, top_models: true, minimap: true, minimap_size: 200.0, camera_speed: 60.0, lighting: Lighting::default(),
+            check_updates: true, experimental: false, team_name: String::new(), extra_mods: String::new(), with_client: true, check_before_build: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, game_surfaces: true, surface_pixels: false, row_gap: 0.0, row_angle: 0.0, row_flip: false, row_turn: 0.0, row_preset: None, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, pivot_mode: PivotMode::default(), turn_about_press: false, lasso: false, layout: Default::default(), occlusion: false, show_fps: true, angle_step: 15.0, grid_snap: false, grid_step: 1.0, align_to_ground: false, show_hints: true, split_ratio: 0.5, split_stacked: false, split_swapped: false, top_follow: false, top_models: true, minimap: true, minimap_size: 200.0, camera_speed: 60.0, lighting: Lighting::default(),
             texture_size: 2048, model_memory: 0, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6, keys: Default::default(), export: Default::default(),
         }
     }

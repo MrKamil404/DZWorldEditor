@@ -110,6 +110,11 @@ scales them.
     meet that end, then turns about it (with Ctrl by the angle step), so it stays joined.
   * **Join to the neighbour** (J) moves the selection so its end meets the end of the object next to
     it, for example after turning it with the usual gizmo.
+  * **Copies of** is the selected objects, or an object preset: then each copy takes a model of the
+    preset, drawn by its weights. A preset of a fence with its broken version at a small weight
+    lays a row with a broken piece now and then. The copies step on by the length of the selection,
+    so the models of the preset should be as long as it. The outlines while dragging show the
+    models the copies will get.
   * **Gap** sets the metres between copies and between joined neighbours; negative values overlap
     them.
   * **Row direction** turns the way the row goes (and its arrows) from the long side of the first

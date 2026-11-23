@@ -886,6 +886,20 @@ fn rows_section(app: &mut App, ui: &mut egui::Ui) {
             if ui.add_enabled(objects, egui::Button::new(icons::ARROW_LINE_RIGHT)).on_hover_text(format!("{ahead}\n{}", t("A copy of the selection goes right ahead of it, along its long side, and is selected, so pressing again lays a row."))).clicked() { app.copy_selection_along(true); }
         });
         if ui.add_enabled(objects, egui::Button::new(icons::with(icons::LINK_SIMPLE, &t("Join to the neighbour")))).on_hover_text(format!("{}\n{}", app.settings.keys.tip(Action::JoinNeighbour), t("Moves the selection so its end meets the end of the wall or fence next to it, as after turning it."))).clicked() { app.join_selection_to_neighbour(); }
+        let items = crate::library_ui::preset_items(app);
+        let mut preset = app.settings.row_preset;
+        row(ui, &t("Copies of"), |ui| {
+            let w = ui.available_width();
+            crate::theme::search_pick(ui, "row_preset", &mut preset, Some((None, t("The selected objects"))), &items, &|m| app.thumbs.peek(m), w);
+        });
+        if preset != app.settings.row_preset {
+            app.settings.row_preset = preset;
+            app.settings.save();
+            app.intern_row_preset();
+        }
+        if preset.is_some() {
+            about(ui, &t("Each copy takes a model of the preset, drawn by its weights: give a broken fence a small weight for one now and then. The copies are as long as the selection."));
+        }
         let before = (app.settings.row_gap, app.settings.row_angle, app.settings.row_flip, app.settings.row_turn);
         slider(ui, &t("Gap"), &mut app.settings.row_gap, -3.0..=3.0, false);
         about(ui, &t("Metres between copies and between joined neighbours. Negative values overlap them."));
