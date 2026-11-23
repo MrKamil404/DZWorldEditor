@@ -677,10 +677,18 @@ pub fn search_pick<K: PartialEq + Clone>(ui: &mut egui::Ui, id: impl std::hash::
         let words: Vec<String> = text.to_lowercase().split_whitespace().map(str::to_string).collect();
         let fits = |i: &PickItem<K>| { let hay = format!("{} {}", i.name, i.note).to_lowercase(); words.iter().all(|w| hay.contains(w)) };
         let mut picked = None;
-        egui::ScrollArea::vertical().max_height(340.0).show(ui, |ui| {
+        // Rows across the whole width of the list, not only as wide as their text.
+        egui::ScrollArea::vertical().max_height(340.0).auto_shrink([false, true]).show(ui, |ui| {
+            let full = ui.available_width();
+            let mark = |ui: &egui::Ui, rect: egui::Rect, on: bool, hovered: bool| (on || hovered).then(|| egui::Shape::rect_filled(rect, 3.0, if on { Color32::from_rgba_unmultiplied(10, 116, 224, 50) } else { Color32::from_white_alpha(10) })).map(|s| ui.painter().add(s));
             if let Some((k, name)) = &none {
-                if words.is_empty() && ui.selectable_label(*value == *k, name).clicked() {
-                    picked = Some(k.clone());
+                if words.is_empty() {
+                    let (rect, r) = ui.allocate_exact_size(egui::vec2(full, 22.0), egui::Sense::click());
+                    mark(ui, rect, *value == *k, r.hovered());
+                    ui.painter().text(rect.left_center() + egui::vec2(4.0, 0.0), egui::Align2::LEFT_CENTER, name, egui::FontId::proportional(13.0), if *value == *k { Color32::WHITE } else { TEXT });
+                    if r.clicked() {
+                        picked = Some(k.clone());
+                    }
                 }
             }
             let mut shown = 0;
@@ -699,7 +707,8 @@ pub fn search_pick<K: PartialEq + Clone>(ui: &mut egui::Ui, id: impl std::hash::
                         if !item.note.is_empty() { ui.add(egui::Label::new(egui::RichText::new(&item.note).small().color(TEXT_DIM)).truncate()); }
                     });
                 }).response;
-                let r = ui.interact(r.rect, id.with(("row", shown)), egui::Sense::click());
+                let row = egui::Rect::from_min_size(r.rect.min, egui::vec2(full, r.rect.height()));
+                let r = ui.interact(row, id.with(("row", shown)), egui::Sense::click());
                 if on || r.hovered() {
                     ui.painter().set(bg, egui::Shape::rect_filled(r.rect.expand(1.0), 3.0, if on { Color32::from_rgba_unmultiplied(10, 116, 224, 50) } else { Color32::from_white_alpha(10) }));
                 }
