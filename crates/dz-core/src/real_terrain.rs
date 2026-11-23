@@ -1367,10 +1367,59 @@ impl OsmRoads {
     }
 }
 
+/// The smallest radius of the bends of roads built from OpenStreetMap, in metres; their
+/// points are kept far enough apart for it (see [`osm_road_lines`]).
+pub const ROAD_RADIUS: f32 = 12.0;
+
+/// Points of a line at least `gap` metres apart, with its two ends kept: the road builder
+/// needs room for a bend between them. Repeated points go too.
+pub fn spaced(line: &[[f32; 2]], gap: f32) -> Vec<[f32; 2]> {
+    let d = |a: [f32; 2], b: [f32; 2]| (b[0] - a[0]).hypot(b[1] - a[1]);
+    let Some((&first, rest)) = line.split_first() else { return Vec::new() };
+    let last = *rest.last().unwrap_or(&first);
+    let mut out = vec![first];
+    for p in &rest[..rest.len().saturating_sub(1)] {
+        if d(*out.last().unwrap(), *p) >= gap && d(*p, last) >= gap {
+            out.push(*p);
+        }
+    }
+    if d(*out.last().unwrap(), last) > 0.5 {
+        out.push(last);
+    }
+    out
+}
+
+/// Whether most of `line` runs within `near` metres of lines already taken (`taken` holds
+/// points along them every few metres, in cells of `near`): the same road twice in the data.
+fn runs_on(line: &[[f32; 2]], taken: &HashMap<(i32, i32), Vec<[f32; 2]>>, near: f32) -> bool {
+    let samples = sample_line(line, near);
+    let cell = |p: [f32; 2]| ((p[0] / near).floor() as i32, (p[1] / near).floor() as i32);
+    let on = samples.iter().filter(|p| {
+        let (cx, cz) = cell(**p);
+        (-1..=1).any(|dx| (-1..=1).any(|dz| taken.get(&(cx + dx, cz + dz)).is_some_and(|v| v.iter().any(|q| (q[0] - p[0]).hypot(q[1] - p[1]) <= near))))
+    }).count();
+    !samples.is_empty() && on as f32 >= samples.len() as f32 * 0.8
+}
+
+fn sample_line(line: &[[f32; 2]], step: f32) -> Vec<[f32; 2]> {
+    let mut out = Vec::new();
+    for w in line.windows(2) {
+        let len = (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]);
+        let n = (len / step).ceil().max(1.0) as usize;
+        for k in 0..n {
+            let t = k as f32 / n as f32;
+            out.push([w[0][0] + (w[1][0] - w[0][0]) * t, w[0][1] + (w[1][1] - w[0][1]) * t]);
+        }
+    }
+    out.extend(line.last());
+    out
+}
+
 /// The lines of the OpenStreetMap roads and railways of `layers`, by their place in
-/// [`ROAD_CLASSES`]: pieces of one kind that meet end to end (and only two there) joined, and
-/// thinned to points `tolerance` metres off the line at most. Lines under `shortest` metres are
-/// left out.
+/// [`ROAD_CLASSES`], ready to build: pieces of one kind that meet end to end (and only two
+/// there) joined, thinned to points `tolerance` metres off the line at most and at least
+/// [`ROAD_RADIUS`] × 2.5 apart. Closed loops (roundabouts), lines under `shortest` metres and
+/// lines that run on top of another road (the same road twice) are left out.
 pub fn osm_road_lines(layers: &[ShapeLayer], tolerance: f32, shortest: f32) -> Vec<(usize, Vec<[f32; 2]>)> {
     let mut by_class: Vec<Vec<Vec<[f32; 2]>>> = vec![Vec::new(); ROAD_CLASSES.len()];
     for s in layers.iter().flat_map(|l| l.shapes.iter()).filter(|s| s.kind == ShapeKind::Polyline && s.points.len() >= 2) {
@@ -1378,13 +1427,32 @@ pub fn osm_road_lines(layers: &[ShapeLayer], tolerance: f32, shortest: f32) -> V
             by_class[k].push(s.points.clone());
         }
     }
-    let mut out = Vec::new();
+    let length = |l: &[[f32; 2]]| l.windows(2).map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1])).sum::<f32>();
+    let mut all: Vec<(usize, Vec<[f32; 2]>)> = Vec::new();
     for (k, lines) in by_class.into_iter().enumerate() {
-        for line in join_lines(lines) {
-            let len: f32 = line.windows(2).map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1])).sum();
-            if len >= shortest {
-                out.push((k, crate::gen::simplify_line(&line, tolerance)));
+        for mut line in join_lines(lines) {
+            line.dedup_by(|a, b| (a[0] - b[0]).hypot(a[1] - b[1]) < 0.1);
+            let closed = line.len() > 2 && (line[0][0] - line.last().unwrap()[0]).hypot(line[0][1] - line.last().unwrap()[1]) < 1.0;
+            if !closed && line.len() >= 2 && length(&line) >= shortest {
+                all.push((k, line));
             }
+        }
+    }
+    // The most important and longest first, so a copy over them is the one left out.
+    all.sort_by(|a, b| a.0.cmp(&b.0).then(length(&b.1).total_cmp(&length(&a.1))));
+    let near = 3.0;
+    let mut taken: HashMap<(i32, i32), Vec<[f32; 2]>> = HashMap::new();
+    let mut out = Vec::new();
+    for (k, line) in all {
+        if runs_on(&line, &taken, near) {
+            continue;
+        }
+        for p in sample_line(&line, near) {
+            taken.entry(((p[0] / near).floor() as i32, (p[1] / near).floor() as i32)).or_default().push(p);
+        }
+        let points = spaced(&crate::gen::simplify_line(&line, tolerance), ROAD_RADIUS * 2.5);
+        if points.len() >= 2 {
+            out.push((k, points));
         }
     }
     out
@@ -1770,6 +1838,22 @@ mod tests {
         // a and b meet alone at 50; three lines meet at 100, so they stay apart there.
         assert_eq!(joined.len(), 3);
         assert!(joined.iter().any(|l| l.len() == 3 && l[0] == [0.0, 0.0] && l[2] == [100.0, 0.0] || l.len() == 3 && l[2] == [0.0, 0.0]));
+    }
+
+    #[test]
+    fn road_lines_are_ready_to_build() {
+        let road = |pts: Vec<[f32; 2]>| MapShape { holes: Vec::new(), kind: ShapeKind::Polyline, points: pts, attributes: vec![("highway".into(), "primary".into())] };
+        // A road with dense points, the same road again a metre off, and a roundabout.
+        let dense: Vec<[f32; 2]> = (0..=40).map(|i| [i as f32 * 5.0, (i as f32 * 0.3).sin() * 20.0]).collect();
+        let copy: Vec<[f32; 2]> = dense.iter().map(|p| [p[0], p[1] + 1.0]).collect();
+        let ring: Vec<[f32; 2]> = (0..=12).map(|i| { let a = i as f32 / 12.0 * std::f32::consts::TAU; [500.0 + a.cos() * 15.0, 500.0 + a.sin() * 15.0] }).collect();
+        let layer = ShapeLayer { name: "OSM roads".into(), visible: true, shapes: vec![road(dense), road(copy), road(ring)] };
+        let lines = osm_road_lines(&[layer], 2.0, 30.0);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let pts = &lines[0].1;
+        assert!(pts.windows(2).all(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]) >= ROAD_RADIUS * 2.5 - 1e-3), "{pts:?}");
+        assert_eq!(pts[0], [0.0, 0.0]);
+        assert!((pts.last().unwrap()[0] - 200.0).abs() < 1e-3);
     }
 
     #[test]

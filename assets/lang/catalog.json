@@ -9951,6 +9951,10 @@
   "de": "{0} von {1}",
   "pl": "{0} z {1}"
  },
+ "{0} of {1} roads could not be fitted and stay as shapes": {
+  "de": "{0} von {1} Straßen ließen sich nicht einpassen und bleiben Formen",
+  "pl": "{0} z {1} dróg nie dało się dopasować i zostają kształtami"
+ },
  "{0} of {1} types, {2} selected": {
   "de": "{0} von {1} Typen, {2} ausgewählt",
   "pl": "{0} z {1} typów, zaznaczono {2}"
@@ -10006,6 +10010,10 @@
  "{0} roads are built one after another; stopping one stops the rest": {
   "de": "{0} Straßen werden nacheinander gebaut; das Stoppen einer stoppt den Rest",
   "pl": "{0} dróg jest budowanych jedna po drugiej; zatrzymanie jednej zatrzymuje resztę"
+ },
+ "{0} roads built": {
+  "de": "{0} Straßen gebaut",
+  "pl": "Zbudowano dróg: {0}"
  },
  "{0} selected": {
   "de": "{0} ausgewählt",

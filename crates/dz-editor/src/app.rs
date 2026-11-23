@@ -521,6 +521,9 @@ pub struct App {
     pub gen_queue: std::collections::VecDeque<u64>,
     /// Roads to build one after another (road type and points), before the generators.
     pub route_queue: std::collections::VecDeque<(String, Vec<[f32; 2]>)>,
+    /// Roads of the queue built and not built so far, while it runs; one that cannot be built
+    /// is counted instead of shown as an error each.
+    pub route_tally: Option<(usize, usize)>,
     pub log: Vec<LogLine>,
     /// How much of the log was there when the Output Log was last open.
     pub log_seen: usize,
@@ -651,7 +654,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
-            task: None, gen_queue: Default::default(), route_queue: Default::default(), log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
+            task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
             settings,
         };
@@ -666,12 +669,12 @@ impl App {
         self.log.push(LogLine { text, level: 0 });
     }
     pub fn warn(&mut self, text: impl Into<String>) {
-        let text = text.into();
+        let text = crate::i18n::road(&text.into());
         self.status = text.clone();
         self.log.push(LogLine { text, level: 1 });
     }
     pub fn error(&mut self, text: impl Into<String>) {
-        let text = text.into();
+        let text = crate::i18n::road(&text.into());
         self.status = text.clone();
         self.log.push(LogLine { text, level: 2 });
         self.bottom = BottomTab::Output;
@@ -876,7 +879,10 @@ impl App {
                     if let (Some(i), Some(points), Some(d)) = (target, before, &mut app.doc) {
                         if let Some(r) = d.world.routes.get_mut(i) { r.points = points; }
                     }
-                    app.error(format!("{e:#}"));
+                    match &mut app.route_tally {
+                        Some(t) => t.1 += 1,
+                        None => app.error(format!("{e:#}")),
+                    }
                 }
             }) as Finish)
         });
@@ -1374,9 +1380,19 @@ impl App {
         }
         if self.task.is_none() {
             if let Some((family, points)) = self.route_queue.pop_front() {
-                let settings = if dayz_road_tool::rails::is_track_family(&family) { self.line.rail_routing.clone() } else { self.line.routing.clone() };
+                // Laid along the line as it is, without searching the terrain, and with bends
+                // as tight as the road's own pieces allow.
+                let mut settings = if dayz_road_tool::rails::is_track_family(&family) { self.line.rail_routing.clone() } else { self.line.routing.clone() };
+                settings.min_radius = settings.min_radius.min(dz_core::real_terrain::ROAD_RADIUS as f64);
                 let req = self.route_request(family, points, false, settings);
+                self.route_tally.get_or_insert((0, 0)).0 += 1;
                 self.start_route(req, None, None, true);
+            } else if let Some((tried, failed)) = self.route_tally.take() {
+                if failed > 0 {
+                    self.warn(tf("{0} of {1} roads could not be fitted and stay as shapes", &[&failed.to_string(), &tried.to_string()]));
+                } else {
+                    self.info(tf("{0} roads built", &[&tried.to_string()]));
+                }
             } else if let Some(id) = self.gen_queue.pop_front() {
                 crate::library_ui::run_generator(self, id);
             }

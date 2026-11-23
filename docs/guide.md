@@ -441,8 +441,11 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
     under each, as Terrain under objects does.
   * **Roads**: the roads (and railways, if you choose a track type) of OpenStreetMap are built of
     the game's road pieces once the map opens, one after another, with the ground graded under
-    them. Choose the road type for main roads, minor roads, tracks and paths. Pieces of one road
-    are joined first; crossings get no crossroad pieces, so fix them by hand with the Roads tab.
+    them. Choose the road type for main roads, minor roads, tracks and paths. Each road is laid
+    along its line without searching the terrain. Pieces of one road are joined first, points too
+    close for a bend are left out, the same road drawn twice is built once, and roundabouts stay as
+    shapes. A road that still cannot be fitted stays a shape too: the Output Log says how many.
+    Crossings get no crossroad pieces, so fix them by hand with the Roads tab.
   * **Generators**: with **Add generators for the OpenStreetMap shapes**, the new map gets a forest
     generator on the leafy forests, the conifer forests and the scrub (each with a forest preset you
     choose), the Fields generator on the fields, the River generator on the rivers and canals, the
