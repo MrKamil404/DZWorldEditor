@@ -1435,6 +1435,10 @@
   "de": "Klassen der ausgewählten Objekte",
   "pl": "Klasy zaznaczonych obiektów"
  },
+ "Clear": {
+  "de": "Leeren",
+  "pl": "Wyczyść"
+ },
  "Clear project areas": {
   "de": "Projektgebiete löschen",
   "pl": "Wyczyść obszary projektu"
@@ -2438,10 +2442,6 @@
  "Drop to replace": {
   "de": "Zum Ersetzen loslassen",
   "pl": "Upuść, aby podmienić"
- },
- "Drop to use": {
-  "de": "Zum Übernehmen loslassen",
-  "pl": "Upuść, aby użyć"
  },
  "Droplets": {
   "de": "Tropfen",
@@ -6223,6 +6223,10 @@
   "de": "Prefabs",
   "pl": "Prefaby"
  },
+ "Preset": {
+  "de": "Preset",
+  "pl": "Preset"
+ },
  "Preset in shapes": {
   "de": "Preset in Formen",
   "pl": "Preset w kształtach"
@@ -7311,6 +7315,10 @@
   "de": "Formen (SHP, TV4S)...",
   "pl": "Kształty (SHP, TV4S)..."
  },
+ "Share": {
+  "de": "Anteil",
+  "pl": "Udział"
+ },
  "Share against the walls": {
   "de": "Anteil an den Wänden",
   "pl": "Udział przy ścianach"
@@ -7398,6 +7406,10 @@
  "Show in its folder": {
   "de": "Im Ordner zeigen",
   "pl": "Pokaż w folderze"
+ },
+ "Show in the Content Browser": {
+  "de": "Im Content Browser zeigen",
+  "pl": "Pokaż w Content Browserze"
  },
  "Show key help": {
   "de": "Tastenhilfe anzeigen",
@@ -8387,10 +8399,6 @@
   "de": "Die Mission hat {0} Fehler (Tab Mission)",
   "pl": "Misja ma błędy ({0}) (zakładka Misja)"
  },
- "The model chosen in the Content Browser.": {
-  "de": "Das im Inhaltsbrowser gewählte Modell.",
-  "pl": "Model wybrany w przeglądarce zasobów."
- },
  "The model could not be read": {
   "de": "Das Modell konnte nicht gelesen werden",
   "pl": "Nie udało się odczytać modelu"
@@ -8719,6 +8727,10 @@
   "de": "Dieser Ordner enthält kein Projekt",
   "pl": "Ten folder nie zawiera projektu"
  },
+ "This generator": {
+  "de": "Dieser Generator",
+  "pl": "Ten generator"
+ },
  "This generator needs a polygon": {
   "de": "Dieser Generator braucht ein Polygon",
   "pl": "Ten generator wymaga wielokąta"
@@ -9003,10 +9015,6 @@
   "de": "Legacy verwenden",
   "pl": "Użyj dziedziczenia"
  },
- "Use selected": {
-  "de": "Gewähltes verwenden",
-  "pl": "Użyj wybranego"
- },
  "Use selected route": {
   "de": "Ausgewählte Route verwenden",
   "pl": "Użyj zaznaczonej trasy"
@@ -9014,6 +9022,10 @@
  "Use selected shape": {
   "de": "Ausgewählte Form verwenden",
   "pl": "Użyj zaznaczonego kształtu"
+ },
+ "Use the one selected in the Content Browser": {
+  "de": "Das im Content Browser gewählte nehmen",
+  "pl": "Użyj zaznaczonego w Content Browserze"
  },
  "Use the project folder": {
   "de": "Projektordner verwenden",
@@ -9190,6 +9202,10 @@
  "Weather: overcast, fog, rain, wind, snowfall and storms, with their limits.": {
   "de": "Wetter: Bewölkung, Nebel, Regen, Wind, Schneefall und Gewitter mit ihren Grenzen.",
   "pl": "Pogoda: zachmurzenie, mgła, deszcz, wiatr, śnieg i burze wraz z limitami."
+ },
+ "Weight": {
+  "de": "Gewicht",
+  "pl": "Waga"
  },
  "Wetness": {
   "de": "Feuchtigkeit",
@@ -9630,10 +9646,6 @@
  "no limit": {
   "de": "keine Grenze",
   "pl": "bez limitu"
- },
- "none": {
-  "de": "keine",
-  "pl": "brak"
  },
  "nothing": {
   "de": "nichts",

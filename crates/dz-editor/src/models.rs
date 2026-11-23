@@ -379,8 +379,29 @@ pub struct Thumbnails {
     done: Receiver<(String, Option<(usize, Vec<u8>)>)>,
     cache: HashMap<String, Option<eframe::egui::TextureHandle>>,
     generation: Arc<std::sync::atomic::AtomicU64>,
-    /// Models asked for through [`Thumbnails::peek`], still on their way.
-    asked: Mutex<HashSet<String>>,
+    peek: ThumbPeek,
+}
+
+/// A handle to the thumbnails that any panel can keep and ask with a shared borrow: the
+/// picture of a model once it is made, asking for it the first time.
+#[derive(Clone)]
+pub struct ThumbPeek {
+    queue: Arc<Queue<(String, u64)>>,
+    generation: Arc<std::sync::atomic::AtomicU64>,
+    ids: Arc<Mutex<HashMap<String, eframe::egui::TextureId>>>,
+    asked: Arc<Mutex<HashSet<String>>>,
+}
+
+impl ThumbPeek {
+    pub fn get(&self, model: &str) -> Option<eframe::egui::TextureId> {
+        if let Some(id) = self.ids.lock().unwrap().get(model) {
+            return Some(*id);
+        }
+        if self.asked.lock().unwrap().insert(model.to_string()) {
+            self.queue.push((model.to_string(), self.generation.load(std::sync::atomic::Ordering::Relaxed)));
+        }
+        None
+    }
 }
 
 fn thumb_path(dir: &Path, model: &str) -> PathBuf {
@@ -447,11 +468,16 @@ impl Thumbnails {
                 ctx.request_repaint();
             });
         }
-        Self { queue, done, cache: HashMap::new(), generation, asked: Default::default() }
+        let peek = ThumbPeek { queue: queue.clone(), generation: generation.clone(), ids: Default::default(), asked: Default::default() };
+        Self { queue, done, cache: HashMap::new(), generation, peek }
     }
     pub fn poll(&mut self, ctx: &eframe::egui::Context) {
         while let Ok((model, px)) = self.done.try_recv() {
             let tex = px.map(|(s, p)| ctx.load_texture(format!("thumb:{model}"), eframe::egui::ColorImage::from_rgba_unmultiplied([s, s], &p), eframe::egui::TextureOptions::LINEAR));
+            if let Some(t) = &tex {
+                self.peek.ids.lock().unwrap().insert(model.clone(), t.id());
+            }
+            self.peek.asked.lock().unwrap().insert(model.clone());
             self.cache.insert(model, tex);
         }
     }
@@ -463,14 +489,9 @@ impl Thumbnails {
         self.cache.get(model).and_then(|t| t.as_ref())
     }
     /// [`Thumbnails::get`] where only a shared borrow is at hand: the picture once it is made.
-    pub fn peek(&self, model: &str) -> Option<eframe::egui::TextureId> {
-        if let Some(t) = self.cache.get(model) {
-            return t.as_ref().map(|t| t.id());
-        }
-        if self.asked.lock().unwrap().insert(model.to_string()) {
-            self.queue.push((model.to_string(), self.generation.load(std::sync::atomic::Ordering::Relaxed)));
-        }
-        None
+    /// A handle for panels that cannot borrow the thumbnails themselves.
+    pub fn handle(&self) -> ThumbPeek {
+        self.peek.clone()
     }
 }
 

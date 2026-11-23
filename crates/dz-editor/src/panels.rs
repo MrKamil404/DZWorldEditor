@@ -28,6 +28,7 @@ pub fn real_place_dialog() -> Dialog {
 
 pub fn ui(app: &mut App, ctx: &egui::Context) {
     guard_close(app, ctx);
+    app.reveal_asked(ctx);
     app.finish_grading_edit(ctx);
     app.finish_layer_colour_edit(ctx);
     crate::library_ui::handle_file_drop(app, ctx);
@@ -888,10 +889,11 @@ fn rows_section(app: &mut App, ui: &mut egui::Ui) {
         if ui.add_enabled(objects, egui::Button::new(icons::with(icons::LINK_SIMPLE, &t("Join to the neighbour")))).on_hover_text(format!("{}\n{}", app.settings.keys.tip(Action::JoinNeighbour), t("Moves the selection so its end meets the end of the wall or fence next to it, as after turning it."))).clicked() { app.join_selection_to_neighbour(); }
         let items = crate::library_ui::preset_items(app);
         let mut preset = app.settings.row_preset;
-        row(ui, &t("Copies of"), |ui| {
-            let w = ui.available_width();
-            crate::theme::search_pick(ui, "row_preset", &mut preset, Some((None, t("The selected objects"))), &items, &|m| app.thumbs.peek(m), w);
-        });
+        let (thumbs, selected) = (app.thumbs.handle(), app.browser.presets().first().copied());
+        {
+            use crate::asset_browser::Pick;
+            crate::slots::preset_slot(ui, &t("Copies of"), "row_preset", &mut preset, Some((None, t("The selected objects"))), &items, &thumbs, &|p| if let Pick::Preset(id) = p { Some(Some(*id)) } else { None }, &|k| k.map(Pick::Preset), selected.map(Some), None);
+        }
         if preset != app.settings.row_preset {
             app.settings.row_preset = preset;
             app.settings.save();
@@ -1284,10 +1286,8 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
         }
         about(ui, &t("Click on the terrain to place it; models can also be dragged onto the map."));
         let items = crate::library_ui::preset_items(app);
-        row(ui, &t("Object preset"), |ui| {
-            let w = ui.available_width();
-            crate::theme::search_pick(ui, "place_preset", &mut app.place.preset, Some((None, t("(none)"))), &items, &|m| app.thumbs.peek(m), w);
-        });
+        let (thumbs, selected) = (app.thumbs.handle(), app.browser.presets().first().copied());
+        crate::library_ui::object_preset_slot(ui, &t("Object preset"), "place_preset", &mut app.place.preset, &items, &thumbs, selected);
         let pool = app.place.pool.len();
         if app.place.preset.is_none() && pool > 1 && app.place.model.as_ref().is_some_and(|m| app.place.pool.contains(m)) {
             ui.horizontal_wrapped(|ui| {
@@ -1629,7 +1629,7 @@ fn bridge_models() -> &'static [String] {
     cached.as_ref().unwrap().1
 }
 
-fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSettings, thumbs: &crate::models::Thumbnails) -> bool {
+fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSettings, thumbs: &crate::models::ThumbPeek) -> bool {
     let mut changed = false;
     let mut field = |ui: &mut egui::Ui, label: String, v: &mut f64, range: std::ops::RangeInclusive<f64>| {
         row(ui, &label, |ui| { changed |= ui.add(crate::theme::ValueField::new(v, range)).changed(); });
@@ -1646,12 +1646,13 @@ fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSe
     field(ui, t("Max. bridge length m"), &mut r.bridge_max, 0.0..=600.0);
     row(ui, &t("Bridge cost"), |ui| { changed |= ui.add(crate::theme::ValueField::new(&mut r.bridge_weight, 0.5..=10.0)).on_hover_text(t("A metre of bridge counts as this many metres of road. Lower it when cheap earthworks lead the road down into valleys instead of over them.")).changed(); });
     changed |= theme::check_row(ui, &mut r.bridge_over_forbidden, t("Bridges may cross forbidden areas and water")).changed();
-    row(ui, &t("Bridge model"), |ui| {
+    {
+        use crate::asset_browser::Pick;
         let name = |m: &str| m.rsplit(['\\', '/']).next().unwrap_or(m).trim_end_matches(".p3d").to_string();
         let items: Vec<crate::theme::PickItem<String>> = bridge_models().iter().map(|m| crate::theme::PickItem { key: m.clone(), name: name(m), note: m.clone(), model: Some(m.clone()) }).collect();
-        let w = ui.available_width();
-        changed |= crate::theme::search_pick(ui, "bridge_model", &mut r.bridge_model, Some((String::new(), t("By road width"))), &items, &|m| thumbs.peek(m), w);
-    });
+        let known = |m: &str| bridge_models().iter().any(|b| b.eq_ignore_ascii_case(m));
+        changed |= crate::slots::preset_slot(ui, &t("Bridge model"), "bridge_model", &mut r.bridge_model, Some((String::new(), t("By road width"))), &items, thumbs, &|p| if let Pick::Model(m) = p { known(m).then(|| m.clone()) } else { None }, &|m| (!m.is_empty()).then(|| Pick::Model(m.clone())), None, None);
+    }
     row(ui, &t("Deck height"), |ui| {
         let shown = t(if r.deck_fixed { "Fixed" } else { "Between the banks" });
         egui::ComboBox::from_id_salt("deck_height").selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
@@ -1706,8 +1707,8 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
             theme::check_row(ui, &mut app.line.live_keep, t("Keep the pieces already laid")).on_hover_text(t("On: changing a point fits the route again only from that point on; the pieces before it stay as they are. Off: the whole route is fitted again."));
         }
         let route = &mut app.doc.as_mut().unwrap().world.routes[index];
-        let thumbs = &app.thumbs;
-        theme::subsection(ui, &t("Route settings"), false, |ui| { routing_fields(ui, &mut route.settings, thumbs); });
+        let thumbs = app.thumbs.handle();
+        theme::subsection(ui, &t("Route settings"), false, |ui| { routing_fields(ui, &mut route.settings, &thumbs); });
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
             if method != RoadDraw::Parts {
@@ -1924,13 +1925,8 @@ fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
                 hint(ui, &t("Click a route to edit it. Drag its points; the + between two points adds one; Ctrl+click beyond an end extends it; Delete or Backspace removes the marked point."));
             }
             LineAction::Fence => {
-                row(ui, &t("Model"), |ui| {
-                    let label = app.line.fence_model.rsplit('\\').next().unwrap_or("").to_string();
-                    ui.label(if label.is_empty() { t("none") } else { label });
-                    if ui.small_button(t("Use selected")).on_hover_text(t("The model chosen in the Content Browser.")).clicked() {
-                        if let Some(m) = &app.place.model { app.line.fence_model = m.clone(); }
-                    }
-                });
+                let thumbs = app.thumbs.handle();
+                crate::slots::model_slot(ui, &t("Model"), &mut app.line.fence_model, app.place.model.as_deref(), &thumbs, None);
                 slider(ui, &t("Spacing"), &mut app.line.fence_spacing, 0.5..=100.0, true);
                 drawing_status(app, ui);
             }
@@ -2021,8 +2017,8 @@ fn road_draw_fields(app: &mut App, ui: &mut egui::Ui) {
     }
     let searched = app.line.draw == RoadDraw::Points && app.line.route;
     let r = if rail { &mut app.line.rail_routing } else { &mut app.line.routing };
-    let thumbs = &app.thumbs;
-    theme::subsection(ui, &t(if searched { "Route settings" } else { "Fit settings" }), false, |ui| { routing_fields(ui, r, thumbs); });
+    let thumbs = app.thumbs.handle();
+    theme::subsection(ui, &t(if searched { "Route settings" } else { "Fit settings" }), false, |ui| { routing_fields(ui, r, &thumbs); });
 }
 
 /// The outliner as a tab of its own.

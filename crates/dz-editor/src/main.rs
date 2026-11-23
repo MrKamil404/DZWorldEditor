@@ -25,6 +25,7 @@ mod real_terrain_ui;
 mod render;
 mod satellite;
 mod settings;
+mod slots;
 mod stamps_ui;
 mod surfaces_ui;
 mod theme;

@@ -41,7 +41,12 @@ struct KindContext {
     has_satellite: bool,
     /// The object presets to choose from, with the picture of each one's first model.
     object_items: Vec<crate::theme::PickItem<Option<u64>>>,
-    thumbs: std::collections::HashMap<String, egui::TextureId>,
+    /// The forest presets to choose from, with where each comes from and its main model.
+    forest_items: Vec<crate::theme::PickItem<String>>,
+    thumbs: crate::models::ThumbPeek,
+    /// What is selected in the Content Browser, for the buttons that take it.
+    selected_preset: Option<u64>,
+    selected_forest: Option<String>,
     /// Presets read from files while drawing, kept for the library.
     loaded: std::cell::RefCell<Vec<forest_core::user_presets::UserPreset>>,
     /// The generator is on the map, so its wickets and gates can be placed by a click.
@@ -67,7 +72,10 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
         model: app.place.model.clone(),
         has_satellite: doc.is_some_and(|d| d.world.satellite.is_some()),
         object_items: preset_items(app),
-        thumbs: app.library.objects.iter().filter_map(|p| p.items.first()).filter_map(|m| Some((m.0.clone(), app.thumbs.peek(&m.0)?))).collect(),
+        forest_items: forest_items(app, user),
+        thumbs: app.thumbs.handle(),
+        selected_preset: app.browser.presets().first().copied(),
+        selected_forest: app.browser.selected.iter().find_map(|p| if let crate::asset_browser::Pick::Forest(n) = p { Some(n.clone()) } else { None }),
         loaded: Default::default(),
         can_pick: false,
         pick: Default::default(),
@@ -85,21 +93,38 @@ fn number64(ui: &mut egui::Ui, label: String, v: &mut f64, range: std::ops::Rang
 }
 
 /// A model field: takes the model chosen in the browser, or one dropped on it.
-fn model_field(ui: &mut egui::Ui, label: String, value: &mut String, selected: &Option<String>) {
-    // The label and its buttons on one line, the drop box under them across the full width.
-    row(ui, &label, |ui| {
-        if ui.small_button(t("Use selected")).clicked() {
-            if let Some(m) = selected { *value = m.clone(); }
+fn model_field(ui: &mut egui::Ui, label: String, value: &mut String, cx: &KindContext) {
+    crate::slots::model_slot(ui, &label, value, cx.model.as_deref(), &cx.thumbs, None);
+}
+
+/// The forest presets a generator can use: its own, the library's (with the object presets),
+/// then the built-in ones by their group, each with the model it has most of.
+fn forest_items(app: &App, user: &[forest_core::user_presets::UserPreset]) -> Vec<crate::theme::PickItem<String>> {
+    // The built-in ones never change: their main model is worked out once.
+    static BUILT_IN: std::sync::OnceLock<Vec<(String, String, Option<String>)>> = std::sync::OnceLock::new();
+    let built_in = BUILT_IN.get_or_init(|| forest_core::species::zone_presets().iter().map(|z| {
+        let p = forest_core::user_presets::UserPreset::from_builtin(z);
+        let main = p.weights.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map(|w| w.0.clone());
+        (z.name.to_string(), z.group.to_string(), main)
+    }).collect());
+    let main = |w: &[(String, f32)]| w.iter().max_by(|a, b| a.1.total_cmp(&b.1)).and_then(|m| app.assets.resolve(&m.0).map(str::to_string));
+    let mut out: Vec<crate::theme::PickItem<String>> = Vec::new();
+    let mut add = |name: &str, note: String, model: Option<String>| {
+        if !out.iter().any(|i| i.key == name) {
+            out.push(crate::theme::PickItem { key: name.to_string(), name: name.to_string(), note, model });
         }
-        if !value.is_empty() && ui.small_button("✖").on_hover_text(t("Delete")).clicked() { value.clear(); }
-    });
-    let name = value.rsplit('\\').next().unwrap_or("").trim_end_matches(".p3d").to_string();
-    let idle = if name.is_empty() { t("Drop a model here") } else { name };
-    let (shown, dropped) = crate::theme::model_drop_box(ui, egui::vec2(ui.available_width(), 22.0), &idle, &t("Drop to use"));
-    if !value.is_empty() { shown.on_hover_text(value.as_str()); }
-    if let Some(p) = dropped.last() {
-        *value = (**p).clone();
-    }
+    };
+    for p in user { add(&p.name, t("This generator"), main(&p.weights)); }
+    for p in &app.library.forest_presets { add(&p.name, format!("{} · {}", t("Library"), p.group), main(&p.weights)); }
+    for p in &app.library.objects { if !p.items.is_empty() { add(&p.name, t("Object preset"), p.items.first().map(|m| m.0.clone())); } }
+    for (name, group, model) in built_in { add(name, format!("{} · {}", t("Built-in"), group), model.as_deref().and_then(|m| app.assets.resolve(m)).map(str::to_string)); }
+    out
+}
+
+/// A field holding a forest preset; `none` is the choice of none, if there is one.
+fn forest_field(ui: &mut egui::Ui, label: &str, id: impl std::hash::Hash, value: &mut String, cx: &KindContext, none: Option<String>, remove: Option<&mut bool>) {
+    use crate::asset_browser::Pick;
+    crate::slots::preset_slot(ui, label, id, value, none.map(|n| (String::new(), n)), &cx.forest_items, &cx.thumbs, &|p| if let Pick::Forest(n) = p { Some(n.clone()) } else { None }, &|n| (!n.is_empty()).then(|| Pick::Forest(n.clone())), cx.selected_forest.clone(), remove);
 }
 
 /// The object presets of the library to choose from in a [`crate::theme::search_pick`]: each
@@ -110,10 +135,13 @@ pub fn preset_items(app: &App) -> Vec<crate::theme::PickItem<Option<u64>>> {
 
 /// Chooses an object preset in place of a list of models.
 fn preset_pick(ui: &mut egui::Ui, value: &mut Option<u64>, cx: &KindContext) {
-    row(ui, &t("Object preset"), |ui| {
-        let w = ui.available_width();
-        crate::theme::search_pick(ui, "objects_preset", value, Some((None, t("(none)"))), &cx.object_items, &|m| cx.thumbs.get(m).copied(), w);
-    });
+    object_preset_slot(ui, &t("Object preset"), "objects_preset", value, &cx.object_items, &cx.thumbs, cx.selected_preset);
+}
+
+/// A field holding an object preset of the library, or none.
+pub fn object_preset_slot(ui: &mut egui::Ui, label: &str, id: impl std::hash::Hash, value: &mut Option<u64>, items: &[crate::theme::PickItem<Option<u64>>], thumbs: &crate::models::ThumbPeek, selected: Option<u64>) -> bool {
+    use crate::asset_browser::Pick;
+    crate::slots::preset_slot(ui, label, id, value, Some((None, t("(none)"))), items, thumbs, &|p| if let Pick::Preset(id) = p { Some(Some(*id)) } else { None }, &|k| k.map(Pick::Preset), selected.map(Some), None)
 }
 
 fn models_list(ui: &mut egui::Ui, models: &mut Vec<(String, f32)>, cx: &KindContext) {
@@ -121,8 +149,9 @@ fn models_list(ui: &mut egui::Ui, models: &mut Vec<(String, f32)>, cx: &KindCont
     let list = ui.vertical(|ui| {
         for (i, (m, k)) in models.iter_mut().enumerate() {
             ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(k).speed(0.05).range(0.01..=100.0));
-                ui.label(m.rsplit('\\').next().unwrap_or(m)).on_hover_text(m.as_str());
+                ui.add(egui::DragValue::new(k).speed(0.05).range(0.01..=100.0)).on_hover_text(t("Weight"));
+                crate::slots::small_picture(ui, m, &cx.thumbs);
+                ui.add(egui::Label::new(m.rsplit('\\').next().unwrap_or(m)).truncate()).on_hover_text(m.as_str());
                 if ui.small_button("✖").clicked() { remove = Some(i); }
             });
         }
@@ -193,10 +222,10 @@ fn opening_kind(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, room:
 /// The models, width and side of a wicket or gate.
 fn opening_ui(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, cx: &KindContext) {
     if o.two_leaves {
-        model_field(ui, t("Left leaf"), &mut o.left, &cx.model);
-        model_field(ui, t("Right leaf"), &mut o.right, &cx.model);
+        model_field(ui, t("Left leaf"), &mut o.left, cx);
+        model_field(ui, t("Right leaf"), &mut o.right, cx);
     } else {
-        model_field(ui, if o.gate { t("Gate") } else { t("Wicket") }, &mut o.model, &cx.model);
+        model_field(ui, if o.gate { t("Gate") } else { t("Wicket") }, &mut o.model, cx);
     }
     number(ui, t("Gap width m (0 = of the model)"), &mut o.width, 0.0..=60.0);
     // The old "turn by 180°" is a turn like the others now.
@@ -215,10 +244,6 @@ fn opening_ui(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, cx: &Ki
     ui.checkbox(&mut o.upright, t("Stand upright")).on_hover_text(t("The wicket or gate stays level instead of leaning with the slope like the fence."));
 }
 
-fn preset_combo(ui: &mut egui::Ui, id: impl std::hash::Hash, value: &mut String, presets: &[String]) {
-    let items: Vec<crate::theme::PickItem<String>> = presets.iter().map(|p| crate::theme::PickItem { key: p.clone(), name: p.clone(), note: String::new(), model: None }).collect();
-    crate::theme::search_pick(ui, id, value, None, &items, &|_| None, 170.0);
-}
 
 /// Fields of a generator. Returns true when the colour eyedropper should start.
 /// A part of a generator's settings that folds away.
@@ -275,7 +300,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
         GeneratorKind::Forest(g) => {
             let p = &mut g.project;
             group(ui, t("Trees"), true, |ui| {
-                row(ui, &t("Preset in shapes"), |ui| preset_combo(ui, "area", &mut g.preset, &cx.presets));
+                forest_field(ui, &t("Preset in shapes"), "area", &mut g.preset, cx, None, None);
                 number64(ui, t("Spacing"), &mut p.spacing_multiplier, 0.3..=4.0);
                 range_row(ui, t("Scale"), &mut p.scale_min, &mut p.scale_max, 0.1..=3.0, 0.01);
                 ui.weak(t("Every tree gets a scale between the two; left at 1 to 1, each species keeps the spread its preset gives it."));
@@ -310,10 +335,9 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 for (i, l) in g.layers.iter_mut().enumerate() {
                     ui.push_id(("layer", i), |ui| {
                         egui::Frame::group(ui.style()).show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                preset_combo(ui, "preset", &mut l.preset, &cx.presets);
-                                if ui.small_button(crate::icons::TRASH).on_hover_text(t("Delete")).clicked() { remove = Some(i); }
-                            });
+                            let mut gone = false;
+                            forest_field(ui, &t("Preset"), "preset", &mut l.preset, cx, None, Some(&mut gone));
+                            if gone { remove = Some(i); }
                             number(ui, t("Density per ha (0 = from the preset)"), &mut l.density_per_ha, 0.0..=5000.0);
                             number64(ui, t("Spacing"), &mut l.spacing, 0.3..=4.0);
                             range_row(ui, t("Scale"), &mut l.scale_min, &mut l.scale_max, 0.1..=3.0, 0.01);
@@ -337,12 +361,15 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 ui.weak(t("A surface of the mask and the preset planted where it is."));
                 let mut remove = None;
                 for (i, z) in g.zones.iter_mut().enumerate() {
-                    ui.push_id(i, |ui| ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_salt("layer").width(100.0).selected_text(z.0.clone()).show_ui(ui, |ui| {
-                            for n in &cx.layers { ui.selectable_value(&mut z.0, n.clone(), n); }
+                    ui.push_id(i, |ui| egui::Frame::group(ui.style()).show(ui, |ui| {
+                        row(ui, &t("Surface"), |ui| {
+                            egui::ComboBox::from_id_salt("layer").width(ui.available_width()).selected_text(z.0.clone()).show_ui(ui, |ui| {
+                                for n in &cx.layers { ui.selectable_value(&mut z.0, n.clone(), n); }
+                            });
                         });
-                        preset_combo(ui, "preset", &mut z.1, &cx.presets);
-                        if ui.small_button("✖").clicked() { remove = Some(i); }
+                        let mut gone = false;
+                        forest_field(ui, &t("Preset"), "preset", &mut z.1, cx, None, Some(&mut gone));
+                        if gone { remove = Some(i); }
                     }));
                 }
                 if let Some(i) = remove { g.zones.remove(i); }
@@ -370,12 +397,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     let from_project = t("From the project species");
                     let mut main = g.edge_presets.first().map(|e| e.0.clone()).unwrap_or_default();
                     let chosen = main.clone();
-                    row(ui, &t("Edge preset"), |ui| {
-                        egui::ComboBox::from_id_salt("edge main").width(170.0).selected_text(if main.is_empty() { from_project.clone() } else { main.clone() }).show_ui(ui, |ui| {
-                            ui.selectable_value(&mut main, String::new(), from_project.as_str());
-                            for p in &cx.presets { ui.selectable_value(&mut main, p.clone(), p); }
-                        });
-                    });
+                    forest_field(ui, &t("Edge preset"), "edge main", &mut main, cx, Some(from_project.clone()), None);
                     if main != chosen {
                         match (main.is_empty(), g.edge_presets.first_mut()) {
                             (true, _) => g.edge_presets.clear(),
@@ -386,11 +408,12 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     if g.edge_presets.len() > 1 { ui.weak(t("Further edge presets, with their share")); }
                     let mut remove = None;
                     for (i, e) in g.edge_presets.iter_mut().enumerate().skip(1) {
-                        ui.push_id(("edge", i), |ui| ui.horizontal(|ui| {
-                            preset_combo(ui, "preset", &mut e.0, &cx.presets);
-                            ui.add(egui::DragValue::new(&mut e.1).speed(0.01).range(0.01..=1.0));
-                            if ui.small_button("✖").clicked() { remove = Some(i); }
-                        }));
+                        ui.push_id(("edge", i), |ui| {
+                            let mut gone = false;
+                            forest_field(ui, &t("Preset"), "preset", &mut e.0, cx, None, Some(&mut gone));
+                            row(ui, &t("Share"), |ui| { ui.add(egui::DragValue::new(&mut e.1).speed(0.01).range(0.01..=1.0)); });
+                            if gone { remove = Some(i); }
+                        });
                     }
                     if let Some(i) = remove { g.edge_presets.remove(i); }
                     if !g.edge_presets.is_empty() && ui.button(format!("+ {}", t("Add edge preset"))).clicked() {
@@ -543,7 +566,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
         }
         GeneratorKind::Fence(g) => {
             preset_pick(ui, &mut g.preset, cx);
-            if g.preset.is_none() { model_field(ui, t("Model"), &mut g.model, &cx.model); }
+            if g.preset.is_none() { model_field(ui, t("Model"), &mut g.model, cx); }
             number(ui, t("Spacing"), &mut g.spacing, -30.0..=100.0);
             ui.weak(t("Gap between the pieces. 0 makes them touch, negative values overlap them."));
             number(ui, t("Turn"), &mut g.yaw_offset, -180.0..=180.0);
@@ -567,13 +590,13 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                         ui.weak(t("Metres each piece reaches past the corner. Negative values stop it short of the corner."));
                     }
                 }
-                model_field(ui, t("Corner object"), &mut g.corner_model, &cx.model);
+                model_field(ui, t("Corner object"), &mut g.corner_model, cx);
                 ui.weak(t("Stood on every corner of the line, such as a post or a corner piece of the same wall. The pieces stop at its sides."));
             }
             group(ui, t("First and last object"), false, |ui| {
-                model_field(ui, t("First object"), &mut g.start_model, &cx.model);
+                model_field(ui, t("First object"), &mut g.start_model, cx);
                 if !g.start_model.is_empty() { ui.checkbox(&mut g.flip_start, t("Rotate the first object by 180°")); }
-                model_field(ui, t("Last object"), &mut g.end_model, &cx.model);
+                model_field(ui, t("Last object"), &mut g.end_model, cx);
                 if !g.end_model.is_empty() { ui.checkbox(&mut g.flip_end, t("Rotate the last object by 180°")); }
                 if !g.start_model.is_empty() || !g.end_model.is_empty() {
                     ui.checkbox(&mut g.ends_inside, t("Inside the line, not beyond its ends")).on_hover_text(t("The first and last object lie between the end of the line and the fence instead of on the end point, and the fence is shorter by their length."));
@@ -721,7 +744,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 number(ui, t("Depth"), &mut g.depth, 0.3..=20.0);
                 number(ui, t("Blend"), &mut g.falloff, 0.0..=80.0);
             });
-            model_field(ui, t("Water model"), &mut g.model, &cx.model);
+            model_field(ui, t("Water model"), &mut g.model, cx);
             number(ui, t("Overlap of the water models m"), &mut g.join_offset, -6.0..=12.0);
             number(ui, t("Water height m"), &mut g.water_offset, -5.0..=5.0);
             ui.checkbox(&mut g.reverse_flow, t("Current runs the other way"));
@@ -734,7 +757,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             line_ui(ui, &mut g.line);
         }
         GeneratorKind::Pond(g) => {
-            model_field(ui, t("Water model"), &mut g.model, &cx.model);
+            model_field(ui, t("Water model"), &mut g.model, cx);
             ui.checkbox(&mut g.fixed, t("Fixed water level"));
             if g.fixed {
                 number(ui, t("Water level m"), &mut g.level, -200.0..=2000.0);
