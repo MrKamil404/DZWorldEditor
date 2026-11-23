@@ -174,7 +174,9 @@ Paints the surface mask with the layers of the project, which come from the surf
 `P:\dz\surfaces*` or a `layers.cfg`. The brush has the same shapes as in Sculpt, with edge noise and
 spray; the **Eyedropper** (or Alt) picks the surface under the pointer, and **Paint only on** limits
 the brush to one surface. **Surface under objects** stamps a surface under the objects, buildings by
-their footprint. The lists of surfaces show the texture of each and have a search field.
+their footprint. With the **Geometry** patch shape, **Only what is above the ground** follows only the
+parts of each object above the terrain, so a rock sunk half into the ground paints round what shows
+of it, as baking into the satellite does. The lists of surfaces show the texture of each and have a search field.
 
 The game can draw only a limited number of surfaces on one texture tile. The brush does not add a
 surface to a tile that already has as many as the project allows (up to six), so what you paint is

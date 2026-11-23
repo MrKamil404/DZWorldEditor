@@ -1141,11 +1141,42 @@ impl Silhouette {
     }
 }
 
+/// An object as it stands, for [`silhouette_above_ground`]: the object, the height of its
+/// origin, and the ground it stands on.
+pub struct Placed<'a> {
+    pub object: &'a Obj,
+    pub origin_y: f32,
+    pub ground: &'a crate::terrain::Heightmap,
+}
+
 /// The outline of a model from above, with room round it for a margin of `margin` metres.
 /// Walls, which are lines from above, count as well as roofs and floors; water does not.
 pub fn silhouette(db: &ModelDb, model: &str, plant: bool, margin: f32) -> Option<Silhouette> {
+    silhouette_with(db, model, plant, margin, None)
+}
+
+/// [`silhouette`] of one object as it stands, of only its parts above the ground: a rock sunk
+/// half into the ground leaves the outline of what shows of it. In the model's own
+/// coordinates, as [`silhouette`] is.
+pub fn silhouette_above_ground(db: &ModelDb, model: &str, plant: bool, margin: f32, placed: &Placed) -> Option<Silhouette> {
+    silhouette_with(db, model, plant, margin, Some(placed))
+}
+
+fn silhouette_with(db: &ModelDb, model: &str, plant: bool, margin: f32, placed: Option<&Placed>) -> Option<Silhouette> {
     let bm = load_bake_mesh(db, model, plant)?;
     let points: Vec<[f32; 2]> = bm.mesh.vertices.iter().map(|v| [v.pos[0] + bm.center[0], v.pos[2] + bm.center[2]]).collect();
+    // Whether a point of the model (its own x, y, z) stands above the ground where it is.
+    let above = placed.map(|pl| {
+        let o = pl.object;
+        let m = crate::objects::rotation(o.yaw, o.pitch, o.roll, o.scale);
+        move |p: [f32; 3]| {
+            let x = o.x + m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2];
+            let y = pl.origin_y + m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2];
+            let z = o.z + m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2];
+            y > pl.ground.sample(x, z) + 0.02
+        }
+    });
+    let heights: Vec<f32> = bm.mesh.vertices.iter().map(|v| v.pos[1] + bm.center[1]).collect();
     let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
     for p in &points {
         for k in 0..2 {
@@ -1178,13 +1209,19 @@ pub fn silhouette(db: &ModelDb, model: &str, plant: bool, margin: f32) -> Option
         let Some(indices) = bm.mesh.indices.get(range) else { continue };
         for tri in indices.chunks_exact(3) {
             let c = [to_cell(points[tri[0] as usize]), to_cell(points[tri[1] as usize]), to_cell(points[tri[2] as usize])];
+            let ys = [heights[tri[0] as usize], heights[tri[1] as usize], heights[tri[2] as usize]];
+            let model_point = |cx: f32, cy: f32, y: f32| [x0 + cx * cell, y, z0 + cy * cell];
             // The edges, so a wall seen edge on still leaves its line.
             for k in 0..3 {
                 let (a, b) = (c[k], c[(k + 1) % 3]);
+                let (ya, yb) = (ys[k], ys[(k + 1) % 3]);
                 let steps = ((b[0] - a[0]).abs().max((b[1] - a[1]).abs()) * 2.0).ceil().max(1.0) as usize;
                 for s in 0..=steps {
                     let t = s as f32 / steps as f32;
-                    mark(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, &mut inside);
+                    let (px, py) = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t);
+                    if above.as_ref().is_none_or(|f| f(model_point(px, py, ya + (yb - ya) * t))) {
+                        mark(px, py, &mut inside);
+                    }
                 }
             }
             let area = (c[1][0] - c[0][0]) * (c[2][1] - c[0][1]) - (c[1][1] - c[0][1]) * (c[2][0] - c[0][0]);
@@ -1199,7 +1236,10 @@ pub fn silhouette(db: &ModelDb, model: &str, plant: bool, margin: f32) -> Option
                     let b0 = ((c[1][0] - px) * (c[2][1] - py) - (c[1][1] - py) * (c[2][0] - px)) / area;
                     let b1 = ((c[2][0] - px) * (c[0][1] - py) - (c[2][1] - py) * (c[0][0] - px)) / area;
                     if b0 >= 0.0 && b1 >= 0.0 && b0 + b1 <= 1.0 {
-                        inside[j * cols + i] = true;
+                        let y = b0 * ys[0] + b1 * ys[1] + (1.0 - b0 - b1) * ys[2];
+                        if above.as_ref().is_none_or(|f| f(model_point(px, py, y))) {
+                            inside[j * cols + i] = true;
+                        }
                     }
                 }
             }

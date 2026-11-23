@@ -23,10 +23,13 @@ pub struct MaskTool {
     pub footprint: bool,
     /// Models with a surface assigned in the asset browser get that one.
     pub own_surfaces: bool,
+    /// With the outline of the model: only its parts above the ground count, as each object
+    /// stands, so a rock sunk half into the ground leaves the outline of what shows of it.
+    pub above_ground: bool,
 }
 impl Default for MaskTool {
     fn default() -> Self {
-        Self { surface: 0, stamp: StampSettings::default(), selection_only: true, plants: true, buildings: false, roads: false, footprint: true, own_surfaces: true }
+        Self { surface: 0, stamp: StampSettings::default(), selection_only: true, plants: true, buildings: false, roads: false, footprint: true, own_surfaces: true, above_ground: true }
     }
 }
 
@@ -107,8 +110,8 @@ pub fn stamp_under_objects(app: &mut App) {
     let index = |name: &str| w.layers.iter().position(|l| l.name.eq_ignore_ascii_case(name)).map(|i| i as u8);
     let selected = tool.selection_only && !app.selection.is_empty();
     let geometry = tool.stamp.shape == StampShape::Geometry;
-    // The stamps, with the model, whether it is a plant and the yaw of each.
-    let mut stamps: Vec<(Stamp, String, bool, f32)> = Vec::new();
+    // The stamps, with the model, whether it is a plant, and the object.
+    let mut stamps: Vec<(Stamp, String, bool, dz_core::objects::Obj)> = Vec::new();
     let mut add = |o: &dz_core::objects::Obj| {
         let path = w.objects.model_path(o);
         if !w.object_visible(o) || crate::models::is_water_model(path) || crate::models::is_decal_model(path, &app.db.get(path)) {
@@ -126,7 +129,7 @@ pub fn stamp_under_objects(app: &mut App) {
             let (hx, hz) = i.footprint();
             [hx * o.scale, hz * o.scale, o.yaw]
         });
-        stamps.push((Stamp { x: o.x, z: o.z, surface, scale: o.scale, footprint, geometry: None }, path.to_string(), plant, o.yaw));
+        stamps.push((Stamp { x: o.x, z: o.z, surface, scale: o.scale, footprint, geometry: None }, path.to_string(), plant, *o));
     };
     if selected {
         for id in &app.selection {
@@ -160,6 +163,8 @@ pub fn stamp_under_objects(app: &mut App) {
     }
     // The outlines need the models, so they are read in the background.
     let db = app.db.clone();
+    // Only what is above the ground: an outline for each object as it stands.
+    let ground = app.mask_tool.above_ground.then(|| std::sync::Arc::new(w.height.clone()));
     app.spawn(t("Painting under objects"), move |job| {
         job.stage("Reading the outlines of the models");
         // Room round an outline for the margin of the smallest object of the model.
@@ -171,15 +176,21 @@ pub fn stamp_under_objects(app: &mut App) {
         let mut outlines: HashMap<String, Option<std::sync::Arc<dz_core::satmod::Silhouette>>> = HashMap::new();
         let total = stamps.len().max(1);
         let mut list = Vec::with_capacity(stamps.len());
-        for (i, (mut s, path, plant, yaw)) in stamps.into_iter().enumerate() {
+        for (i, (mut s, path, plant, o)) in stamps.into_iter().enumerate() {
             if i % 64 == 0 {
                 if job.cancelled() {
                     anyhow::bail!("Cancelled");
                 }
                 job.set_progress(i as f32 / total as f32);
             }
-            let outline = outlines.entry(path.clone()).or_insert_with(|| dz_core::satmod::silhouette(&db, &path, plant, margin[&path]).map(std::sync::Arc::new));
-            s.geometry = outline.clone().map(|o| (o, yaw));
+            let outline = match &ground {
+                Some(g) => {
+                    let placed = dz_core::satmod::Placed { object: &o, origin_y: dz_core::objects::ObjectStore::origin_y(&o, g), ground: g };
+                    dz_core::satmod::silhouette_above_ground(&db, &path, plant, margin[&path], &placed).map(std::sync::Arc::new)
+                }
+                None => outlines.entry(path.clone()).or_insert_with(|| dz_core::satmod::silhouette(&db, &path, plant, margin[&path]).map(std::sync::Arc::new)).clone(),
+            };
+            s.geometry = outline.map(|sil| (sil, o.yaw));
             list.push(s);
         }
         let tiles = dz_core::maskmod::stamp_tiles(&list, &settings, width, height, size);
@@ -247,6 +258,9 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             ui.checkbox(&mut app.mask_tool.footprint, t("Fill the footprint of buildings")).on_hover_text(t("The patch size is then the margin round the footprint."));
         });
         stamp_ui(ui, &mut app.mask_tool.stamp, "under_shape", true);
+        ui.add_enabled_ui(app.mask_tool.stamp.shape == StampShape::Geometry, |ui| {
+            ui.checkbox(&mut app.mask_tool.above_ground, t("Only what is above the ground")).on_hover_text(t("With the outline of the model: the parts of an object sunk into the terrain leave no surface, so a rock half in the ground paints only round what shows of it, as baking into the satellite does."));
+        });
         if ui.button(t("Paint under objects")).clicked() {
             stamp_under_objects(app);
         }

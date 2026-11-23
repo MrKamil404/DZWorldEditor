@@ -186,3 +186,25 @@ fn building_models_come_from_the_work_drive() {
     assert!(models[0].len() > 10, "{} houses", models[0].len());
     assert!(models[0].iter().all(|m| m.path.starts_with(r"dz\structures\residential\houses\") && m.short >= 2.5));
 }
+
+/// A rock sunk into the ground leaves the outline of what shows of it only, when P: is mounted.
+#[test]
+fn a_sunk_rock_leaves_the_outline_of_its_part_above_the_ground() {
+    let rock = "dz/rocks/rock_apart1.p3d";
+    if !std::path::Path::new("P:/").join(rock).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    let ground = dz_core::terrain::Heightmap::new(64, 64, 4.0, 10.0);
+    let o = dz_core::objects::Obj { x: 128.0, z: 128.0, elevation: 0.0, yaw: 30.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+    let covered = |s: &dz_core::satmod::Silhouette| s.dist.iter().filter(|d| **d == 0.0).count() as f32 * s.cell * s.cell;
+    let whole = covered(&dz_core::satmod::silhouette(&db, rock, false, 1.0).unwrap());
+    let info = db.get(rock);
+    let at = |sink: f32| {
+        let placed = dz_core::satmod::Placed { object: &o, origin_y: 10.0 - sink, ground: &ground };
+        dz_core::satmod::silhouette_above_ground(&db, rock, false, 1.0, &placed).map(|s| covered(&s))
+    };
+    let standing = at(0.0).unwrap();
+    assert!((standing - whole).abs() < whole * 0.2, "{standing} of {whole} m²");
+    let half = at((info.max[1] - info.min[1]) * 0.6).unwrap_or(0.0);
+    assert!(half < standing * 0.9, "half sunk {half} of {standing} m²");
+    assert!(at(info.max[1] - info.min[1] + 5.0).is_none());
+}
