@@ -9431,6 +9431,10 @@
   "de": "Mit den im Browser ausgewählten Modellen.",
   "pl": "Z modelami zaznaczonymi w przeglądarce."
  },
+ "With the outline of the model: the parts of an object sunk into the terrain leave no surface, so a rock half in the ground paints only round what shows of it, as baking into the satellite does.": {
+  "de": "Mit dem Umriss des Modells: Die im Gelände versunkenen Teile eines Objekts hinterlassen keine Oberfläche, ein halb eingegrabener Fels malt also nur um das, was von ihm zu sehen ist, wie beim Einbacken in den Satelliten.",
+  "pl": "Z obrysem modelu: części obiektu zakopane w terenie nie zostawiają powierzchni, więc skała do połowy w ziemi maluje tylko wokół tego, co z niej widać, jak przy wypalaniu w satelitę."
+ },
  "With the persistence (storage folders)": {
   "de": "Mit der Persistenz (storage-Ordner)",
   "pl": "Z persistence (foldery storage)"

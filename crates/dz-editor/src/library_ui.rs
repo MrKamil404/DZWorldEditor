@@ -44,6 +44,8 @@ struct KindContext {
     /// The forest presets to choose from, with where each comes from and its main model.
     forest_items: Vec<crate::theme::PickItem<String>>,
     thumbs: crate::models::ThumbPeek,
+    /// The pictures of the surface layers, by layer, where they are loaded.
+    layer_pics: Vec<Option<egui::TextureId>>,
     /// What is selected in the Content Browser, for the buttons that take it.
     selected_preset: Option<u64>,
     selected_forest: Option<String>,
@@ -74,6 +76,7 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
         object_items: preset_items(app),
         forest_items: forest_items(app, user),
         thumbs: app.thumbs.handle(),
+        layer_pics: app.layer_thumbs.iter().map(|t| t.as_ref().map(|t| t.id())).collect(),
         selected_preset: app.browser.presets().first().copied(),
         selected_forest: app.browser.selected.iter().find_map(|p| if let crate::asset_browser::Pick::Forest(n) = p { Some(n.clone()) } else { None }),
         loaded: Default::default(),
@@ -111,7 +114,7 @@ fn forest_items(app: &App, user: &[forest_core::user_presets::UserPreset]) -> Ve
     let mut out: Vec<crate::theme::PickItem<String>> = Vec::new();
     let mut add = |name: &str, note: String, model: Option<String>| {
         if !out.iter().any(|i| i.key == name) {
-            out.push(crate::theme::PickItem { key: name.to_string(), name: name.to_string(), note, model });
+            out.push(crate::theme::PickItem { key: name.to_string(), name: name.to_string(), note, model, picture: None });
         }
     };
     for p in user { add(&p.name, t("This generator"), main(&p.weights)); }
@@ -130,7 +133,7 @@ fn forest_field(ui: &mut egui::Ui, label: &str, id: impl std::hash::Hash, value:
 /// The object presets of the library to choose from in a [`crate::theme::search_pick`]: each
 /// with its folder and its first model for the picture.
 pub fn preset_items(app: &App) -> Vec<crate::theme::PickItem<Option<u64>>> {
-    app.library.objects.iter().map(|p| crate::theme::PickItem { key: Some(p.id), name: p.name.clone(), note: p.folder.clone(), model: p.items.first().map(|m| m.0.clone()) }).collect()
+    app.library.objects.iter().map(|p| crate::theme::PickItem { key: Some(p.id), name: p.name.clone(), note: p.folder.clone(), model: p.items.first().map(|m| m.0.clone()), picture: None }).collect()
 }
 
 /// Chooses an object preset in place of a list of models.
@@ -318,10 +321,8 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 ui.checkbox(&mut g.ground.enabled, t("Paint the ground under the trees")).on_hover_text(t("Kept as a mask modifier of this generator: running it again repaints it, deleting it brings the mask back."));
                 ui.add_enabled_ui(g.ground.enabled, |ui| {
                     row(ui, &t("Surface"), |ui| {
-                        let shown = if g.ground.surface.is_empty() { t("(none)") } else { g.ground.surface.clone() };
-                        egui::ComboBox::from_id_salt("ground_surface").selected_text(shown).show_ui(ui, |ui| {
-                            for n in &cx.layers { ui.selectable_value(&mut g.ground.surface, n.clone(), n); }
-                        });
+                        let w = ui.available_width();
+                        crate::theme::surface_pick(ui, "ground_surface", &mut g.ground.surface, Some((String::new(), t("(none)"))), &cx.layers, &cx.layer_pics, |_, n| n.to_string(), w);
                     });
                     let own = g.project.species_layers.len();
                     if own > 0 { ui.weak(tf("{0} species have a surface of their own in the forest project and keep it", &[&own.to_string()])); }
@@ -363,9 +364,8 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 for (i, z) in g.zones.iter_mut().enumerate() {
                     ui.push_id(i, |ui| egui::Frame::group(ui.style()).show(ui, |ui| {
                         row(ui, &t("Surface"), |ui| {
-                            egui::ComboBox::from_id_salt("layer").width(ui.available_width()).selected_text(z.0.clone()).show_ui(ui, |ui| {
-                                for n in &cx.layers { ui.selectable_value(&mut z.0, n.clone(), n); }
-                            });
+                            let w = ui.available_width();
+                            crate::theme::surface_pick(ui, "layer", &mut z.0, None, &cx.layers, &cx.layer_pics, |_, n| n.to_string(), w);
                         });
                         let mut gone = false;
                         forest_field(ui, &t("Preset"), "preset", &mut z.1, cx, None, Some(&mut gone));
@@ -425,9 +425,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 let mut remove = None;
                 for (i, s) in g.skip_surfaces.iter_mut().enumerate() {
                     ui.push_id(("skip", i), |ui| ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_salt("layer").width(120.0).selected_text(s.0.clone()).show_ui(ui, |ui| {
-                            for n in &cx.layers { ui.selectable_value(&mut s.0, n.clone(), n); }
-                        });
+                        crate::theme::surface_pick(ui, "layer", &mut s.0, None, &cx.layers, &cx.layer_pics, |_, n| n.to_string(), 120.0);
                         ui.add(egui::DragValue::new(&mut s.1).speed(0.5).range(0.0..=200.0).suffix(" m"));
                         if ui.small_button("✖").clicked() { remove = Some(i); }
                     }));
@@ -503,9 +501,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 ui.push_id(i, |ui| {
                     egui::Frame::group(ui.style()).show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            egui::ComboBox::from_id_salt("layer").width(140.0).selected_text(cx.layers.get(r.layer).cloned().unwrap_or_default()).show_ui(ui, |ui| {
-                                for (k, n) in cx.layers.iter().enumerate() { ui.selectable_value(&mut r.layer, k, n); }
-                            });
+                            crate::theme::surface_pick(ui, "layer", &mut r.layer, None, &cx.layers, &cx.layer_pics, |k, _| k, 140.0);
                             if ui.small_button(crate::icons::TRASH).on_hover_text(t("Delete")).clicked() { remove = Some(i); }
                         });
                         range_row(ui, t("Height m"), &mut r.min_height, &mut r.max_height, -200.0..=9000.0, 1.0);
@@ -558,7 +554,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             });
             group(ui, t("Yards and fences"), false, |ui| {
                 number(ui, t("Yard round a building m"), &mut s.yard, 0.0..=30.0);
-                layer_pick(ui, "yard_surface", t("Yard surface"), &mut s.yard_surface, &cx.layers);
+                layer_pick(ui, "yard_surface", t("Yard surface"), &mut s.yard_surface, &cx.layers, &cx.layer_pics);
                 number(ui, t("Share of plots fenced"), &mut s.fence_share, 0.0..=1.0);
                 ui.weak(t("Fence models"));
                 models_list(ui, &mut s.fences, cx);
@@ -821,8 +817,8 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
         }
         GeneratorKind::Coast(g) => {
             ui.weak(t("Beaches by the water, sand on the shallow sea floor, rock on steep shores, and stones along the water. Works on the whole map or inside polygons."));
-            layer_pick(ui, "coast_sand", t("Beach surface"), &mut g.sand, &cx.layers);
-            layer_pick(ui, "coast_rock", t("Rocky shore surface"), &mut g.rock, &cx.layers);
+            layer_pick(ui, "coast_sand", t("Beach surface"), &mut g.sand, &cx.layers, &cx.layer_pics);
+            layer_pick(ui, "coast_rock", t("Rocky shore surface"), &mut g.rock, &cx.layers, &cx.layer_pics);
             number(ui, t("Beach width m"), &mut g.width, 4.0..=120.0);
             number(ui, t("Beach up to m above the sea"), &mut g.max_height, 0.5..=20.0);
             number(ui, t("Rock on shores steeper than °"), &mut g.cliff_slope, 10.0..=70.0);
@@ -841,7 +837,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Per hectare"), &mut g.density, 0.5..=200.0);
             number(ui, t("Minimum distance"), &mut g.min_distance, 1.0..=60.0);
             number(ui, t("Sunk into the slope"), &mut g.sink, 0.0..=1.0);
-            layer_pick(ui, "cliff_surface", t("Surface"), &mut g.surface, &cx.layers);
+            layer_pick(ui, "cliff_surface", t("Surface"), &mut g.surface, &cx.layers, &cx.layer_pics);
             objects_ui(ui, &mut g.objects, cx);
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
         }
@@ -855,7 +851,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 }
             }
             if g.surfaces.is_empty() { ui.weak(t("None chosen: layers named like fields are used.")); }
-            layer_pick(ui, "field_balk", t("Balk surface"), &mut g.balk, &cx.layers);
+            layer_pick(ui, "field_balk", t("Balk surface"), &mut g.balk, &cx.layers, &cx.layer_pics);
             range_row(ui, t("Strip width m"), &mut g.min_width, &mut g.max_width, 4.0..=300.0, 0.5);
             number(ui, t("Balk width m"), &mut g.balk_width, 0.0..=12.0);
             let mut fixed = g.angle.is_some();
@@ -874,7 +870,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
         }
         GeneratorKind::Roadside(g) => {
             ui.weak(t("A verge along roads and lines, bushes beyond it, and now and then a sign. Drop it on a road or a line."));
-            layer_pick(ui, "verge_surface", t("Verge surface"), &mut g.verge, &cx.layers);
+            layer_pick(ui, "verge_surface", t("Verge surface"), &mut g.verge, &cx.layers, &cx.layer_pics);
             number(ui, t("Verge from the middle of the road m"), &mut g.offset, 1.0..=40.0);
             number(ui, t("Verge width m"), &mut g.verge_width, 0.5..=20.0);
             ui.checkbox(&mut g.both_sides, t("Both sides"));
@@ -975,14 +971,10 @@ fn follow_row(ui: &mut egui::Ui, follow: &mut dz_core::landscape::Follow) {
 }
 
 /// A surface layer by name, or none ("chosen by name" when the generator can guess one).
-fn layer_pick(ui: &mut egui::Ui, salt: &str, label: String, value: &mut String, layers: &[String]) {
+fn layer_pick(ui: &mut egui::Ui, salt: &str, label: String, value: &mut String, layers: &[String], pics: &[Option<egui::TextureId>]) {
     row(ui, &label, |ui| {
-        let auto = t("Automatic");
-        let shown = if value.is_empty() { auto.clone() } else { value.clone() };
-        egui::ComboBox::from_id_salt(salt).width(ui.available_width()).selected_text(shown).show_ui(ui, |ui| {
-            ui.selectable_value(value, String::new(), &auto);
-            for n in layers { ui.selectable_value(value, n.clone(), n); }
-        });
+        let w = ui.available_width();
+        crate::theme::surface_pick(ui, salt, value, Some((String::new(), t("Automatic"))), layers, pics, |_, n| n.to_string(), w);
     });
 }
 

@@ -1243,11 +1243,9 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
         slider(ui, &t("Radius"), &mut app.paint.radius, 0.5..=2000.0, true);
         slider(ui, &t("Edge noise"), &mut app.paint.scatter, 0.0..=0.8, false);
         row(ui, &t("Paint only on"), |ui| {
-            let shown = app.paint.only_on.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| t("(any surface)"));
-            egui::ComboBox::from_id_salt("only_on").selected_text(shown).show_ui(ui, |ui| {
-                ui.selectable_value(&mut app.paint.only_on, None, t("(any surface)"));
-                for (i, n) in names.iter().enumerate() { ui.selectable_value(&mut app.paint.only_on, Some(i), n); }
-            });
+            let pics: Vec<_> = app.layer_thumbs.iter().map(|t| t.as_ref().map(|t| t.id())).collect();
+            let w = ui.available_width();
+            theme::surface_pick(ui, "only_on", &mut app.paint.only_on, Some((None, t("(any surface)"))), &names, &pics, |i, _| Some(i), w);
         });
         theme::check_row(ui, &mut app.paint.into_modifier, t("Paint into a modifier")).on_hover_text(t("Strokes go into a mask modifier, which can be hidden, erased from or deleted, and which merges cleanly in team work when each person paints in their own. Off: strokes go straight onto the mask, under the modifiers."));
         if app.paint.into_modifier {
@@ -1267,6 +1265,8 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
         about(ui, &t("The brush will not add a surface to a tile that already has as many as the project allows."));
     });
     crate::surfaces_ui::panel(app, ui);
+    // The mask read from the satellite is painting of surfaces, so it is here with the brush.
+    crate::satellite::classify_section(app, ui);
     crate::maskmods::panel(app, ui);
     shortcuts(ui, |ui| {
         let pick = app.settings.keys.hold(Hold::Pick).name().to_string();
@@ -1649,7 +1649,7 @@ fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSe
     {
         use crate::asset_browser::Pick;
         let name = |m: &str| m.rsplit(['\\', '/']).next().unwrap_or(m).trim_end_matches(".p3d").to_string();
-        let items: Vec<crate::theme::PickItem<String>> = bridge_models().iter().map(|m| crate::theme::PickItem { key: m.clone(), name: name(m), note: m.clone(), model: Some(m.clone()) }).collect();
+        let items: Vec<crate::theme::PickItem<String>> = bridge_models().iter().map(|m| crate::theme::PickItem { key: m.clone(), name: name(m), note: m.clone(), model: Some(m.clone()), picture: None }).collect();
         let known = |m: &str| bridge_models().iter().any(|b| b.eq_ignore_ascii_case(m));
         changed |= crate::slots::preset_slot(ui, &t("Bridge model"), "bridge_model", &mut r.bridge_model, Some((String::new(), t("By road width"))), &items, thumbs, &|p| if let Pick::Model(m) = p { known(m).then(|| m.clone()) } else { None }, &|m| (!m.is_empty()).then(|| Pick::Model(m.clone())), None, None);
     }
@@ -3059,11 +3059,9 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
                 egui::Window::new(t("Delete layer")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).open(&mut open).show(ctx, |ui| {
                     ui.label(RichText::new(tf("Delete the layer {0}?", &[&names[layer]])).strong());
                     row(ui, &t("Its ground becomes"), |ui| {
-                        egui::ComboBox::from_id_salt("delete_layer_into").selected_text(names[into_now].clone()).show_ui(ui, |ui| {
-                            for (k, n) in names.iter().enumerate().filter(|(k, _)| *k != layer) {
-                                ui.selectable_value(&mut into_now, k, n);
-                            }
-                        });
+                        let pics: Vec<_> = app.layer_thumbs.iter().map(|t| t.as_ref().map(|t| t.id())).collect();
+                        let items: Vec<_> = theme::surface_items(&names, &pics, |k, _| k).into_iter().filter(|i| i.key != layer).collect();
+                        theme::search_pick(ui, "delete_layer_into", &mut into_now, None, &items, &|_| None, 200.0);
                     });
                     ui.colored_label(theme::WARN, t("The removal itself cannot be undone; earlier steps still can. The files of its texture stay on the disk."));
                     ui.horizontal(|ui| {
