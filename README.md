@@ -5,7 +5,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 
 ![A town in the 3D view](docs/screenshots/town.jpg)
 
-[**Download the latest release**](https://github.com/MrKamil404/DZWorldEditor/releases/latest) · Written in Rust · Windows 10/11 · English, Polish and German
+[**Download the latest release**](https://github.com/MrKamil404/DZWorldEditor/releases/latest) · [Support the project](https://buymeacoffee.com/mrkamil404) · Written in Rust · Windows 10/11 · English, Polish and German
 
 ## Features
 
@@ -158,3 +158,9 @@ The editor starts in the language of Windows when it has it, and in English othe
 
 A `v*` tag runs `.github/workflows/release.yml`, which tests the code and publishes `DZWorldEditor.exe`.
 The program checks for the latest release at start and can install it.
+
+## Support
+
+DZ World Editor is free to use. If it helps you build your map, you can support further development:
+
+<a href="https://buymeacoffee.com/mrkamil404"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="42"></a>
