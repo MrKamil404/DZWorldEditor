@@ -680,6 +680,18 @@ impl App {
         self.bottom = BottomTab::Output;
     }
 
+    /// After another work drive was chosen in the settings: models, thumbnails, the list of
+    /// models and the road pieces are read from it from now on.
+    pub fn work_drive_changed(&mut self) {
+        let root = self.settings.tools.work_drive.clone();
+        dayz_road_tool::drive::set(&root);
+        self.db = ModelDb::new(root);
+        self.loader = ModelLoader::new(self.db.clone(), self.ctx.clone());
+        self.thumbs = Thumbnails::new(self.db.clone(), data_dir().join("thumbnails"), self.ctx.clone());
+        self.rescan_assets();
+        self.scan_roads();
+    }
+
     /// Opens the asset browser at the model of an object.
     pub fn show_in_browser(&mut self, path: &str) {
         self.browser.reveal(path);
@@ -1270,7 +1282,7 @@ impl App {
         });
     }
 
-    fn scan_roads(&mut self) {
+    pub(crate) fn scan_roads(&mut self) {
         let (tx, rx) = channel();
         let drive = self.settings.tools.work_drive.clone();
         let ctx = self.ctx.clone();

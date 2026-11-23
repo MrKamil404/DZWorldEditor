@@ -880,14 +880,17 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
                 if !closed {
                     continue;
                 }
-                let mut clipped = clip_polygon(&ring[..ring.len() - 1], size);
-                clipped.dedup();
+                // Cut to the map, unless cutting a bent outline leaves it crossing itself along
+                // the edge of the map, which generators cannot use: then it stays whole.
+                let crosses = |r: &[[f64; 2]]| forest_core::scatter::find_self_intersection(r).is_some();
+                let cut = |r: &[[f64; 2]]| {
+                    let mut c = clip_polygon(r, size);
+                    c.dedup();
+                    if c.len() >= 3 && crosses(&c) && !crosses(r) { r.to_vec() } else { c }
+                };
+                let clipped = cut(&ring[..ring.len() - 1]);
                 if clipped.len() >= 3 {
-                    let holes = inner.iter().filter(|h| h.len() >= 4 && inside(&ring, h[0])).map(|h| {
-                        let mut c = clip_polygon(&h[..h.len() - 1], size);
-                        c.dedup();
-                        c
-                    }).filter(|h| h.len() >= 3).map(&to_f32).collect();
+                    let holes = inner.iter().filter(|h| h.len() >= 4 && inside(&ring, h[0])).map(|h| cut(&h[..h.len() - 1])).filter(|h| h.len() >= 3).map(&to_f32).collect();
                     out.push(MapShape { holes, kind: ShapeKind::Polygon, points: to_f32(clipped), attributes: attributes.clone() });
                 }
             } else {
@@ -1259,21 +1262,31 @@ pub struct BuildingModel {
     pub middle: [f32; 2],
 }
 
-/// The building models of each of [`BUILDING_KINDS`], from the models of the work drive.
-pub fn building_models(assets: &crate::assets::AssetIndex, db: &crate::model_info::ModelDb) -> Vec<Vec<BuildingModel>> {
+/// The building models of each of [`BUILDING_KINDS`], read from their folders on the work
+/// drive (not from the list of models the editor makes in the background, which may not be
+/// ready yet).
+pub fn building_models(db: &crate::model_info::ModelDb) -> Vec<Vec<BuildingModel>> {
+    let files = |folder: &str| -> Vec<String> {
+        std::fs::read_dir(db.root().join(folder.replace('\\', "/")))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("p3d")))
+            .map(|e| crate::objects::ObjectStore::normalize_path(&format!("{folder}\\{}", e.file_name().to_string_lossy())))
+            .collect()
+    };
     BUILDING_KINDS
         .iter()
         .map(|(_, folders)| {
-            assets
-                .assets
+            folders
                 .iter()
-                .filter(|a| folders.iter().any(|f| a.folder.eq_ignore_ascii_case(f)))
-                .filter(|a| !["proxy", "ruin", "ghost", "_dam", "lod"].iter().any(|w| a.path.contains(w)))
-                .filter_map(|a| {
-                    let i = db.get(&a.path);
+                .flat_map(|f| files(f))
+                .filter(|path| !["proxy", "ruin", "ghost", "_dam", "lod"].iter().any(|w| path.contains(w)))
+                .filter_map(|path| {
+                    let i = db.get(&path);
                     let (lx, lz) = (i.max[0] - i.min[0], i.max[2] - i.min[2]);
                     // Props in the same folders (cases, hoses) are not buildings.
-                    (i.known && lx.min(lz) >= 2.5).then(|| BuildingModel { path: a.path.clone(), long: lx.max(lz), short: lx.min(lz), along_x: lx >= lz, middle: [(i.min[0] + i.max[0]) * 0.5, (i.min[2] + i.max[2]) * 0.5] })
+                    (i.known && lx.min(lz) >= 2.5).then(|| BuildingModel { path: path.clone(), long: lx.max(lz), short: lx.min(lz), along_x: lx >= lz, middle: [(i.min[0] + i.max[0]) * 0.5, (i.min[2] + i.max[2]) * 0.5] })
                 })
                 .collect()
         })
@@ -1558,7 +1571,7 @@ impl RealMap {
 
 /// Downloads everything and makes the world. Shapes that cannot be downloaded are left out
 /// with a warning in the job log; the picture and heights are needed.
-pub fn build_world(m: &RealMap, f: &Fetcher, db: &crate::model_info::ModelDb, assets: &crate::assets::AssetIndex, job: &Job) -> Result<World> {
+pub fn build_world(m: &RealMap, f: &Fetcher, db: &crate::model_info::ModelDb, job: &Job) -> Result<World> {
     let area = m.area();
     let mut meta = WorldMeta::new(&m.name, m.terrain_size, m.cell);
     meta.latitude = m.lat as f32;
@@ -1606,7 +1619,10 @@ pub fn build_world(m: &RealMap, f: &Fetcher, db: &crate::model_info::ModelDb, as
     let mut placed = 0;
     if m.buildings {
         job.stage("Placing the buildings");
-        let models = building_models(assets, db);
+        let models = building_models(db);
+        if models.iter().all(|m| m.is_empty()) {
+            job.warn(format!("No building models of the game were found in {}", db.root().display()));
+        }
         let shapes: Vec<MapShape> = w.shape_layers.iter().filter(|l| l.name == OsmKind::Buildings.layer()).flat_map(|l| l.shapes.iter().cloned()).collect();
         let found = osm_buildings(&shapes, &models, 1);
         if !found.is_empty() {

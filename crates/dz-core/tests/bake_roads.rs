@@ -176,3 +176,13 @@ fn a_wicket_takes_only_the_room_it_fills() {
     let width = gap.1 - gap.0;
     assert!(width < seen + 0.4, "the gap is {width} m for a wicket of {seen} m");
 }
+
+/// The building models of the game are read from their folders, when P: is mounted.
+#[test]
+fn building_models_come_from_the_work_drive() {
+    if !std::path::Path::new("P:/dz/structures/residential/houses").exists() { return; }
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    let models = dz_core::real_terrain::building_models(&db);
+    assert!(models[0].len() > 10, "{} houses", models[0].len());
+    assert!(models[0].iter().all(|m| m.path.starts_with(r"dz\structures\residential\houses\") && m.short >= 2.5));
+}

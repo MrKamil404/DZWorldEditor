@@ -31,10 +31,9 @@ fn main() -> anyhow::Result<()> {
     let f = Fetcher::new(std::env::var_os("DZWE_TILE_CACHE").map(PathBuf::from))?;
     let job = Job::default();
     let t = std::time::Instant::now();
-    let db = dz_core::model_info::ModelDb::new("P:/");
-    let cancel = std::sync::atomic::AtomicBool::new(false);
-    let assets = dz_core::assets::scan(std::path::Path::new("P:/"), &["DZ".to_string()], &cancel);
-    let w = build_world(&m, &f, &db, &assets, &job)?;
+    // The work drive, as the editor's settings or DZWE_WORK_DRIVE give it.
+    let db = dz_core::model_info::ModelDb::new(std::env::var("DZWE_WORK_DRIVE").unwrap_or_else(|_| "P:/".into()));
+    let w = build_world(&m, &f, &db, &job)?;
     println!("{} objects", w.objects.len());
     println!("{} road lines", dz_core::real_terrain::osm_road_lines(&w.shape_layers, 4.0, 30.0).len());
     for l in job.take_log() {

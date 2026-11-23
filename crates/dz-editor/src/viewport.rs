@@ -4726,6 +4726,23 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 app.route_queue.push_back((r.families[k].clone().unwrap_or_default(), line));
             }
         }
+        // The lines of the Output Log, for automatic checks.
+        "printlog" => {
+            for l in &app.log {
+                eprintln!("LOG {} {}", l.level, l.text);
+            }
+        }
+        // realcreate [size preset] [metres per pixel]: what "Download and create" does in the
+        // New project window for a real place.
+        "realcreate" => {
+            let mut dialog = std::mem::replace(&mut app.dialog, crate::app::Dialog::None);
+            if let crate::app::Dialog::NewProject(p) = &mut dialog {
+                if let Some(s) = nums.first() { p.preset = *s as usize; }
+                if let Some(m) = nums.get(1) { p.place.mpp = *m; }
+                p.place.roads_on = false;
+                crate::real_terrain_ui::create(app, p);
+            }
+        }
         // The New project window for a real place, optionally at "lat lon".
         "realplace" => {
             app.dialog = crate::panels::real_place_dialog();

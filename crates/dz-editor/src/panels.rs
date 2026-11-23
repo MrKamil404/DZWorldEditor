@@ -3192,7 +3192,7 @@ fn settings_paths(app: &mut App, ui: &mut egui::Ui) {
     path_row(ui, t("DayZ"), &mut app.settings.tools.dayz);
     ui.add_space(6.0);
     if ui.button(icons::with(icons::MAGNIFYING_GLASS, &t("Detect automatically"))).clicked() { app.settings.tools = dz_core::build::detect(); changed = true; }
-    if changed { app.db = dz_core::model_info::ModelDb::new(app.settings.tools.work_drive.clone()); }
+    if changed { app.work_drive_changed(); }
     let problems = app.settings.tools.check();
     if problems.is_empty() {
         ui.colored_label(Color32::from_rgb(110, 200, 120), t("All paths found."));
