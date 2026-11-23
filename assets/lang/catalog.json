@@ -255,6 +255,10 @@
   "de": "Eine Oberfläche der Maske und die Vorlage, die dort gepflanzt wird.",
   "pl": "Powierzchnia maski i preset sadzony tam, gdzie ona jest."
  },
+ "A terrain modifier under each building, as Terrain under objects makes it. Many buildings make many modifiers.": {
+  "de": "Ein Geländemodifikator unter jedem Gebäude, wie ihn Terrain under objects macht. Viele Gebäude ergeben viele Modifikatoren.",
+  "pl": "Modyfikator terenu pod każdym budynkiem, jak robi to Terrain under objects. Dużo budynków to dużo modyfikatorów."
+ },
  "A verge along roads and lines, bushes beyond it, and now and then a sign. Drop it on a road or a line.": {
   "de": "Ein Bankett entlang von Straßen und Linien, dahinter Büsche und ab und zu ein Schild. Ziehe ihn auf eine Straße oder Linie.",
   "pl": "Pobocze wzdłuż dróg i linii, za nim krzaki, a co jakiś czas znak. Upuść go na drogę albo linię."
@@ -1102,6 +1106,10 @@
  "Buildings": {
   "de": "Gebäude",
   "pl": "Budynki"
+ },
+ "Buildings and roads": {
+  "de": "Gebäude und Straßen",
+  "pl": "Budynki i drogi"
  },
  "Buildings and structures": {
   "de": "Gebäude und Bauwerke",
@@ -2478,6 +2486,10 @@
  "Dynamic events: vehicles, wrecks, animals, infected and their children.": {
   "de": "Dynamische Events: Fahrzeuge, Wracks, Tiere, Infizierte und ihre Kinder.",
   "pl": "Dynamiczne eventy: pojazdy, wraki, zwierzęta, zarażeni i ich dzieci."
+ },
+ "Each building of OpenStreetMap gets the building of the game nearest its size and kind (house, flats, shop, industry, farm, shed, church, school), turned along it, on the object layer OSM buildings.": {
+  "de": "Jedes Gebäude aus OpenStreetMap bekommt das Gebäude des Spiels, das seiner Größe und Art am nächsten kommt (Haus, Wohnblock, Laden, Industrie, Hof, Schuppen, Kirche, Schule), entlang ausgerichtet, auf der Objektebene OSM buildings.",
+  "pl": "Każdy budynek z OpenStreetMap dostaje budynek z gry najbliższy rozmiarem i rodzajem (dom, blok, sklep, przemysł, gospodarstwo, szopa, kościół, szkoła), obrócony wzdłuż niego, na warstwie obiektów OSM buildings."
  },
  "Each copy takes a model of the preset, drawn by its weights: give a broken fence a small weight for one now and then. The copies are as long as the selection.": {
   "de": "Jede Kopie bekommt ein Modell des Presets, nach seinen Gewichten gezogen: Gib einem kaputten Zaun ein kleines Gewicht, damit er ab und zu kommt. Die Kopien sind so lang wie die Auswahl.",
@@ -4171,6 +4183,10 @@
   "de": "Unverändert lassen",
   "pl": "Zostaw bez zmian"
  },
+ "Leave as shapes": {
+  "de": "Als Formen lassen",
+  "pl": "Zostaw jako kształty"
+ },
  "Leave out objects hidden behind the terrain or buildings": {
   "de": "Objekte hinter Gelände oder Gebäuden weglassen",
   "pl": "Pomijaj obiekty zasłonięte terenem lub budynkami"
@@ -4226,6 +4242,10 @@
  "Level the ground under buildings": {
   "de": "Gelände unter Gebäuden einebnen",
   "pl": "Wyrównaj teren pod budynkami"
+ },
+ "Level the ground under them": {
+  "de": "Das Gelände darunter einebnen",
+  "pl": "Wyrównaj teren pod nimi"
  },
  "Level the ground when placing": {
   "de": "Beim Platzieren Gelände einebnen",
@@ -7715,6 +7735,10 @@
   "de": "Bachbett",
   "pl": "Koryto strumienia"
  },
+ "Streams": {
+  "de": "Bäche",
+  "pl": "Strumienie"
+ },
  "Streets": {
   "de": "Straßen",
   "pl": "Ulice"
@@ -8195,6 +8219,14 @@
   "de": "Der Generator für Teiche und Seen gräbt für jeden ein Becken, das die echten Höhen meist schon haben.",
   "pl": "Generator stawów i jezior kopie nieckę dla każdego, a prawdziwe wysokości zwykle już ją mają."
  },
+ "The River generator on the rivers and canals of OpenStreetMap: a bed cut into the ground, with water models along it.": {
+  "de": "Der Flussgenerator auf den Flüssen und Kanälen aus OpenStreetMap: ein ins Gelände geschnittenes Bett mit Wassermodellen entlang.",
+  "pl": "Generator rzeki na rzekach i kanałach z OpenStreetMap: koryto wcięte w teren, z modelami wody wzdłuż."
+ },
+ "The Stream generator on the streams and ditches of OpenStreetMap.": {
+  "de": "Der Bachgenerator auf den Bächen und Gräben aus OpenStreetMap.",
+  "pl": "Generator strumienia na strumieniach i rowach z OpenStreetMap."
+ },
  "The Terrain Builder template libraries read into the project.": {
   "de": "Die in das Projekt geladenen Terrain-Builder-Vorlagenbibliotheken.",
   "pl": "Biblioteki szablonów Terrain Buildera wczytane do projektu."
@@ -8579,9 +8611,17 @@
   "de": "Die Straße läuft andersherum: ihr Anfang wird ihr Ende.",
   "pl": "Droga biegnie w drugą stronę: początek staje się końcem."
  },
+ "The road types of the game are not read yet: is the work drive set?": {
+  "de": "Die Straßentypen des Spiels sind noch nicht gelesen: Ist das Arbeitslaufwerk gesetzt?",
+  "pl": "Typy dróg z gry nie są jeszcze wczytane: czy dysk roboczy jest ustawiony?"
+ },
  "The roads from the crossroad could not be fitted": {
   "de": "Die Straßen von der Kreuzung ließen sich nicht einpassen",
   "pl": "Nie udało się dopasować dróg od skrzyżowania"
+ },
+ "The roads of OpenStreetMap are built of the game's road pieces once the map opens, one after another, with the ground graded under them. Pieces of a road are joined first; crossings get no crossroad pieces.": {
+  "de": "Die Straßen aus OpenStreetMap werden nach dem Öffnen der Karte aus den Straßenteilen des Spiels gebaut, eine nach der anderen, mit eingeebnetem Gelände darunter. Teilstücke einer Straße werden zuerst verbunden; Kreuzungen bekommen keine Kreuzungsteile.",
+  "pl": "Drogi z OpenStreetMap są budowane z części dróg z gry po otwarciu mapy, jedna po drugiej, z wyrównaniem terenu pod nimi. Odcinki drogi są najpierw łączone; skrzyżowania nie dostają części skrzyżowań."
  },
  "The same for every brush: sculpting, painting, holes, placing and the clone brush.": {
   "de": "Für jeden Pinsel gleich: Formen, Malen, Löcher, Platzieren und Klonpinsel.",
@@ -8738,6 +8778,10 @@
  "Thermal erosion": {
   "de": "Thermische Erosion",
   "pl": "Erozja termiczna"
+ },
+ "They are made from the OpenStreetMap shapes.": {
+  "de": "Sie entstehen aus den OpenStreetMap-Formen.",
+  "pl": "Powstają z kształtów OpenStreetMap."
  },
  "Things round buildings": {
   "de": "Gegenstände um Gebäude",
@@ -9958,6 +10002,10 @@
  "{0} prototypes, {1} buildings in mapgrouppos.xml, {2} cluster models; {3} objects on the map.": {
   "de": "{0} Prototypen, {1} Gebäude in mapgrouppos.xml, {2} Clustermodelle; {3} Objekte auf der Karte.",
   "pl": "{0} prototypów, {1} budynków w mapgrouppos.xml, {2} modeli klastrów; {3} obiektów na mapie."
+ },
+ "{0} roads are built one after another; stopping one stops the rest": {
+  "de": "{0} Straßen werden nacheinander gebaut; das Stoppen einer stoppt den Rest",
+  "pl": "{0} dróg jest budowanych jedna po drugiej; zatrzymanie jednej zatrzymuje resztę"
  },
  "{0} selected": {
   "de": "{0} ausgewählt",

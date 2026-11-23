@@ -21,15 +21,22 @@ fn main() -> anyhow::Result<()> {
         cell: a[4].parse()?,
         satellite: Some((satellite_sources()[source].clone(), mpp)),
         heights: true,
-        osm: Some(OsmParts::default()),
+        osm: Some(OsmParts { buildings: true, ..Default::default() }),
         mask: Some(dz_core::real_terrain::default_classify()),
         shape_mask: Some(dz_core::real_terrain::ShapeMask::for_layers(&dz_core::world::default_layers())),
         generators: Some(Default::default()),
+        buildings: true,
+        roads: None,
     };
     let f = Fetcher::new(std::env::var_os("DZWE_TILE_CACHE").map(PathBuf::from))?;
     let job = Job::default();
     let t = std::time::Instant::now();
-    let w = build_world(&m, &f, &job)?;
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let assets = dz_core::assets::scan(std::path::Path::new("P:/"), &["DZ".to_string()], &cancel);
+    let w = build_world(&m, &f, &db, &assets, &job)?;
+    println!("{} objects", w.objects.len());
+    println!("{} road lines", dz_core::real_terrain::osm_road_lines(&w.shape_layers, 4.0, 30.0).len());
     for l in job.take_log() {
         println!("{l}");
     }

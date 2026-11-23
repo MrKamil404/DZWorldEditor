@@ -2968,7 +2968,8 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
                         }
                     });
                     ui.add_space(4.0);
-                    crate::real_terrain_ui::ui(ui, p);
+                    let families = app.road_families.clone();
+                    crate::real_terrain_ui::ui(ui, p, &families);
                     ui.add_space(6.0);
                     let ready = crate::real_terrain_ui::ready(p);
                     let r = ui.add_enabled(ready.is_ok() && app.task.is_none(), egui::Button::new(crate::icons::with(crate::icons::DOWNLOAD_SIMPLE, &t("Download and create"))));

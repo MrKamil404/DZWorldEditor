@@ -38,6 +38,12 @@ pub struct RealPlace {
     /// The OpenStreetMap shapes are painted into the mask, over what the picture gave.
     pub shape_mask_on: bool,
     pub shape_mask: rt::ShapeMask,
+    /// The OpenStreetMap buildings get building models, with the ground levelled under them.
+    pub buildings: bool,
+    pub level: bool,
+    /// The OpenStreetMap roads are built as roads.
+    pub roads_on: bool,
+    pub roads: rt::OsmRoads,
     /// Generators are added for the shapes.
     pub generators_on: bool,
     pub generators: rt::OsmGenerators,
@@ -75,6 +81,10 @@ impl Default for RealPlace {
             class_view: Default::default(),
             shape_mask_on: true,
             shape_mask: rt::ShapeMask::for_layers(&dz_core::world::default_layers()),
+            buildings: true,
+            level: false,
+            roads_on: true,
+            roads: Default::default(),
             generators_on: true,
             generators: Default::default(),
             last_img: None,
@@ -135,6 +145,8 @@ impl RealPlace {
             mask: (self.satellite && self.mask).then(|| self.classify.clone()),
             shape_mask: (self.shapes && self.shape_mask_on).then(|| self.shape_mask.clone()),
             generators: (self.shapes && self.generators_on).then(|| self.generators.clone()),
+            buildings: self.shapes && self.buildings,
+            roads: (self.shapes && self.roads_on && self.roads.families.iter().any(|f| f.is_some())).then(|| self.roads.clone()),
         }
     }
 
@@ -277,7 +289,7 @@ fn licence_note(source: usize) -> String {
 }
 
 /// The part of the New project window for a real place.
-pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
+pub fn ui(ui: &mut egui::Ui, p: &mut NewProject, families: &[String]) {
     let (n, cell) = SIZE_PRESETS[p.preset];
     let size_m = n as f64 * cell as f64;
     let ctx = ui.ctx().clone();
@@ -383,6 +395,7 @@ pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
                 });
             });
             crate::theme::subsection(ui, &t("Surface mask"), true, |ui| mask_ui(ui, place, size_m));
+            crate::theme::subsection(ui, &t("Buildings and roads"), true, |ui| built_ui(ui, place, families));
             crate::theme::subsection(ui, &t("Generators"), true, |ui| generators_ui(ui, place));
             ui.separator();
             let area = rt::GeoArea { lat: place.lat, lon: place.lon, size_m };
@@ -396,6 +409,52 @@ pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
         }));
     });
     place.poll(&ctx, dragging);
+}
+
+/// The buildings and roads made from the OpenStreetMap shapes.
+fn built_ui(ui: &mut egui::Ui, place: &mut RealPlace, families: &[String]) {
+    if !place.shapes {
+        ui.weak(t("They are made from the OpenStreetMap shapes."));
+        return;
+    }
+    if ui.checkbox(&mut place.buildings, t("Buildings")).on_hover_text(t("Each building of OpenStreetMap gets the building of the game nearest its size and kind (house, flats, shop, industry, farm, shed, church, school), turned along it, on the object layer OSM buildings.")).changed() && place.buildings {
+        place.osm.buildings = true;
+    }
+    if place.buildings {
+        place.osm.buildings = true;
+        ui.indent("level", |ui| {
+            ui.checkbox(&mut place.level, t("Level the ground under them")).on_hover_text(t("A terrain modifier under each building, as Terrain under objects makes it. Many buildings make many modifiers."));
+        });
+    }
+    ui.checkbox(&mut place.roads_on, t("Roads")).on_hover_text(t("The roads of OpenStreetMap are built of the game's road pieces once the map opens, one after another, with the ground graded under them. Pieces of a road are joined first; crossings get no crossroad pieces."));
+    if !place.roads_on {
+        return;
+    }
+    if families.is_empty() {
+        ui.colored_label(crate::theme::WARN, t("The road types of the game are not read yet: is the work drive set?"));
+        return;
+    }
+    if place.roads.families.iter().all(|f| f.is_none()) {
+        place.roads = rt::OsmRoads::for_families(families);
+    }
+    place.osm.roads |= place.roads.families[..4].iter().any(|f| f.is_some());
+    place.osm.railways |= place.roads.families[4].is_some();
+    let names = [t("Main roads"), t("Minor roads"), t("Tracks"), t("Paths"), t("Railways")];
+    let leave = t("Leave as shapes");
+    egui::Grid::new("osm_roads").num_columns(2).spacing(egui::vec2(6.0, 3.0)).show(ui, |ui| {
+        for (k, name) in names.iter().enumerate() {
+            ui.label(name);
+            let value = &mut place.roads.families[k];
+            let tracks = k == 4;
+            egui::ComboBox::from_id_salt(("osm_road", k)).width(140.0).selected_text(value.clone().unwrap_or_else(|| leave.clone())).show_ui(ui, |ui| {
+                ui.selectable_value(value, None, &leave);
+                for f in families.iter().filter(|f| dayz_road_tool::rails::is_track_family(f) == tracks) {
+                    ui.selectable_value(value, Some(f.clone()), f);
+                }
+            });
+            ui.end_row();
+        }
+    });
 }
 
 /// The generators added for the OpenStreetMap shapes: forests with a preset for each kind,
@@ -426,6 +485,8 @@ fn generators_ui(ui: &mut egui::Ui, place: &mut RealPlace) {
     forest(ui, t("Conifer forests"), "gen_conifer", &mut g.conifer, "Bór sosnowy (niziny)");
     forest(ui, t("Scrub, heath and wetland"), "gen_scrub", &mut g.scrub, "Zarośla krzewiaste");
     ui.checkbox(&mut g.fields, t("Fields")).on_hover_text(t("The Fields generator on the fields of OpenStreetMap."));
+    ui.checkbox(&mut g.rivers, t("Rivers")).on_hover_text(t("The River generator on the rivers and canals of OpenStreetMap: a bed cut into the ground, with water models along it."));
+    ui.checkbox(&mut g.streams, t("Streams")).on_hover_text(t("The Stream generator on the streams and ditches of OpenStreetMap."));
     ui.checkbox(&mut g.ponds, t("Lakes and ponds")).on_hover_text(t("The Ponds and lakes generator digs a basin for each, which the real heights mostly have already."));
     ui.checkbox(&mut g.run, t("Run them when the map opens")).on_hover_text(t("One after another; each can be stopped. Otherwise they wait in the outliner."));
     ui.weak(t("Each works on its layer of shapes, so it can be changed and run again from the outliner."));
@@ -496,6 +557,9 @@ pub fn create(app: &mut App, p: &NewProject) {
     let m = p.place.map(p);
     let classify = p.place.classify.clone();
     let run = m.generators.as_ref().is_some_and(|g| g.run);
+    let (db, assets) = (app.db.clone(), app.assets.clone());
+    let level = m.buildings && p.place.level;
+    let roads = m.roads.clone();
     let dir = (!p.folder.trim().is_empty()).then(|| std::path::PathBuf::from(p.folder.trim()).join(dz_core::world::WorldMeta::new(&p.name, 1, 1.0).map_id));
     app.spawn(t("Making the map of a real place"), move |job| {
         let f = fetcher()?;
@@ -504,13 +568,30 @@ pub fn create(app: &mut App, p: &NewProject) {
                 job.log(format!("Satellite picture: © {}", src.attribution));
             }
         }
-        let w = rt::build_world(&m, &f, job)?;
+        let w = rt::build_world(&m, &f, &db, &assets, job)?;
         if let Some(d) = &dir {
             job.stage("Saving the project");
             project::save(&w, d, SaveParts::ALL)?;
         }
         Ok(Box::new(move |app: &mut App| {
             app.open_world(w, dir);
+            if level {
+                let ids: Vec<u32> = app.doc.as_ref().map(|d| {
+                    let layer = d.world.object_layers.iter().position(|l| l.name == "OSM buildings");
+                    d.world.objects.iter().filter(|(_, o)| Some(o.layer() as usize) == layer).map(|(id, _)| id).collect()
+                }).unwrap_or_default();
+                let falloff = app.place.pad_falloff;
+                app.add_pads(&ids, falloff);
+            }
+            if let (Some(r), Some(d)) = (&roads, &app.doc) {
+                for (k, line) in rt::osm_road_lines(&d.world.shape_layers, 4.0, 30.0) {
+                    if let Some(f) = &r.families[k] {
+                        app.route_queue.push_back((f.clone(), line));
+                    }
+                }
+                let n = app.route_queue.len();
+                if n > 0 { app.info(tf("{0} roads are built one after another; stopping one stops the rest", &[&n.to_string()])); }
+            }
             if run {
                 if let Some(d) = &app.doc {
                     app.gen_queue = d.world.generators.iter().map(|g| g.id).collect();

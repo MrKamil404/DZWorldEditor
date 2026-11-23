@@ -4715,6 +4715,17 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 }
             }
         }
+        // osmroads n: builds the first n OpenStreetMap roads of the project, as a new map of a
+        // real place does.
+        "osmroads" => {
+            let n = nums.first().map(|v| *v as usize).unwrap_or(5);
+            let r = dz_core::real_terrain::OsmRoads::for_families(&app.road_families);
+            let lines = app.doc.as_ref().map(|d| dz_core::real_terrain::osm_road_lines(&d.world.shape_layers, 4.0, 30.0)).unwrap_or_default();
+            for (k, line) in lines.into_iter().filter(|(k, _)| r.families[*k].is_some()).take(n) {
+                eprintln!("ROAD {} with {} points", r.families[k].clone().unwrap_or_default(), line.len());
+                app.route_queue.push_back((r.families[k].clone().unwrap_or_default(), line));
+            }
+        }
         // The New project window for a real place, optionally at "lat lon".
         "realplace" => {
             app.dialog = crate::panels::real_place_dialog();
