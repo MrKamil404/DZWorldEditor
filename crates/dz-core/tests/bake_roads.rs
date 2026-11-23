@@ -1,9 +1,16 @@
+/// The work drive of the tests on real data: `DZWE_WORK_DRIVE`, as the editor's settings name
+/// it, or `P:\` when it is not set. The tests that need it pass without checking when it lacks
+/// the models they use.
+fn drive() -> std::path::PathBuf {
+    std::env::var_os("DZWE_WORK_DRIVE").map(std::path::PathBuf::from).unwrap_or_else(|| "P:/".into())
+}
+
 /// Road parts are source (MLOD) models whose length runs along +z from their origin; baked
 /// into the satellite they lie where they stand on the map, when P: is mounted.
 #[test]
 fn a_baked_road_part_lies_where_it_stands() {
-    if !std::path::Path::new("P:/dz/structures/roads/parts/asf2_12.p3d").exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join("dz/structures/roads/parts/asf2_12.p3d").exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     for yaw in [0.0f32, 30.0, 94.57, 274.57] {
         let o = dz_core::objects::Obj { x: 128.0, z: 128.0, elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
         let b = dz_core::satmod::BakeObject { object: o, origin_y: 0.0, model: "dz/structures/roads/parts/asf2_12.p3d".into() };
@@ -26,8 +33,8 @@ fn a_baked_road_part_lies_where_it_stands() {
 /// A tree baked into the satellite leaves its crown in the image, when P: is mounted.
 #[test]
 fn a_baked_tree_shows_from_above() {
-    if !std::path::Path::new("P:/dz/plants/tree/t_betulapendula_3s.p3d").exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join("dz/plants/tree/t_betulapendula_3s.p3d").exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     let o = dz_core::objects::Obj { x: 128.0, z: 128.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
     let b = dz_core::satmod::BakeObject { object: o, origin_y: 0.0, model: "dz/plants/tree/t_betulapendula_3s.p3d".into() };
     let tiles = dz_core::satmod::bake_objects(&[b], &db, 256, 256, 256.0, |_| true, &dz_core::Job::default());
@@ -39,8 +46,8 @@ fn a_baked_tree_shows_from_above() {
 #[test]
 fn a_real_gate_lies_along_its_fence() {
     use dz_core::library::{FenceGen, FenceOpening};
-    if !std::path::Path::new("P:/dz/structures/walls/Wall_Fen2_6.p3d").exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join("dz/structures/walls/Wall_Fen2_6.p3d").exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     for (wall, gate, two) in [("dz/structures/walls/wall_fen2_6.p3d", "dz/structures/walls/wall_gate_fen2_l.p3d", true), ("dz/structures/walls/wall_feng_3.p3d", "dz/structures/walls/wall_gate_feng.p3d", false), ("dz/structures/walls/wall_feng_3.p3d", "dz/structures/walls/wall_gate_feng_open.p3d", false)] {
         let mut w = dz_core::world::World::new(dz_core::world::WorldMeta::new("g", 64, 4.0), 10.0);
         let opening = if two {
@@ -76,8 +83,8 @@ fn baked_px(tiles: &std::collections::HashMap<dz_core::satmod::Key, dz_core::sat
 #[test]
 fn water_of_a_river_part_is_baked_on_request() {
     let model = "dz/water/streams/river_24_12.p3d";
-    if !std::path::Path::new("P:/").join(model).exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join(model).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     let o = dz_core::objects::Obj { x: 128.0, z: 128.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
     let b = || dz_core::satmod::BakeObject { object: o, origin_y: 0.0, model: model.into() };
     let dry = baked_px(&dz_core::satmod::bake_objects(&[b()], &db, 256, 256, 256.0, |_| false, &dz_core::Job::default()));
@@ -90,8 +97,8 @@ fn water_of_a_river_part_is_baked_on_request() {
 #[test]
 fn a_sunk_pier_bakes_only_above_the_ground() {
     let model = "dz/structures/industrial/harbour/pier_concrete1.p3d";
-    if !std::path::Path::new("P:/").join(model).exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join(model).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     let o = dz_core::objects::Obj { x: 128.0, z: 128.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
     let b = || dz_core::satmod::BakeObject { object: o, origin_y: 50.0, model: model.into() };
     let bake = |ground: Option<f32>| {
@@ -108,8 +115,8 @@ fn a_sunk_pier_bakes_only_above_the_ground() {
 #[test]
 fn the_outline_of_a_pier_follows_its_shape() {
     let model = "dz/structures/industrial/harbour/pier_concrete1.p3d";
-    if !std::path::Path::new("P:/").join(model).exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join(model).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     let s = dz_core::satmod::silhouette(&db, model, false, 2.0).unwrap();
     let info = db.get(model);
     let (cx, cz) = ((info.min[0] + info.max[0]) * 0.5, (info.min[2] + info.max[2]) * 0.5);
@@ -124,8 +131,8 @@ fn the_outline_of_a_pier_follows_its_shape() {
 fn decals_are_baked_over_the_road_on_request() {
     let decal = "dz/structures/roads/decals/decal_damage_long1.p3d";
     let road = "dz/structures/roads/parts/asf2_12.p3d";
-    if !std::path::Path::new("P:/").join(decal).exists() || !std::path::Path::new("P:/").join(road).exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join(decal).exists() || !drive().join(road).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     assert!(dz_core::objects::is_decal_model(&decal.replace('/', "\\"), &db.get(decal)));
     let at = |model: &str, y: f32| {
         let o = dz_core::objects::Obj { x: 128.0, z: 131.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
@@ -156,8 +163,8 @@ fn decals_are_baked_over_the_road_on_request() {
 fn a_wicket_takes_only_the_room_it_fills() {
     use dz_core::library::{FenceGen, FenceOpening};
     let (wall, gate) = ("dz/structures/walls/wall_wood3_4.p3d", "dz/structures/walls/wall_gate_wood3.p3d");
-    if !std::path::Path::new("P:/").join(gate).exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join(gate).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     let (min, max) = db.visual_box(gate).unwrap();
     let seen = max[0] - min[0];
     assert!(seen < 1.2, "{seen}");
@@ -180,8 +187,8 @@ fn a_wicket_takes_only_the_room_it_fills() {
 /// The building models of the game are read from their folders, when P: is mounted.
 #[test]
 fn building_models_come_from_the_work_drive() {
-    if !std::path::Path::new("P:/dz/structures/residential/houses").exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join("dz/structures/residential/houses").exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     let models = dz_core::real_terrain::building_models(&db);
     assert!(models[0].len() > 10, "{} houses", models[0].len());
     assert!(models[0].iter().all(|m| m.path.starts_with(r"dz\structures\residential\houses\") && m.short >= 2.5));
@@ -191,8 +198,8 @@ fn building_models_come_from_the_work_drive() {
 #[test]
 fn a_sunk_rock_leaves_the_outline_of_its_part_above_the_ground() {
     let rock = "dz/rocks/rock_apart1.p3d";
-    if !std::path::Path::new("P:/").join(rock).exists() { return; }
-    let db = dz_core::model_info::ModelDb::new("P:/");
+    if !drive().join(rock).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new(drive());
     let ground = dz_core::terrain::Heightmap::new(64, 64, 4.0, 10.0);
     let o = dz_core::objects::Obj { x: 128.0, z: 128.0, elevation: 0.0, yaw: 30.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
     let covered = |s: &dz_core::satmod::Silhouette| s.dist.iter().filter(|d| **d == 0.0).count() as f32 * s.cell * s.cell;
