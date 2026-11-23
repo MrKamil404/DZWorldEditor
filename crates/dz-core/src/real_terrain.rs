@@ -825,7 +825,9 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
         }
     }
     let size = area.size_m;
-    let mut layers: std::collections::BTreeMap<OsmKind, Vec<MapShape>> = Default::default();
+    // Forests and land use go into a layer for each kind of ground, so a generator can work
+    // on just the fields or just the conifer forests.
+    let mut layers: std::collections::BTreeMap<(OsmKind, usize), Vec<MapShape>> = Default::default();
     for e in v.get("elements").and_then(|e| e.as_array()).into_iter().flatten() {
         let tags: HashMap<String, String> = e.get("tags").and_then(|t| t.as_object()).map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()).unwrap_or_default();
         let Some(kind) = classify(&tags) else { continue };
@@ -838,15 +840,40 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
             attributes.insert(0, ("osm_id".into(), id.to_string()));
         }
         let to_f32 = |pts: Vec<[f64; 2]>| pts.into_iter().map(|p| [p[0] as f32, p[1] as f32]).collect::<Vec<_>>();
-        let rings: Vec<Vec<[f64; 2]>> = match e.get("type").and_then(|t| t.as_str()) {
-            Some("way") => vec![geometry(&e["geometry"], area)],
+        let (rings, inner): (Vec<Vec<[f64; 2]>>, Vec<Vec<[f64; 2]>>) = match e.get("type").and_then(|t| t.as_str()) {
+            Some("way") => (vec![geometry(&e["geometry"], area)], Vec::new()),
             Some("relation") if kind.is_area() => {
-                let outer = e.get("members").and_then(|m| m.as_array()).into_iter().flatten().filter(|m| m.get("type").and_then(|t| t.as_str()) == Some("way") && m.get("role").and_then(|r| r.as_str()).map_or(true, |r| r == "outer" || r.is_empty())).map(|m| geometry(&m["geometry"], area)).collect();
-                join_rings(outer)
+                let ways = || e.get("members").and_then(|m| m.as_array()).into_iter().flatten().filter(|m| m.get("type").and_then(|t| t.as_str()) == Some("way"));
+                let role = |m: &serde_json::Value| m.get("role").and_then(|r| r.as_str()).unwrap_or("").to_string();
+                let outer = ways().filter(|m| { let r = role(m); r == "outer" || r.is_empty() }).map(|m| geometry(&m["geometry"], area)).collect();
+                let inner = ways().filter(|m| role(m) == "inner").map(|m| geometry(&m["geometry"], area)).collect();
+                (join_rings(outer), join_rings(inner))
             }
             _ => continue,
         };
-        let out = layers.entry(kind).or_default();
+        // Each hole goes to the outer ring it lies in, cut to the map as well.
+        let inside = |ring: &[[f64; 2]], p: [f64; 2]| {
+            let mut c = false;
+            let mut j = ring.len() - 1;
+            for i in 0..ring.len() {
+                let (a, b) = (ring[i], ring[j]);
+                if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
+                    c = !c;
+                }
+                j = i;
+            }
+            c
+        };
+        let sub = match kind {
+            OsmKind::Forests | OsmKind::Land => shape_class(&attributes).unwrap_or(usize::MAX),
+            // Rivers and canals apart from streams and ditches, for generators of their size.
+            OsmKind::Waterways => {
+                let big = attributes.iter().any(|a| a.0 == "waterway" && (a.1 == "river" || a.1 == "canal"));
+                if big { RIVERS } else { STREAMS }
+            }
+            _ => usize::MAX,
+        };
+        let out = layers.entry((kind, sub)).or_default();
         for ring in rings {
             if kind.is_area() {
                 let closed = ring.len() >= 4 && ring.first() == ring.last();
@@ -856,16 +883,102 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
                 let mut clipped = clip_polygon(&ring[..ring.len() - 1], size);
                 clipped.dedup();
                 if clipped.len() >= 3 {
-                    out.push(MapShape { kind: ShapeKind::Polygon, points: to_f32(clipped), attributes: attributes.clone() });
+                    let holes = inner.iter().filter(|h| h.len() >= 4 && inside(&ring, h[0])).map(|h| {
+                        let mut c = clip_polygon(&h[..h.len() - 1], size);
+                        c.dedup();
+                        c
+                    }).filter(|h| h.len() >= 3).map(&to_f32).collect();
+                    out.push(MapShape { holes, kind: ShapeKind::Polygon, points: to_f32(clipped), attributes: attributes.clone() });
                 }
             } else {
                 for part in clip_polyline(&ring, size) {
-                    out.push(MapShape { kind: ShapeKind::Polyline, points: to_f32(part), attributes: attributes.clone() });
+                    out.push(MapShape { holes: Vec::new(), kind: ShapeKind::Polyline, points: to_f32(part), attributes: attributes.clone() });
                 }
             }
         }
     }
-    Ok(layers.into_iter().filter(|(_, s)| !s.is_empty()).map(|(k, shapes)| ShapeLayer { name: k.layer().into(), visible: true, shapes }).collect())
+    Ok(layers.into_iter().filter(|(_, s)| !s.is_empty()).map(|((k, sub), shapes)| ShapeLayer { name: osm_layer_name(k, sub), visible: true, shapes }).collect())
+}
+
+/// The name of the layer of OpenStreetMap shapes of `kind`, and for forests and land use of
+/// the kind of [`SHAPE_CLASSES`] they are.
+fn osm_layer_name(kind: OsmKind, class: usize) -> String {
+    match (kind, class) {
+        (OsmKind::Waterways, RIVERS) => OSM_RIVERS.to_string(),
+        (OsmKind::Waterways, STREAMS) => OSM_STREAMS.to_string(),
+        (OsmKind::Forests | OsmKind::Land, c) if c < SHAPE_CLASSES.len() => OSM_CLASS_LAYERS[c].to_string(),
+        _ => kind.layer().to_string(),
+    }
+}
+
+const RIVERS: usize = 100;
+const STREAMS: usize = 101;
+/// The layers of rivers and canals, and of streams and ditches.
+pub const OSM_RIVERS: &str = "OSM rivers";
+pub const OSM_STREAMS: &str = "OSM streams";
+
+/// Layers of the kinds of [`SHAPE_CLASSES`] that are areas.
+pub const OSM_CLASS_LAYERS: [&str; 14] = ["OSM fields", "OSM meadows", "OSM scrub", "OSM built-up land", "OSM sand", "OSM rock", "OSM leafy forests", "OSM conifer forests", "OSM water", "OSM main roads", "OSM minor roads", "OSM tracks", "OSM paths", "OSM railways"];
+
+/// Generators added to a new map of a real place, each working on a layer of OpenStreetMap
+/// shapes. The forest presets are names of forest presets (see `forest_core::species`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OsmGenerators {
+    pub leafy: Option<String>,
+    pub conifer: Option<String>,
+    pub scrub: Option<String>,
+    pub fields: bool,
+    /// Lakes and ponds dig their basins into the ground, which real heights already have.
+    pub ponds: bool,
+    /// The River generator on rivers and canals, the Stream one on streams and ditches.
+    pub rivers: bool,
+    pub streams: bool,
+    /// Run them once the map is open.
+    pub run: bool,
+}
+
+impl Default for OsmGenerators {
+    fn default() -> Self {
+        Self { leafy: Some("Grąd (dąb-buk)".into()), conifer: Some("Bór sosnowy (niziny)".into()), scrub: Some("Zarośla krzewiaste".into()), fields: true, ponds: false, rivers: true, streams: true, run: true }
+    }
+}
+
+/// The generators of `g` for the layers there are shapes in. Forests keep `avoid` metres
+/// from roads and buildings when the map gets them (`None` when it does not).
+pub fn osm_generators(layers: &[ShapeLayer], g: &OsmGenerators, avoid_roads: Option<f32>, avoid_buildings: Option<f32>) -> Vec<crate::library::GeneratorInstance> {
+    use crate::library::{ForestGen, GenTarget, GeneratorInstance, GeneratorKind, RiverGen};
+    let has = |name: &str| layers.iter().any(|l| l.name == name && !l.shapes.is_empty());
+    let mut out = Vec::new();
+    let mut add = |layer: &str, name: String, kind: GeneratorKind| {
+        if has(layer) {
+            out.push(GeneratorInstance { id: crate::library::new_id(), name, kind, target: GenTarget::Layer(layer.to_string()), objects: Vec::new(), modifier: None, removed: Vec::new(), mask_modifier: None });
+        }
+    };
+    let forest = |preset: &str| GeneratorKind::Forest(Box::new(ForestGen { preset: preset.to_string(), avoid_roads, avoid_buildings, ..Default::default() }));
+    if let Some(p) = &g.leafy {
+        add(OSM_CLASS_LAYERS[6], p.clone(), forest(p));
+    }
+    if let Some(p) = &g.conifer {
+        add(OSM_CLASS_LAYERS[7], p.clone(), forest(p));
+    }
+    if let Some(p) = &g.scrub {
+        add(OSM_CLASS_LAYERS[2], p.clone(), forest(p));
+    }
+    if g.fields {
+        add(OSM_CLASS_LAYERS[0], "Fields".into(), GeneratorKind::Fields(Default::default()));
+    }
+    if g.ponds {
+        add(OsmKind::Water.layer(), "Ponds and lakes".into(), GeneratorKind::Pond(Default::default()));
+    }
+    // As the built-in River and Stream generators are.
+    if g.rivers {
+        add(OSM_RIVERS, "River".into(), GeneratorKind::River(RiverGen::default()));
+    }
+    if g.streams {
+        add(OSM_STREAMS, "Stream".into(), GeneratorKind::River(RiverGen { width: 14.0, depth: 2.0, falloff: 5.0, model: r"dz\water\streams\stream_14_24.p3d".into(), ..Default::default() }));
+    }
+    out
 }
 
 // ---- Places
@@ -1002,9 +1115,10 @@ impl ShapeMask {
     }
 }
 
-/// Calls `row(y, x0, x1)` for the pixels of each row of an image `w` × `h` inside the ring
-/// (in pixels), by the even-odd rule.
-fn fill_ring(ring: &[[f32; 2]], w: usize, h: usize, mut row: impl FnMut(usize, usize, usize)) {
+/// Calls `row(y, x0, x1)` for the pixels of each row of an image `w` × `h` inside the rings
+/// (in pixels) by the even-odd rule: inside the first ring and outside its holes.
+fn fill_rings(rings: &[&[[f32; 2]]], w: usize, h: usize, mut row: impl FnMut(usize, usize, usize)) {
+    let ring = rings.first().copied().unwrap_or(&[]);
     if ring.len() < 3 || w == 0 || h == 0 {
         return;
     }
@@ -1014,10 +1128,12 @@ fn fill_ring(ring: &[[f32; 2]], w: usize, h: usize, mut row: impl FnMut(usize, u
     for y in y0 as i64..=y1 {
         let py = y as f32 + 0.5;
         xs.clear();
-        for i in 0..ring.len() {
-            let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
-            if (a[1] <= py) != (b[1] <= py) {
-                xs.push(a[0] + (py - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+        for ring in rings.iter().filter(|r| r.len() >= 3) {
+            for i in 0..ring.len() {
+                let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+                if (a[1] <= py) != (b[1] <= py) {
+                    xs.push(a[0] + (py - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+                }
             }
         }
         xs.sort_by(f32::total_cmp);
@@ -1067,19 +1183,257 @@ pub fn mask_from_shapes(w: &World, layers: &[ShapeLayer], m: &ShapeMask, mask: &
             by_class[c].push(s);
         }
     }
+    // Areas go largest first, so a meadow inside a forest stays a meadow; then the lines.
+    let mut areas: Vec<(f32, usize, &MapShape)> = Vec::new();
     for (c, shapes) in by_class.iter().enumerate() {
-        let Some(surface) = m.surfaces.get(c).copied().flatten().filter(|s| *s < count) else { continue };
-        let v = surface as u8;
+        for s in shapes.iter().filter(|s| s.kind == ShapeKind::Polygon) {
+            let a = s.points.iter().zip(s.points.iter().cycle().skip(1)).map(|(p, q)| p[0] * q[1] - q[0] * p[1]).sum::<f32>().abs() * 0.5;
+            areas.push((a, c, s));
+        }
+    }
+    areas.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let surface_of = |c: usize| m.surfaces.get(c).copied().flatten().filter(|s| *s < count).map(|s| s as u8);
+    for (_, c, s) in areas {
+        let Some(v) = surface_of(c) else { continue };
+        let pts: Vec<Vec<[f32; 2]>> = std::iter::once(&s.points).chain(s.holes.iter()).map(|r| r.iter().map(to_px).collect()).collect();
+        let rings: Vec<&[[f32; 2]]> = pts.iter().map(|r| r.as_slice()).collect();
+        fill_rings(&rings, mw, mh, |y, x0, x1| mask[y * mw + x0..=y * mw + x1].fill(v));
+    }
+    for (c, shapes) in by_class.iter().enumerate() {
+        let Some(v) = surface_of(c) else { continue };
         let width = m.widths.get(c).copied().unwrap_or(SHAPE_CLASSES[c].width);
-        for s in shapes {
+        for s in shapes.iter().filter(|s| s.kind == ShapeKind::Polyline && width > 0.0) {
             let pts: Vec<[f32; 2]> = s.points.iter().map(to_px).collect();
-            match s.kind {
-                ShapeKind::Polygon => fill_ring(&pts, mw, mh, |y, x0, x1| mask[y * mw + x0..=y * mw + x1].fill(v)),
-                ShapeKind::Polyline if width > 0.0 => stroke_line(&pts, (width * 0.5 * sx).max(0.5), mw, mh, |x, y| mask[y * mw + x] = v),
-                _ => {}
+            stroke_line(&pts, (width * 0.5 * sx).max(0.5), mw, mh, |x, y| mask[y * mw + x] = v);
+        }
+    }
+}
+
+// ---- Buildings and roads from the shapes
+
+/// Kinds of OpenStreetMap buildings and the folders of the game's buildings each takes its
+/// models from (only the models right in them, not in their sub-folders).
+pub const BUILDING_KINDS: [(&str, &[&str]); 8] = [
+    ("Houses", &["dz\\structures\\residential\\houses"]),
+    ("Blocks of flats", &["dz\\structures\\residential\\houseblocks", "dz\\structures\\residential\\tenements"]),
+    ("Shops and offices", &["dz\\structures\\residential\\stores", "dz\\structures\\residential\\offices"]),
+    ("Industry", &["dz\\structures\\industrial\\houses", "dz\\structures\\industrial\\garages"]),
+    ("Farm buildings", &["dz\\structures\\industrial\\farms"]),
+    ("Sheds and garages", &["dz\\structures\\residential\\sheds", "dz\\structures\\industrial\\sheds", "dz\\structures\\industrial\\garages"]),
+    ("Churches", &["dz\\structures\\specific\\churches"]),
+    ("Schools, hospitals and services", &["dz\\structures\\residential\\schools", "dz\\structures\\residential\\medical", "dz\\structures\\residential\\firedep", "dz\\structures\\residential\\police"]),
+];
+
+/// Which of [`BUILDING_KINDS`] a building with these tags is; `None` when it is no building.
+pub fn building_kind(tags: &[(String, String)]) -> Option<usize> {
+    let get = |k: &str| tags.iter().find(|t| t.0 == k).map(|t| t.1.as_str());
+    let b = get("building").filter(|b| *b != "no")?;
+    let amenity = get("amenity").unwrap_or("");
+    Some(if is_one_of(b, "church|chapel|cathedral|religious") || amenity == "place_of_worship" {
+        6
+    } else if is_one_of(b, "school|hospital|fire_station|public|civic|government|kindergarten|university|college") || is_one_of(amenity, "school|hospital|fire_station|police|townhall") {
+        7
+    } else if is_one_of(b, "apartments|flats|dormitory|hotel") {
+        1
+    } else if is_one_of(b, "commercial|retail|office|supermarket|kiosk") {
+        2
+    } else if is_one_of(b, "industrial|warehouse|factory|manufacture|hangar|service") {
+        3
+    } else if is_one_of(b, "farm_auxiliary|barn|stable|cowshed|sty|greenhouse|silo") {
+        4
+    } else if is_one_of(b, "garage|garages|shed|hut|carport|roof|cabin") {
+        5
+    } else {
+        0
+    })
+}
+
+/// A building model of the game: its path, how long and wide its box is on the ground, which
+/// of its axes is the long one, and where the middle of the box lies from its origin.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BuildingModel {
+    pub path: String,
+    pub long: f32,
+    pub short: f32,
+    pub along_x: bool,
+    pub middle: [f32; 2],
+}
+
+/// The building models of each of [`BUILDING_KINDS`], from the models of the work drive.
+pub fn building_models(assets: &crate::assets::AssetIndex, db: &crate::model_info::ModelDb) -> Vec<Vec<BuildingModel>> {
+    BUILDING_KINDS
+        .iter()
+        .map(|(_, folders)| {
+            assets
+                .assets
+                .iter()
+                .filter(|a| folders.iter().any(|f| a.folder.eq_ignore_ascii_case(f)))
+                .filter(|a| !["proxy", "ruin", "ghost", "_dam", "lod"].iter().any(|w| a.path.contains(w)))
+                .filter_map(|a| {
+                    let i = db.get(&a.path);
+                    let (lx, lz) = (i.max[0] - i.min[0], i.max[2] - i.min[2]);
+                    // Props in the same folders (cases, hoses) are not buildings.
+                    (i.known && lx.min(lz) >= 2.5).then(|| BuildingModel { path: a.path.clone(), long: lx.max(lz), short: lx.min(lz), along_x: lx >= lz, middle: [(i.min[0] + i.max[0]) * 0.5, (i.min[2] + i.max[2]) * 0.5] })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The smallest rectangle round a polygon with a side along one of its edges: its middle, the
+/// way its long side runs (of length 1), and its length and width.
+pub fn footprint(points: &[[f32; 2]]) -> Option<([f32; 2], [f32; 2], f32, f32)> {
+    let mut best: Option<(f32, [f32; 2], [f32; 2], f32, f32)> = None;
+    for i in 0..points.len() {
+        let (a, b) = (points[i], points[(i + 1) % points.len()]);
+        let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+        let len = dx.hypot(dz);
+        if len < 0.2 {
+            continue;
+        }
+        let (u, v) = ([dx / len, dz / len], [-dz / len, dx / len]);
+        let (mut u0, mut u1, mut v0, mut v1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+        for p in points {
+            let (pu, pv) = (p[0] * u[0] + p[1] * u[1], p[0] * v[0] + p[1] * v[1]);
+            (u0, u1, v0, v1) = (u0.min(pu), u1.max(pu), v0.min(pv), v1.max(pv));
+        }
+        let area = (u1 - u0) * (v1 - v0);
+        if best.is_none_or(|b| area < b.0) {
+            let (cu, cv) = ((u0 + u1) * 0.5, (v0 + v1) * 0.5);
+            let middle = [u[0] * cu + v[0] * cv, u[1] * cu + v[1] * cv];
+            let (lu, lv) = (u1 - u0, v1 - v0);
+            best = Some(if lu >= lv { (area, middle, u, lu, lv) } else { (area, middle, v, lv, lu) });
+        }
+    }
+    best.map(|b| (b.1, b.2, b.3, b.4))
+}
+
+/// A building model for each OpenStreetMap building of `shapes`, as near its size as the
+/// game has, standing where it stands and turned along its long side: the path of each model
+/// with its object. Buildings much smaller or larger than any model of their kind are left
+/// out; `seed` picks among models that fit about as well.
+pub fn osm_buildings(shapes: &[MapShape], models: &[Vec<BuildingModel>], seed: u64) -> Vec<(String, crate::objects::Obj)> {
+    use rand::{Rng, SeedableRng};
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    let mut out = Vec::new();
+    for s in shapes.iter().filter(|s| s.kind == ShapeKind::Polygon) {
+        let Some(kind) = building_kind(&s.attributes) else { continue };
+        let Some((middle, dir, long, short)) = footprint(&s.points) else { continue };
+        if short < 2.0 {
+            continue;
+        }
+        // A model too large reaches into the street; one too small leaves the plot bare.
+        let fit = |m: &BuildingModel| {
+            let d = |model: f32, real: f32| if model > real { (model - real) / real * 1.5 } else { (real - model) / real };
+            d(m.long, long) + d(m.short, short)
+        };
+        let pool = if models.get(kind).is_some_and(|m| !m.is_empty()) { &models[kind] } else { &models[0] };
+        let mut scored: Vec<(f32, &BuildingModel)> = pool.iter().map(|m| (fit(m), m)).collect();
+        scored.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let Some(best) = scored.first().map(|s| s.0) else { continue };
+        if best > 0.9 {
+            continue;
+        }
+        let near: Vec<&BuildingModel> = scored.iter().take_while(|s| s.0 <= best + 0.12).map(|s| s.1).collect();
+        let m = near[rng.gen_range(0..near.len())];
+        // The model's long axis along the building's, either way round.
+        let flip = rng.gen_bool(0.5);
+        let d = if flip { [-dir[0], -dir[1]] } else { dir };
+        let yaw = if m.along_x { (-d[1]).atan2(d[0]) } else { d[0].atan2(d[1]) }.to_degrees();
+        let r = crate::objects::rotation(yaw, 0.0, 0.0, 1.0);
+        let off = [m.middle[0] * r[0][0] + m.middle[1] * r[2][0], m.middle[0] * r[0][2] + m.middle[1] * r[2][2]];
+        let o = crate::objects::Obj { x: middle[0] - off[0], z: middle[1] - off[1], elevation: 0.0, yaw, pitch: 0.0, roll: 0.0, scale: 1.0, model: 0, flags: 0 };
+        out.push((m.path.clone(), o));
+    }
+    out
+}
+
+/// The road kinds of [`SHAPE_CLASSES`] built as roads, and railways: main roads, minor roads,
+/// tracks, paths and railways.
+pub const ROAD_CLASSES: [usize; 5] = [9, 10, 11, 12, 13];
+
+/// The road type (family) each of [`ROAD_CLASSES`] is built with; `None` leaves it a shape.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OsmRoads {
+    pub families: [Option<String>; 5],
+}
+
+impl OsmRoads {
+    /// Road types of the game's catalog for each kind, as far as `families` has them.
+    pub fn for_families(families: &[String]) -> Self {
+        let has = |f: &str| families.iter().find(|x| x.eq_ignore_ascii_case(f)).cloned();
+        Self { families: [has("asf1").or_else(|| has("asf2")), has("asf3").or_else(|| has("asf2")), has("grav").or_else(|| has("mud")), None, None] }
+    }
+}
+
+/// The lines of the OpenStreetMap roads and railways of `layers`, by their place in
+/// [`ROAD_CLASSES`]: pieces of one kind that meet end to end (and only two there) joined, and
+/// thinned to points `tolerance` metres off the line at most. Lines under `shortest` metres are
+/// left out.
+pub fn osm_road_lines(layers: &[ShapeLayer], tolerance: f32, shortest: f32) -> Vec<(usize, Vec<[f32; 2]>)> {
+    let mut by_class: Vec<Vec<Vec<[f32; 2]>>> = vec![Vec::new(); ROAD_CLASSES.len()];
+    for s in layers.iter().flat_map(|l| l.shapes.iter()).filter(|s| s.kind == ShapeKind::Polyline && s.points.len() >= 2) {
+        if let Some(k) = shape_class(&s.attributes).and_then(|c| ROAD_CLASSES.iter().position(|r| *r == c)) {
+            by_class[k].push(s.points.clone());
+        }
+    }
+    let mut out = Vec::new();
+    for (k, lines) in by_class.into_iter().enumerate() {
+        for line in join_lines(lines) {
+            let len: f32 = line.windows(2).map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1])).sum();
+            if len >= shortest {
+                out.push((k, crate::gen::simplify_line(&line, tolerance)));
             }
         }
     }
+    out
+}
+
+/// Joins lines that meet end to end where only two ends meet, so a road cut into pieces at
+/// every bridge or change of surface becomes one line again; crossings stay apart.
+pub fn join_lines(lines: Vec<Vec<[f32; 2]>>) -> Vec<Vec<[f32; 2]>> {
+    let key = |p: [f32; 2]| ((p[0] * 10.0).round() as i64, (p[1] * 10.0).round() as i64);
+    let mut ends: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (i, l) in lines.iter().enumerate() {
+        ends.entry(key(l[0])).or_default().push(i);
+        ends.entry(key(*l.last().unwrap())).or_default().push(i);
+    }
+    let mut used = vec![false; lines.len()];
+    let mut out = Vec::new();
+    // The line joined on at `end` past `from`, if just two ends meet there.
+    let next = |at: [f32; 2], from: usize, used: &[bool]| -> Option<usize> {
+        let e = ends.get(&key(at))?;
+        (e.len() == 2).then(|| e.iter().copied().find(|i| *i != from && !used[*i])).flatten()
+    };
+    for start in 0..lines.len() {
+        if used[start] {
+            continue;
+        }
+        used[start] = true;
+        let mut line = lines[start].clone();
+        for forward in [true, false] {
+            let mut cur = start;
+            loop {
+                let at = if forward { *line.last().unwrap() } else { line[0] };
+                let Some(n) = next(at, cur, &used) else { break };
+                used[n] = true;
+                let mut piece = lines[n].clone();
+                if forward {
+                    if key(piece[0]) != key(at) { piece.reverse(); }
+                    line.extend_from_slice(&piece[1..]);
+                } else {
+                    if key(*piece.last().unwrap()) != key(at) { piece.reverse(); }
+                    piece.pop();
+                    piece.extend_from_slice(&line);
+                    line = piece;
+                }
+                cur = n;
+            }
+        }
+        out.push(line);
+    }
+    out
 }
 
 // ---- The whole map
@@ -1115,6 +1469,13 @@ pub struct RealMap {
     pub mask: Option<SatClassify>,
     /// The OpenStreetMap shapes are painted into the mask over what the picture gave.
     pub shape_mask: Option<ShapeMask>,
+    /// Generators added for the OpenStreetMap shapes.
+    pub generators: Option<OsmGenerators>,
+    /// The OpenStreetMap buildings get a building model of the game each.
+    pub buildings: bool,
+    /// The OpenStreetMap roads are built as roads of these types (the editor builds them once
+    /// the map is open, see [`osm_road_lines`]).
+    pub roads: Option<OsmRoads>,
 }
 
 impl RealMap {
@@ -1129,7 +1490,7 @@ impl RealMap {
 
 /// Downloads everything and makes the world. Shapes that cannot be downloaded are left out
 /// with a warning in the job log; the picture and heights are needed.
-pub fn build_world(m: &RealMap, f: &Fetcher, job: &Job) -> Result<World> {
+pub fn build_world(m: &RealMap, f: &Fetcher, db: &crate::model_info::ModelDb, assets: &crate::assets::AssetIndex, job: &Job) -> Result<World> {
     let area = m.area();
     let mut meta = WorldMeta::new(&m.name, m.terrain_size, m.cell);
     meta.latitude = m.lat as f32;
@@ -1173,6 +1534,27 @@ pub fn build_world(m: &RealMap, f: &Fetcher, job: &Job) -> Result<World> {
         }
         w.satellite = Some(img);
         w.sat_image_replaced();
+    }
+    let mut placed = 0;
+    if m.buildings {
+        job.stage("Placing the buildings");
+        let models = building_models(assets, db);
+        let shapes: Vec<MapShape> = w.shape_layers.iter().filter(|l| l.name == OsmKind::Buildings.layer()).flat_map(|l| l.shapes.iter().cloned()).collect();
+        let found = osm_buildings(&shapes, &models, 1);
+        if !found.is_empty() {
+            let layer = w.add_object_layer("OSM buildings");
+            for (path, mut o) in found {
+                o.model = w.objects.intern(&path);
+                o.set_layer(layer);
+                w.objects.insert(o);
+                placed += 1;
+            }
+        }
+        job.log(format!("{placed} of {} buildings placed", shapes.len()));
+    }
+    if let Some(g) = &m.generators {
+        let roads = m.roads.as_ref().is_some_and(|r| r.families.iter().any(|f| f.is_some()));
+        w.generators = osm_generators(&w.shape_layers, g, roads.then_some(2.0), (placed > 0).then_some(3.0));
     }
     if let Some(sm) = &m.shape_mask {
         if !w.shape_layers.is_empty() {
@@ -1249,7 +1631,12 @@ mod tests {
         );
         let layers = osm_layers(&json, &a, &OsmParts::default()).unwrap();
         let names: Vec<&str> = layers.iter().map(|l| l.name.as_str()).collect();
-        assert_eq!(names, ["OSM roads", "OSM water", "OSM forests"]);
+        assert_eq!(names, ["OSM roads", "OSM water", "OSM leafy forests"]);
+        // Each layer gets the generator it is asked for.
+        let gens = osm_generators(&layers, &OsmGenerators::default(), None, None);
+        assert_eq!(gens.len(), 1);
+        assert_eq!(gens[0].target, crate::library::GenTarget::Layer("OSM leafy forests".into()));
+        assert!(osm_generators(&layers, &OsmGenerators { leafy: None, ..Default::default() }, None, None).is_empty());
         let road = &layers[0].shapes[0];
         assert_eq!(road.kind, ShapeKind::Polyline);
         assert!((road.points[1][0] - 500.0).abs() < 0.01 && (road.points[1][1] - 100.0).abs() < 0.01);
@@ -1298,8 +1685,8 @@ mod tests {
         assert_eq!(shape_class(&tags(&[("building", "yes"), ("landuse", "farmland")])), None);
         let mut w = World::new(WorldMeta::new("S", 64, 4.0), 0.0);
         w.mask = crate::terrain::MaskMap::new(256, 256, 0);
-        let field = MapShape { kind: ShapeKind::Polygon, points: vec![[0.0, 0.0], [128.0, 0.0], [128.0, 256.0], [0.0, 256.0]], attributes: tags(&[("landuse", "farmland")]) };
-        let road = MapShape { kind: ShapeKind::Polyline, points: vec![[0.0, 128.0], [256.0, 128.0]], attributes: tags(&[("highway", "track")]) };
+        let field = MapShape { holes: Vec::new(), kind: ShapeKind::Polygon, points: vec![[0.0, 0.0], [128.0, 0.0], [128.0, 256.0], [0.0, 256.0]], attributes: tags(&[("landuse", "farmland")]) };
+        let road = MapShape { holes: Vec::new(), kind: ShapeKind::Polyline, points: vec![[0.0, 128.0], [256.0, 128.0]], attributes: tags(&[("highway", "track")]) };
         let layer = ShapeLayer { name: "OSM".into(), visible: true, shapes: vec![field, road] };
         let m = ShapeMask::for_layers(&w.layers);
         let (stubble, soil) = (m.surfaces[0].unwrap() as u8, m.surfaces[11].unwrap() as u8);
@@ -1310,6 +1697,79 @@ mod tests {
         assert_eq!(data[10 * 256 + 200], 0);
         assert_eq!(data[128 * 256 + 200], soil);
         assert_eq!(data[124 * 256 + 200], 0);
+    }
+
+    #[test]
+    fn clearings_of_a_forest_are_holes_in_its_shape_and_its_mask() {
+        let a = GeoArea { lat: 49.3, lon: 19.95, size_m: 256.0 };
+        let p = |x: f64, z: f64| {
+            let (lon, lat) = a.to_lonlat(x, z);
+            format!("{{\"lat\":{lat},\"lon\":{lon}}}")
+        };
+        let json = format!(
+            r#"{{"elements":[{{"type":"relation","id":5,"tags":{{"type":"multipolygon","landuse":"forest"}},"members":[
+               {{"type":"way","role":"outer","geometry":[{},{},{},{},{}]}},
+               {{"type":"way","role":"inner","geometry":[{},{},{},{},{}]}}]}}]}}"#,
+            p(10.0, 10.0), p(246.0, 10.0), p(246.0, 246.0), p(10.0, 246.0), p(10.0, 10.0),
+            p(100.0, 100.0), p(150.0, 100.0), p(150.0, 150.0), p(100.0, 150.0), p(100.0, 100.0),
+        );
+        let layers = osm_layers(&json, &a, &OsmParts::default()).unwrap();
+        let forest = &layers[0].shapes[0];
+        assert_eq!(forest.holes.len(), 1);
+        assert!(forest.contains(50.0, 50.0) && !forest.contains(125.0, 125.0));
+        // Saved, a shape without holes reads as it did before they were known.
+        let plain = MapShape { holes: Vec::new(), ..forest.clone() };
+        assert!(!serde_json::to_string(&plain).unwrap().contains("holes"));
+        let mut w = World::new(WorldMeta::new("S", 64, 4.0), 0.0);
+        w.mask = crate::terrain::MaskMap::new(256, 256, 0);
+        let m = ShapeMask::for_layers(&w.layers);
+        let mut data = w.mask.data.clone();
+        mask_from_shapes(&w, &layers, &m, &mut data);
+        let leafy = m.surfaces[6].unwrap() as u8;
+        // Row 256 - 50 is z = 50 m; row 256 - 125 is in the clearing.
+        assert_eq!(data[(256 - 50) * 256 + 50], leafy);
+        assert_eq!(data[(256 - 125) * 256 + 125], 0);
+    }
+
+    #[test]
+    fn buildings_get_a_model_of_their_size_turned_along_them() {
+        // A house 12 by 6 m, turned 30° from the map's x axis.
+        let (s, c) = 30f32.to_radians().sin_cos();
+        let at = |u: f32, v: f32| [100.0 + u * c - v * s, 200.0 + u * s + v * c];
+        let house = MapShape { holes: Vec::new(), kind: ShapeKind::Polygon, points: vec![at(-6.0, -3.0), at(6.0, -3.0), at(6.0, 3.0), at(-6.0, 3.0)], attributes: vec![("building".into(), "house".into())] };
+        let (middle, dir, long, short) = footprint(&house.points).unwrap();
+        assert!((middle[0] - 100.0).abs() < 1e-3 && (middle[1] - 200.0).abs() < 1e-3);
+        assert!((long - 12.0).abs() < 1e-3 && (short - 6.0).abs() < 1e-3);
+        assert!((dir[0].abs() - c).abs() < 1e-3);
+        // Models whose long side lies along z, with the middle of the box off their origin.
+        let model = |path: &str, long: f32, short: f32| BuildingModel { path: path.into(), long, short, along_x: false, middle: [1.0, 2.0] };
+        let models = vec![vec![model("small", 7.0, 4.0), model("right", 11.5, 6.5), model("huge", 30.0, 15.0)]];
+        let placed = osm_buildings(std::slice::from_ref(&house), &models, 1);
+        assert_eq!(placed.len(), 1);
+        let (path, o) = &placed[0];
+        assert_eq!(path, "right");
+        // The model's z axis runs along the house, and the middle of its box is on the house's.
+        let r = crate::objects::rotation(o.yaw, 0.0, 0.0, 1.0);
+        assert!((r[2][0] * dir[0] + r[2][2] * dir[1]).abs() > 0.999);
+        let mid = [o.x + 1.0 * r[0][0] + 2.0 * r[2][0], o.z + 1.0 * r[0][2] + 2.0 * r[2][2]];
+        assert!((mid[0] - 100.0).abs() < 1e-3 && (mid[1] - 200.0).abs() < 1e-3, "{mid:?}");
+        // A shed of 1 m is no building to place.
+        let tiny = MapShape { points: vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], ..house.clone() };
+        assert!(osm_buildings(&[tiny], &models, 1).is_empty());
+        assert_eq!(building_kind(&[("building".into(), "church".into())]), Some(6));
+        assert_eq!(building_kind(&[("highway".into(), "track".into())]), None);
+    }
+
+    #[test]
+    fn road_pieces_join_end_to_end_but_not_at_crossings() {
+        let a = vec![[0.0, 0.0], [50.0, 0.0]];
+        let b = vec![[100.0, 0.0], [50.0, 0.0]];
+        let c = vec![[100.0, 0.0], [100.0, 50.0]];
+        let d = vec![[100.0, 0.0], [150.0, 0.0]];
+        let joined = join_lines(vec![a, b, c, d]);
+        // a and b meet alone at 50; three lines meet at 100, so they stay apart there.
+        assert_eq!(joined.len(), 3);
+        assert!(joined.iter().any(|l| l.len() == 3 && l[0] == [0.0, 0.0] && l[2] == [100.0, 0.0] || l.len() == 3 && l[2] == [0.0, 0.0]));
     }
 
     #[test]

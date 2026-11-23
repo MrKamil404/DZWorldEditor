@@ -320,7 +320,7 @@ mod tests {
     }
 
     fn square(a: f32, b: f32) -> PolygonIndex {
-        PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: vec![MapShape { kind: ShapeKind::Polygon, points: vec![[a, a], [b, a], [b, b], [a, b]], attributes: Vec::new() }] })
+        PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: vec![MapShape { holes: Vec::new(), kind: ShapeKind::Polygon, points: vec![[a, a], [b, a], [b, b], [a, b]], attributes: Vec::new() }] })
     }
 
     #[test]

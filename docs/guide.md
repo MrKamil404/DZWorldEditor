@@ -426,9 +426,31 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
   * **Heights** come from the AWS Terrain Tiles: about 30 m detail (SRTM) in most places, finer in
     some countries. The sea is at 0 m and the sea floor stops at -100 m.
   * **OpenStreetMap shapes**: roads, railways, rivers and streams, lakes, forests, land use and
-    buildings, each kind in its own shape layer with the OpenStreetMap tags as attributes. They are
-    cut to the map. Use them for generators, roads and masks. The data is © OpenStreetMap
-    contributors (ODbL).
+    buildings, each kind in its own shape layer with the OpenStreetMap tags as attributes. Forests
+    and land use are split further: `OSM leafy forests`, `OSM conifer forests`, `OSM fields`,
+    `OSM meadows`, `OSM scrub`, `OSM built-up land`, `OSM sand` and `OSM rock`. They are cut to
+    the map. Use them for generators, roads and masks. The data is © OpenStreetMap contributors
+    (ODbL). Clearings inside a forest or a lake inside a meadow come in as holes of their shape:
+    the mask and the forest generator leave them out. In the mask, smaller areas lie over larger
+    ones, so a meadow inside a forest stays a meadow.
+  * **Buildings**: each building of OpenStreetMap gets the building of the game nearest its size,
+    from the folders of its kind (houses, blocks of flats, shops and offices, industry, farm
+    buildings, sheds and garages, churches, schools and services), standing in its outline and
+    turned along it, on the object layer `OSM buildings`. Buildings much smaller or larger than any
+    model of their kind are left out. **Level the ground under them** adds a terrain modifier
+    under each, as Terrain under objects does.
+  * **Roads**: the roads (and railways, if you choose a track type) of OpenStreetMap are built of
+    the game's road pieces once the map opens, one after another, with the ground graded under
+    them. Choose the road type for main roads, minor roads, tracks and paths. Pieces of one road
+    are joined first; crossings get no crossroad pieces, so fix them by hand with the Roads tab.
+  * **Generators**: with **Add generators for the OpenStreetMap shapes**, the new map gets a forest
+    generator on the leafy forests, the conifer forests and the scrub (each with a forest preset you
+    choose), the Fields generator on the fields, the River generator on the rivers and canals, the
+    Stream generator on the streams and, if you want, the Ponds and lakes generator on the lakes
+    (it digs a basin, which the real heights mostly have already). Forests keep away from the
+    buildings and roads. Each works on its layer of shapes, so it can be changed and run again from
+    the outliner. **Run them when the map opens** runs them one after another, after the roads;
+    stopping one stops the rest.
   * The map's latitude and longitude are set to the place, so the sun and stars are right in the
     game. Downloaded tiles are kept in `%LOCALAPPDATA%\DZWorldEditor\tiles`, so the same place
     downloads quickly the second time.

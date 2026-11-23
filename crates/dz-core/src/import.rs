@@ -962,7 +962,7 @@ pub fn adopt_old_lines(w: &mut World, lines: Vec<MapLine>) {
         w.routes.push(road_route(format!("Road {}", k + 1), family, points, objects));
     }
     if !plain.is_empty() {
-        let shapes = plain.into_iter().filter(|l| l.points.len() >= 2).map(|l| MapShape { kind: ShapeKind::Polyline, points: l.points, attributes: vec![("NAME".to_string(), l.name)] }).collect();
+        let shapes = plain.into_iter().filter(|l| l.points.len() >= 2).map(|l| MapShape { holes: Vec::new(), kind: ShapeKind::Polyline, points: l.points, attributes: vec![("NAME".to_string(), l.name)] }).collect();
         w.shape_layers.push(ShapeLayer { name: "Lines".into(), visible: true, shapes });
     }
 }

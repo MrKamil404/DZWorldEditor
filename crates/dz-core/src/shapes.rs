@@ -31,6 +31,17 @@ pub struct MapShape {
     pub points: Vec<[f32; 2]>,
     #[serde(default)]
     pub attributes: Vec<(String, String)>,
+    /// Holes of a polygon (a clearing in a forest), each a ring like `points`. Written only
+    /// when there are any, so older versions read the shape as before, without its holes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holes: Vec<Vec<[f32; 2]>>,
+}
+
+impl MapShape {
+    /// Whether a point lies inside the polygon and outside its holes.
+    pub fn contains(&self, x: f32, z: f32) -> bool {
+        point_in_polygon(&self.points, x, z) && !self.holes.iter().any(|h| point_in_polygon(h, x, z))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -79,6 +90,7 @@ const INDEX_CELL: f32 = 256.0;
 #[derive(Clone, Default)]
 pub struct PolygonIndex {
     rings: Vec<Vec<[f32; 2]>>,
+    holes: Vec<Vec<Vec<[f32; 2]>>>,
     grid: HashMap<(i32, i32), Vec<u32>>,
 }
 
@@ -98,6 +110,7 @@ impl PolygonIndex {
                 }
             }
             out.rings.push(s.points.clone());
+            out.holes.push(s.holes.clone());
         }
         out
     }
@@ -106,7 +119,10 @@ impl PolygonIndex {
     }
     pub fn contains(&self, x: f32, z: f32) -> bool {
         let key = ((x / INDEX_CELL).floor() as i32, (z / INDEX_CELL).floor() as i32);
-        self.grid.get(&key).is_some_and(|l| l.iter().any(|i| point_in_polygon(&self.rings[*i as usize], x, z)))
+        self.grid.get(&key).is_some_and(|l| l.iter().any(|i| {
+            let i = *i as usize;
+            point_in_polygon(&self.rings[i], x, z) && !self.holes[i].iter().any(|h| point_in_polygon(h, x, z))
+        }))
     }
 }
 
@@ -359,6 +375,7 @@ pub fn add_layers(w: &mut World, layers: Vec<RawLayer>) -> (usize, Option<String
     for l in layers {
         total += l.shapes.len();
         let shapes = l.shapes.into_iter().map(|s| MapShape {
+            holes: Vec::new(),
             kind: s.kind,
             points: s.points.iter().map(|p| [(p[0] - offset.0) as f32, (p[1] - offset.1) as f32]).collect(),
             attributes: s.attributes,
@@ -493,7 +510,7 @@ mod tests {
     use super::*;
 
     fn square(x: f32) -> MapShape {
-        MapShape { kind: ShapeKind::Polygon, points: vec![[x, 0.0], [x + 10.0, 0.0], [x + 10.0, 10.0], [x, 10.0]], attributes: vec![("KIND".into(), "wood".into())] }
+        MapShape { holes: Vec::new(), kind: ShapeKind::Polygon, points: vec![[x, 0.0], [x + 10.0, 0.0], [x + 10.0, 10.0], [x, 10.0]], attributes: vec![("KIND".into(), "wood".into())] }
     }
 
     #[test]
@@ -508,8 +525,8 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let layer = ShapeLayer { name: "Las 1".into(), visible: true, shapes: vec![
             square(100.0),
-            MapShape { kind: ShapeKind::Polyline, points: vec![[1.0, 2.0], [3.0, 4.0], [5.0, 9.0]], attributes: vec![] },
-            MapShape { kind: ShapeKind::Point, points: vec![[7.5, 8.5]], attributes: vec![] },
+            MapShape { holes: Vec::new(), kind: ShapeKind::Polyline, points: vec![[1.0, 2.0], [3.0, 4.0], [5.0, 9.0]], attributes: vec![] },
+            MapShape { holes: Vec::new(), kind: ShapeKind::Point, points: vec![[7.5, 8.5]], attributes: vec![] },
         ] };
         let files = write_layer(d.path(), &layer, 200000.0, 0.0).unwrap();
         assert_eq!(files.len(), 3);

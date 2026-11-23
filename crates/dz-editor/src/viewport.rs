@@ -4715,6 +4715,17 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 }
             }
         }
+        // osmroads n: builds the first n OpenStreetMap roads of the project, as a new map of a
+        // real place does.
+        "osmroads" => {
+            let n = nums.first().map(|v| *v as usize).unwrap_or(5);
+            let r = dz_core::real_terrain::OsmRoads::for_families(&app.road_families);
+            let lines = app.doc.as_ref().map(|d| dz_core::real_terrain::osm_road_lines(&d.world.shape_layers, 4.0, 30.0)).unwrap_or_default();
+            for (k, line) in lines.into_iter().filter(|(k, _)| r.families[*k].is_some()).take(n) {
+                eprintln!("ROAD {} with {} points", r.families[k].clone().unwrap_or_default(), line.len());
+                app.route_queue.push_back((r.families[k].clone().unwrap_or_default(), line));
+            }
+        }
         // The New project window for a real place, optionally at "lat lon".
         "realplace" => {
             app.dialog = crate::panels::real_place_dialog();
@@ -4942,7 +4953,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     d.world.shape_layers.push(dz_core::shapes::ShapeLayer { name: "test".into(), visible: true, shapes: Vec::new() });
                 }
                 let l = &mut d.world.shape_layers[0];
-                l.shapes.push(dz_core::shapes::MapShape { kind: dz_core::shapes::ShapeKind::Polygon, points: vec![[nums[0], nums[1]], [nums[2], nums[1]], [nums[2], nums[3]], [nums[0], nums[3]]], attributes: Vec::new() });
+                l.shapes.push(dz_core::shapes::MapShape { holes: Vec::new(), kind: dz_core::shapes::ShapeKind::Polygon, points: vec![[nums[0], nums[1]], [nums[2], nums[1]], [nums[2], nums[3]], [nums[0], nums[3]]], attributes: Vec::new() });
                 let target = dz_core::library::GenTarget::Shape { layer: l.name.clone(), index: l.shapes.len() - 1 };
                 if let Some(g) = d.world.generators.last_mut() {
                     g.target = target;
