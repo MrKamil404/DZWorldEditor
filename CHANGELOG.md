@@ -43,6 +43,7 @@
 
 ### Fixed
 
+- **The editor's own icon** shows on the taskbar and in Alt+Tab, not the default one.
 - **Gates and wickets** take only the gap they fill in a fence, not the whole swing of their leaf.
 - **Surface under objects** follows objects that are tilted or turned over, instead of an outline
   mirrored and set aside.
