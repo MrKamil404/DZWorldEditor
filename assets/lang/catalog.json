@@ -1139,6 +1139,10 @@
   "de": "Eingebaut",
   "pl": "Wbudowane"
  },
+ "Built-up land": {
+  "de": "Bebautes Land",
+  "pl": "Teren zabudowany"
+ },
  "Bullet impact": {
   "de": "Einschlag",
   "pl": "Trafienie pocisku"
@@ -1766,6 +1770,10 @@
  "Confirm": {
   "de": "Bestätigen",
   "pl": "Potwierdź"
+ },
+ "Conifer forests": {
+  "de": "Nadelwälder",
+  "pl": "Lasy iglaste"
  },
  "Contaminated and other effect areas, and the safe positions players are moved to.": {
   "de": "Verseuchte und andere Effektgebiete sowie die sicheren Positionen, auf die Spieler versetzt werden.",
@@ -3247,6 +3255,10 @@
   "de": "Aus den AWS Terrain Tiles: meist etwa 30 m Auflösung (SRTM), in manchen Ländern feiner.",
   "pl": "Z AWS Terrain Tiles: w większości miejsc dokładność około 30 m (SRTM), w niektórych krajach lepsza."
  },
+ "From the OpenStreetMap shapes, over the satellite": {
+  "de": "Aus den OpenStreetMap-Formen, über dem Satelliten",
+  "pl": "Z kształtów OpenStreetMap, na satelicie"
+ },
  "From the camera": {
   "de": "Von der Kamera",
   "pl": "Z kamery"
@@ -3262,6 +3274,10 @@
  "From the project species": {
   "de": "Aus den Arten des Projekts",
   "pl": "Z gatunków projektu"
+ },
+ "From the satellite picture": {
+  "de": "Aus dem Satellitenbild",
+  "pl": "Ze zdjęcia satelitarnego"
  },
  "From the sea, ponds and river models.": {
   "de": "Vom Meer, von Teichen und Flussmodellen.",
@@ -3699,6 +3715,10 @@
   "de": "Wie gut man liegend, kniend und stehend darauf gesehen wird",
   "pl": "Jak dobrze widać na niej kogoś leżącego, klęczącego i stojącego"
  },
+ "How wide the line is painted.": {
+  "de": "Wie breit die Linie gemalt wird.",
+  "pl": "Jak szeroko malowana jest linia."
+ },
  "Hue": {
   "de": "Farbton",
   "pl": "Odcień"
@@ -4123,6 +4143,10 @@
   "de": "Trägt den Pinsel auf ganze Formen auf einmal auf: innerhalb von Polygonen, entlang von Linien als Band. Felder, Lichtungen, Feldwege.",
   "pl": "Nakłada pędzel na całe kształty naraz: wnętrze wielokątów, pas wzdłuż linii. Pola, polany, polne drogi."
  },
+ "Leafy and mixed forests": {
+  "de": "Laub- und Mischwälder",
+  "pl": "Lasy liściaste i mieszane"
+ },
  "Leafy forest": {
   "de": "Laubwald",
   "pl": "Las liściasty"
@@ -4399,6 +4423,10 @@
   "de": "Hauptmenü-Szenen",
   "pl": "Sceny menu głównego"
  },
+ "Main roads": {
+  "de": "Hauptstraßen",
+  "pl": "Drogi główne"
+ },
  "Make a preset of them": {
   "de": "Preset daraus machen",
   "pl": "Zrób z nich preset"
@@ -4599,6 +4627,10 @@
   "de": "Ich ({0})",
   "pl": "Ja ({0})"
  },
+ "Meadows and grass": {
+  "de": "Wiesen und Gras",
+  "pl": "Łąki i trawa"
+ },
  "Measure": {
   "de": "Messen",
   "pl": "Linijka"
@@ -4750,6 +4782,10 @@
  "Minimum radius": {
   "de": "Mindestradius",
   "pl": "Minimalny promień"
+ },
+ "Minor roads": {
+  "de": "Nebenstraßen",
+  "pl": "Drogi lokalne"
  },
  "Mission": {
   "de": "Mission",
@@ -5747,6 +5783,10 @@
   "de": "Mit Pinsel setzen",
   "pl": "Maluj pędzlem"
  },
+ "Painted in this order, over the surfaces from the satellite: land, forests and water, then roads and railways.": {
+  "de": "In dieser Reihenfolge über die Oberflächen aus dem Satelliten gemalt: Land, Wälder und Wasser, dann Straßen und Bahnen.",
+  "pl": "Malowane w tej kolejności, na powierzchniach z satelity: teren, lasy i woda, potem drogi i tory."
+ },
  "Painted the surface under {0} objects": {
   "de": "Oberfläche unter {0} Objekten gemalt",
   "pl": "Pomalowano powierzchnię pod {0} obiektami"
@@ -6687,6 +6727,10 @@
   "de": "Fels an Ufern steiler als °",
   "pl": "Skała na brzegach bardziej stromych niż °"
  },
+ "Rock, scree and quarries": {
+  "de": "Fels, Geröll und Steinbrüche",
+  "pl": "Skały, piargi i kamieniołomy"
+ },
  "Rocks": {
   "de": "Felsen",
   "pl": "Skały"
@@ -6790,6 +6834,10 @@
  "Safe positions": {
   "de": "Sichere Positionen",
   "pl": "Bezpieczne pozycje"
+ },
+ "Sand and beaches": {
+  "de": "Sand und Strände",
+  "pl": "Piasek i plaże"
  },
  "Satellite": {
   "de": "Satellit",
@@ -6934,6 +6982,10 @@
  "Script the server runs: starts the economy, sets the date, gives new characters their items.": {
   "de": "Skript des Servers: startet die Wirtschaft, setzt das Datum, gibt neuen Charakteren ihre Gegenstände.",
   "pl": "Skrypt serwera: uruchamia ekonomię, ustawia datę, daje nowym postaciom przedmioty."
+ },
+ "Scrub, heath and wetland": {
+  "de": "Gebüsch, Heide und Feuchtgebiete",
+  "pl": "Zarośla, wrzosowiska i mokradła"
  },
  "Sculpt": {
   "de": "Modellieren",
@@ -8431,6 +8483,10 @@
   "de": "Das Prefab übernimmt die ausgewählten Objekte statt seiner bisherigen.",
   "pl": "Prefab przejmuje zaznaczone obiekty w miejsce dotychczasowych."
  },
+ "The preview is made from the picture you choose the place on, which is coarser than the one downloaded.": {
+  "de": "Die Vorschau entsteht aus dem Bild, auf dem du den Ort wählst, das gröber ist als das heruntergeladene.",
+  "pl": "Podgląd powstaje z obrazu, na którym wybierasz miejsce, mniej dokładnego niż pobierane zdjęcie."
+ },
  "The project has no mission.": {
   "de": "Das Projekt hat keine Mission.",
   "pl": "Projekt nie ma misji."
@@ -8526,6 +8582,10 @@
  "The server keeps its date within a month from this day.": {
   "de": "Der Server hält sein Datum innerhalb eines Monats ab diesem Tag.",
   "pl": "Serwer utrzymuje datę w ciągu miesiąca od tego dnia."
+ },
+ "The settings show once the picture of the place is loaded.": {
+  "de": "Die Einstellungen erscheinen, sobald das Bild des Ortes geladen ist.",
+  "pl": "Ustawienia pokażą się, gdy wczyta się obraz miejsca."
  },
  "The shape this generator works on no longer exists": {
   "de": "Die Form dieses Generators existiert nicht mehr",
@@ -8758,6 +8818,10 @@
  "Town": {
   "de": "Stadt",
   "pl": "Miasto"
+ },
+ "Tracks": {
+  "de": "Feldwege",
+  "pl": "Drogi gruntowe"
  },
  "Transform": {
   "de": "Transformation",

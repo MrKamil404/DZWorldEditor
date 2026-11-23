@@ -165,6 +165,16 @@ mod tests {
         assert!(missing.is_empty(), "{} untranslated: {missing:#?}", missing.len());
     }
 
+    /// Names the interface shows from lists of the core, which the search for text in `t(`
+    /// calls above cannot find.
+    #[test]
+    fn names_from_the_core_are_translated() {
+        let raw: HashMap<String, HashMap<String, String>> = serde_json::from_str(CATALOG).unwrap();
+        let names = dz_core::real_terrain::SHAPE_CLASSES.iter().map(|c| c.name).chain(dz_core::satgen::NATURAL_NAMES).chain(dz_core::satgen::CLASS_NAMES);
+        let missing: Vec<&str> = names.filter(|n| !raw.get(*n).is_some_and(|m| m.contains_key("pl") && m.contains_key("de"))).collect();
+        assert!(missing.is_empty(), "untranslated: {missing:?}");
+    }
+
     #[test]
     fn placeholders_survive_translation() {
         let raw: HashMap<String, HashMap<String, String>> = serde_json::from_str(CATALOG).unwrap();
