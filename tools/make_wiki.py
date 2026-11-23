@@ -45,9 +45,7 @@ def convert(text, names):
     raw = f"https://raw.githubusercontent.com/{REPOSITORY}/main/docs/screenshots/"
     text = re.sub(r"\]\(screenshots/", "](" + raw, text)
     # The wiki shows the name of the page as its title, so the first heading would be twice.
-    text = re.sub(r"\A# [^
-]*
-+", "", text)
+    text = re.sub(r"\A# [^\n]*\n+", "", text)
     # The way back to the guide is the sidebar.
     text = re.sub(r"\n\[Back to the guide\]\(Home\)\n", "\n", text)
     return text
