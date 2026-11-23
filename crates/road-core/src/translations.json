@@ -353,11 +353,13 @@
   },
   {
     "pl": "Brak wejściowego punktu połączenia części",
-    "en": "Missing part entry port"
+    "en": "Missing part entry port",
+    "de": "Dem Teil fehlt der Eingangsport"
   },
   {
     "pl": "Brak wyjściowego punktu połączenia części",
-    "en": "Missing part exit port"
+    "en": "Missing part exit port",
+    "de": "Dem Teil fehlt der Ausgangsport"
   },
   {
     "pl": "Niekompletna wartość TV4P u16",
@@ -597,7 +599,8 @@
   },
   {
     "pl": "Brak wysokości na części trasy",
-    "en": "Missing elevations on part of the route"
+    "en": "Missing elevations on part of the route",
+    "de": "Auf einem Teil der Route fehlen Höhen"
   },
   {
     "pl": "Brak ścieżki w definicji Road Tool",
@@ -645,7 +648,8 @@
   },
   {
     "pl": "Droga {0} przecina obszar zakazany lub nie spełnia ograniczeń ASC",
-    "en": "Road {0} crosses a forbidden area or violates ASC constraints"
+    "en": "Road {0} crosses a forbidden area or violates ASC constraints",
+    "de": "Straße {0} kreuzt einen verbotenen Bereich oder verletzt die ASC-Vorgaben"
   },
   {
     "pl": "Droga {0} zawiera rozłączone segmenty",
@@ -705,7 +709,8 @@
   },
   {
     "pl": "Nie można dopasować modeli przy {0} m trasy. Złagodź zakręty, zwiększ tolerancję lub użyj segmentów",
-    "en": "Cannot fit models at {0} m along the route. Soften bends, increase tolerance or place segments manually"
+    "en": "Cannot fit models at {0} m along the route. Soften bends, increase tolerance or place segments manually",
+    "de": "Bei {0} m entlang der Route passen keine Modelle. Kurven abschwächen, Toleranz erhöhen oder Teile von Hand setzen"
   },
   {
     "pl": "Nie można mieszać typów drogi bez skrzyżowania",
@@ -721,23 +726,28 @@
   },
   {
     "pl": "Nie znaleziono trasy spełniającej ograniczenia",
-    "en": "No route satisfying the constraints was found"
+    "en": "No route satisfying the constraints was found",
+    "de": "Es wurde keine Route gefunden, die die Vorgaben erfüllt"
   },
   {
     "pl": "Nie znaleziono trasy spełniającej ograniczenia. Do punktu {0} dojechano najbliżej na {1} m. Zwiększ spadek maks., zmniejsz promień min. lub krok automatu",
-    "en": "No route satisfying the constraints was found. The closest approach to point {0} was {1} m. Increase the maximum grade, reduce the minimum radius or the search step"
+    "en": "No route satisfying the constraints was found. The closest approach to point {0} was {1} m. Increase the maximum grade, reduce the minimum radius or the search step",
+    "de": "Es wurde keine Route gefunden, die die Vorgaben erfüllt. Am nächsten kam sie Punkt {0} mit {1} m. Maximale Steigung erhöhen, Mindestradius oder Suchschritt verkleinern"
   },
   {
     "pl": "Przekroczono budżet wyszukiwania. Do punktu {0} dojechano najbliżej na {1} m. Zwiększ krok, złagodź ograniczenia lub dodaj punkty pośrednie",
-    "en": "Search budget exceeded. The closest approach to point {0} was {1} m. Increase the step, relax the constraints or add intermediate points"
+    "en": "Search budget exceeded. The closest approach to point {0} was {1} m. Increase the step, relax the constraints or add intermediate points",
+    "de": "Suchbudget überschritten. Am nächsten kam sie Punkt {0} mit {1} m. Schritt vergrößern, Vorgaben lockern oder Zwischenpunkte setzen"
   },
   {
     "pl": "Droga nie może wyjechać z punktu {0} w kierunku, w którym do niego dojeżdża. Przesuń punkt, dodaj punkt pośredni lub złagodź ograniczenia",
-    "en": "The road cannot leave point {0} in the direction it arrives from. Move the point, add an intermediate point or relax the constraints"
+    "en": "The road cannot leave point {0} in the direction it arrives from. Move the point, add an intermediate point or relax the constraints",
+    "de": "Die Straße kann Punkt {0} nicht in der Richtung verlassen, aus der sie kommt. Punkt verschieben, Zwischenpunkt setzen oder Vorgaben lockern"
   },
   {
     "pl": "Punkt trasy leży w obszarze zakazanym lub bliżej niego niż tolerancja trasy",
-    "en": "A route point lies inside a forbidden area or closer to it than the route tolerance"
+    "en": "A route point lies inside a forbidden area or closer to it than the route tolerance",
+    "de": "Ein Routenpunkt liegt in einem verbotenen Bereich oder näher daran als die Routentoleranz"
   },
   {
     "pl": "Nieobsługiwana kategoria segmentu lub kierunek",
@@ -813,7 +823,8 @@
   },
   {
     "pl": "Nieprawidłowa trasa lub promień",
-    "en": "Invalid route or radius"
+    "en": "Invalid route or radius",
+    "de": "Ungültige Route oder ungültiger Radius"
   },
   {
     "pl": "Nieprawidłowa wysokość: {0}",
@@ -833,7 +844,8 @@
   },
   {
     "pl": "Nieprawidłowe punkty drogi",
-    "en": "Invalid road points"
+    "en": "Invalid road points",
+    "de": "Ungültige Straßenpunkte"
   },
   {
     "pl": "Nieprawidłowe ustawienia automatu",
@@ -841,7 +853,8 @@
   },
   {
     "pl": "Nieprawidłowe ustawienia trasy",
-    "en": "Invalid route settings"
+    "en": "Invalid route settings",
+    "de": "Ungültige Routeneinstellungen"
   },
   {
     "pl": "Nieprawidłowe współrzędne SHP #{0}",
@@ -865,7 +878,8 @@
   },
   {
     "pl": "Nieprawidłowy obszar zakazany",
-    "en": "Invalid forbidden area"
+    "en": "Invalid forbidden area",
+    "de": "Ungültiger verbotener Bereich"
   },
   {
     "pl": "Nieprawidłowy pusty rekord SHP",
@@ -949,7 +963,8 @@
   },
   {
     "pl": "Początkowy segment konec nie mieści się na trasie lub nie spełnia ograniczeń terenu",
-    "en": "The starting konec segment does not fit the route or violates terrain constraints"
+    "en": "The starting konec segment does not fit the route or violates terrain constraints",
+    "de": "Das Anfangsstück passt nicht zur Route oder verletzt die Geländevorgaben"
   },
   {
     "pl": "Podgląd anulowany",
@@ -1005,7 +1020,8 @@
   },
   {
     "pl": "Punkty są za blisko, aby zmieścić promień {0} m. Rozsuń punkty lub zmniejsz promień",
-    "en": "Points are too close for radius {0} m. Move them apart or reduce the radius"
+    "en": "Points are too close for radius {0} m. Move them apart or reduce the radius",
+    "de": "Die Punkte liegen zu dicht für einen Radius von {0} m. Punkte auseinanderziehen oder den Radius verkleinern"
   },
   {
     "pl": "Płynny profil z wysokości ASC na łączeniach. Zmiana tylko wewnątrz obrysu MLOD, bez poboczy.",
@@ -1037,15 +1053,18 @@
   },
   {
     "pl": "Trasa jest za krótka na dwa segmenty konec lub ma powtórzone punkty",
-    "en": "The route is too short for two konec segments or contains repeated points"
+    "en": "The route is too short for two konec segments or contains repeated points",
+    "de": "Die Route ist zu kurz für zwei Endstücke oder enthält doppelte Punkte"
   },
   {
     "pl": "Przekroczono limit prób dopasowania modeli. Złagodź zakręty, zwiększ tolerancję lub dodaj punkty pośrednie",
-    "en": "Model fitting attempt limit exceeded. Soften the curves, increase the tolerance or add intermediate points"
+    "en": "Model fitting attempt limit exceeded. Soften the curves, increase the tolerance or add intermediate points",
+    "de": "Zu viele Versuche beim Einpassen der Modelle. Kurven abschwächen, Toleranz erhöhen oder Zwischenpunkte setzen"
   },
   {
     "pl": "Trasa wyznaczona i złożona z modeli",
-    "en": "Route found and assembled from models"
+    "en": "Route found and assembled from models",
+    "de": "Route gefunden und aus Modellen zusammengesetzt"
   },
   {
     "pl": "Układ współrzędnych z PRJ",
@@ -1065,7 +1084,8 @@
   },
   {
     "pl": "Usuń powtórzone punkty trasy",
-    "en": "Remove repeated route points"
+    "en": "Remove repeated route points",
+    "de": "Doppelte Routenpunkte entfernen"
   },
   {
     "pl": "Usuń wybraną drogę",
@@ -1109,7 +1129,8 @@
   },
   {
     "pl": "Wskaż przynajmniej dwa punkty",
-    "en": "Specify at least two points"
+    "en": "Specify at least two points",
+    "de": "Mindestens zwei Punkte angeben"
   },
   {
     "pl": "Współrzędne świata",
@@ -1549,11 +1570,13 @@
   },
   {
     "pl": "Trasa zawraca w jednym punkcie",
-    "en": "Route turns back at a single point"
+    "en": "Route turns back at a single point",
+    "de": "Die Route kehrt an einem Punkt um"
   },
   {
     "pl": "Punkty poza ASC lub w NODATA",
-    "en": "Points outside ASC or in NODATA"
+    "en": "Points outside ASC or in NODATA",
+    "de": "Punkte außerhalb des ASC oder in NODATA"
   },
   {
     "pl": "Wyznaczanie anulowane",
@@ -1745,7 +1768,8 @@
   },
   {
     "pl": "Nieprawidłowa linia zakazana",
-    "en": "Invalid forbidden line"
+    "en": "Invalid forbidden line",
+    "de": "Ungültige verbotene Linie"
   },
   {
     "pl": "Nieprawidłowy poziom wody",
@@ -1833,7 +1857,8 @@
   },
   {
     "pl": "Torowisko {0} przecina obszar zakazany lub nie spełnia ograniczeń ASC",
-    "en": "Track {0} crosses a forbidden area or does not meet the ASC constraints"
+    "en": "Track {0} crosses a forbidden area or does not meet the ASC constraints",
+    "de": "Gleis {0} kreuzt einen verbotenen Bereich oder erfüllt die ASC-Vorgaben nicht"
   },
   {
     "pl": "Modele torów…",
@@ -1953,7 +1978,8 @@
   },
   {
     "pl": "Tor przecina drogę na łuku, pod kątem mniejszym niż {0}° lub bez miejsca na przejazd przy ({1}, {2})",
-    "en": "The track crosses a road on a curve, at less than {0}° or without room for a level crossing near ({1}, {2})"
+    "en": "The track crosses a road on a curve, at less than {0}° or without room for a level crossing near ({1}, {2})",
+    "de": "Das Gleis kreuzt eine Straße in einer Kurve, unter weniger als {0}° oder ohne Platz für einen Bahnübergang bei ({1}, {2})"
   },
   {
     "pl": "Brak modeli przejazdu kolejowego dla tego typu toru",
@@ -1993,7 +2019,8 @@
   },
   {
     "pl": "Nieprawidłowe nachylenie skarp",
-    "en": "Invalid side slope"
+    "en": "Invalid side slope",
+    "de": "Ungültige Böschung"
   },
   {
     "pl": "Brak profilu drogi",
@@ -2001,7 +2028,8 @@
   },
   {
     "pl": "Brak przebiegu trasy",
-    "en": "No route centre line"
+    "en": "No route centre line",
+    "de": "Die Route hat keine Mittellinie"
   },
   {
     "pl": "Brak wysokości ASC pod trasą",
@@ -2181,7 +2209,8 @@
   },
   {
     "pl": "Nie udało się dopasować terenu pod trasą {0}: {1}",
-    "en": "Could not adapt the terrain under route {0}: {1}"
+    "en": "Could not adapt the terrain under route {0}: {1}",
+    "de": "Das Gelände unter Route {0} konnte nicht angepasst werden: {1}"
   },
   {
     "pl": "Nie można odczytać wysokości ASC",
@@ -2261,7 +2290,8 @@
   },
   {
     "pl": "Trasa musi mieć co najmniej dwa punkty",
-    "en": "A route needs at least two points"
+    "en": "A route needs at least two points",
+    "de": "Eine Route braucht mindestens zwei Punkte"
   },
   {
     "pl": "Eksport torów do Terrain Builder",
@@ -2289,19 +2319,23 @@
   },
   {
     "pl": "Trasa wyznaczona i złożona z modeli, mosty: {0}",
-    "en": "Route found and built from models, bridges: {0}"
+    "en": "Route found and built from models, bridges: {0}",
+    "de": "Route gefunden und aus Modellen gebaut, Brücken: {0}"
   },
   {
     "pl": "Model mostu nie ma punktów pamięci",
-    "en": "The bridge model has no memory points"
+    "en": "The bridge model has no memory points",
+    "de": "Das Brückenmodell hat keine Memory-Punkte"
   },
   {
     "pl": "Most kolejowy bez punktu map1",
-    "en": "Railway bridge without the map1 point"
+    "en": "Railway bridge without the map1 point",
+    "de": "Eisenbahnbrücke ohne den Punkt map1"
   },
   {
     "pl": "Most kolejowy bez punktu map2",
-    "en": "Railway bridge without the map2 point"
+    "en": "Railway bridge without the map2 point",
+    "de": "Eisenbahnbrücke ohne den Punkt map2"
   },
   {
     "pl": "Most kolejowy bez powierzchni jezdnej",
@@ -2309,7 +2343,8 @@
   },
   {
     "pl": "Most bez punktu {0}",
-    "en": "Bridge without the {0} point"
+    "en": "Bridge without the {0} point",
+    "de": "Brücke ohne den Punkt {0}"
   },
   {
     "pl": "Most bez drogi po obu stronach",

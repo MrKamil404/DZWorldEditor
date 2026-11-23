@@ -6,12 +6,16 @@ pub enum Language {
     #[default]
     Polish,
     English,
+    /// German where the catalog has it, English otherwise.
+    German,
 }
 
 #[derive(Deserialize)]
 struct Translation {
     pl: String,
     en: String,
+    #[serde(default)]
+    de: Option<String>,
 }
 
 fn catalog() -> &'static [Translation] {
@@ -48,8 +52,9 @@ impl Language {
             let target = match self {
                 Self::Polish => &entry.pl,
                 Self::English => &entry.en,
+                Self::German => entry.de.as_ref().unwrap_or(&entry.en),
             };
-            if text == entry.pl || text == entry.en {
+            if text == entry.pl || text == entry.en || entry.de.as_deref() == Some(text) {
                 return target.clone();
             }
         }
@@ -57,6 +62,7 @@ impl Language {
             let target = match self {
                 Self::Polish => &entry.pl,
                 Self::English => &entry.en,
+                Self::German => entry.de.as_ref().unwrap_or(&entry.en),
             };
             for source in [&entry.pl, &entry.en] {
                 if !source.contains('{') {
@@ -163,5 +169,10 @@ mod tests {
                 .tr("Droga #17: model asf2_25.p3d nie należy do typu Road Tool asf3 / kategorii 3"),
             "Road #17: model asf2_25.p3d does not belong to Road Tool type asf3 / category 3"
         );
+        let close = "Punkty są za blisko, aby zmieścić promień 25 m. Rozsuń punkty lub zmniejsz promień";
+        assert_eq!(Language::English.tr(close), "Points are too close for radius 25 m. Move them apart or reduce the radius");
+        assert_eq!(Language::German.tr(close), "Die Punkte liegen zu dicht für einen Radius von 25 m. Punkte auseinanderziehen oder den Radius verkleinern");
+        // Without a German text the English one stands in.
+        assert_eq!(Language::German.tr("Edytuj punkty"), "Edit points");
     }
 }

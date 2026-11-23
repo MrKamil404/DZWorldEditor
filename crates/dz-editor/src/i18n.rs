@@ -89,6 +89,18 @@ pub fn load_user_languages(dir: &Path) {
 pub fn languages() -> Vec<(String, String)> {
     state().read().unwrap().names.clone()
 }
+/// A message of the road engine (`road-core`, which writes them in Polish) in the language of
+/// the interface; other text stays as it is.
+pub fn road(text: &str) -> String {
+    use dayz_road_tool::i18n::Language;
+    let lang = match current().as_str() {
+        "pl" => Language::Polish,
+        "de" => Language::German,
+        _ => Language::English,
+    };
+    lang.tr(text)
+}
+
 pub fn current() -> String {
     state().read().unwrap().current.clone()
 }

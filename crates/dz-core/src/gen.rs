@@ -817,9 +817,23 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, j
     for (layer, name) in &req.areas {
         let preset = find_preset(name, &req.user_presets).with_context(|| format!("Unknown forest preset {name}"))?;
         let species_weights = preset_weights(&mut project, &preset, &vanilla);
+        // An outline that crosses itself would stop the whole forest; it is left out instead,
+        // and a hole that does is dropped, as many shapes of a layer (from OpenStreetMap, say)
+        // seldom are all clean.
+        let mut crossed = 0;
         for (i, s) in layer.shapes.iter().enumerate().filter(|(_, s)| s.kind == crate::shapes::ShapeKind::Polygon) {
-            project.areas.push(AreaDef { label: format!("{} {}", layer.name, i + 1), density_per_ha: req.area_density.unwrap_or(preset.density_per_ha), species_weights: species_weights.clone(), polygon: s.points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect(), holes: s.holes.iter().map(|h| h.iter().map(|p| [p[0] as f64, p[1] as f64]).collect()).collect(), color_filter: req.color_filter.clone(), ..Default::default() });
+            let ring = |r: &[[f32; 2]]| -> Vec<[f64; 2]> { r.iter().map(|p| [p[0] as f64, p[1] as f64]).collect() };
+            let polygon = ring(&s.points);
+            if forest_core::scatter::find_self_intersection(&polygon).is_some() {
+                crossed += 1;
+                continue;
+            }
+            let holes = s.holes.iter().map(|h| ring(h)).filter(|h| h.len() >= 3 && forest_core::scatter::find_self_intersection(h).is_none()).collect();
+            project.areas.push(AreaDef { label: format!("{} {}", layer.name, i + 1), density_per_ha: req.area_density.unwrap_or(preset.density_per_ha), species_weights: species_weights.clone(), polygon, holes, color_filter: req.color_filter.clone(), ..Default::default() });
             project.generation_order.push(GenStep::Area(project.areas.len() - 1));
+        }
+        if crossed > 0 {
+            job.warn(format!("{crossed} shapes of {} cross themselves and were left out", layer.name));
         }
     }
     for (layer, margin) in &req.skip_surfaces {

@@ -557,7 +557,7 @@ pub fn create(app: &mut App, p: &NewProject) {
     let m = p.place.map(p);
     let classify = p.place.classify.clone();
     let run = m.generators.as_ref().is_some_and(|g| g.run);
-    let (db, assets) = (app.db.clone(), app.assets.clone());
+    let db = app.db.clone();
     let level = m.buildings && p.place.level;
     let roads = m.roads.clone();
     let dir = (!p.folder.trim().is_empty()).then(|| std::path::PathBuf::from(p.folder.trim()).join(dz_core::world::WorldMeta::new(&p.name, 1, 1.0).map_id));
@@ -568,7 +568,7 @@ pub fn create(app: &mut App, p: &NewProject) {
                 job.log(format!("Satellite picture: © {}", src.attribution));
             }
         }
-        let w = rt::build_world(&m, &f, &db, &assets, job)?;
+        let w = rt::build_world(&m, &f, &db, job)?;
         if let Some(d) = &dir {
             job.stage("Saving the project");
             project::save(&w, d, SaveParts::ALL)?;
