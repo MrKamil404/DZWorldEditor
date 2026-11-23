@@ -112,6 +112,10 @@ impl ObjectStore {
     pub fn normalize_path(path: &str) -> String {
         path.trim().replace('/', "\\").trim_start_matches('\\').to_ascii_lowercase()
     }
+    /// The index of a model already in the store.
+    pub fn index_of(&self, path: &str) -> Option<u32> {
+        self.by_path.get(&Self::normalize_path(path)).copied()
+    }
     pub fn intern(&mut self, path: &str) -> u32 {
         let key = Self::normalize_path(path);
         if let Some(&i) = self.by_path.get(&key) {
@@ -543,6 +547,28 @@ pub fn random_turns(objects: &mut [Obj], info: &[crate::model_info::ModelInfo], 
     }
 }
 
+/// Gives each object a model drawn from `choices` (model index and weight): a row of fence
+/// copies with now and then a broken one. The same `seed` draws the same models.
+pub fn pick_models(objects: &mut [Obj], choices: &[(u32, f32)], seed: u64) {
+    use rand::{Rng, SeedableRng};
+    let total: f32 = choices.iter().map(|c| c.1.max(0.0)).sum();
+    if total <= 0.0 {
+        return;
+    }
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed ^ 0x9e37_79b9_7f4a_7c15);
+    for o in objects {
+        let mut at = rng.gen_range(0.0..total);
+        for (model, weight) in choices {
+            let w = weight.max(0.0);
+            if at < w {
+                o.model = *model;
+                break;
+            }
+            at -= w;
+        }
+    }
+}
+
 /// One copy of the objects laid right next to them, ahead or behind; see [`row_of`].
 pub fn copies_along(items: &[(Obj, crate::model_info::ModelInfo)], ahead: bool) -> Vec<Obj> {
     row_of(items, ahead).map(|r| row_copies(items, &r, 1, 0.0)).unwrap_or_default()
@@ -551,6 +577,18 @@ pub fn copies_along(items: &[(Obj, crate::model_info::ModelInfo)], ahead: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn models_are_drawn_by_their_weights() {
+        let mut objects = vec![Obj { x: 0.0, z: 0.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: 9, flags: 0 }; 1000];
+        pick_models(&mut objects, &[(1, 9.0), (2, 1.0)], 3);
+        let broken = objects.iter().filter(|o| o.model == 2).count();
+        assert!(objects.iter().all(|o| o.model == 1 || o.model == 2));
+        assert!((60..140).contains(&broken), "{broken}");
+        let mut again = vec![objects[0]; 1000];
+        pick_models(&mut again, &[(1, 9.0), (2, 1.0)], 3);
+        assert_eq!(again.iter().filter(|o| o.model == 2).count(), broken);
+    }
 
     #[test]
     fn copies_along_touch_the_originals() {

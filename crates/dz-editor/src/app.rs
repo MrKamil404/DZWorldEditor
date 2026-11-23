@@ -2269,6 +2269,31 @@ impl App {
 
     /// Copies of a row turned at random as the settings say, the same way each time until
     /// a row is laid.
+    /// The models of the row's preset, with their weights, as far as they are in the project;
+    /// `None` when the copies keep the models of the selection.
+    pub fn row_choices(&self) -> Option<Vec<(u32, f32)>> {
+        let preset = self.library.objects.iter().find(|p| Some(p.id) == self.settings.row_preset)?;
+        let w = &self.doc.as_ref()?.world;
+        let list: Vec<(u32, f32)> = preset.items.iter().filter_map(|(m, k)| Some((w.objects.index_of(m)?, *k))).collect();
+        (!list.is_empty()).then_some(list)
+    }
+
+    /// Puts the models of the row's preset into the project, so copies and their preview can use them.
+    pub fn intern_row_preset(&mut self) {
+        let Some(preset) = self.library.objects.iter().find(|p| Some(p.id) == self.settings.row_preset) else { return };
+        let Some(doc) = self.doc.as_mut() else { return };
+        for (m, _) in &preset.items {
+            doc.world.objects.intern(m);
+        }
+    }
+
+    /// The models of the copies of a row: from the row's preset when one is chosen.
+    pub fn row_models(&self, copies: &mut [dz_core::objects::Obj]) {
+        if let Some(choices) = self.row_choices() {
+            dz_core::objects::pick_models(copies, &choices, self.row_seed);
+        }
+    }
+
     pub fn row_random_turns(&self, copies: &mut [dz_core::objects::Obj], items: &[(dz_core::objects::Obj, dz_core::model_info::ModelInfo)]) {
         let info: Vec<_> = items.iter().map(|(_, i)| *i).collect();
         dz_core::objects::random_turns(copies, &info, self.settings.row_flip, self.settings.row_turn, self.row_seed);
@@ -2362,6 +2387,8 @@ impl App {
         }
         let Some(row) = self.selection_row(&items, ahead) else { return };
         let mut moved = dz_core::objects::row_copies(&items, &row, count, turn);
+        self.intern_row_preset();
+        self.row_models(&mut moved);
         self.row_random_turns(&mut moved, &items);
         // The next row turns its copies another way.
         self.row_seed = self.row_seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);

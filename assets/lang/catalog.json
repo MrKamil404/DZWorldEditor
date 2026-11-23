@@ -1799,6 +1799,10 @@
   "de": "Kopiert einen anderen Teil des Bildes oder eines Fotos auf die Karte.",
   "pl": "Kopiuje inną część obrazu albo wczytanego zdjęcia na mapę."
  },
+ "Copies of": {
+  "de": "Kopien von",
+  "pl": "Kopie z"
+ },
  "Copies of the selection laid end to end along its long side, as walls and fences are.": {
   "de": "Kopien der Auswahl, Ende an Ende entlang ihrer langen Seite gelegt, wie Mauern und Zäune.",
   "pl": "Kopie zaznaczenia układane jedna za drugą wzdłuż jego dłuższego boku, tak jak mury i płoty."
@@ -2462,6 +2466,10 @@
  "Dynamic events: vehicles, wrecks, animals, infected and their children.": {
   "de": "Dynamische Events: Fahrzeuge, Wracks, Tiere, Infizierte und ihre Kinder.",
   "pl": "Dynamiczne eventy: pojazdy, wraki, zwierzęta, zarażeni i ich dzieci."
+ },
+ "Each copy takes a model of the preset, drawn by its weights: give a broken fence a small weight for one now and then. The copies are as long as the selection.": {
+  "de": "Jede Kopie bekommt ein Modell des Presets, nach seinen Gewichten gezogen: Gib einem kaputten Zaun ein kleines Gewicht, damit er ab und zu kommt. Die Kopien sind so lang wie die Auswahl.",
+  "pl": "Każda kopia dostaje model z presetu, losowany według wag: daj zniszczonemu płotowi małą wagę, żeby pojawiał się od czasu do czasu. Kopie są tak długie jak zaznaczenie."
  },
  "Each folder becomes a PBO of its own, with its path on the work drive as the prefix, so models keep the paths the map uses.": {
   "de": "Jeder Ordner wird ein eigenes PBO mit seinem Pfad auf dem Arbeitslaufwerk als Präfix, damit Modelle die Pfade behalten, die die Karte nutzt.",
@@ -8498,6 +8506,10 @@
  "The secondary event (infected) of the event may spawn at this object.": {
   "de": "An diesem Objekt darf das Sekundärevent (Infizierte) spawnen.",
   "pl": "Przy tym obiekcie może pojawić się event wtórny (zarażeni)."
+ },
+ "The selected objects": {
+  "de": "Den gewählten Objekten",
+  "pl": "Zaznaczonych obiektów"
  },
  "The selection already faces that way": {
   "de": "Die Auswahl zeigt schon in diese Richtung",
