@@ -31,7 +31,18 @@ pub struct RealPlace {
     pub heights: bool,
     pub shapes: bool,
     pub osm: OsmParts,
+    /// The surface mask is read from the satellite picture, as `classify` says.
     pub mask: bool,
+    pub classify: dz_core::satgen::SatClassify,
+    class_view: crate::satellite::ClassifyView,
+    /// The OpenStreetMap shapes are painted into the mask, over what the picture gave.
+    pub shape_mask_on: bool,
+    pub shape_mask: rt::ShapeMask,
+    /// The last picture to choose on, and the part of it under the map with its revision: what
+    /// the preview of the surfaces is made from.
+    last_img: Option<(RgbImage, Preview)>,
+    crop: Option<(Preview, u64, RgbImage)>,
+    crop_rev: u64,
     /// Metres per pixel of the picture the place is chosen on; 0 until it is first shown.
     view_mpp: f64,
     texture: Option<(egui::TextureHandle, Preview)>,
@@ -57,6 +68,13 @@ impl Default for RealPlace {
             shapes: true,
             osm: OsmParts::default(),
             mask: true,
+            classify: rt::default_classify(),
+            class_view: Default::default(),
+            shape_mask_on: true,
+            shape_mask: rt::ShapeMask::for_layers(&dz_core::world::default_layers()),
+            last_img: None,
+            crop: None,
+            crop_rev: 0,
             view_mpp: 0.0,
             texture: None,
             loading: None,
@@ -72,6 +90,28 @@ fn fetcher() -> anyhow::Result<rt::Fetcher> {
 }
 
 impl RealPlace {
+    /// The part of the last picture under the map square, while the picture is of the place
+    /// as it is now chosen; made again when that changes.
+    fn crop(&mut self, size_m: f64) -> Option<(&RgbImage, u64)> {
+        let (img, at) = self.last_img.as_ref()?;
+        if (at.0, at.1, at.2) != (self.lat, self.lon, self.view_mpp) {
+            return self.crop.as_ref().map(|c| (&c.2, c.1));
+        }
+        let key = (at.0, at.1, at.2, (size_m * 100.0) as usize);
+        if self.crop.as_ref().map(|c| c.0) != Some(key) {
+            let side = ((size_m / at.2).round() as usize).clamp(8, img.width.min(img.height));
+            let (x0, y0) = ((img.width - side) / 2, (img.height - side) / 2);
+            let mut out = RgbImage::new(side, side, [0, 0, 0]);
+            for y in 0..side {
+                let from = ((y0 + y) * img.width + x0) * 3;
+                out.data[y * side * 3..(y + 1) * side * 3].copy_from_slice(&img.data[from..from + side * 3]);
+            }
+            self.crop_rev += 1;
+            self.crop = Some((key, self.crop_rev, out));
+        }
+        self.crop.as_ref().map(|c| (&c.2, c.1))
+    }
+
     fn source(&self) -> TileSource {
         rt::satellite_sources().get(self.source).cloned().unwrap_or_else(|| TileSource { name: "Custom".into(), url: self.custom_url.trim().to_string(), max_zoom: 19, attribution: String::new() })
     }
@@ -87,7 +127,8 @@ impl RealPlace {
             satellite: self.satellite.then(|| (self.source(), self.mpp)),
             heights: self.heights,
             osm: self.shapes.then_some(self.osm),
-            mask: self.satellite && self.mask,
+            mask: (self.satellite && self.mask).then(|| self.classify.clone()),
+            shape_mask: (self.shapes && self.shape_mask_on).then(|| self.shape_mask.clone()),
         }
     }
 
@@ -125,6 +166,7 @@ impl RealPlace {
                         }
                         None => self.texture = Some((ctx.load_texture("real_place_preview", image, egui::TextureOptions::LINEAR), at)),
                     }
+                    self.last_img = Some((img, at));
                     self.loading = None;
                 }
                 Ok(Err(e)) => {
@@ -243,7 +285,7 @@ pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
                 ui.add(egui::Label::new(egui::RichText::new(format!("© {}", src.attribution)).small().weak()).wrap()).on_hover_text(src.name);
             }
         });
-        ui.vertical(|ui| {
+        egui::ScrollArea::vertical().id_salt("real_place_settings").max_height(ui.ctx().screen_rect().height() * 0.7).show(ui, |ui| ui.vertical(|ui| {
             ui.set_width(330.0);
             ui.horizontal(|ui| {
                 let r = ui.add(egui::TextEdit::singleline(&mut place.search).hint_text(t("Place name, or latitude, longitude")).desired_width(250.0));
@@ -316,7 +358,6 @@ pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
                 if gb > 0.75 {
                     ui.colored_label(crate::theme::WARN, tf("A large picture: it needs about {0} GB of memory.", &[&format!("{gb:.1}")]));
                 }
-                ui.checkbox(&mut place.mask, t("Surface mask from the satellite picture"));
             });
             ui.checkbox(&mut place.heights, t("Heights")).on_hover_text(t("From the AWS Terrain Tiles: about 30 m detail (SRTM) in most places, finer in some countries."));
             ui.checkbox(&mut place.shapes, t("OpenStreetMap shapes")).on_hover_text(t("© OpenStreetMap contributors, ODbL. Each kind of shape gets its own shape layer."));
@@ -335,6 +376,7 @@ pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
                     });
                 });
             });
+            crate::theme::subsection(ui, &t("Surface mask"), true, |ui| mask_ui(ui, place, size_m));
             ui.separator();
             let area = rt::GeoArea { lat: place.lat, lon: place.lon, size_m };
             let src = place.source();
@@ -344,9 +386,54 @@ pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
             if let Some(e) = &place.error {
                 ui.colored_label(crate::theme::WARN, e);
             }
-        });
+        }));
     });
     place.poll(&ctx, dragging);
+}
+
+/// How the surface mask of the new map is made: read from the satellite picture as in the
+/// Satellite tool, with a preview on the picture of the place, and painted from the shapes.
+fn mask_ui(ui: &mut egui::Ui, place: &mut RealPlace, size_m: f64) {
+    let layers = dz_core::world::default_layers();
+    ui.add_enabled_ui(place.satellite, |ui| {
+        ui.checkbox(&mut place.mask, t("From the satellite picture"));
+    });
+    if place.satellite && place.mask {
+        let mut classify = std::mem::take(&mut place.classify);
+        let mut view = std::mem::take(&mut place.class_view);
+        match place.crop(size_m) {
+            Some((small, rev)) => crate::satellite::classify_fields(ui, &mut classify, small, rev, &layers, &mut view, "real"),
+            None => { ui.weak(t("The settings show once the picture of the place is loaded.")); }
+        }
+        (place.classify, place.class_view) = (classify, view);
+        ui.weak(t("The preview is made from the picture you choose the place on, which is coarser than the one downloaded."));
+    }
+    ui.add_enabled_ui(place.shapes, |ui| {
+        ui.checkbox(&mut place.shape_mask_on, t("From the OpenStreetMap shapes, over the satellite"));
+    });
+    if place.shapes && place.shape_mask_on {
+        let names: Vec<String> = layers.iter().map(|l| l.name.clone()).collect();
+        let leave = t("Leave as it is");
+        let m = &mut place.shape_mask;
+        egui::Grid::new("shape_mask").num_columns(3).spacing(egui::vec2(6.0, 3.0)).show(ui, |ui| {
+            for (k, class) in rt::SHAPE_CLASSES.iter().enumerate() {
+                ui.label(t(class.name));
+                let target = &mut m.surfaces[k];
+                let shown = target.and_then(|i| names.get(i).cloned()).unwrap_or_else(|| leave.clone());
+                egui::ComboBox::from_id_salt(("shape_surface", k)).width(110.0).selected_text(shown).show_ui(ui, |ui| {
+                    ui.selectable_value(target, None, &leave);
+                    for (i, n) in names.iter().enumerate() { ui.selectable_value(target, Some(i), n); }
+                });
+                if class.width > 0.0 {
+                    ui.add(crate::theme::ValueField::new(&mut m.widths[k], 0.5..=30.0).suffix(" m")).on_hover_text(t("How wide the line is painted."));
+                } else {
+                    ui.label("");
+                }
+                ui.end_row();
+            }
+        });
+        ui.weak(t("Painted in this order, over the surfaces from the satellite: land, forests and water, then roads and railways."));
+    }
 }
 
 /// Whether the choices can be made into a project.
@@ -367,6 +454,7 @@ pub fn ready(p: &NewProject) -> Result<(), String> {
 /// Downloads the place and opens it as a new project, saved in the folder when one is given.
 pub fn create(app: &mut App, p: &NewProject) {
     let m = p.place.map(p);
+    let classify = p.place.classify.clone();
     let dir = (!p.folder.trim().is_empty()).then(|| std::path::PathBuf::from(p.folder.trim()).join(dz_core::world::WorldMeta::new(&p.name, 1, 1.0).map_id));
     app.spawn(t("Making the map of a real place"), move |job| {
         let f = fetcher()?;
@@ -383,7 +471,7 @@ pub fn create(app: &mut App, p: &NewProject) {
         Ok(Box::new(move |app: &mut App| {
             app.open_world(w, dir);
             // The satellite tool reads surfaces the same way the mask was made.
-            app.sat.classify = rt::default_classify();
+            app.sat.classify = classify;
         }) as Finish)
     });
 }

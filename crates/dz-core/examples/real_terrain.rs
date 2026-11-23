@@ -22,7 +22,8 @@ fn main() -> anyhow::Result<()> {
         satellite: Some((satellite_sources()[source].clone(), mpp)),
         heights: true,
         osm: Some(OsmParts::default()),
-        mask: true,
+        mask: Some(dz_core::real_terrain::default_classify()),
+        shape_mask: Some(dz_core::real_terrain::ShapeMask::for_layers(&dz_core::world::default_layers())),
     };
     let f = Fetcher::new(std::env::var_os("DZWE_TILE_CACHE").map(PathBuf::from))?;
     let job = Job::default();

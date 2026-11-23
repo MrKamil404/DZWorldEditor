@@ -398,10 +398,19 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
 
     The window shows the licence of each source and the attribution to give. Choose the pixel size; the window says when the picture needs a
     lot of memory.
-  * **Surface mask from the satellite picture**: each pixel gets the surface its colour looks like
-    (dense or leafy forest, grass, pale grass, soil, fields, rock, roads and roofs). Fix it later
-    with the Paint tab, or read it again with **Surfaces from the satellite** in the Satellite tab,
-    which is set to **Natural colours** for the new project.
+  * **Surface mask**, made in two steps:
+    * **From the satellite picture**, with the same settings as **Surfaces from the satellite** in
+      the Satellite tab: natural colours (dense or leafy forest, grass, pale grass, soil, fields,
+      rock, roads and roofs), your own picked colours, or colour groups, each with its surface.
+      The preview is made from the picture you choose the place on, so it is coarser than the
+      result. The Satellite tab of the new project keeps these settings, to read the mask again.
+    * **From the OpenStreetMap shapes, over the satellite**: each kind of shape (fields, meadows,
+      scrub, built-up land, sand, rock, leafy and conifer forests, water, main and minor roads,
+      tracks, paths, railways) can be given a surface, and lines a width. They are painted in
+      that order over what the satellite gave, so forests and roads come out with clean edges.
+      OpenStreetMap tells conifer from leafy forests where its `leaf_type` is set.
+
+    Fix the mask later with the Paint tab.
   * **Heights** come from the AWS Terrain Tiles: about 30 m detail (SRTM) in most places, finer in
     some countries. The sea is at 0 m and the sea floor stops at -100 m.
   * **OpenStreetMap shapes**: roads, railways, rivers and streams, lakes, forests, land use and

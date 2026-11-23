@@ -684,11 +684,22 @@ const OVERPASS: [&str; 2] = ["https://overpass-api.de/api/interpreter", "https:/
 pub fn download_osm(f: &Fetcher, area: &GeoArea, p: &OsmParts, job: &Job) -> Result<String> {
     let q = osm_query(area, p);
     let mut errors = Vec::new();
-    for url in OVERPASS {
-        job.check()?;
-        match f.agent.post(url).send_form(&[("data", &q)]) {
-            Ok(r) => return String::from_utf8(Fetcher::read(r)?).context("OpenStreetMap sent an invalid reply"),
-            Err(e) => errors.push(format!("{url}: {e}")),
+    // The free servers are often busy (429, 502, 503, 504): each is tried again after a pause.
+    for round in 0..3u64 {
+        for url in OVERPASS {
+            job.check()?;
+            match f.agent.post(url).send_form(&[("data", &q)]) {
+                Ok(r) => return String::from_utf8(Fetcher::read(r)?).context("OpenStreetMap sent an invalid reply"),
+                Err(ureq::Error::Status(code @ (429 | 502 | 503 | 504), _)) => errors.push(format!("{url}: {code}")),
+                Err(e) => {
+                    errors.push(format!("{url}: {e}"));
+                }
+            }
+        }
+        job.log(format!("OpenStreetMap is busy, trying again ({})", round + 2));
+        for _ in 0..(10 * (round + 1)) {
+            job.check()?;
+            std::thread::sleep(Duration::from_secs(1));
         }
     }
     bail!("Could not download the OpenStreetMap shapes: {}", errors.join("; "))
@@ -896,6 +907,181 @@ pub fn search_places(f: &Fetcher, query: &str) -> Result<Vec<Place>> {
         .collect())
 }
 
+// ---- The mask from the shapes
+
+/// A kind of OpenStreetMap shape that can become a surface of the mask. Lines are painted
+/// `width` metres wide; areas have a width of 0.
+pub struct ShapeClass {
+    pub name: &'static str,
+    pub width: f32,
+}
+
+/// The kinds of shapes, in the order they are painted: land first, then forests and water
+/// over it, then the roads and railways on top.
+pub const SHAPE_CLASSES: [ShapeClass; 14] = [
+    ShapeClass { name: "Fields", width: 0.0 },
+    ShapeClass { name: "Meadows and grass", width: 0.0 },
+    ShapeClass { name: "Scrub, heath and wetland", width: 0.0 },
+    ShapeClass { name: "Built-up land", width: 0.0 },
+    ShapeClass { name: "Sand and beaches", width: 0.0 },
+    ShapeClass { name: "Rock, scree and quarries", width: 0.0 },
+    ShapeClass { name: "Leafy and mixed forests", width: 0.0 },
+    ShapeClass { name: "Conifer forests", width: 0.0 },
+    ShapeClass { name: "Water", width: 0.0 },
+    ShapeClass { name: "Main roads", width: 8.0 },
+    ShapeClass { name: "Minor roads", width: 5.0 },
+    ShapeClass { name: "Tracks", width: 3.0 },
+    ShapeClass { name: "Paths", width: 1.5 },
+    ShapeClass { name: "Railways", width: 4.0 },
+];
+
+/// Which of [`SHAPE_CLASSES`] a shape with these OpenStreetMap tags is.
+pub fn shape_class(tags: &[(String, String)]) -> Option<usize> {
+    let get = |k: &str| tags.iter().find(|t| t.0 == k).map(|t| t.1.as_str());
+    let one_of = |v: Option<&str>, list: &str| v.is_some_and(|v| is_one_of(v, list));
+    if get("building").is_some_and(|v| v != "no") {
+        return None;
+    }
+    if let Some(h) = get("highway") {
+        let h = h.trim_end_matches("_link");
+        return if is_one_of(h, "motorway|trunk|primary|secondary|tertiary") {
+            Some(9)
+        } else if is_one_of(h, "unclassified|residential|service|living_street|road|pedestrian") {
+            Some(10)
+        } else if h == "track" {
+            Some(11)
+        } else if is_one_of(h, "path|footway|bridleway|cycleway|steps") {
+            Some(12)
+        } else {
+            None
+        };
+    }
+    if one_of(get("railway"), RAILWAYS) {
+        return Some(13);
+    }
+    if get("natural") == Some("water") || get("waterway") == Some("riverbank") || one_of(get("landuse"), "reservoir|basin") {
+        return Some(8);
+    }
+    if get("landuse") == Some("forest") || get("natural") == Some("wood") {
+        return Some(if get("leaf_type") == Some("needleleaved") { 7 } else { 6 });
+    }
+    let landuse = get("landuse");
+    let natural = get("natural");
+    if one_of(landuse, "farmland|orchard|vineyard|allotments") {
+        Some(0)
+    } else if one_of(landuse, "meadow|grass") || natural == Some("grassland") || get("leisure") == Some("park") {
+        Some(1)
+    } else if one_of(natural, "scrub|heath|wetland") {
+        Some(2)
+    } else if one_of(landuse, "residential|industrial|commercial|retail|farmyard|military|brownfield|cemetery|landfill") {
+        Some(3)
+    } else if one_of(natural, "sand|beach|shingle") {
+        Some(4)
+    } else if one_of(natural, "bare_rock|scree") || landuse == Some("quarry") {
+        Some(5)
+    } else {
+        None
+    }
+}
+
+/// The surface each kind of shape ([`SHAPE_CLASSES`]) becomes, and how wide lines are painted.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ShapeMask {
+    pub surfaces: Vec<Option<usize>>,
+    pub widths: Vec<f32>,
+}
+
+impl ShapeMask {
+    /// Each kind given to the surface whose name fits it (see [`crate::satgen::natural_surfaces`]).
+    pub fn for_layers(layers: &[crate::world::SurfaceLayer]) -> Self {
+        use crate::satgen::natural::*;
+        let kinds = crate::satgen::natural_surfaces(layers);
+        let k = |kind: u8| kinds[kind as usize];
+        let surfaces = vec![k(FIELD), k(GRASS), k(PALE_GRASS), None, k(SOIL), k(ROCK), k(FOREST), k(DENSE_FOREST), None, k(PAVED), k(PAVED), k(SOIL), None, k(ROCK)];
+        Self { surfaces, widths: SHAPE_CLASSES.iter().map(|c| c.width).collect() }
+    }
+}
+
+/// Calls `row(y, x0, x1)` for the pixels of each row of an image `w` × `h` inside the ring
+/// (in pixels), by the even-odd rule.
+fn fill_ring(ring: &[[f32; 2]], w: usize, h: usize, mut row: impl FnMut(usize, usize, usize)) {
+    if ring.len() < 3 || w == 0 || h == 0 {
+        return;
+    }
+    let (lo, hi) = ring.iter().fold((f32::MAX, f32::MIN), |m, p| (m.0.min(p[1]), m.1.max(p[1])));
+    let (y0, y1) = ((lo - 0.5).ceil().max(0.0) as usize, ((hi - 0.5).floor().max(-1.0) as i64).min(h as i64 - 1));
+    let mut xs = Vec::new();
+    for y in y0 as i64..=y1 {
+        let py = y as f32 + 0.5;
+        xs.clear();
+        for i in 0..ring.len() {
+            let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+            if (a[1] <= py) != (b[1] <= py) {
+                xs.push(a[0] + (py - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+            }
+        }
+        xs.sort_by(f32::total_cmp);
+        for pair in xs.chunks_exact(2) {
+            let from = (pair[0] - 0.5).ceil().max(0.0) as i64;
+            let to = ((pair[1] - 0.5).floor() as i64).min(w as i64 - 1);
+            if from <= to {
+                row(y as usize, from as usize, to as usize);
+            }
+        }
+    }
+}
+
+/// Calls `px(x, y)` for the pixels within `half` pixels of the line (in pixels).
+fn stroke_line(line: &[[f32; 2]], half: f32, w: usize, h: usize, mut px: impl FnMut(usize, usize)) {
+    for s in line.windows(2) {
+        let (a, b) = (s[0], s[1]);
+        let x0 = (a[0].min(b[0]) - half).floor().max(0.0) as usize;
+        let y0 = (a[1].min(b[1]) - half).floor().max(0.0) as usize;
+        let x1 = ((a[0].max(b[0]) + half).ceil() as i64).min(w as i64 - 1);
+        let y1 = ((a[1].max(b[1]) + half).ceil() as i64).min(h as i64 - 1);
+        let ab = [b[0] - a[0], b[1] - a[1]];
+        let len2 = (ab[0] * ab[0] + ab[1] * ab[1]).max(1e-6);
+        for y in y0 as i64..=y1 {
+            for x in x0 as i64..=x1 {
+                let p = [x as f32 + 0.5 - a[0], y as f32 + 0.5 - a[1]];
+                let t = ((p[0] * ab[0] + p[1] * ab[1]) / len2).clamp(0.0, 1.0);
+                if (p[0] - ab[0] * t).hypot(p[1] - ab[1] * t) <= half {
+                    px(x as usize, y as usize);
+                }
+            }
+        }
+    }
+}
+
+/// Paints the shapes of `layers` into `mask` (the world's mask size) with the surfaces of `m`,
+/// kind by kind in the order of [`SHAPE_CLASSES`]. Kinds without a surface leave the mask.
+pub fn mask_from_shapes(w: &World, layers: &[ShapeLayer], m: &ShapeMask, mask: &mut [u8]) {
+    let (mw, mh) = (w.mask.width, w.mask.height);
+    let size = w.meta.size_m();
+    let (sx, sy) = (mw as f32 / size, mh as f32 / size);
+    let to_px = |p: &[f32; 2]| [p[0] * sx, (size - p[1]) * sy];
+    let count = w.layers.len();
+    let mut by_class: Vec<Vec<&MapShape>> = vec![Vec::new(); SHAPE_CLASSES.len()];
+    for s in layers.iter().flat_map(|l| l.shapes.iter()) {
+        if let Some(c) = shape_class(&s.attributes) {
+            by_class[c].push(s);
+        }
+    }
+    for (c, shapes) in by_class.iter().enumerate() {
+        let Some(surface) = m.surfaces.get(c).copied().flatten().filter(|s| *s < count) else { continue };
+        let v = surface as u8;
+        let width = m.widths.get(c).copied().unwrap_or(SHAPE_CLASSES[c].width);
+        for s in shapes {
+            let pts: Vec<[f32; 2]> = s.points.iter().map(to_px).collect();
+            match s.kind {
+                ShapeKind::Polygon => fill_ring(&pts, mw, mh, |y, x0, x1| mask[y * mw + x0..=y * mw + x1].fill(v)),
+                ShapeKind::Polyline if width > 0.0 => stroke_line(&pts, (width * 0.5 * sx).max(0.5), mw, mh, |x, y| mask[y * mw + x] = v),
+                _ => {}
+            }
+        }
+    }
+}
+
 // ---- The whole map
 
 /// The kinds of ground of [`crate::satgen::natural_classes`] given to the surfaces of
@@ -925,8 +1111,10 @@ pub struct RealMap {
     pub satellite: Option<(TileSource, f32)>,
     pub heights: bool,
     pub osm: Option<OsmParts>,
-    /// The surface mask is read from the picture.
-    pub mask: bool,
+    /// The surface mask is read from the picture this way.
+    pub mask: Option<SatClassify>,
+    /// The OpenStreetMap shapes are painted into the mask over what the picture gave.
+    pub shape_mask: Option<ShapeMask>,
 }
 
 impl RealMap {
@@ -979,12 +1167,20 @@ pub fn build_world(m: &RealMap, f: &Fetcher, job: &Job) -> Result<World> {
         job.stage("Downloading the satellite picture");
         let (s, k) = (start(0), span(0));
         let img = satellite(f, src, &area, px, job, &|p| job.set_progress(s + p * k))?;
-        if m.mask {
+        if let Some(c) = &m.mask {
             job.stage("Reading the surfaces from the satellite picture");
-            w.mask.data = mask_from_satellite(&w, &img, &default_classify());
+            w.mask.data = mask_from_satellite(&w, &img, c);
         }
         w.satellite = Some(img);
         w.sat_image_replaced();
+    }
+    if let Some(sm) = &m.shape_mask {
+        if !w.shape_layers.is_empty() {
+            job.stage("Painting the surfaces of the shapes");
+            let mut data = std::mem::take(&mut w.mask.data);
+            mask_from_shapes(&w, &w.shape_layers, sm, &mut data);
+            w.mask.data = data;
+        }
     }
     job.set_progress(1.0);
     Ok(w)
@@ -1090,6 +1286,30 @@ mod tests {
         let named = |n: &[&str]| n.iter().map(|n| crate::world::SurfaceLayer { name: n.to_string(), texture: String::new(), material: String::new(), color: [0; 3] }).collect::<Vec<_>>();
         let cp = crate::satgen::natural_surfaces(&named(&["cp_grass", "cp_conifer_common1", "cp_broadleaf_dense1", "cp_dirt", "cp_rock", "cp_grass_tall"]));
         assert_eq!(cp, [Some(1), Some(2), Some(0), Some(5), Some(3), None, Some(4), None]);
+    }
+
+    #[test]
+    fn shapes_become_surfaces_of_the_mask() {
+        let tags = |list: &[(&str, &str)]| list.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<Vec<_>>();
+        assert_eq!(shape_class(&tags(&[("landuse", "forest"), ("leaf_type", "needleleaved")])), Some(7));
+        assert_eq!(shape_class(&tags(&[("natural", "wood")])), Some(6));
+        assert_eq!(shape_class(&tags(&[("highway", "primary_link")])), Some(9));
+        assert_eq!(shape_class(&tags(&[("highway", "track")])), Some(11));
+        assert_eq!(shape_class(&tags(&[("building", "yes"), ("landuse", "farmland")])), None);
+        let mut w = World::new(WorldMeta::new("S", 64, 4.0), 0.0);
+        w.mask = crate::terrain::MaskMap::new(256, 256, 0);
+        let field = MapShape { kind: ShapeKind::Polygon, points: vec![[0.0, 0.0], [128.0, 0.0], [128.0, 256.0], [0.0, 256.0]], attributes: tags(&[("landuse", "farmland")]) };
+        let road = MapShape { kind: ShapeKind::Polyline, points: vec![[0.0, 128.0], [256.0, 128.0]], attributes: tags(&[("highway", "track")]) };
+        let layer = ShapeLayer { name: "OSM".into(), visible: true, shapes: vec![field, road] };
+        let m = ShapeMask::for_layers(&w.layers);
+        let (stubble, soil) = (m.surfaces[0].unwrap() as u8, m.surfaces[11].unwrap() as u8);
+        let mut data = w.mask.data.clone();
+        mask_from_shapes(&w, &[layer], &m, &mut data);
+        // The field covers the west half, and the track crosses it in the middle, 3 m wide.
+        assert_eq!(data[10 * 256 + 10], stubble);
+        assert_eq!(data[10 * 256 + 200], 0);
+        assert_eq!(data[128 * 256 + 200], soil);
+        assert_eq!(data[124 * 256 + 200], 0);
     }
 
     #[test]
