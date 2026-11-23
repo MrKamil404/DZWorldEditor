@@ -11,13 +11,13 @@ generate forests and rivers, edit the server mission, then build the map and sta
 
 - **Live 3D and 2D views** of the whole map with real DayZ models, textures, satellite image and water; a split view, a minimap, full screen and a view in a window of its own
 - **Getting around**: go to a key point, a map grid square or a position, saved camera views, a ruler for lengths, climbs and areas, and the sun at any time of day
-- **Maps of real places**: choose a place on the Earth and a DayZ map size, and the editor downloads its satellite picture, heights and OpenStreetMap shapes (roads, rivers, lakes, forests, land use, buildings) and reads a surface mask from the picture
+- **Maps of real places**: choose a place on the Earth and a DayZ map size, and the editor downloads its satellite picture (worldwide, or open orthophotos of Poland, Czechia, Austria and the USA), heights and OpenStreetMap shapes, paints the surface mask from the picture and the shapes, places the game's buildings in the outlines of the real ones, builds the roads from the game's road pieces and adds forest, field, river and stream generators. No account or API key is needed, see [docs/real-places.md](docs/real-places.md)
 - **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces, terrain stamps (craters, hills, quarries, your own pictures or pieces of terrain) and non-destructive modifiers
 - **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile, and a view that shows the surfaces as the built map will
 - **Map surfaces** (`CfgSurfaces`): new surfaces for your own textures and changes to the game's, with grass, sounds and physics, and a material window for each layer
-- **Satellite image** editing: bake objects, roads and water into it, a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite, all as modifiers that can be hidden or deleted
+- **Satellite image** editing: bake objects, roads, water and decals into it, a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite (by colour groups, by the natural colours of a real photo, or by colours you pick), all as modifiers that can be hidden, deleted or, for brush strokes, merged
 - **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, painting objects with a brush, prefabs, replacing models and undo
-- **Rows of walls and fences**: drag copies out in a row with the copy gizmo, turn them about their joint, join them to the next piece with a gap, and copy the direction of another object
+- **Rows of walls and fences**: drag copies out in a row with the copy gizmo, turn them about their joint, join them to the next piece with a gap, copy the direction of another object, and take the copies from an object preset (a broken fence now and then)
 - **Roads and railways** fitted from the game's own parts, with embankments, bridges, level crossings and roundabouts
 - **Every vanilla road type** of Chernarus, Livonia, Sakhal and Takistan, and **crossroads** (`kr_*`) that roads start from or that go into a road
 - **Generators** for forests, rivers, ponds, coasts and beaches, cliffs, fields, road verges, railway surroundings, wrecks and road decals, things round buildings, settlements, fences (with closed corners and corner posts), power lines and more
@@ -31,7 +31,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Mission editor** (experimental): the economy, loot, events, spawns and the rest of the server mission, see [docs/mission-editor.md](docs/mission-editor.md)
 - **Team work**: several people work on their own copies and merge their changes through a shared folder, see [docs/team-work.md](docs/team-work.md)
 
-The [editor guide](docs/guide.md) describes every tab, the views and the menus in more detail.
+The [editor guide](docs/guide.md) describes the window, the views and the menus, with a page for each part: [objects](docs/objects.md), [terrain](docs/terrain.md), [surfaces](docs/surfaces.md), [roads](docs/roads.md), [shapes and key points](docs/shapes.md), [satellite image](docs/satellite.md), [generators and the Content Browser](docs/generators.md) and [maps of real places](docs/real-places.md).
 
 ## Screenshots
 
@@ -49,8 +49,10 @@ The [editor guide](docs/guide.md) describes every tab, the views and the menus i
 | **Mission editor** with the loot table of a mission | **Bridges and rivers** from a Terrain Builder project |
 | ![A forest generator](docs/screenshots/forest.jpg) | ![A row of walls](docs/screenshots/rows.jpg) |
 | **Forest generator** filling an area, its settings in the Details | **Rows of walls and fences** laid with the copy gizmo |
+| ![The New project window for a real place](docs/screenshots/realplace.jpg) | ![A map of a real place](docs/screenshots/realplace-map.jpg) |
+| **A map of a real place**: choosing Zakopane on the Polish orthophoto | **The map that comes out**, with the game's buildings in the outlines of the real ones and forests from OpenStreetMap |
 
-*Screenshots show the Balticrus map, imported from its Terrain Builder project.*
+*Screenshots show the Balticrus map, imported from its Terrain Builder project, and a map of Zakopane made from the open data of GUGiK and OpenStreetMap.*
 
 ## Getting started
 

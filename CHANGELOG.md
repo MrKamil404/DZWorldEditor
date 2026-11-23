@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.3.0
+
+### New
+
+- **Maps of real places.** `File > New project from a real place` (or **Real place** in the New
+  project window) makes a map of a real square of the Earth, of one of the DayZ map sizes. Find the
+  place by name or by its latitude and longitude and choose it on a satellite picture. The editor
+  downloads:
+  - the **satellite picture**: Esri World Imagery or Sentinel-2 cloudless for the whole world,
+    the open orthophotos of Poland (Geoportal), Czechia (ČÚZK), Austria (basemap.at) and the USA
+    (USGS), or your own tile server. The window shows the licence of each source;
+  - the **heights** (AWS Terrain Tiles);
+  - the **OpenStreetMap shapes**: roads, railways, rivers and streams, lakes, forests (leafy and
+    conifer apart), fields, meadows, scrub, built-up land, sand, rock and buildings, each kind in
+    a shape layer of its own, with clearings as holes of the forests.
+
+  Then it can paint the **surface mask** from the picture and from the shapes, place the game's
+  **buildings** in the outlines of the real ones, build the **roads** from the game's road pieces,
+  and add **forest, field, river and stream generators**, run one after another when the map
+  opens. The map's latitude and longitude are set to the place. No account or API key is needed.
+  See [docs/real-places.md](docs/real-places.md).
+- **Surfaces from the satellite has two new ways**, and is now in the **Paint** tab:
+  - **Natural colours** tells forest, grass, fields, soil, rock and roads apart in a real photo;
+  - **Picked colours** is your own list of colours, each with its surface: four colours make a
+    mask of four surfaces. **Find colours** finds them, a click on the preview adds one.
+- **Decals can be baked into the satellite** (**Decals too** in Bake objects): road damage,
+  manholes, crossings and the marks under wrecks, with their see-through parts.
+- **Merge brush modifiers.** Right click a modifier of a brush in the outliner: **Merge down**, or
+  **Merge all brush modifiers**. The image and the mask stay as they were. In team work only your
+  own are merged.
+- **Rows of walls and fences from a preset.** **Copies of** takes the copies from an object preset,
+  each a model drawn by its weights, so a broken fence comes now and then.
+- **Fields of models and presets look alike everywhere**, as in Unreal: a picture (larger under the
+  pointer) that takes what is dragged from the Content Browser, a list with a search and pictures,
+  and buttons to take the one selected in the Content Browser, show it there, or clear the field.
+  Lists of surfaces show the texture of each.
+- **Surface under objects: only what is above the ground.** With the outline of the model, a rock
+  sunk half into the ground paints only round what shows of it.
+- **Shapes can have holes**, which the mask and the generators leave out.
+- **The guide has a page for each part** of the editor, see [docs/guide.md](docs/guide.md).
+
+### Fixed
+
+- **Gates and wickets** take only the gap they fill in a fence, not the whole swing of their leaf.
+- **Surface under objects** follows objects that are tilted or turned over, instead of an outline
+  mirrored and set aside.
+- **A forest generator** leaves out shapes whose outline crosses itself instead of planting nothing.
+- **Errors of the road tools** are shown in the language of the interface, not in Polish.
+- **Changing the work drive** in the settings reads models, thumbnails, the list of models and road
+  pieces from the new one at once, without a restart.
+- **Rows in lists of presets** take the whole width of the list.
+
+### Good to know
+
+- Projects of 0.2.9.1 and earlier open in 0.3.0. A project saved in 0.3.0 opens in 0.2.9.1 too,
+  without what is new: holes of shapes and the place a map of a real place was made from.
+- Esri's satellite pictures may not be published in a map: use them to trace and for tests.
+- Roads built from OpenStreetMap get no crossroad pieces where they cross: fix those with the
+  Roads tab. A road that cannot be fitted stays a shape, and the Output Log says how many.
+- Holes of shapes are not yet written to shape files for Terrain Builder, nor used by the
+  satellite tools.
+
 ## 0.2.9.1
 
 ### New
