@@ -679,6 +679,28 @@ impl App {
         self.bottom = BottomTab::Content;
     }
 
+    /// Opens the asset browser where a field of a panel asked it to (see `slots`): at a model,
+    /// an object preset or a forest preset, selected.
+    pub fn reveal_asked(&mut self, ctx: &egui::Context) {
+        use crate::asset_browser::Pick;
+        let Some(pick) = crate::slots::take_reveal(ctx) else { return };
+        match &pick {
+            Pick::Model(m) => self.show_in_browser(&m.clone()),
+            Pick::Preset(id) => {
+                let Some(folder) = self.library.objects.iter().find(|p| p.id == *id).map(|p| p.folder.clone()) else { return };
+                let home = self.library.library_home(&folder, dz_core::library::LibraryItem::Preset).to_string();
+                self.browser.show_pick(crate::asset_browser::library_source_of(&home, dz_core::library::PRESETS_ROOT), pick);
+                self.bottom = BottomTab::Content;
+            }
+            Pick::Forest(n) => {
+                let own = self.library.forest_presets.iter().any(|p| p.name == *n);
+                self.browser.show_pick(crate::asset_browser::forest_source(own), pick);
+                self.bottom = BottomTab::Content;
+            }
+            _ => {}
+        }
+    }
+
     /// The model of the first selected object.
     pub fn selected_model(&self) -> Option<String> {
         let d = self.doc.as_ref()?;

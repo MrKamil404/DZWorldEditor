@@ -104,6 +104,18 @@ fn modifier_category(i: usize) -> usize {
 /// What marks a library folder being renamed, so it is not taken for a folder of the user.
 const LIB_RENAME: char = '\u{1}';
 
+/// Where an item of the library whose home folder is `home` shows: that folder, or the top
+/// of its group (`root`).
+pub fn library_source_of(home: &str, root: &str) -> Source {
+    library_source(if home.is_empty() { root } else { home })
+}
+
+/// Where a forest preset shows: the library's presets for one of the user's, the forests of
+/// the built-in presets for the others.
+pub fn forest_source(own: bool) -> Source {
+    if own { Source::Group(Group::LibraryPresets) } else { Source::Category(Group::BuiltInPresets, 0) }
+}
+
 /// The source showing a folder of the library: one of its groups or a folder of its own.
 fn library_source(name: &str) -> Source {
     match name {
@@ -398,6 +410,14 @@ impl Browser {
         self.anchor = Some(Pick::Model(p.clone()));
         self.preview_item = None;
         self.scroll_to = Some(p);
+    }
+
+    /// Opens `source` with `pick` selected in it.
+    pub fn show_pick(&mut self, source: Source, pick: Pick) {
+        self.go(source);
+        self.selected = vec![pick.clone()];
+        self.anchor = Some(pick);
+        self.preview_item = None;
     }
 
     pub fn models(&self) -> Vec<String> {

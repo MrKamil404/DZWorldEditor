@@ -317,8 +317,8 @@ an experimental feature; see [mission-editor.md](mission-editor.md).
 The Content Browser at the bottom holds:
 
 * **Work drive**: every model of `P:\`, with thumbnails and a search.
-* **Built-in**: generators, object presets and modifiers that come with the editor. They cannot be
-  changed, only duplicated.
+* **Built-in**: generators, presets and modifiers that come with the editor. They cannot be
+  changed, only duplicated. The forest presets are in **Built-in > Presets > Forests**.
 * **Library**: your own generators, presets and prefabs, in folders.
   To share them, right-click an item (or a folder, or the Library) and choose **Export to a file**.
   This makes a `.dzwelib` file. **Import from a file** adds the contents of such a file as new items,
@@ -328,6 +328,13 @@ The Content Browser at the bottom holds:
 A generator is dropped on a shape, a road or the map (or select the shape first and double-click
 the generator). It appears in the outliner, where its settings can be changed and it can be run
 again.
+
+Every field that holds a model or a preset (in generators, the Place tool, rows of walls and
+fences, the bridge model) looks the same: a picture on the left, larger under the pointer, then
+the name or a list with a search field, and three small buttons under it: take the one selected in
+the Content Browser, show it in the Content Browser, and clear. Drop a model or a preset from the
+Content Browser on the picture to use it. The list of forest presets says where each comes from:
+this generator, the library, an object preset, or the built-in group.
 
 ![A forest generator and its settings in the Details](screenshots/forest.jpg)
 
