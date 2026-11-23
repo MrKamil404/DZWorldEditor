@@ -430,7 +430,9 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
     and land use are split further: `OSM leafy forests`, `OSM conifer forests`, `OSM fields`,
     `OSM meadows`, `OSM scrub`, `OSM built-up land`, `OSM sand` and `OSM rock`. They are cut to
     the map. Use them for generators, roads and masks. The data is © OpenStreetMap contributors
-    (ODbL). Areas made of several parts keep their outer edge only, without the holes inside.
+    (ODbL). Clearings inside a forest or a lake inside a meadow come in as holes of their shape:
+    the mask and the forest generator leave them out. In the mask, smaller areas lie over larger
+    ones, so a meadow inside a forest stays a meadow.
   * **Generators**: with **Add generators for the OpenStreetMap shapes**, the new map gets a forest
     generator on the leafy forests, the conifer forests and the scrub (each with a forest preset you
     choose), the Fields generator on the fields and, if you want, the Ponds and lakes generator on

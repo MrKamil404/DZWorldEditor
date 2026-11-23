@@ -4942,7 +4942,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                     d.world.shape_layers.push(dz_core::shapes::ShapeLayer { name: "test".into(), visible: true, shapes: Vec::new() });
                 }
                 let l = &mut d.world.shape_layers[0];
-                l.shapes.push(dz_core::shapes::MapShape { kind: dz_core::shapes::ShapeKind::Polygon, points: vec![[nums[0], nums[1]], [nums[2], nums[1]], [nums[2], nums[3]], [nums[0], nums[3]]], attributes: Vec::new() });
+                l.shapes.push(dz_core::shapes::MapShape { holes: Vec::new(), kind: dz_core::shapes::ShapeKind::Polygon, points: vec![[nums[0], nums[1]], [nums[2], nums[1]], [nums[2], nums[3]], [nums[0], nums[3]]], attributes: Vec::new() });
                 let target = dz_core::library::GenTarget::Shape { layer: l.name.clone(), index: l.shapes.len() - 1 };
                 if let Some(g) = d.world.generators.last_mut() {
                     g.target = target;

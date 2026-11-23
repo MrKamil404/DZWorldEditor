@@ -2831,7 +2831,7 @@ impl App {
         w.active_shape_layer = w.active_shape_layer.min(w.shape_layers.len() - 1);
         let layer = &mut w.shape_layers[w.active_shape_layer];
         layer.visible = true;
-        layer.shapes.push(MapShape { kind, points, attributes: Vec::new() });
+        layer.shapes.push(MapShape { holes: Vec::new(), kind, points, attributes: Vec::new() });
         self.shape.selection = BTreeSet::from([(w.active_shape_layer, layer.shapes.len() - 1)]);
         doc.history.push(t("Add shape"), Change::Shapes(previous));
     }
@@ -2853,7 +2853,7 @@ impl App {
                 }
                 let Some(doc) = &mut app.doc else { return };
                 let previous = doc.world.shape_layers.clone();
-                let shapes: Vec<MapShape> = lines.into_iter().map(|points| MapShape { kind: dz_core::shapes::ShapeKind::Polyline, points, attributes: Vec::new() }).collect();
+                let shapes: Vec<MapShape> = lines.into_iter().map(|points| MapShape { holes: Vec::new(), kind: dz_core::shapes::ShapeKind::Polyline, points, attributes: Vec::new() }).collect();
                 let n = shapes.len();
                 doc.world.shape_layers.push(ShapeLayer { name: t("Water courses"), visible: true, shapes });
                 doc.world.active_shape_layer = doc.world.shape_layers.len() - 1;

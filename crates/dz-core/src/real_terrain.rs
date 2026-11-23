@@ -840,13 +840,29 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
             attributes.insert(0, ("osm_id".into(), id.to_string()));
         }
         let to_f32 = |pts: Vec<[f64; 2]>| pts.into_iter().map(|p| [p[0] as f32, p[1] as f32]).collect::<Vec<_>>();
-        let rings: Vec<Vec<[f64; 2]>> = match e.get("type").and_then(|t| t.as_str()) {
-            Some("way") => vec![geometry(&e["geometry"], area)],
+        let (rings, inner): (Vec<Vec<[f64; 2]>>, Vec<Vec<[f64; 2]>>) = match e.get("type").and_then(|t| t.as_str()) {
+            Some("way") => (vec![geometry(&e["geometry"], area)], Vec::new()),
             Some("relation") if kind.is_area() => {
-                let outer = e.get("members").and_then(|m| m.as_array()).into_iter().flatten().filter(|m| m.get("type").and_then(|t| t.as_str()) == Some("way") && m.get("role").and_then(|r| r.as_str()).map_or(true, |r| r == "outer" || r.is_empty())).map(|m| geometry(&m["geometry"], area)).collect();
-                join_rings(outer)
+                let ways = || e.get("members").and_then(|m| m.as_array()).into_iter().flatten().filter(|m| m.get("type").and_then(|t| t.as_str()) == Some("way"));
+                let role = |m: &serde_json::Value| m.get("role").and_then(|r| r.as_str()).unwrap_or("").to_string();
+                let outer = ways().filter(|m| { let r = role(m); r == "outer" || r.is_empty() }).map(|m| geometry(&m["geometry"], area)).collect();
+                let inner = ways().filter(|m| role(m) == "inner").map(|m| geometry(&m["geometry"], area)).collect();
+                (join_rings(outer), join_rings(inner))
             }
             _ => continue,
+        };
+        // Each hole goes to the outer ring it lies in, cut to the map as well.
+        let inside = |ring: &[[f64; 2]], p: [f64; 2]| {
+            let mut c = false;
+            let mut j = ring.len() - 1;
+            for i in 0..ring.len() {
+                let (a, b) = (ring[i], ring[j]);
+                if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
+                    c = !c;
+                }
+                j = i;
+            }
+            c
         };
         let sub = if matches!(kind, OsmKind::Forests | OsmKind::Land) { shape_class(&attributes).unwrap_or(usize::MAX) } else { usize::MAX };
         let out = layers.entry((kind, sub)).or_default();
@@ -859,11 +875,16 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
                 let mut clipped = clip_polygon(&ring[..ring.len() - 1], size);
                 clipped.dedup();
                 if clipped.len() >= 3 {
-                    out.push(MapShape { kind: ShapeKind::Polygon, points: to_f32(clipped), attributes: attributes.clone() });
+                    let holes = inner.iter().filter(|h| h.len() >= 4 && inside(&ring, h[0])).map(|h| {
+                        let mut c = clip_polygon(&h[..h.len() - 1], size);
+                        c.dedup();
+                        c
+                    }).filter(|h| h.len() >= 3).map(&to_f32).collect();
+                    out.push(MapShape { holes, kind: ShapeKind::Polygon, points: to_f32(clipped), attributes: attributes.clone() });
                 }
             } else {
                 for part in clip_polyline(&ring, size) {
-                    out.push(MapShape { kind: ShapeKind::Polyline, points: to_f32(part), attributes: attributes.clone() });
+                    out.push(MapShape { holes: Vec::new(), kind: ShapeKind::Polyline, points: to_f32(part), attributes: attributes.clone() });
                 }
             }
         }
@@ -1067,9 +1088,10 @@ impl ShapeMask {
     }
 }
 
-/// Calls `row(y, x0, x1)` for the pixels of each row of an image `w` × `h` inside the ring
-/// (in pixels), by the even-odd rule.
-fn fill_ring(ring: &[[f32; 2]], w: usize, h: usize, mut row: impl FnMut(usize, usize, usize)) {
+/// Calls `row(y, x0, x1)` for the pixels of each row of an image `w` × `h` inside the rings
+/// (in pixels) by the even-odd rule: inside the first ring and outside its holes.
+fn fill_rings(rings: &[&[[f32; 2]]], w: usize, h: usize, mut row: impl FnMut(usize, usize, usize)) {
+    let ring = rings.first().copied().unwrap_or(&[]);
     if ring.len() < 3 || w == 0 || h == 0 {
         return;
     }
@@ -1079,10 +1101,12 @@ fn fill_ring(ring: &[[f32; 2]], w: usize, h: usize, mut row: impl FnMut(usize, u
     for y in y0 as i64..=y1 {
         let py = y as f32 + 0.5;
         xs.clear();
-        for i in 0..ring.len() {
-            let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
-            if (a[1] <= py) != (b[1] <= py) {
-                xs.push(a[0] + (py - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+        for ring in rings.iter().filter(|r| r.len() >= 3) {
+            for i in 0..ring.len() {
+                let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+                if (a[1] <= py) != (b[1] <= py) {
+                    xs.push(a[0] + (py - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+                }
             }
         }
         xs.sort_by(f32::total_cmp);
@@ -1132,17 +1156,28 @@ pub fn mask_from_shapes(w: &World, layers: &[ShapeLayer], m: &ShapeMask, mask: &
             by_class[c].push(s);
         }
     }
+    // Areas go largest first, so a meadow inside a forest stays a meadow; then the lines.
+    let mut areas: Vec<(f32, usize, &MapShape)> = Vec::new();
     for (c, shapes) in by_class.iter().enumerate() {
-        let Some(surface) = m.surfaces.get(c).copied().flatten().filter(|s| *s < count) else { continue };
-        let v = surface as u8;
+        for s in shapes.iter().filter(|s| s.kind == ShapeKind::Polygon) {
+            let a = s.points.iter().zip(s.points.iter().cycle().skip(1)).map(|(p, q)| p[0] * q[1] - q[0] * p[1]).sum::<f32>().abs() * 0.5;
+            areas.push((a, c, s));
+        }
+    }
+    areas.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let surface_of = |c: usize| m.surfaces.get(c).copied().flatten().filter(|s| *s < count).map(|s| s as u8);
+    for (_, c, s) in areas {
+        let Some(v) = surface_of(c) else { continue };
+        let pts: Vec<Vec<[f32; 2]>> = std::iter::once(&s.points).chain(s.holes.iter()).map(|r| r.iter().map(to_px).collect()).collect();
+        let rings: Vec<&[[f32; 2]]> = pts.iter().map(|r| r.as_slice()).collect();
+        fill_rings(&rings, mw, mh, |y, x0, x1| mask[y * mw + x0..=y * mw + x1].fill(v));
+    }
+    for (c, shapes) in by_class.iter().enumerate() {
+        let Some(v) = surface_of(c) else { continue };
         let width = m.widths.get(c).copied().unwrap_or(SHAPE_CLASSES[c].width);
-        for s in shapes {
+        for s in shapes.iter().filter(|s| s.kind == ShapeKind::Polyline && width > 0.0) {
             let pts: Vec<[f32; 2]> = s.points.iter().map(to_px).collect();
-            match s.kind {
-                ShapeKind::Polygon => fill_ring(&pts, mw, mh, |y, x0, x1| mask[y * mw + x0..=y * mw + x1].fill(v)),
-                ShapeKind::Polyline if width > 0.0 => stroke_line(&pts, (width * 0.5 * sx).max(0.5), mw, mh, |x, y| mask[y * mw + x] = v),
-                _ => {}
-            }
+            stroke_line(&pts, (width * 0.5 * sx).max(0.5), mw, mh, |x, y| mask[y * mw + x] = v);
         }
     }
 }
@@ -1373,8 +1408,8 @@ mod tests {
         assert_eq!(shape_class(&tags(&[("building", "yes"), ("landuse", "farmland")])), None);
         let mut w = World::new(WorldMeta::new("S", 64, 4.0), 0.0);
         w.mask = crate::terrain::MaskMap::new(256, 256, 0);
-        let field = MapShape { kind: ShapeKind::Polygon, points: vec![[0.0, 0.0], [128.0, 0.0], [128.0, 256.0], [0.0, 256.0]], attributes: tags(&[("landuse", "farmland")]) };
-        let road = MapShape { kind: ShapeKind::Polyline, points: vec![[0.0, 128.0], [256.0, 128.0]], attributes: tags(&[("highway", "track")]) };
+        let field = MapShape { holes: Vec::new(), kind: ShapeKind::Polygon, points: vec![[0.0, 0.0], [128.0, 0.0], [128.0, 256.0], [0.0, 256.0]], attributes: tags(&[("landuse", "farmland")]) };
+        let road = MapShape { holes: Vec::new(), kind: ShapeKind::Polyline, points: vec![[0.0, 128.0], [256.0, 128.0]], attributes: tags(&[("highway", "track")]) };
         let layer = ShapeLayer { name: "OSM".into(), visible: true, shapes: vec![field, road] };
         let m = ShapeMask::for_layers(&w.layers);
         let (stubble, soil) = (m.surfaces[0].unwrap() as u8, m.surfaces[11].unwrap() as u8);
@@ -1385,6 +1420,38 @@ mod tests {
         assert_eq!(data[10 * 256 + 200], 0);
         assert_eq!(data[128 * 256 + 200], soil);
         assert_eq!(data[124 * 256 + 200], 0);
+    }
+
+    #[test]
+    fn clearings_of_a_forest_are_holes_in_its_shape_and_its_mask() {
+        let a = GeoArea { lat: 49.3, lon: 19.95, size_m: 256.0 };
+        let p = |x: f64, z: f64| {
+            let (lon, lat) = a.to_lonlat(x, z);
+            format!("{{\"lat\":{lat},\"lon\":{lon}}}")
+        };
+        let json = format!(
+            r#"{{"elements":[{{"type":"relation","id":5,"tags":{{"type":"multipolygon","landuse":"forest"}},"members":[
+               {{"type":"way","role":"outer","geometry":[{},{},{},{},{}]}},
+               {{"type":"way","role":"inner","geometry":[{},{},{},{},{}]}}]}}]}}"#,
+            p(10.0, 10.0), p(246.0, 10.0), p(246.0, 246.0), p(10.0, 246.0), p(10.0, 10.0),
+            p(100.0, 100.0), p(150.0, 100.0), p(150.0, 150.0), p(100.0, 150.0), p(100.0, 100.0),
+        );
+        let layers = osm_layers(&json, &a, &OsmParts::default()).unwrap();
+        let forest = &layers[0].shapes[0];
+        assert_eq!(forest.holes.len(), 1);
+        assert!(forest.contains(50.0, 50.0) && !forest.contains(125.0, 125.0));
+        // Saved, a shape without holes reads as it did before they were known.
+        let plain = MapShape { holes: Vec::new(), ..forest.clone() };
+        assert!(!serde_json::to_string(&plain).unwrap().contains("holes"));
+        let mut w = World::new(WorldMeta::new("S", 64, 4.0), 0.0);
+        w.mask = crate::terrain::MaskMap::new(256, 256, 0);
+        let m = ShapeMask::for_layers(&w.layers);
+        let mut data = w.mask.data.clone();
+        mask_from_shapes(&w, &layers, &m, &mut data);
+        let leafy = m.surfaces[6].unwrap() as u8;
+        // Row 256 - 50 is z = 50 m; row 256 - 125 is in the clearing.
+        assert_eq!(data[(256 - 50) * 256 + 50], leafy);
+        assert_eq!(data[(256 - 125) * 256 + 125], 0);
     }
 
     #[test]

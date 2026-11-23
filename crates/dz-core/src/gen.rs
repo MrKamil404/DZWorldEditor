@@ -818,7 +818,7 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, j
         let preset = find_preset(name, &req.user_presets).with_context(|| format!("Unknown forest preset {name}"))?;
         let species_weights = preset_weights(&mut project, &preset, &vanilla);
         for (i, s) in layer.shapes.iter().enumerate().filter(|(_, s)| s.kind == crate::shapes::ShapeKind::Polygon) {
-            project.areas.push(AreaDef { label: format!("{} {}", layer.name, i + 1), density_per_ha: req.area_density.unwrap_or(preset.density_per_ha), species_weights: species_weights.clone(), polygon: s.points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect(), color_filter: req.color_filter.clone(), ..Default::default() });
+            project.areas.push(AreaDef { label: format!("{} {}", layer.name, i + 1), density_per_ha: req.area_density.unwrap_or(preset.density_per_ha), species_weights: species_weights.clone(), polygon: s.points.iter().map(|p| [p[0] as f64, p[1] as f64]).collect(), holes: s.holes.iter().map(|h| h.iter().map(|p| [p[0] as f64, p[1] as f64]).collect()).collect(), color_filter: req.color_filter.clone(), ..Default::default() });
             project.generation_order.push(GenStep::Area(project.areas.len() - 1));
         }
     }
@@ -866,7 +866,7 @@ pub fn generate_forest(w: &mut World, assets: &AssetIndex, req: ForestRequest, j
     let progress = move |v: f64| j2.set_progress(v as f32);
     let (placed, stats) = forest_core::scatter::generate(&project, mask.as_ref(), req.satellite.as_ref(), Some(&hm), None, &progress).map_err(anyhow::Error::msg)?;
     // The engine plants edges on both sides of a boundary; a forest ends at its area.
-    let areas = crate::shapes::PolygonIndex::new(&crate::shapes::ShapeLayer { name: String::new(), visible: true, shapes: project.areas.iter().filter(|a| a.enabled && !a.cutting).map(|a| crate::shapes::MapShape { kind: crate::shapes::ShapeKind::Polygon, points: a.polygon.iter().map(|p| [p[0] as f32, p[1] as f32]).collect(), attributes: Vec::new() }).collect() });
+    let areas = crate::shapes::PolygonIndex::new(&crate::shapes::ShapeLayer { name: String::new(), visible: true, shapes: project.areas.iter().filter(|a| a.enabled && !a.cutting).map(|a| crate::shapes::MapShape { holes: Vec::new(), kind: crate::shapes::ShapeKind::Polygon, points: a.polygon.iter().map(|p| [p[0] as f32, p[1] as f32]).collect(), attributes: Vec::new() }).collect() });
     let zone_colors: Vec<[u8; 3]> = project.zones.iter().map(|z| z.color.0).collect();
     let in_zone = |x: f32, z: f32| {
         mask.as_ref().is_some_and(|m| {
@@ -3199,7 +3199,7 @@ mod tests {
         let mut w = World::new(crate::world::WorldMeta::new("t", 128, 8.0), 30.0);
         for j in 0..128 { for i in 0..128 { w.base.set(i, j, 30.0 + i as f32 * 0.1); } }
         let db = crate::model_info::ModelDb::new("nowhere");
-        let shape = MapShape { kind: ShapeKind::Polygon, points: vec![[100.0, 100.0], [220.0, 100.0], [220.0, 190.0], [100.0, 190.0]], attributes: Vec::new() };
+        let shape = MapShape { holes: Vec::new(), kind: ShapeKind::Polygon, points: vec![[100.0, 100.0], [220.0, 100.0], [220.0, 190.0], [100.0, 190.0]], attributes: Vec::new() };
         let g = crate::library::PondGen::default();
         let objects = pond_objects(&mut w, &db, &[shape.clone()], &g);
         assert_eq!(objects.len(), 3 * 2, "120 x 90 m is three by two 50 m models");
@@ -3689,7 +3689,7 @@ mod tests {
         let frame = [300.0, 300.0, 900.0, 900.0];
         generate_terrain_in(&mut result, &TerrainParams { kind: TerrainKind::Mountains, base: 400.0, ..Default::default() }, Some(frame), &Job::default());
         assert_eq!(result.at(5, 5), 50.0, "nothing is generated outside the frame");
-        let square = MapShape { kind: ShapeKind::Polygon, points: vec![[300.0, 300.0], [900.0, 300.0], [900.0, 900.0], [300.0, 900.0]], attributes: Vec::new() };
+        let square = MapShape { holes: Vec::new(), kind: ShapeKind::Polygon, points: vec![[300.0, 300.0], [900.0, 300.0], [900.0, 900.0], [300.0, 900.0]], attributes: Vec::new() };
         let area = PolygonIndex::new(&ShapeLayer { name: String::new(), visible: true, shapes: vec![square] });
         blend_in_area(&original, &mut result, &area, 100.0);
         assert_eq!(result.at(20, 20), 50.0, "outside the shape the terrain stays");

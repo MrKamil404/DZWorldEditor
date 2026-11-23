@@ -1716,7 +1716,7 @@ pub fn run_generator(app: &mut App, id: u64) {
             let mut shapes = polygons;
             if shapes.is_empty() && g.target == GenTarget::Map && (wants_filter || (zones.is_empty() && f.project.areas.is_empty())) {
                 let s = world.meta.size_m();
-                shapes.push(MapShape { kind: ShapeKind::Polygon, points: vec![[0.0, 0.0], [s, 0.0], [s, s], [0.0, s]], attributes: Vec::new() });
+                shapes.push(MapShape { holes: Vec::new(), kind: ShapeKind::Polygon, points: vec![[0.0, 0.0], [s, 0.0], [s, s], [0.0, s]], attributes: Vec::new() });
             }
             let areas = if shapes.is_empty() { Vec::new() } else { vec![(ShapeLayer { name: g.name.clone(), visible: true, shapes }, f.preset.clone())] };
             let layer_shapes = areas.first().map(|a: &(ShapeLayer, String)| a.0.clone());
