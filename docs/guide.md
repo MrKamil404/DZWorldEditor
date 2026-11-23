@@ -79,7 +79,7 @@ off in the settings.
 
 ### 1 Select
 
-Select, move, turn, scale, copy and delete objects; rows of walls and fences; terrain and surfaces under objects. See [Objects](objects.md).
+Select, move, turn, scale, copy and delete objects; rows of walls and fences; terrain under objects. See [Objects](objects.md). The surface under objects is in [Surfaces](surfaces.md).
 
 ### 2 Sculpt
 
