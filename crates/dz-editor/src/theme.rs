@@ -642,3 +642,83 @@ pub fn take<T: std::any::Any + Send + Sync>(resp: &egui::Response) -> Option<std
         None
     }
 }
+
+/// One choice of [`search_pick`].
+pub struct PickItem<K> {
+    pub key: K,
+    pub name: String,
+    /// Shown dim after the name, and searched too: a folder or a path.
+    pub note: String,
+    /// The model whose picture stands for it.
+    pub model: Option<String>,
+}
+
+/// A drop-down to choose among many: a search field on top and a list with a picture of each
+/// model, a larger one under the pointer, as in the Content Browser. `none` is the choice of
+/// nothing, first in the list. Returns true when the choice changed.
+pub fn search_pick<K: PartialEq + Clone>(ui: &mut egui::Ui, id: impl std::hash::Hash, value: &mut K, none: Option<(K, String)>, items: &[PickItem<K>], thumb: &dyn Fn(&str) -> Option<egui::TextureId>, width: f32) -> bool {
+    let id = ui.make_persistent_id(("search_pick", id));
+    let current = items.iter().find(|i| i.key == *value);
+    let shown = current.map(|i| i.name.clone()).or_else(|| none.as_ref().filter(|n| n.0 == *value).map(|n| n.1.clone())).unwrap_or_default();
+    let button = ui.add_sized(egui::vec2(width, 22.0), egui::Button::new(egui::RichText::new(format!("{shown}  {}", crate::icons::CARET_DOWN))).truncate()).on_hover_text(current.map(|i| i.note.as_str()).unwrap_or(""));
+    if button.clicked() {
+        ui.memory_mut(|m| m.toggle_popup(id));
+        ui.data_mut(|d| d.insert_temp(id.with("focus"), true));
+    }
+    let mut changed = false;
+    egui::popup_below_widget(ui, id, &button, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+        ui.set_min_width(width.max(260.0));
+        let mut text: String = ui.data(|d| d.get_temp(id.with("text"))).unwrap_or_default();
+        let field = ui.add(egui::TextEdit::singleline(&mut text).hint_text(crate::i18n::t("Search")).desired_width(f32::INFINITY));
+        if ui.data_mut(|d| d.remove_temp::<bool>(id.with("focus"))).is_some() {
+            field.request_focus();
+        }
+        ui.data_mut(|d| d.insert_temp(id.with("text"), text.clone()));
+        let words: Vec<String> = text.to_lowercase().split_whitespace().map(str::to_string).collect();
+        let fits = |i: &PickItem<K>| { let hay = format!("{} {}", i.name, i.note).to_lowercase(); words.iter().all(|w| hay.contains(w)) };
+        let mut picked = None;
+        egui::ScrollArea::vertical().max_height(340.0).show(ui, |ui| {
+            if let Some((k, name)) = &none {
+                if words.is_empty() && ui.selectable_label(*value == *k, name).clicked() {
+                    picked = Some(k.clone());
+                }
+            }
+            let mut shown = 0;
+            for item in items.iter().filter(|i| fits(i)) {
+                shown += 1;
+                let on = item.key == *value;
+                let bg = ui.painter().add(egui::Shape::Noop);
+                let r = ui.horizontal(|ui| {
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(36.0, 36.0), egui::Sense::hover());
+                    match item.model.as_deref().and_then(thumb) {
+                        Some(tex) => { ui.painter().image(tex, rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE); }
+                        None => { ui.painter().rect_filled(rect, 3.0, Color32::from_gray(38)); }
+                    }
+                    ui.vertical(|ui| {
+                        ui.add(egui::Label::new(egui::RichText::new(&item.name).color(if on { Color32::WHITE } else { TEXT })).truncate());
+                        if !item.note.is_empty() { ui.add(egui::Label::new(egui::RichText::new(&item.note).small().color(TEXT_DIM)).truncate()); }
+                    });
+                }).response;
+                let r = ui.interact(r.rect, id.with(("row", shown)), egui::Sense::click());
+                if on || r.hovered() {
+                    ui.painter().set(bg, egui::Shape::rect_filled(r.rect.expand(1.0), 3.0, if on { Color32::from_rgba_unmultiplied(10, 116, 224, 50) } else { Color32::from_white_alpha(10) }));
+                }
+                if let Some(tex) = item.model.as_deref().and_then(thumb) {
+                    r.clone().on_hover_ui_at_pointer(|ui| { ui.image((tex, egui::vec2(160.0, 160.0))); ui.label(&item.name); });
+                }
+                if r.clicked() {
+                    picked = Some(item.key.clone());
+                }
+            }
+            if shown == 0 {
+                ui.weak(crate::i18n::t("Nothing found"));
+            }
+        });
+        if let Some(k) = picked {
+            changed = *value != k;
+            *value = k;
+            ui.memory_mut(|m| m.close_popup());
+        }
+    });
+    changed
+}

@@ -1269,11 +1269,10 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
             (None, None) => status(ui, &t("Choose a model in the Content Browser"), false),
         }
         about(ui, &t("Click on the terrain to place it; models can also be dragged onto the map."));
+        let items = crate::library_ui::preset_items(app);
         row(ui, &t("Object preset"), |ui| {
-            egui::ComboBox::from_id_salt("place_preset").selected_text(preset.clone().unwrap_or_else(|| t("(none)"))).show_ui(ui, |ui| {
-                ui.selectable_value(&mut app.place.preset, None, t("(none)"));
-                for (id, name) in &presets { ui.selectable_value(&mut app.place.preset, Some(*id), name); }
-            });
+            let w = ui.available_width();
+            crate::theme::search_pick(ui, "place_preset", &mut app.place.preset, Some((None, t("(none)"))), &items, &|m| app.thumbs.peek(m), w);
         });
         let pool = app.place.pool.len();
         if app.place.preset.is_none() && pool > 1 && app.place.model.as_ref().is_some_and(|m| app.place.pool.contains(m)) {
@@ -1616,7 +1615,7 @@ fn bridge_models() -> &'static [String] {
     cached.as_ref().unwrap().1
 }
 
-fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSettings) -> bool {
+fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSettings, thumbs: &crate::models::Thumbnails) -> bool {
     let mut changed = false;
     let mut field = |ui: &mut egui::Ui, label: String, v: &mut f64, range: std::ops::RangeInclusive<f64>| {
         row(ui, &label, |ui| { changed |= ui.add(crate::theme::ValueField::new(v, range)).changed(); });
@@ -1635,13 +1634,9 @@ fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSe
     changed |= theme::check_row(ui, &mut r.bridge_over_forbidden, t("Bridges may cross forbidden areas and water")).changed();
     row(ui, &t("Bridge model"), |ui| {
         let name = |m: &str| m.rsplit(['\\', '/']).next().unwrap_or(m).trim_end_matches(".p3d").to_string();
-        let shown = if r.bridge_model.is_empty() { t("By road width") } else { name(&r.bridge_model) };
-        egui::ComboBox::from_id_salt("bridge_model").selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
-            changed |= ui.selectable_value(&mut r.bridge_model, String::new(), t("By road width")).on_hover_text(t("Wooden for narrow roads, stone for most, metal for the widest.")).changed();
-            for m in bridge_models() {
-                changed |= ui.selectable_value(&mut r.bridge_model, m.clone(), name(m)).on_hover_text(m.as_str()).changed();
-            }
-        });
+        let items: Vec<crate::theme::PickItem<String>> = bridge_models().iter().map(|m| crate::theme::PickItem { key: m.clone(), name: name(m), note: m.clone(), model: Some(m.clone()) }).collect();
+        let w = ui.available_width();
+        changed |= crate::theme::search_pick(ui, "bridge_model", &mut r.bridge_model, Some((String::new(), t("By road width"))), &items, &|m| thumbs.peek(m), w);
     });
     row(ui, &t("Deck height"), |ui| {
         let shown = t(if r.deck_fixed { "Fixed" } else { "Between the banks" });
@@ -1697,7 +1692,8 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
             theme::check_row(ui, &mut app.line.live_keep, t("Keep the pieces already laid")).on_hover_text(t("On: changing a point fits the route again only from that point on; the pieces before it stay as they are. Off: the whole route is fitted again."));
         }
         let route = &mut app.doc.as_mut().unwrap().world.routes[index];
-        theme::subsection(ui, &t("Route settings"), false, |ui| { routing_fields(ui, &mut route.settings); });
+        let thumbs = &app.thumbs;
+        theme::subsection(ui, &t("Route settings"), false, |ui| { routing_fields(ui, &mut route.settings, thumbs); });
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
             if method != RoadDraw::Parts {
@@ -2011,7 +2007,8 @@ fn road_draw_fields(app: &mut App, ui: &mut egui::Ui) {
     }
     let searched = app.line.draw == RoadDraw::Points && app.line.route;
     let r = if rail { &mut app.line.rail_routing } else { &mut app.line.routing };
-    theme::subsection(ui, &t(if searched { "Route settings" } else { "Fit settings" }), false, |ui| { routing_fields(ui, r); });
+    let thumbs = &app.thumbs;
+    theme::subsection(ui, &t(if searched { "Route settings" } else { "Fit settings" }), false, |ui| { routing_fields(ui, r, thumbs); });
 }
 
 /// The outliner as a tab of its own.

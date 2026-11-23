@@ -6955,6 +6955,10 @@
   "de": "Meereswellen m",
   "pl": "Fale morza m"
  },
+ "Search": {
+  "de": "Suchen",
+  "pl": "Szukaj"
+ },
  "Search in {0}...": {
   "de": "In {0} suchen...",
   "pl": "Szukaj w {0}..."
@@ -9270,10 +9274,6 @@
  "Without template libraries the layers cannot be matched to models.": {
   "de": "Ohne Vorlagenbibliotheken lassen sich die Ebenen keinen Modellen zuordnen.",
   "pl": "Bez bibliotek szablonów nie da się dopasować warstw do modeli."
- },
- "Wooden for narrow roads, stone for most, metal for the widest.": {
-  "de": "Holz für schmale Straßen, Stein für die meisten, Metall für die breitesten.",
-  "pl": "Drewniany dla wąskich dróg, kamienny dla większości, metalowy dla najszerszych."
  },
  "Work drive": {
   "de": "Arbeitslaufwerk",

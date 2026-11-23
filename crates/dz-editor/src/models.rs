@@ -379,6 +379,8 @@ pub struct Thumbnails {
     done: Receiver<(String, Option<(usize, Vec<u8>)>)>,
     cache: HashMap<String, Option<eframe::egui::TextureHandle>>,
     generation: Arc<std::sync::atomic::AtomicU64>,
+    /// Models asked for through [`Thumbnails::peek`], still on their way.
+    asked: Mutex<HashSet<String>>,
 }
 
 fn thumb_path(dir: &Path, model: &str) -> PathBuf {
@@ -445,7 +447,7 @@ impl Thumbnails {
                 ctx.request_repaint();
             });
         }
-        Self { queue, done, cache: HashMap::new(), generation }
+        Self { queue, done, cache: HashMap::new(), generation, asked: Default::default() }
     }
     pub fn poll(&mut self, ctx: &eframe::egui::Context) {
         while let Ok((model, px)) = self.done.try_recv() {
@@ -459,6 +461,16 @@ impl Thumbnails {
             self.queue.push((model.to_string(), self.generation.load(std::sync::atomic::Ordering::Relaxed)));
         }
         self.cache.get(model).and_then(|t| t.as_ref())
+    }
+    /// [`Thumbnails::get`] where only a shared borrow is at hand: the picture once it is made.
+    pub fn peek(&self, model: &str) -> Option<eframe::egui::TextureId> {
+        if let Some(t) = self.cache.get(model) {
+            return t.as_ref().map(|t| t.id());
+        }
+        if self.asked.lock().unwrap().insert(model.to_string()) {
+            self.queue.push((model.to_string(), self.generation.load(std::sync::atomic::Ordering::Relaxed)));
+        }
+        None
     }
 }
 
