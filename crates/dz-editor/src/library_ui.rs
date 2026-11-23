@@ -39,7 +39,9 @@ struct KindContext {
     presets: Vec<String>,
     model: Option<String>,
     has_satellite: bool,
-    object_presets: Vec<(u64, String)>,
+    /// The object presets to choose from, with the picture of each one's first model.
+    object_items: Vec<crate::theme::PickItem<Option<u64>>>,
+    thumbs: std::collections::HashMap<String, egui::TextureId>,
     /// Presets read from files while drawing, kept for the library.
     loaded: std::cell::RefCell<Vec<forest_core::user_presets::UserPreset>>,
     /// The generator is on the map, so its wickets and gates can be placed by a click.
@@ -64,7 +66,8 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
         presets,
         model: app.place.model.clone(),
         has_satellite: doc.is_some_and(|d| d.world.satellite.is_some()),
-        object_presets: app.library.objects.iter().map(|p| (p.id, p.name.clone())).collect(),
+        object_items: preset_items(app),
+        thumbs: app.library.objects.iter().filter_map(|p| p.items.first()).filter_map(|m| Some((m.0.clone(), app.thumbs.peek(&m.0)?))).collect(),
         loaded: Default::default(),
         can_pick: false,
         pick: Default::default(),
@@ -99,14 +102,17 @@ fn model_field(ui: &mut egui::Ui, label: String, value: &mut String, selected: &
     }
 }
 
+/// The object presets of the library to choose from in a [`crate::theme::search_pick`]: each
+/// with its folder and its first model for the picture.
+pub fn preset_items(app: &App) -> Vec<crate::theme::PickItem<Option<u64>>> {
+    app.library.objects.iter().map(|p| crate::theme::PickItem { key: Some(p.id), name: p.name.clone(), note: p.folder.clone(), model: p.items.first().map(|m| m.0.clone()) }).collect()
+}
+
 /// Chooses an object preset in place of a list of models.
 fn preset_pick(ui: &mut egui::Ui, value: &mut Option<u64>, cx: &KindContext) {
     row(ui, &t("Object preset"), |ui| {
-        let shown = value.and_then(|id| cx.object_presets.iter().find(|p| p.0 == id)).map(|p| p.1.clone()).unwrap_or_else(|| t("(none)"));
-        egui::ComboBox::from_id_salt("objects_preset").selected_text(shown).show_ui(ui, |ui| {
-            ui.selectable_value(value, None, t("(none)"));
-            for (id, name) in &cx.object_presets { ui.selectable_value(value, Some(*id), name); }
-        });
+        let w = ui.available_width();
+        crate::theme::search_pick(ui, "objects_preset", value, Some((None, t("(none)"))), &cx.object_items, &|m| cx.thumbs.get(m).copied(), w);
     });
 }
 
@@ -210,9 +216,8 @@ fn opening_ui(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, cx: &Ki
 }
 
 fn preset_combo(ui: &mut egui::Ui, id: impl std::hash::Hash, value: &mut String, presets: &[String]) {
-    egui::ComboBox::from_id_salt(id).width(170.0).selected_text(value.clone()).show_ui(ui, |ui| {
-        for p in presets { ui.selectable_value(value, p.clone(), p); }
-    });
+    let items: Vec<crate::theme::PickItem<String>> = presets.iter().map(|p| crate::theme::PickItem { key: p.clone(), name: p.clone(), note: String::new(), model: None }).collect();
+    crate::theme::search_pick(ui, id, value, None, &items, &|_| None, 170.0);
 }
 
 /// Fields of a generator. Returns true when the colour eyedropper should start.
