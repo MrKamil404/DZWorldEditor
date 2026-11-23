@@ -199,12 +199,21 @@ fn a_sunk_rock_leaves_the_outline_of_its_part_above_the_ground() {
     let whole = covered(&dz_core::satmod::silhouette(&db, rock, false, 1.0).unwrap());
     let info = db.get(rock);
     let at = |sink: f32| {
-        let placed = dz_core::satmod::Placed { object: &o, origin_y: 10.0 - sink, ground: &ground };
-        dz_core::satmod::silhouette_above_ground(&db, rock, false, 1.0, &placed).map(|s| covered(&s))
+        let placed = dz_core::satmod::Placed { object: &o, origin_y: 10.0 - sink, ground: Some(&ground) };
+        dz_core::satmod::silhouette_placed(&db, rock, false, 1.0, &placed).map(|s| covered(&s))
     };
     let standing = at(0.0).unwrap();
     assert!((standing - whole).abs() < whole * 0.2, "{standing} of {whole} m²");
     let half = at((info.max[1] - info.min[1]) * 0.6).unwrap_or(0.0);
     assert!(half < standing * 0.9, "half sunk {half} of {standing} m²");
     assert!(at(info.max[1] - info.min[1] + 5.0).is_none());
+    // Upside down (as a rock turned over in the editor), the outline is that of the rock
+    // turned over, on the map round the object: mirrored, not shifted aside.
+    let flipped = dz_core::objects::Obj { pitch: -172.0, roll: -2.0, yaw: -76.0, ..o };
+    let alone = dz_core::satmod::Placed { object: &flipped, origin_y: 10.0, ground: None };
+    let s = dz_core::satmod::silhouette_placed(&db, rock, false, 1.0, &alone).unwrap();
+    let m = dz_core::objects::rotation(flipped.yaw, flipped.pitch, flipped.roll, 1.0);
+    let c = info.center;
+    let mid = [m[0][0] * c[0] + m[1][0] * c[1] + m[2][0] * c[2], m[0][2] * c[0] + m[1][2] * c[1] + m[2][2] * c[2]];
+    assert_eq!(s.distance(mid[0], mid[1]), 0.0, "the middle of the rock is inside its outline");
 }

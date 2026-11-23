@@ -163,8 +163,9 @@ pub fn stamp_under_objects(app: &mut App) {
     }
     // The outlines need the models, so they are read in the background.
     let db = app.db.clone();
-    // Only what is above the ground: an outline for each object as it stands.
-    let ground = app.mask_tool.above_ground.then(|| std::sync::Arc::new(w.height.clone()));
+    // The ground the objects stand on, and whether only what is above it counts.
+    let heights = std::sync::Arc::new(w.height.clone());
+    let above_ground = app.mask_tool.above_ground;
     app.spawn(t("Painting under objects"), move |job| {
         job.stage("Reading the outlines of the models");
         // Room round an outline for the margin of the smallest object of the model.
@@ -183,14 +184,17 @@ pub fn stamp_under_objects(app: &mut App) {
                 }
                 job.set_progress(i as f32 / total as f32);
             }
-            let outline = match &ground {
-                Some(g) => {
-                    let placed = dz_core::satmod::Placed { object: &o, origin_y: dz_core::objects::ObjectStore::origin_y(&o, g), ground: g };
-                    dz_core::satmod::silhouette_above_ground(&db, &path, plant, margin[&path], &placed).map(std::sync::Arc::new)
-                }
-                None => outlines.entry(path.clone()).or_insert_with(|| dz_core::satmod::silhouette(&db, &path, plant, margin[&path]).map(std::sync::Arc::new)).clone(),
-            };
-            s.geometry = outline.map(|sil| (sil, o.yaw));
+            // An object tilted or turned over, or one only above the ground counts for, gets an
+            // outline of its own as it stands; one only turned about its upright shares its model's.
+            let tilted = o.pitch.abs() > 0.5 || o.roll.abs() > 0.5;
+            if above_ground || tilted {
+                let placed = dz_core::satmod::Placed { object: &o, origin_y: dz_core::objects::ObjectStore::origin_y(&o, &heights), ground: above_ground.then_some(&*heights) };
+                s.geometry = dz_core::satmod::silhouette_placed(&db, &path, plant, settings.size_m, &placed).map(|sil| (std::sync::Arc::new(sil), 0.0));
+                s.scale = 1.0;
+            } else {
+                let outline = outlines.entry(path.clone()).or_insert_with(|| dz_core::satmod::silhouette(&db, &path, plant, margin[&path]).map(std::sync::Arc::new)).clone();
+                s.geometry = outline.map(|sil| (sil, o.yaw));
+            }
             list.push(s);
         }
         let tiles = dz_core::maskmod::stamp_tiles(&list, &settings, width, height, size);

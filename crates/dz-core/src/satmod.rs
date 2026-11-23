@@ -1141,12 +1141,12 @@ impl Silhouette {
     }
 }
 
-/// An object as it stands, for [`silhouette_above_ground`]: the object, the height of its
-/// origin, and the ground it stands on.
+/// An object as it stands, for [`silhouette_placed`]: the object, the height of its origin,
+/// and the ground it stands on when only what is above it counts.
 pub struct Placed<'a> {
     pub object: &'a Obj,
     pub origin_y: f32,
-    pub ground: &'a crate::terrain::Heightmap,
+    pub ground: Option<&'a crate::terrain::Heightmap>,
 }
 
 /// The outline of a model from above, with room round it for a margin of `margin` metres.
@@ -1155,28 +1155,34 @@ pub fn silhouette(db: &ModelDb, model: &str, plant: bool, margin: f32) -> Option
     silhouette_with(db, model, plant, margin, None)
 }
 
-/// [`silhouette`] of one object as it stands, of only its parts above the ground: a rock sunk
-/// half into the ground leaves the outline of what shows of it. In the model's own
-/// coordinates, as [`silhouette`] is.
-pub fn silhouette_above_ground(db: &ModelDb, model: &str, plant: bool, margin: f32, placed: &Placed) -> Option<Silhouette> {
+/// [`silhouette`] of one object as it stands, turned, tilted and scaled as it is, in metres of
+/// the map from its origin (so it is used with no turn and a scale of 1). With a ground, only
+/// its parts above it count: a rock sunk half into the ground leaves the outline of what shows
+/// of it. A model only turned about its upright axis needs none of this: its outline from
+/// [`silhouette`] turns with it.
+pub fn silhouette_placed(db: &ModelDb, model: &str, plant: bool, margin: f32, placed: &Placed) -> Option<Silhouette> {
     silhouette_with(db, model, plant, margin, Some(placed))
 }
 
 fn silhouette_with(db: &ModelDb, model: &str, plant: bool, margin: f32, placed: Option<&Placed>) -> Option<Silhouette> {
     let bm = load_bake_mesh(db, model, plant)?;
-    let points: Vec<[f32; 2]> = bm.mesh.vertices.iter().map(|v| [v.pos[0] + bm.center[0], v.pos[2] + bm.center[2]]).collect();
-    // Whether a point of the model (its own x, y, z) stands above the ground where it is.
-    let above = placed.map(|pl| {
-        let o = pl.object;
-        let m = crate::objects::rotation(o.yaw, o.pitch, o.roll, o.scale);
-        move |p: [f32; 3]| {
-            let x = o.x + m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2];
-            let y = pl.origin_y + m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2];
-            let z = o.z + m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2];
-            y > pl.ground.sample(x, z) + 0.02
+    // Each corner of the model in the frame the outline is drawn in, and its height: its own
+    // for the model alone, or on the map (from the object's origin) for a placed object.
+    let corners: Vec<[f32; 3]> = bm.mesh.vertices.iter().map(|v| {
+        let p = [v.pos[0] + bm.center[0], v.pos[1] + bm.center[1], v.pos[2] + bm.center[2]];
+        match placed {
+            None => p,
+            Some(pl) => {
+                let o = pl.object;
+                let m = crate::objects::rotation(o.yaw, o.pitch, o.roll, o.scale);
+                [m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2], pl.origin_y + m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2], m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2]]
+            }
         }
-    });
-    let heights: Vec<f32> = bm.mesh.vertices.iter().map(|v| v.pos[1] + bm.center[1]).collect();
+    }).collect();
+    let points: Vec<[f32; 2]> = corners.iter().map(|c| [c[0], c[2]]).collect();
+    let heights: Vec<f32> = corners.iter().map(|c| c[1]).collect();
+    // Whether a point of the outline (x, height, z in that frame) stands above the ground.
+    let above = placed.and_then(|pl| pl.ground.map(|g| (pl.object, g))).map(|(o, g)| move |p: [f32; 3]| p[1] > g.sample(o.x + p[0], o.z + p[2]) + 0.02);
     let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
     for p in &points {
         for k in 0..2 {
