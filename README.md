@@ -49,8 +49,10 @@ The [editor guide](docs/guide.md) describes the window, the views and the menus,
 | **Mission editor** with the loot table of a mission | **Bridges and rivers** from a Terrain Builder project |
 | ![A forest generator](docs/screenshots/forest.jpg) | ![A row of walls](docs/screenshots/rows.jpg) |
 | **Forest generator** filling an area, its settings in the Details | **Rows of walls and fences** laid with the copy gizmo |
+| ![The New project window for a real place](docs/screenshots/realplace.jpg) | ![A map of a real place](docs/screenshots/realplace-map.jpg) |
+| **A map of a real place**: choosing Zakopane on the Polish orthophoto | **The map that comes out**, with the game's buildings in the outlines of the real ones and forests from OpenStreetMap |
 
-*Screenshots show the Balticrus map, imported from its Terrain Builder project.*
+*Screenshots show the Balticrus map, imported from its Terrain Builder project, and a map of Zakopane made from the open data of GUGiK and OpenStreetMap.*
 
 ## Getting started
 

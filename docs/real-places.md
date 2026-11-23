@@ -1,5 +1,7 @@
 # Maps of real places
 
+![The New project window for a real place](screenshots/realplace.jpg)
+
 Choose **File > New project from a real place** (or **Real place** in the New project window) to
 make a map of a real square of the Earth, of one of the DayZ map sizes. Nothing needs an account
 or a key: the data comes from free map services.
@@ -62,6 +64,8 @@ or a key: the data comes from free map services.
   buildings and roads. Each works on its layer of shapes, so it can be changed and run again from
   the outliner. **Run them when the map opens** runs them one after another, after the roads;
   stopping one stops the rest.
+![The map of Zakopane, with buildings and forests](screenshots/realplace-map.jpg)
+
 * The map's latitude and longitude are set to the place, so the sun and stars are right in the
   game. Downloaded tiles are kept in `%LOCALAPPDATA%\DZWorldEditor\tiles`, so the same place
   downloads quickly the second time.
