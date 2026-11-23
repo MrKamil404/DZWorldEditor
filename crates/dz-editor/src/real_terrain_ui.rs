@@ -38,6 +38,9 @@ pub struct RealPlace {
     /// The OpenStreetMap shapes are painted into the mask, over what the picture gave.
     pub shape_mask_on: bool,
     pub shape_mask: rt::ShapeMask,
+    /// Generators are added for the shapes.
+    pub generators_on: bool,
+    pub generators: rt::OsmGenerators,
     /// The last picture to choose on, and the part of it under the map with its revision: what
     /// the preview of the surfaces is made from.
     last_img: Option<(RgbImage, Preview)>,
@@ -72,6 +75,8 @@ impl Default for RealPlace {
             class_view: Default::default(),
             shape_mask_on: true,
             shape_mask: rt::ShapeMask::for_layers(&dz_core::world::default_layers()),
+            generators_on: true,
+            generators: Default::default(),
             last_img: None,
             crop: None,
             crop_rev: 0,
@@ -129,6 +134,7 @@ impl RealPlace {
             osm: self.shapes.then_some(self.osm),
             mask: (self.satellite && self.mask).then(|| self.classify.clone()),
             shape_mask: (self.shapes && self.shape_mask_on).then(|| self.shape_mask.clone()),
+            generators: (self.shapes && self.generators_on).then(|| self.generators.clone()),
         }
     }
 
@@ -377,6 +383,7 @@ pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
                 });
             });
             crate::theme::subsection(ui, &t("Surface mask"), true, |ui| mask_ui(ui, place, size_m));
+            crate::theme::subsection(ui, &t("Generators"), true, |ui| generators_ui(ui, place));
             ui.separator();
             let area = rt::GeoArea { lat: place.lat, lon: place.lon, size_m };
             let src = place.source();
@@ -389,6 +396,39 @@ pub fn ui(ui: &mut egui::Ui, p: &mut NewProject) {
         }));
     });
     place.poll(&ctx, dragging);
+}
+
+/// The generators added for the OpenStreetMap shapes: forests with a preset for each kind,
+/// scrub, fields and lakes, each on its layer of shapes.
+fn generators_ui(ui: &mut egui::Ui, place: &mut RealPlace) {
+    ui.add_enabled_ui(place.shapes, |ui| {
+        ui.checkbox(&mut place.generators_on, t("Add generators for the OpenStreetMap shapes"));
+    });
+    if !(place.shapes && place.generators_on) {
+        return;
+    }
+    let g = &mut place.generators;
+    let presets: Vec<crate::theme::PickItem<String>> = forest_core::species::zone_presets().iter().map(|z| crate::theme::PickItem { key: z.name.to_string(), name: z.name.to_string(), note: z.group.to_string(), model: None }).collect();
+    let forest = |ui: &mut egui::Ui, label: String, id: &str, value: &mut Option<String>, default: &str| {
+        let mut on = value.is_some();
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut on, label);
+            if let Some(v) = value.as_mut() {
+                let w = ui.available_width();
+                crate::theme::search_pick(ui, id, v, None, &presets, &|_| None, w);
+            }
+        });
+        if on != value.is_some() {
+            *value = on.then(|| default.to_string());
+        }
+    };
+    forest(ui, t("Leafy and mixed forests"), "gen_leafy", &mut g.leafy, "Grąd (dąb-buk)");
+    forest(ui, t("Conifer forests"), "gen_conifer", &mut g.conifer, "Bór sosnowy (niziny)");
+    forest(ui, t("Scrub, heath and wetland"), "gen_scrub", &mut g.scrub, "Zarośla krzewiaste");
+    ui.checkbox(&mut g.fields, t("Fields")).on_hover_text(t("The Fields generator on the fields of OpenStreetMap."));
+    ui.checkbox(&mut g.ponds, t("Lakes and ponds")).on_hover_text(t("The Ponds and lakes generator digs a basin for each, which the real heights mostly have already."));
+    ui.checkbox(&mut g.run, t("Run them when the map opens")).on_hover_text(t("One after another; each can be stopped. Otherwise they wait in the outliner."));
+    ui.weak(t("Each works on its layer of shapes, so it can be changed and run again from the outliner."));
 }
 
 /// How the surface mask of the new map is made: read from the satellite picture as in the
@@ -455,6 +495,7 @@ pub fn ready(p: &NewProject) -> Result<(), String> {
 pub fn create(app: &mut App, p: &NewProject) {
     let m = p.place.map(p);
     let classify = p.place.classify.clone();
+    let run = m.generators.as_ref().is_some_and(|g| g.run);
     let dir = (!p.folder.trim().is_empty()).then(|| std::path::PathBuf::from(p.folder.trim()).join(dz_core::world::WorldMeta::new(&p.name, 1, 1.0).map_id));
     app.spawn(t("Making the map of a real place"), move |job| {
         let f = fetcher()?;
@@ -470,6 +511,11 @@ pub fn create(app: &mut App, p: &NewProject) {
         }
         Ok(Box::new(move |app: &mut App| {
             app.open_world(w, dir);
+            if run {
+                if let Some(d) = &app.doc {
+                    app.gen_queue = d.world.generators.iter().map(|g| g.id).collect();
+                }
+            }
             // The satellite tool reads surfaces the same way the mask was made.
             app.sat.classify = classify;
         }) as Finish)

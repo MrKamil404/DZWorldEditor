@@ -426,9 +426,17 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
   * **Heights** come from the AWS Terrain Tiles: about 30 m detail (SRTM) in most places, finer in
     some countries. The sea is at 0 m and the sea floor stops at -100 m.
   * **OpenStreetMap shapes**: roads, railways, rivers and streams, lakes, forests, land use and
-    buildings, each kind in its own shape layer with the OpenStreetMap tags as attributes. They are
-    cut to the map. Use them for generators, roads and masks. The data is © OpenStreetMap
-    contributors (ODbL).
+    buildings, each kind in its own shape layer with the OpenStreetMap tags as attributes. Forests
+    and land use are split further: `OSM leafy forests`, `OSM conifer forests`, `OSM fields`,
+    `OSM meadows`, `OSM scrub`, `OSM built-up land`, `OSM sand` and `OSM rock`. They are cut to
+    the map. Use them for generators, roads and masks. The data is © OpenStreetMap contributors
+    (ODbL). Areas made of several parts keep their outer edge only, without the holes inside.
+  * **Generators**: with **Add generators for the OpenStreetMap shapes**, the new map gets a forest
+    generator on the leafy forests, the conifer forests and the scrub (each with a forest preset you
+    choose), the Fields generator on the fields and, if you want, the Ponds and lakes generator on
+    the lakes (it digs a basin, which the real heights mostly have already). Each works on its
+    layer of shapes, so it can be changed and run again from the outliner. **Run them when the map
+    opens** runs them one after another; stopping one stops the rest.
   * The map's latitude and longitude are set to the place, so the sun and stars are right in the
     game. Downloaded tiles are kept in `%LOCALAPPDATA%\DZWorldEditor\tiles`, so the same place
     downloads quickly the second time.

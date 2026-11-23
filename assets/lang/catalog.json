@@ -355,6 +355,10 @@
   "de": "Generator hinzufügen",
   "pl": "Dodaj generator"
  },
+ "Add generators for the OpenStreetMap shapes": {
+  "de": "Generatoren für die OpenStreetMap-Formen hinzufügen",
+  "pl": "Dodaj generatory dla kształtów OpenStreetMap"
+ },
  "Add grass": {
   "de": "Gras hinzufügen",
   "pl": "Dodaj trawę"
@@ -2523,6 +2527,10 @@
   "de": "Jede Oberfläche nimmt die Durchschnittsfarbe des Satellitenbilds dort an, wo die Maske sie hat.",
   "pl": "Każda powierzchnia przyjmuje średni kolor zdjęcia satelitarnego w miejscach, gdzie leży w masce."
  },
+ "Each works on its layer of shapes, so it can be changed and run again from the outliner.": {
+  "de": "Jeder arbeitet auf seiner Formebene und kann im Outliner geändert und erneut ausgeführt werden.",
+  "pl": "Każdy działa na swojej warstwie kształtów, więc można go zmienić i uruchomić ponownie z outlinera."
+ },
  "Earthwork penalty": {
   "de": "Erdarbeiten-Malus",
   "pl": "Kara za roboty ziemne"
@@ -4023,6 +4031,10 @@
   "de": "Seen",
   "pl": "Jeziora"
  },
+ "Lakes and ponds": {
+  "de": "Seen und Teiche",
+  "pl": "Jeziora i stawy"
+ },
  "Land grid": {
   "de": "Geländeraster",
   "pl": "Siatka terenu"
@@ -5503,6 +5515,10 @@
   "de": "Übereinander",
   "pl": "Jeden nad drugim"
  },
+ "One after another; each can be stopped. Otherwise they wait in the outliner.": {
+  "de": "Einer nach dem anderen; jeder kann gestoppt werden. Sonst warten sie im Outliner.",
+  "pl": "Jeden po drugim; każdy można zatrzymać. Inaczej czekają w outlinerze."
+ },
  "One container without loot points for each; ExportProxyProto in init.c makes the points in the game.": {
   "de": "Je ein Behälter ohne Beutepunkte; ExportProxyProto in init.c erzeugt die Punkte im Spiel.",
   "pl": "Po jednym pojemniku bez punktów lootu; ExportProxyProto w init.c tworzy punkty w grze."
@@ -6826,6 +6842,10 @@
  "Rows of walls and fences": {
   "de": "Reihen von Mauern und Zäunen",
   "pl": "Rzędy murów i płotów"
+ },
+ "Run them when the map opens": {
+  "de": "Beim Öffnen der Karte ausführen",
+  "pl": "Uruchom je po otwarciu mapy"
  },
  "Runs through the whole tide of the game, up to MaxTide 1.5 m, in two minutes.": {
   "de": "Durchläuft die ganzen Gezeiten des Spiels, bis MaxTide 1,5 m, in zwei Minuten.",
@@ -8163,9 +8183,17 @@
   "de": "Diese Oberfläche hat keine Schritte in den Tabellen des Spiels; wähle eine andere.",
   "pl": "Ta powierzchnia nie ma kroków w tabelach dźwięków gry; wybierz inną."
  },
+ "The Fields generator on the fields of OpenStreetMap.": {
+  "de": "Der Feldgenerator auf den Feldern aus OpenStreetMap.",
+  "pl": "Generator pól na polach z OpenStreetMap."
+ },
  "The Output Log tab, with errors and warnings marked.": {
   "de": "Der Reiter Ausgabeprotokoll, mit markierten Fehlern und Warnungen.",
   "pl": "Zakładka Dziennik, z zaznaczonymi błędami i ostrzeżeniami."
+ },
+ "The Ponds and lakes generator digs a basin for each, which the real heights mostly have already.": {
+  "de": "Der Generator für Teiche und Seen gräbt für jeden ein Becken, das die echten Höhen meist schon haben.",
+  "pl": "Generator stawów i jezior kopie nieckę dla każdego, a prawdziwe wysokości zwykle już ją mają."
  },
  "The Terrain Builder template libraries read into the project.": {
   "de": "Die in das Projekt geladenen Terrain-Builder-Vorlagenbibliotheken.",

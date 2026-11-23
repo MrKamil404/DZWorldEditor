@@ -825,7 +825,9 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
         }
     }
     let size = area.size_m;
-    let mut layers: std::collections::BTreeMap<OsmKind, Vec<MapShape>> = Default::default();
+    // Forests and land use go into a layer for each kind of ground, so a generator can work
+    // on just the fields or just the conifer forests.
+    let mut layers: std::collections::BTreeMap<(OsmKind, usize), Vec<MapShape>> = Default::default();
     for e in v.get("elements").and_then(|e| e.as_array()).into_iter().flatten() {
         let tags: HashMap<String, String> = e.get("tags").and_then(|t| t.as_object()).map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string()))).collect()).unwrap_or_default();
         let Some(kind) = classify(&tags) else { continue };
@@ -846,7 +848,8 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
             }
             _ => continue,
         };
-        let out = layers.entry(kind).or_default();
+        let sub = if matches!(kind, OsmKind::Forests | OsmKind::Land) { shape_class(&attributes).unwrap_or(usize::MAX) } else { usize::MAX };
+        let out = layers.entry((kind, sub)).or_default();
         for ring in rings {
             if kind.is_area() {
                 let closed = ring.len() >= 4 && ring.first() == ring.last();
@@ -865,7 +868,69 @@ pub fn osm_layers(json: &str, area: &GeoArea, p: &OsmParts) -> Result<Vec<ShapeL
             }
         }
     }
-    Ok(layers.into_iter().filter(|(_, s)| !s.is_empty()).map(|(k, shapes)| ShapeLayer { name: k.layer().into(), visible: true, shapes }).collect())
+    Ok(layers.into_iter().filter(|(_, s)| !s.is_empty()).map(|((k, sub), shapes)| ShapeLayer { name: osm_layer_name(k, sub), visible: true, shapes }).collect())
+}
+
+/// The name of the layer of OpenStreetMap shapes of `kind`, and for forests and land use of
+/// the kind of [`SHAPE_CLASSES`] they are.
+fn osm_layer_name(kind: OsmKind, class: usize) -> String {
+    match (kind, class) {
+        (OsmKind::Forests | OsmKind::Land, c) if c < SHAPE_CLASSES.len() => OSM_CLASS_LAYERS[c].to_string(),
+        _ => kind.layer().to_string(),
+    }
+}
+
+/// Layers of the kinds of [`SHAPE_CLASSES`] that are areas.
+pub const OSM_CLASS_LAYERS: [&str; 14] = ["OSM fields", "OSM meadows", "OSM scrub", "OSM built-up land", "OSM sand", "OSM rock", "OSM leafy forests", "OSM conifer forests", "OSM water", "OSM main roads", "OSM minor roads", "OSM tracks", "OSM paths", "OSM railways"];
+
+/// Generators added to a new map of a real place, each working on a layer of OpenStreetMap
+/// shapes. The forest presets are names of forest presets (see `forest_core::species`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OsmGenerators {
+    pub leafy: Option<String>,
+    pub conifer: Option<String>,
+    pub scrub: Option<String>,
+    pub fields: bool,
+    /// Lakes and ponds dig their basins into the ground, which real heights already have.
+    pub ponds: bool,
+    /// Run them once the map is open.
+    pub run: bool,
+}
+
+impl Default for OsmGenerators {
+    fn default() -> Self {
+        Self { leafy: Some("Grąd (dąb-buk)".into()), conifer: Some("Bór sosnowy (niziny)".into()), scrub: Some("Zarośla krzewiaste".into()), fields: true, ponds: false, run: true }
+    }
+}
+
+/// The generators of `g` for the layers there are shapes in.
+pub fn osm_generators(layers: &[ShapeLayer], g: &OsmGenerators) -> Vec<crate::library::GeneratorInstance> {
+    use crate::library::{ForestGen, GenTarget, GeneratorInstance, GeneratorKind};
+    let has = |name: &str| layers.iter().any(|l| l.name == name && !l.shapes.is_empty());
+    let mut out = Vec::new();
+    let mut add = |layer: &str, name: String, kind: GeneratorKind| {
+        if has(layer) {
+            out.push(GeneratorInstance { id: crate::library::new_id(), name, kind, target: GenTarget::Layer(layer.to_string()), objects: Vec::new(), modifier: None, removed: Vec::new(), mask_modifier: None });
+        }
+    };
+    let forest = |preset: &str| GeneratorKind::Forest(Box::new(ForestGen { preset: preset.to_string(), ..Default::default() }));
+    if let Some(p) = &g.leafy {
+        add(OSM_CLASS_LAYERS[6], p.clone(), forest(p));
+    }
+    if let Some(p) = &g.conifer {
+        add(OSM_CLASS_LAYERS[7], p.clone(), forest(p));
+    }
+    if let Some(p) = &g.scrub {
+        add(OSM_CLASS_LAYERS[2], p.clone(), forest(p));
+    }
+    if g.fields {
+        add(OSM_CLASS_LAYERS[0], "Fields".into(), GeneratorKind::Fields(Default::default()));
+    }
+    if g.ponds {
+        add(OsmKind::Water.layer(), "Ponds and lakes".into(), GeneratorKind::Pond(Default::default()));
+    }
+    out
 }
 
 // ---- Places
@@ -1115,6 +1180,8 @@ pub struct RealMap {
     pub mask: Option<SatClassify>,
     /// The OpenStreetMap shapes are painted into the mask over what the picture gave.
     pub shape_mask: Option<ShapeMask>,
+    /// Generators added for the OpenStreetMap shapes.
+    pub generators: Option<OsmGenerators>,
 }
 
 impl RealMap {
@@ -1173,6 +1240,9 @@ pub fn build_world(m: &RealMap, f: &Fetcher, job: &Job) -> Result<World> {
         }
         w.satellite = Some(img);
         w.sat_image_replaced();
+    }
+    if let Some(g) = &m.generators {
+        w.generators = osm_generators(&w.shape_layers, g);
     }
     if let Some(sm) = &m.shape_mask {
         if !w.shape_layers.is_empty() {
@@ -1249,7 +1319,12 @@ mod tests {
         );
         let layers = osm_layers(&json, &a, &OsmParts::default()).unwrap();
         let names: Vec<&str> = layers.iter().map(|l| l.name.as_str()).collect();
-        assert_eq!(names, ["OSM roads", "OSM water", "OSM forests"]);
+        assert_eq!(names, ["OSM roads", "OSM water", "OSM leafy forests"]);
+        // Each layer gets the generator it is asked for.
+        let gens = osm_generators(&layers, &OsmGenerators::default());
+        assert_eq!(gens.len(), 1);
+        assert_eq!(gens[0].target, crate::library::GenTarget::Layer("OSM leafy forests".into()));
+        assert!(osm_generators(&layers, &OsmGenerators { leafy: None, ..Default::default() }).is_empty());
         let road = &layers[0].shapes[0];
         assert_eq!(road.kind, ShapeKind::Polyline);
         assert!((road.points[1][0] - 500.0).abs() < 0.01 && (road.points[1][1] - 100.0).abs() < 0.01);

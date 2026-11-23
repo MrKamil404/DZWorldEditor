@@ -24,6 +24,7 @@ fn main() -> anyhow::Result<()> {
         osm: Some(OsmParts::default()),
         mask: Some(dz_core::real_terrain::default_classify()),
         shape_mask: Some(dz_core::real_terrain::ShapeMask::for_layers(&dz_core::world::default_layers())),
+        generators: Some(Default::default()),
     };
     let f = Fetcher::new(std::env::var_os("DZWE_TILE_CACHE").map(PathBuf::from))?;
     let job = Job::default();
@@ -35,6 +36,9 @@ fn main() -> anyhow::Result<()> {
     println!("built in {:.1} s", t.elapsed().as_secs_f32());
     let (lo, hi) = w.height.min_max();
     println!("heights {lo:.1} .. {hi:.1} m");
+    for g in &w.generators {
+        println!("generator {} on {:?}", g.name, g.target);
+    }
     for l in &w.shape_layers {
         println!("{}: {} shapes", l.name, l.shapes.len());
     }
