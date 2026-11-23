@@ -79,35 +79,35 @@ off in the settings.
 
 ### 1 Select
 
-Select, move, turn, scale, copy and delete objects; rows of walls and fences; terrain and surfaces under objects. See [objects.md](objects.md).
+Select, move, turn, scale, copy and delete objects; rows of walls and fences; terrain and surfaces under objects. See [Objects](objects.md).
 
 ### 2 Sculpt
 
-Brushes, terrain holes, procedural terrain, erosion, terraces, terrain stamps and terrain modifiers. See [terrain.md](terrain.md).
+Brushes, terrain holes, procedural terrain, erosion, terraces, terrain stamps and terrain modifiers. See [Terrain](terrain.md).
 
 ### 3 Paint
 
-Paints the surface mask, reads it from the satellite, stamps surfaces under objects, and sets up the map's surfaces and layer materials. See [surfaces.md](surfaces.md).
+Paints the surface mask, reads it from the satellite, stamps surfaces under objects, and sets up the map's surfaces and layer materials. See [Surfaces](surfaces.md).
 
 ### 4 Place
 
-Places models and object presets with a click or a brush. See [objects.md](objects.md#place).
+Places models and object presets with a click or a brush. See [Objects](objects.md#place).
 
 ### 5 Roads
 
-Roads and railways fitted from the game's own parts, with bridges, crossroads and roundabouts. See [roads.md](roads.md).
+Roads and railways fitted from the game's own parts, with bridges, crossroads and roundabouts. See [Roads](roads.md).
 
 ### 6 Shapes
 
-Polygons, polylines and points, from files or drawn, for generators and masks. See [shapes.md](shapes.md).
+Polygons, polylines and points, from files or drawn, for generators and masks. See [Shapes and key points](shapes.md).
 
 ### 7 Key points
 
-Named places of the map. See [shapes.md](shapes.md#key-points).
+Named places of the map. See [Shapes and key points](shapes.md#key-points).
 
 ### 8 Satellite
 
-Bakes objects and decals into the satellite image, clone and colour brushes, colour correction and a satellite from the mask. See [satellite.md](satellite.md).
+Bakes objects and decals into the satellite image, clone and colour brushes, colour correction and a satellite from the mask. See [Satellite image](satellite.md).
 
 ### 9 Mission
 
@@ -116,7 +116,7 @@ an experimental feature; see [mission-editor.md](mission-editor.md).
 
 ## Generators and the Content Browser
 
-Generators for forests, water, fields, settlements, fences and more, and the Content Browser with the models, presets and library. See [generators.md](generators.md).
+Generators for forests, water, fields, settlements, fences and more, and the Content Browser with the models, presets and library. See [Generators and the Content Browser](generators.md).
 
 ## Menus
 
@@ -125,7 +125,7 @@ Generators for forests, water, fields, settlements, fences and more, and the Con
 * **New project**, **Open project**, **Recent projects**, **Save** and **Save as**.
 * **New project from a real place**: a map of a real square of the Earth, with its satellite
   picture, heights, OpenStreetMap shapes, a surface mask, buildings, roads and generators. See
-  [real-places.md](real-places.md).
+  [Maps of real places](real-places.md).
 * **Import**: a Terrain Builder or built map folder, a WRP world, and to an open project a heightmap
   (ASC), satellite image, mask image, `layers.cfg`, Terrain Builder layers (TV4L) and objects (TXT),
   DayZForests and Road Studio projects, roads from TV4P and shapes (SHP, TV4S).

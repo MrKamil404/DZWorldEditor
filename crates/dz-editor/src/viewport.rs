@@ -4743,11 +4743,18 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 crate::real_terrain_ui::create(app, p);
             }
         }
-        // The New project window for a real place, optionally at "lat lon".
+        // The New project window for a real place, optionally at "lat lon [source]".
         "realplace" => {
             app.dialog = crate::panels::real_place_dialog();
-            if let (crate::app::Dialog::NewProject(p), [lat, lon]) = (&mut app.dialog, &nums[..]) {
+            if let (crate::app::Dialog::NewProject(p), [lat, lon, rest @ ..]) = (&mut app.dialog, &nums[..]) {
                 (p.place.lat, p.place.lon) = (*lat as f64, *lon as f64);
+                if let Some(s) = rest.first() { p.place.source = *s as usize; }
+            }
+        }
+        // Runs every generator of the project, one after another.
+        "rungens" => {
+            if let Some(d) = &app.doc {
+                app.gen_queue = d.world.generators.iter().map(|g| g.id).collect();
             }
         }
         // The window of its own the view is in.
