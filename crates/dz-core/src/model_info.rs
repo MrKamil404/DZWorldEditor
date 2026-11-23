@@ -309,6 +309,7 @@ pub struct ModelDb {
     cache: Arc<Mutex<HashMap<String, ModelInfo>>>,
     caps: Arc<Mutex<HashMap<String, CapLayout>>>,
     ends: Arc<Mutex<HashMap<(String, bool), Option<[f32; 2]>>>>,
+    visual: Arc<Mutex<HashMap<String, Option<([f32; 3], [f32; 3])>>>>,
 }
 
 /// How thick a long model (a wall, a fence) is at its two ends, at its low end along x (or z)
@@ -458,7 +459,29 @@ fn read_cap_layout(file: &Path, root: &Path, start: f64, length: f64) -> CapLayo
 
 impl ModelDb {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into(), cache: Default::default(), caps: Default::default(), ends: Default::default() }
+        Self { root: root.into(), cache: Default::default(), caps: Default::default(), ends: Default::default(), visual: Default::default() }
+    }
+    /// The box round what can be seen of a model (its first LOD), measured like
+    /// [`ModelInfo::min`] and `max`; read once per model. The box of the file can be much
+    /// larger: a gate's holds the whole swing of its leaf.
+    pub fn visual_box(&self, model: &str) -> Option<([f32; 3], [f32; 3])> {
+        if let Some(b) = self.visual.lock().unwrap().get(model) {
+            return *b;
+        }
+        let info = self.get(model);
+        let cache = dayz_road_tool::mesh3d::Cache::default();
+        let b = cache.mesh(&self.file(model)).and_then(|m| {
+            let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+            for p in m.surfaces.iter().flat_map(|s| s.positions.iter()) {
+                for k in 0..3 {
+                    lo[k] = lo[k].min(p[k] + info.center[k]);
+                    hi[k] = hi[k].max(p[k] + info.center[k]);
+                }
+            }
+            (lo[0] <= hi[0]).then_some((lo, hi))
+        });
+        self.visual.lock().unwrap().insert(model.to_string(), b);
+        b
     }
     /// [`end_thickness`] of a model, read once per model.
     pub fn end_thickness(&self, model: &str, along_x: bool) -> Option<[f32; 2]> {

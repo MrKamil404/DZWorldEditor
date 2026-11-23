@@ -149,3 +149,30 @@ fn decals_are_baked_over_the_road_on_request() {
     assert!(any > 10, "{any} px of the decal");
     eprintln!("decal: {any} px, {partial} partly covered, {changed} px changed over the road");
 }
+
+/// A wicket whose file box holds the whole swing of its leaf takes only the gap it fills in the
+/// fence, when P: is mounted.
+#[test]
+fn a_wicket_takes_only_the_room_it_fills() {
+    use dz_core::library::{FenceGen, FenceOpening};
+    let (wall, gate) = ("dz/structures/walls/wall_wood3_4.p3d", "dz/structures/walls/wall_gate_wood3.p3d");
+    if !std::path::Path::new("P:/").join(gate).exists() { return; }
+    let db = dz_core::model_info::ModelDb::new("P:/");
+    let (min, max) = db.visual_box(gate).unwrap();
+    let seen = max[0] - min[0];
+    assert!(seen < 1.2, "{seen}");
+    let mut w = dz_core::world::World::new(dz_core::world::WorldMeta::new("g", 64, 4.0), 10.0);
+    let g = FenceGen { model: wall.into(), openings: vec![FenceOpening { at: 50.0, model: gate.into(), ..Default::default() }], ..Default::default() };
+    let objects = dz_core::gen::fence_objects(&mut w, &db, &[[0.0, 100.0], [100.0, 100.0]], &g);
+    // The walls on each side of the wicket end where it starts.
+    let wall_path = dz_core::objects::ObjectStore::normalize_path(wall);
+    let half = db.get(&wall_path);
+    let mut gap = (f32::MIN, f32::MAX);
+    for o in objects.iter().filter(|o| dz_core::objects::ObjectStore::normalize_path(&w.objects.models[o.model as usize].path) == wall_path) {
+        let (a, b) = (o.x - (half.max[0] - half.min[0]) * 0.5, o.x + (half.max[0] - half.min[0]) * 0.5);
+        if b <= 50.5 { gap.0 = gap.0.max(b); }
+        if a >= 49.5 { gap.1 = gap.1.min(a); }
+    }
+    let width = gap.1 - gap.0;
+    assert!(width < seen + 0.4, "the gap is {width} m for a wicket of {seen} m");
+}

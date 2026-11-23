@@ -1910,7 +1910,15 @@ pub fn fence_objects(w: &mut World, db: &crate::model_info::ModelDb, points: &[[
     // `ends`: its thickness where it starts and where it ends along the line.
     struct Piece { model: u32, length: f32, /* across the line */ depth: f32, ends: [f32; 2], along_x: bool, shift: f32, across: f32, weight: f32, skews: bool }
     let piece_along = |w: &mut World, path: &str, weight: f32, axis: Option<bool>| {
-        let info = db.get(&crate::objects::ObjectStore::normalize_path(path));
+        let key = crate::objects::ObjectStore::normalize_path(path);
+        let mut info = db.get(&key);
+        // A gate or wicket fills its gap with what can be seen of it: the box of its file holds
+        // the whole swing of the leaf, which would leave a hole on each side.
+        if axis.is_some() && info.known {
+            if let Some((min, max)) = db.visual_box(&key) {
+                (info.min, info.max) = (min, max);
+            }
+        }
         let (lx, lz) = if info.known { (info.max[0] - info.min[0], info.max[2] - info.min[2]) } else { (0.0, 4.0) };
         let along_x = axis.unwrap_or(lx > lz);
         // Where the model's own middle sits relative to its origin, along its length.
