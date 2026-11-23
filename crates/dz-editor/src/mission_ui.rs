@@ -1542,7 +1542,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     if app.mission.own_window {
         // A window of the system, which may stand anywhere, on another screen too.
         let id = egui::ViewportId::from_hash_of("dzwe_mission");
-        let builder = egui::ViewportBuilder::default().with_title(format!("DZ World Editor – {}", t("Mission editor"))).with_inner_size([1120.0, 760.0]).with_min_inner_size([520.0, 320.0]);
+        let builder = egui::ViewportBuilder::default().with_title(format!("DZ World Editor – {}", t("Mission editor"))).with_inner_size([1120.0, 760.0]).with_min_inner_size([520.0, 320.0]).with_icon(crate::icons::window_icon());
         ctx.show_viewport_immediate(id, builder, |ctx, _class| {
             if ctx.input(|i| i.viewport().close_requested()) {
                 app.mission.open = false;

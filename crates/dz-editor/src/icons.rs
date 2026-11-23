@@ -37,6 +37,19 @@ pub fn with(icon: &str, text: &str) -> String {
     format!("{icon}  {text}")
 }
 
+/// The program's icon for its windows, so the taskbar and Alt+Tab show it and not the default
+/// one of the window library; the icon of the .exe file does not reach the windows by itself.
+pub fn window_icon() -> std::sync::Arc<eframe::egui::IconData> {
+    static ICON: std::sync::OnceLock<std::sync::Arc<eframe::egui::IconData>> = std::sync::OnceLock::new();
+    ICON.get_or_init(|| {
+        let img = app_icon_png(256).and_then(|png| image::load_from_memory(png).ok()).map(|i| i.into_rgba8());
+        std::sync::Arc::new(match img {
+            Some(i) => eframe::egui::IconData { width: i.width(), height: i.height(), rgba: i.into_raw() },
+            None => eframe::egui::IconData::default(),
+        })
+    }).clone()
+}
+
 /// The picture of the program's icon at least `size` pixels wide, from the icon file built into
 /// the program (every picture in it is a PNG).
 pub fn app_icon_png(size: u32) -> Option<&'static [u8]> {

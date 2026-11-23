@@ -113,7 +113,7 @@ pub(crate) fn detached_placeholder(app: &mut App, ui: &mut egui::Ui) {
 /// The view in a window of its own, sized and placed at will.
 fn detached_view(app: &mut App, ctx: &egui::Context) {
     let id = egui::ViewportId::from_hash_of("dzwe_view");
-    let builder = egui::ViewportBuilder::default().with_title(format!("DZ World Editor – {}", t("View"))).with_inner_size([1280.0, 800.0]).with_min_inner_size([320.0, 240.0]);
+    let builder = egui::ViewportBuilder::default().with_title(format!("DZ World Editor – {}", t("View"))).with_inner_size([1280.0, 800.0]).with_min_inner_size([320.0, 240.0]).with_icon(crate::icons::window_icon());
     ctx.show_viewport_immediate(id, builder, |ctx, _class| {
         if ctx.input(|i| i.viewport().close_requested()) {
             app.detached = false;
