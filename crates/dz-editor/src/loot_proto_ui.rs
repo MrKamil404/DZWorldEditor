@@ -39,9 +39,15 @@ const IDENTITY_INSTANCE: [f32; 16] = [
     1.0, 1.0, 1.0, 0.0,
 ];
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GizmoHandle {
+    Axis(usize),
+    Range,
+}
+
 #[derive(Clone, Copy)]
 struct GizmoDrag {
-    axis: usize,
+    handle: GizmoHandle,
     origin_world: [f32; 3],
     start_t: f32,
 }
@@ -411,23 +417,45 @@ fn gizmo_length(eye: [f32; 3], origin: [f32; 3]) -> f32 {
     (dot(d, d).sqrt() * 0.14).clamp(0.25, 2.0)
 }
 
-fn gizmo_hit(v: &View, origin: [f32; 3], ptr: Pos2) -> Option<usize> {
+fn gizmo_hit(v: &View, origin: [f32; 3], range: f32, ptr: Pos2) -> Option<GizmoHandle> {
     let len = gizmo_length(v.eye, origin);
     let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-    let mut best: Option<(f32, usize)> = None;
+    let mut best: Option<(f32, GizmoHandle)> = None;
     for (i, dir) in axes.iter().enumerate() {
         let end = add(origin, mul(*dir, len));
         if let Some((a, b)) = v.segment(origin, end) {
             let d = dist_to_segment(ptr, a, b);
             if d <= 10.0 && best.is_none_or(|cur| d < cur.0) {
-                best = Some((d, i));
+                best = Some((d, GizmoHandle::Axis(i)));
             }
         }
     }
-    best.map(|(_, i)| i)
+    if best.is_some() {
+        return best.map(|(_, h)| h);
+    }
+    // Check the horizontal range circle (and its 4 cardinal grip handles) around the selected point.
+    if range > 0.01 {
+        let mut prev = [origin[0] + range, origin[1], origin[2]];
+        let mut best_r: Option<f32> = None;
+        for k in 1..=20 {
+            let a = k as f32 * std::f32::consts::TAU / 20.0;
+            let cur = [origin[0] + range * a.cos(), origin[1], origin[2] + range * a.sin()];
+            if let Some((p0, p1)) = v.segment(prev, cur) {
+                let d = dist_to_segment(ptr, p0, p1);
+                if d <= 9.0 && best_r.is_none_or(|cur_d| d < cur_d) {
+                    best_r = Some(d);
+                }
+            }
+            prev = cur;
+        }
+        if best_r.is_some() {
+            return Some(GizmoHandle::Range);
+        }
+    }
+    None
 }
 
-fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], active_axis: Option<usize>) {
+fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], range: f32, active: Option<GizmoHandle>) {
     let len = gizmo_length(v.eye, origin);
     let axes = [
         ([1.0, 0.0, 0.0], Color32::from_rgb(235, 75, 75), "X"),
@@ -435,7 +463,7 @@ fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], active_axis: 
         ([0.0, 0.0, 1.0], Color32::from_rgb(80, 145, 245), "Z"),
     ];
     for (i, (dir, base_col, label)) in axes.iter().enumerate() {
-        let lit = active_axis == Some(i);
+        let lit = active == Some(GizmoHandle::Axis(i));
         let col = if lit { Color32::from_rgb(255, 240, 80) } else { *base_col };
         let end = add(origin, mul(*dir, len));
         if let Some((a, b)) = v.segment(origin, end) {
@@ -448,6 +476,30 @@ fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], active_axis: 
                 let head = vec![b + u * 3.0, b - u * 8.0 + n * 4.5, b - u * 8.0 - n * 4.5];
                 painter.add(egui::Shape::convex_polygon(head, col, Stroke::NONE));
                 painter.text(b + u * 11.0, egui::Align2::CENTER_CENTER, *label, egui::FontId::proportional(11.0), col);
+            }
+        }
+    }
+
+    // Range ring resize handles on the selected point (always drawn on the selected point).
+    if range > 0.01 {
+        let lit = active == Some(GizmoHandle::Range);
+        let ring_col = if lit { Color32::from_rgb(120, 245, 255) } else { Color32::from_rgb(255, 240, 80) };
+        if lit {
+            let mut prev = [origin[0] + range, origin[1], origin[2]];
+            for k in 1..=24 {
+                let a = k as f32 * std::f32::consts::TAU / 24.0;
+                let cur = [origin[0] + range * a.cos(), origin[1], origin[2] + range * a.sin()];
+                if let Some((p0, p1)) = v.segment(prev, cur) {
+                    painter.line_segment([p0, p1], Stroke::new(3.0_f32, ring_col));
+                }
+                prev = cur;
+            }
+        }
+        let grip_r = if lit { 5.0_f32 } else { 3.8_f32 };
+        for offset in [[range, 0.0, 0.0], [-range, 0.0, 0.0], [0.0, 0.0, range], [0.0, 0.0, -range]] {
+            if let Some(p) = v.project(add(origin, offset)) {
+                painter.circle_filled(p, grip_r, ring_col);
+                painter.circle_stroke(p, grip_r, Stroke::new(1.0_f32, Color32::BLACK));
             }
         }
     }
@@ -574,30 +626,33 @@ fn draw_preview_panel(
 
             let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
 
-            // ---------------- Gizmo interaction (LPM drag on X/Y/Z axis) ----------------
-            let selected_world = st.selected_point
+            // ---------------- Gizmo interaction (LPM drag on X/Y/Z axis or Range ring) ----------------
+            let selected_info = st.selected_point
                 .and_then(|pi| st.group.containers.get(st.selected_container)?.points.get(pi))
-                .map(|pt| st.proto_to_world(pt.pos));
+                .map(|pt| (st.proto_to_world(pt.pos), pt.range));
 
             let hover_pos = resp.hover_pos();
-            let hover_axis = match (&st.gizmo_drag, selected_world, hover_pos) {
-                (Some(drag), _, _) => Some(drag.axis),
-                (None, Some(origin), Some(ptr)) => gizmo_hit(&v, origin, ptr),
+            let hover_handle = match (&st.gizmo_drag, selected_info, hover_pos) {
+                (Some(drag), _, _) => Some(drag.handle),
+                (None, Some((origin, range)), Some(ptr)) => gizmo_hit(&v, origin, range, ptr),
                 _ => None,
             };
 
             if resp.drag_started_by(PointerButton::Primary) {
-                if let (Some(origin), Some(ptr)) = (selected_world, resp.interact_pointer_pos()) {
-                    if let Some(axis) = gizmo_hit(&v, origin, ptr) {
-                        let mut dir = [0.0f32; 3];
-                        dir[axis] = 1.0;
-                        let (ro, rd) = v.ray(ptr);
-                        if let Some(t) = axis_param(origin, dir, ro, rd) {
-                            st.gizmo_drag = Some(GizmoDrag {
-                                axis,
-                                origin_world: origin,
-                                start_t: t,
-                            });
+                if let (Some((origin, range)), Some(ptr)) = (selected_info, resp.interact_pointer_pos()) {
+                    if let Some(handle) = gizmo_hit(&v, origin, range, ptr) {
+                        match handle {
+                            GizmoHandle::Axis(axis) => {
+                                let mut dir = [0.0f32; 3];
+                                dir[axis] = 1.0;
+                                let (ro, rd) = v.ray(ptr);
+                                if let Some(t) = axis_param(origin, dir, ro, rd) {
+                                    st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: t });
+                                }
+                            }
+                            GizmoHandle::Range => {
+                                st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: 0.0 });
+                            }
                         }
                     }
                 }
@@ -605,17 +660,36 @@ fn draw_preview_panel(
             if let Some(drag) = st.gizmo_drag {
                 if resp.dragged_by(PointerButton::Primary) {
                     if let Some(ptr) = resp.interact_pointer_pos() {
-                        let mut dir = [0.0f32; 3];
-                        dir[drag.axis] = 1.0;
                         let (ro, rd) = v.ray(ptr);
-                        if let Some(t) = axis_param(drag.origin_world, dir, ro, rd) {
-                            let mut w = drag.origin_world;
-                            w[drag.axis] += t - drag.start_t;
-                            let new_proto = st.world_to_proto(w);
-                            if let Some(pi) = st.selected_point {
-                                if let Some(pt) = st.group.containers.get_mut(st.selected_container).and_then(|c| c.points.get_mut(pi)) {
-                                    pt.pos = new_proto;
-                                    st.dirty = true;
+                        match drag.handle {
+                            GizmoHandle::Axis(axis) => {
+                                let mut dir = [0.0f32; 3];
+                                dir[axis] = 1.0;
+                                if let Some(t) = axis_param(drag.origin_world, dir, ro, rd) {
+                                    let mut w = drag.origin_world;
+                                    w[axis] += t - drag.start_t;
+                                    let new_proto = st.world_to_proto(w);
+                                    if let Some(pi) = st.selected_point {
+                                        if let Some(pt) = st.group.containers.get_mut(st.selected_container).and_then(|c| c.points.get_mut(pi)) {
+                                            pt.pos = new_proto;
+                                            st.dirty = true;
+                                        }
+                                    }
+                                }
+                            }
+                            GizmoHandle::Range => {
+                                if rd[1].abs() > 1e-4 {
+                                    let t = (drag.origin_world[1] - ro[1]) / rd[1];
+                                    if t > 0.01 {
+                                        let hit = add(ro, mul(rd, t));
+                                        let r = (hit[0] - drag.origin_world[0]).hypot(hit[2] - drag.origin_world[2]).clamp(0.05, 5.0);
+                                        if let Some(pi) = st.selected_point {
+                                            if let Some(pt) = st.group.containers.get_mut(st.selected_container).and_then(|c| c.points.get_mut(pi)) {
+                                                pt.range = r;
+                                                st.dirty = true;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -689,16 +763,27 @@ fn draw_preview_panel(
                 }
             }
 
-            // Draw 3D XYZ translation gizmo on the currently selected point
+            // Draw 3D XYZ translation + range gizmo on the currently selected point
             if let Some(pi) = st.selected_point {
                 if let Some(pt) = st.group.containers.get(st.selected_container).and_then(|c| c.points.get(pi)) {
-                    draw_gizmo(&painter, &v, st.proto_to_world(pt.pos), hover_axis);
+                    draw_gizmo(&painter, &v, st.proto_to_world(pt.pos), pt.range, hover_handle);
+                    if st.gizmo_drag.is_some_and(|d| d.handle == GizmoHandle::Range) {
+                        if let Some(ptr) = hover_pos {
+                            painter.text(
+                                ptr + Vec2::new(14.0, -14.0),
+                                egui::Align2::LEFT_BOTTOM,
+                                format!("r = {:.2} m", pt.range),
+                                egui::FontId::proportional(12.0),
+                                Color32::from_rgb(120, 245, 255),
+                            );
+                        }
+                    }
                 }
             }
 
             // Live 3D surface placement preview cursor when `Click 3D to add` is on
             let mut hover_hit: Option<[f32; 3]> = None;
-            if st.add_mode && st.gizmo_drag.is_none() && hover_axis.is_none() {
+            if st.add_mode && st.gizmo_drag.is_none() && hover_handle.is_none() {
                 if let Some(ptr) = hover_pos {
                     let (ro, rd) = v.ray(ptr);
                     hover_hit = pick_scene_surface(ro, rd, st.clip_param(), building_pick, proxy_list, proxy_picks);
@@ -721,8 +806,8 @@ fn draw_preview_panel(
                 }
             }
 
-            // LPM click (when not grabbing a gizmo axis): add point on building/proxy surface or select nearest point
-            if resp.clicked_by(PointerButton::Primary) && st.gizmo_drag.is_none() && hover_axis.is_none() {
+            // LPM click (when not grabbing a gizmo handle): add point on building/proxy surface or select nearest point
+            if resp.clicked_by(PointerButton::Primary) && st.gizmo_drag.is_none() && hover_handle.is_none() {
                 if let Some(ptr) = resp.interact_pointer_pos() {
                     if st.add_mode {
                         let hit = hover_hit.or_else(|| {
