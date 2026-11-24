@@ -6,8 +6,11 @@
 //!   optional `<value name="..." />`, and one or more `<container name="..." [lootmax="N"]>`.
 //! - Each `<container>` contains `<category name="..." />`, `<tag name="..." />`, and
 //!   `<point pos="x y z" range="r" height="h" [flags="32"] />`.
-//! - `pos` is in model space relative to the model's bounding-box centre (`ModelInfo::center`),
-//!   matching the centre position stored in WRP and `mapgrouppos.xml`.
+//! - `pos` is in DayZ Central Economy prototype space relative to the model's bounding-box centre
+//!   (`ModelInfo::center`), matching the centre position stored in WRP and `mapgrouppos.xml`.
+//!   Because `mapgrouppos.xml` stores `a = 90° - yaw` (polar angle from +X rather than P3D's +Z
+//!   forward), an unrotated building (`yaw = 0°`, `a = +90°`) transforms `<point pos="px py pz">`
+//!   into P3D model space as `world = [center.x - pz, center.y + py, center.z + px]`.
 //! - `flags="32"` marks an outdoor / ground spawn point; indoor points omit `flags`.
 use super::xml::{Element, Node};
 use super::{file_edit, Mission, MissionEdit};
@@ -35,6 +38,23 @@ impl Default for LootPoint {
     fn default() -> Self {
         Self { pos: [0.0, 0.0, 0.0], range: 0.45, height: 1.2, flags: 0 }
     }
+}
+
+/// Converts a `mapgroupproto.xml` `<point pos>` into P3D model space (where the building stands
+/// unrotated at `(0, 0, 0)` with bounding-box centre `center`).
+///
+/// DayZ CE uses `a = 90° - yaw` in `mapgrouppos.xml`, so at `yaw = 0°` (`a = +90°`):
+/// `x_model = center.x - pos.z`, `y_model = center.y + pos.y`, `z_model = center.z + pos.x`.
+#[inline]
+pub fn proto_to_model(pos: [f32; 3], center: [f32; 3]) -> [f32; 3] {
+    [center[0] - pos[2], center[1] + pos[1], center[2] + pos[0]]
+}
+
+/// Inverse of [`proto_to_model`]: converts a P3D model-space point into `mapgroupproto.xml`
+/// `<point pos>` coordinates relative to `center`.
+#[inline]
+pub fn model_to_proto(model_pos: [f32; 3], center: [f32; 3]) -> [f32; 3] {
+    [model_pos[2] - center[2], model_pos[1] - center[1], center[0] - model_pos[0]]
 }
 
 /// One `<container>` inside a `<group>` of `mapgroupproto.xml`.
@@ -272,5 +292,21 @@ mod tests {
         assert!(xml.contains(r#"pos="0.504883 -1.174019 0.807373""#), "{xml}");
         assert!(remove_group(&mut m, "Land_Shed_M1").is_some());
         assert!(!has_group(&m, "Land_Shed_M1"));
+    }
+
+    #[test]
+    fn proto_and_model_coordinates_match_dayz_90_deg_ce_frame() {
+        // Land_House_1W01 ODOL center and a vanilla lootFloor point.
+        let center = [-0.015395, 2.923916, -2.671502];
+        let pt = [2.564453, -2.848717, -0.080079];
+        let model = proto_to_model(pt, center);
+        // Should sit near (0.06, 0.075, -0.11) — right on the ground floor inside the house.
+        assert!((model[0] - 0.064684).abs() < 1e-4, "{model:?}");
+        assert!((model[1] - 0.075199).abs() < 1e-4, "{model:?}");
+        assert!((model[2] - (-0.107049)).abs() < 1e-4, "{model:?}");
+        let back = model_to_proto(model, center);
+        for i in 0..3 {
+            assert!((back[i] - pt[i]).abs() < 1e-5, "{back:?} vs {pt:?}");
+        }
     }
 }

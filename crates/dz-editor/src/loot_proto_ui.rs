@@ -42,7 +42,6 @@ const IDENTITY_INSTANCE: [f32; 16] = [
 struct GizmoDrag {
     axis: usize,
     origin_world: [f32; 3],
-    start_proto: [f32; 3],
     start_t: f32,
 }
 
@@ -224,11 +223,11 @@ impl LootProtoUi {
     }
 
     fn proto_to_world(&self, p: [f32; 3]) -> [f32; 3] {
-        [p[0] + self.center[0], p[1] + self.center[1], p[2] + self.center[2]]
+        proto::proto_to_model(p, self.center)
     }
 
     fn world_to_proto(&self, w: [f32; 3]) -> [f32; 3] {
-        [w[0] - self.center[0], w[1] - self.center[1], w[2] - self.center[2]]
+        proto::model_to_proto(w, self.center)
     }
 }
 
@@ -576,17 +575,17 @@ fn draw_preview_panel(
             // ---------------- Gizmo interaction (LPM drag on X/Y/Z axis) ----------------
             let selected_world = st.selected_point
                 .and_then(|pi| st.group.containers.get(st.selected_container)?.points.get(pi))
-                .map(|pt| (pt.pos, st.proto_to_world(pt.pos)));
+                .map(|pt| st.proto_to_world(pt.pos));
 
             let hover_pos = resp.hover_pos();
             let hover_axis = match (&st.gizmo_drag, selected_world, hover_pos) {
                 (Some(drag), _, _) => Some(drag.axis),
-                (None, Some((_, origin)), Some(ptr)) => gizmo_hit(&v, origin, ptr),
+                (None, Some(origin), Some(ptr)) => gizmo_hit(&v, origin, ptr),
                 _ => None,
             };
 
             if resp.drag_started_by(PointerButton::Primary) {
-                if let (Some((proto_pos, origin)), Some(ptr)) = (selected_world, resp.interact_pointer_pos()) {
+                if let (Some(origin), Some(ptr)) = (selected_world, resp.interact_pointer_pos()) {
                     if let Some(axis) = gizmo_hit(&v, origin, ptr) {
                         let mut dir = [0.0f32; 3];
                         dir[axis] = 1.0;
@@ -595,7 +594,6 @@ fn draw_preview_panel(
                             st.gizmo_drag = Some(GizmoDrag {
                                 axis,
                                 origin_world: origin,
-                                start_proto: proto_pos,
                                 start_t: t,
                             });
                         }
@@ -609,10 +607,12 @@ fn draw_preview_panel(
                         dir[drag.axis] = 1.0;
                         let (ro, rd) = v.ray(ptr);
                         if let Some(t) = axis_param(drag.origin_world, dir, ro, rd) {
+                            let mut w = drag.origin_world;
+                            w[drag.axis] += t - drag.start_t;
+                            let new_proto = st.world_to_proto(w);
                             if let Some(pi) = st.selected_point {
                                 if let Some(pt) = st.group.containers.get_mut(st.selected_container).and_then(|c| c.points.get_mut(pi)) {
-                                    pt.pos = drag.start_proto;
-                                    pt.pos[drag.axis] += t - drag.start_t;
+                                    pt.pos = new_proto;
                                     st.dirty = true;
                                 }
                             }
