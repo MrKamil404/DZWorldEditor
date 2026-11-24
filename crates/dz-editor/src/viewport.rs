@@ -2308,16 +2308,18 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
     }
     // Several things dragged out of the content browser at once.
     if let Some(p) = crate::theme::take::<crate::asset_browser::Dragged>(&resp) {
-        if let Some(h) = hit {
-            crate::asset_browser::drop_many(app, &p.0, h[0], h[2]);
+        let (target, surface_y) = place_target(app, v, mouse, hit);
+        if let Some(h) = target {
+            crate::asset_browser::drop_many(app, &p.0, h[0], h[2], surface_y);
         }
         return;
     }
     // Models dropped from the content browser.
     if let Some(p) = crate::theme::take::<String>(&resp) {
-        if let Some(h) = hit {
+        let (target, surface_y) = place_target(app, v, mouse, hit);
+        if let Some(h) = target {
             let m = (*p).clone();
-            place_model(app, &m, h[0], h[2]);
+            place_model_at(app, &m, h[0], h[2], surface_y);
         }
         return;
     }
@@ -2440,14 +2442,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         }
         Mode::Place => {
             if resp.clicked() && !modifiers.alt {
-                let surface = if !v.ortho && app.place.snap_surface {
-                    let (ro, rd) = v.ray(mouse);
-                    let max_t = hit.map(|p| dot(sub(p, ro), rd)).unwrap_or(2000.0).min(2000.0);
-                    raycast_objects(app, ro, rd, max_t, &std::collections::BTreeSet::new()).map(|(_, p)| p)
-                } else {
-                    None
-                };
-                let target = surface.or(hit);
+                let (target, surface_y) = place_target(app, v, mouse, hit);
                 if let (Some(id), Some(h)) = (app.place.prefab, target) {
                     app.place_prefab(id, h[0], h[2]);
                     return;
@@ -2460,7 +2455,7 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                 let pick = pool_model(app, app.place_counter.wrapping_mul(2654435761));
                 match (pick, target) {
                     (Some(m), Some(h)) => {
-                        place_model_at(app, &m, h[0], h[2], surface.map(|p| p[1]));
+                        place_model_at(app, &m, h[0], h[2], surface_y);
                     }
                     (None, _) => app.warn(t("Choose a model in the Content Browser first")),
                     _ => {}
@@ -4085,32 +4080,88 @@ pub fn surface_relief_ui(ui: &mut egui::Ui, s: &mut crate::settings::Settings) {
     ui.add(crate::theme::ValueField::new(&mut s.surface_blend, 0.0..=1.0).text(t("Surface blend by relief"))).on_hover_text(t("Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper."));
 }
 
-/// Model id namespace for Place-one 3D ghost previews of models not yet placed on the map.
+/// Model id namespace for Place-one and drag-and-drop 3D ghost previews of models not yet placed on the map.
 const PLACE_PREVIEW_BASE: u32 = 0x8800_0000;
 
-/// Appends a 3D ghost preview of the object (or prefab) about to be placed in `Mode::Place`
-/// (`Place one` mode), resting on the terrain or on top of another object when `snap_surface` is on.
-fn append_place_preview(app: &mut App, v: &View, resp: &egui::Response, hover: Option<V3>, objects: &mut ObjectDraw) {
-    if app.mode != Mode::Place || app.place.brush || !resp.hovered() {
-        return;
-    }
-    let Some(mouse) = resp.hover_pos() else { return };
+/// Resolves the placement point under `mouse`: on top of another object when `snap_surface` is on
+/// in 3D view, otherwise on the terrain.
+fn place_target(app: &App, v: &View, mouse: Pos2, terrain_hit: Option<V3>) -> (Option<V3>, Option<f32>) {
     let surface = if !v.ortho && app.place.snap_surface {
         let (ro, rd) = v.ray(mouse);
-        let max_t = hover.map(|p| dot(sub(p, ro), rd)).unwrap_or(2000.0).min(2000.0);
+        let max_t = terrain_hit.map(|p| dot(sub(p, ro), rd)).unwrap_or(2000.0).min(2000.0);
         raycast_objects(app, ro, rd, max_t, &std::collections::BTreeSet::new()).map(|(_, p)| p)
     } else {
         None
     };
-    let Some(target) = surface.or(hover) else { return };
+    (surface.or(terrain_hit), surface.map(|p| p[1]))
+}
 
-    // Collect (model_path, offset_x, offset_z, yaw, pitch, roll, scale, surface_y) items to ghost.
+/// Appends a 3D ghost preview of the object (or prefab) about to be placed either in `Mode::Place`
+/// (`Place one` mode) or while dragging models/presets/prefabs out of the Content Browser,
+/// resting on the terrain or on top of another object when `snap_surface` is on.
+fn append_place_preview(app: &mut App, ctx: &egui::Context, v: &View, resp: &egui::Response, hover: Option<V3>, objects: &mut ObjectDraw) {
+    let dragging = egui::DragAndDrop::has_any_payload(ctx) && resp.contains_pointer();
+    let place_one = app.mode == Mode::Place && !app.place.brush && resp.hovered();
+    if !dragging && !place_one {
+        return;
+    }
+    let mouse = if dragging { ctx.pointer_latest_pos() } else { resp.hover_pos() };
+    let Some(mouse) = mouse else { return };
+    let terrain_hit = if dragging {
+        let Some(d) = app.doc.as_ref() else { return };
+        let (ro, rd) = v.ray(mouse);
+        pick_terrain(&d.world.height, ro, rd, v.ortho)
+    } else {
+        hover
+    };
+    let (target, surface_y) = place_target(app, v, mouse, terrain_hit);
+    let Some(target) = target else { return };
+
+    // Collect (model_path, world_x, world_z, yaw, pitch, roll, scale, surface_y) items to ghost.
     let mut items: Vec<(String, f32, f32, f32, f32, f32, f32, Option<f32>)> = Vec::new();
     let seed = app.place_counter.wrapping_add(1).wrapping_mul(2654435761);
-    if let Some(pid) = app.place.prefab {
+    let mut from_prefab = false;
+
+    if dragging {
+        use crate::asset_browser::Pick;
+        let picks = crate::asset_browser::dragged_picks(ctx);
+        let mut models: Vec<(String, f32, bool, f32)> = Vec::new();
+        for p in &picks {
+            match p {
+                Pick::Model(m) => {
+                    let s = (app.place.scale_min + app.place.scale_max) * 0.5;
+                    models.push((m.clone(), app.place.scale_max, app.place.random_yaw, s));
+                }
+                Pick::Preset(id) => {
+                    if let Some(pr) = app.library.objects.iter().find(|x| x.id == *id) {
+                        if let Some((m, _)) = pr.items.first() {
+                            models.push((m.clone(), pr.scale_max, pr.random_yaw, (pr.scale_min + pr.scale_max) * 0.5));
+                        }
+                    }
+                }
+                Pick::Prefab(id) => {
+                    if let Some(pf) = app.library.prefabs.iter().find(|x| x.id == *id) {
+                        from_prefab = true;
+                        for it in &pf.items {
+                            items.push((it.model.clone(), target[0] + it.x, target[2] + it.z, it.yaw, it.pitch, it.roll, it.scale, surface_y.map(|sy| sy + it.elevation)));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !models.is_empty() {
+            let layout = crate::asset_browser::drop_layout(app, &models.iter().map(|(m, smax, _, _)| (m.clone(), *smax)).collect::<Vec<_>>());
+            for ((m, _, rand_yaw, scale), (_, dx, dz)) in models.into_iter().zip(layout) {
+                let yaw = if rand_yaw { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
+                items.push((m, target[0] + dx, target[2] + dz, yaw, 0.0, 0.0, scale, surface_y));
+            }
+        }
+    } else if let Some(pid) = app.place.prefab {
         if let Some(pf) = app.library.prefabs.iter().find(|p| p.id == pid) {
+            from_prefab = true;
             for it in &pf.items {
-                items.push((it.model.clone(), target[0] + it.x, target[2] + it.z, it.yaw, it.pitch, it.roll, it.scale, surface.map(|p| p[1] + it.elevation)));
+                items.push((it.model.clone(), target[0] + it.x, target[2] + it.z, it.yaw, it.pitch, it.roll, it.scale, surface_y.map(|sy| sy + it.elevation)));
             }
         }
     } else if let Some(pid) = app.place.preset {
@@ -4118,7 +4169,7 @@ fn append_place_preview(app: &mut App, v: &View, resp: &egui::Response, hover: O
             if let Some((m, _)) = pr.items.first() {
                 let yaw = if pr.random_yaw { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
                 let scale = (pr.scale_min + pr.scale_max) * 0.5;
-                items.push((m.clone(), target[0], target[2], yaw, 0.0, 0.0, scale, surface.map(|p| p[1])));
+                items.push((m.clone(), target[0], target[2], yaw, 0.0, 0.0, scale, surface_y));
             }
         }
     } else if let Some(m) = pool_model(app, seed) {
@@ -4128,7 +4179,7 @@ fn append_place_preview(app: &mut App, v: &View, resp: &egui::Response, hover: O
             yaw = ((yaw / step).round() * step).rem_euclid(360.0);
         }
         let scale = (app.place.scale_min + app.place.scale_max) * 0.5;
-        items.push((m, target[0], target[2], yaw, 0.0, 0.0, scale, surface.map(|p| p[1])));
+        items.push((m, target[0], target[2], yaw, 0.0, 0.0, scale, surface_y));
     }
     if items.is_empty() {
         return;
@@ -4146,7 +4197,7 @@ fn append_place_preview(app: &mut App, v: &View, resp: &egui::Response, hover: O
 
     for (model, x, z, yaw, mut pitch, mut roll, scale, sy) in items {
         let info = app.db.get(&model);
-        if sy.is_none() && app.place.align && app.place.prefab.is_none() && !info.placement.skews() {
+        if sy.is_none() && app.place.align && !from_prefab && !info.placement.skews() {
             (pitch, roll) = gen::slope_angles(&world.height, x, z, yaw);
         }
         let base_elev = if info.contact_count > 0 {
@@ -4252,7 +4303,7 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         }
     }
     let mut objects = prepare_objects(app, &v, top);
-    append_place_preview(app, &v, &resp, hover, &mut objects);
+    append_place_preview(app, &ctx, &v, &resp, hover, &mut objects);
     let Some(doc) = &app.doc else { return };
     let quality = app.settings.terrain_quality;
     let patches = doc.lod.select(&v, quality);
@@ -4299,7 +4350,8 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         let at = ctx.pointer_latest_pos().filter(|_| over).and_then(|m| {
             let d = app.doc.as_ref()?;
             let (o, dir) = v.ray(m);
-            pick_terrain(&d.world.height, o, dir, v.ortho)
+            let ground = pick_terrain(&d.world.height, o, dir, v.ortho);
+            place_target(app, &v, m, ground).0
         });
         if let Some(at) = at {
             crate::asset_browser::drop_preview(app, &painter, &v, at);
