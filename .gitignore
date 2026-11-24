@@ -3,4 +3,6 @@
 *.pdb
 .claude/
 CLAUDE.md
+.agents/
+GEMINI.md
 todo/
