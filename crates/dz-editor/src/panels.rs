@@ -558,6 +558,11 @@ pub(crate) fn toolbar_contents(app: &mut App, ui: &mut egui::Ui) {
             if snap_pill(ui, ground, icons::ALIGN_BOTTOM, tip.clone(), |ui| {
                 if ui.add(egui::Label::new(RichText::new(t("Ground")).color(if ground { theme::TEXT } else { theme::TEXT_DIM })).sense(egui::Sense::click())).on_hover_text(tip).clicked() { app.settings.align_to_ground = !ground; changed = true; }
             }) { app.settings.align_to_ground = !ground; changed = true; }
+            let surface = app.place.snap_surface;
+            let tip = format!("{}\n{}", keys.tip(Action::TogglePlaceOnSurface), t("Clicks in the 3D view place the object on the roof, floor or deck under the cursor instead of on the terrain."));
+            if snap_pill(ui, surface, icons::STACK, tip.clone(), |ui| {
+                if ui.add(egui::Label::new(RichText::new(t("Surface")).color(if surface { theme::TEXT } else { theme::TEXT_DIM })).sense(egui::Sense::click())).on_hover_text(tip).clicked() { app.place.snap_surface = !surface; }
+            }) { app.place.snap_surface = !surface; }
             if changed { app.settings.save(); }
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -1331,8 +1336,13 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
             if button(ui, app.place.brush, G::PlacePaint, format!("{}\n{}", t("Paints"), t("Hold the button to paint objects."))).clicked() { app.place.brush = true; }
         });
         if !app.place.brush {
+            let snap_key = app.settings.keys.text(Action::TogglePlaceOnSurface);
+            let mut tip = t("Clicks in the 3D view place the object on the roof, floor or deck under the cursor instead of on the terrain.");
+            if !snap_key.is_empty() {
+                tip.push_str(&format!(" ({snap_key})"));
+            }
             theme::check_row(ui, &mut app.place.snap_surface, t("Place on top of objects"))
-                .on_hover_text(t("Clicks in the 3D view place the object on the roof, floor or deck under the cursor instead of on the terrain."));
+                .on_hover_text(tip);
         }
         if app.place.brush {
             slider(ui, &t("Radius"), &mut app.place.brush_radius, 1.0..=300.0, true);

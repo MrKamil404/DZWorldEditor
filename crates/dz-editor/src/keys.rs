@@ -156,6 +156,8 @@ pub enum Action {
     JoinNeighbour,
     /// Drops the selected objects onto the highest object surface or terrain underneath.
     DropOnSurface,
+    /// Toggles placing objects on top of other objects instead of only on the terrain.
+    TogglePlaceOnSurface,
     /// Temporarily hides the selected objects in the view.
     HideSelected,
     /// Shows all temporarily hidden objects again.
@@ -165,11 +167,11 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 63] = [
+    pub const ALL: [Action; 64] = [
         Action::NewProject, Action::Open, Action::Save, Action::SaveAs, Action::Undo, Action::Redo, Action::Settings, Action::Shortcuts, Action::Build, Action::Play,
         Action::SelectAll, Action::Deselect, Action::Duplicate, Action::CopyAhead, Action::CopyBehind, Action::JoinNeighbour, Action::DropOnSurface, Action::HideSelected, Action::ShowHidden, Action::IsolateSelection, Action::PasteHere, Action::PasteLast, Action::Delete, Action::Focus, Action::GoTo, Action::Underground,
         Action::ModeSelect, Action::ModeSculpt, Action::ModePaint, Action::ModePlace, Action::ModeRoads, Action::ModeShapes, Action::ModeKeyPoints, Action::ModeSatellite, Action::ModeMission,
-        Action::GizmoMove, Action::GizmoRotate, Action::GizmoScale, Action::GizmoCopy, Action::GizmoSpace,
+        Action::GizmoMove, Action::GizmoRotate, Action::GizmoScale, Action::GizmoCopy, Action::GizmoSpace, Action::TogglePlaceOnSurface,
         Action::View3d, Action::View2d, Action::ViewSplit, Action::CameraBelow, Action::ToggleGrass, Action::ToggleObjects, Action::ToggleShapes,
         Action::BrushSmaller, Action::BrushBigger, Action::BrushWeaker, Action::BrushStronger, Action::SearchAssets, Action::ToggleHints,
         Action::RoadPieceAdd, Action::RoadPiecePrev, Action::RoadPieceNext, Action::RoadPieceSide,
@@ -217,6 +219,7 @@ impl Action {
             Action::GizmoScale => "Scale",
             Action::GizmoCopy => "Copy in a row",
             Action::GizmoSpace => "World or local axes",
+            Action::TogglePlaceOnSurface => "Place on top of objects",
             Action::View3d => "3D view",
             Action::View2d => "2D view",
             Action::ViewSplit => "3D and 2D side by side",
@@ -247,7 +250,7 @@ impl Action {
         match self {
             NewProject | Open | Save | SaveAs | Undo | Redo | Settings | Shortcuts | Build | Play => "General",
             SelectAll | Deselect | Duplicate | CopyAhead | CopyBehind | JoinNeighbour | DropOnSurface | HideSelected | ShowHidden | IsolateSelection | PasteHere | PasteLast | Delete | Focus | Underground => "Selection",
-            ModeSelect | ModeSculpt | ModePaint | ModePlace | ModeRoads | ModeShapes | ModeKeyPoints | ModeSatellite | ModeMission | GizmoMove | GizmoRotate | GizmoScale | GizmoCopy | GizmoSpace => "Tools",
+            ModeSelect | ModeSculpt | ModePaint | ModePlace | ModeRoads | ModeShapes | ModeKeyPoints | ModeSatellite | ModeMission | GizmoMove | GizmoRotate | GizmoScale | GizmoCopy | GizmoSpace | TogglePlaceOnSurface => "Tools",
             GoTo | View3d | View2d | ViewSplit | CameraBelow | ToggleGrass | ToggleObjects | ToggleShapes | SearchAssets | ToggleHints => "View",
             RoadPieceAdd | RoadPiecePrev | RoadPieceNext | RoadPieceSide => "Roads piece by piece",
             BrushSmaller | BrushBigger | BrushWeaker | BrushStronger => "Brushes",
@@ -297,6 +300,7 @@ impl Action {
             GizmoScale => Shortcut::new(Key::R),
             GizmoCopy => Shortcut::new(Key::T),
             GizmoSpace => Shortcut::new(Key::L),
+            TogglePlaceOnSurface => Shortcut::shift(Key::End),
             View3d => Shortcut::ctrl(Key::Num1),
             View2d => Shortcut::ctrl(Key::Num2),
             ViewSplit => Shortcut::ctrl(Key::Num3),

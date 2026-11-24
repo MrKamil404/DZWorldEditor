@@ -1501,8 +1501,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     }
                                     if !dropped.is_empty() { acts.push(Act::IntoPreset(*id, dropped)); }
                                 }
-                                if resp.clicked() { acts.push(Act::Click(pick.clone(), ui.input(|i| i.modifiers))); }
                                 if resp.double_clicked() { acts.push(Act::Open(pick.clone())); }
+                                else if resp.clicked() { acts.push(Act::Click(pick.clone(), ui.input(|i| i.modifiers))); }
                                 if resp.secondary_clicked() && !selected { acts.push(Act::Click(pick.clone(), egui::Modifiers::NONE)); }
                                 // Dragging a selected tile takes the whole selection along.
                                 let group: Vec<Pick> = if selected && app.browser.selected.len() > 1 { app.browser.selected.clone() } else { vec![pick.clone()] };
@@ -1644,6 +1644,7 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
             }
             Act::Click(pick, m) => {
                 let b = &mut app.browser;
+                let mut deselected = false;
                 if m.shift {
                     let from = b.anchor.as_ref().and_then(|a| picks.iter().position(|p| p == a)).unwrap_or(0);
                     let to = picks.iter().position(|p| *p == pick).unwrap_or(from);
@@ -1655,16 +1656,29 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                 } else if m.command {
                     if let Some(i) = b.selected.iter().position(|p| *p == pick) { b.selected.remove(i); } else { b.selected.push(pick.clone()); }
                     b.anchor = Some(pick.clone());
+                } else if b.selected.len() == 1 && b.selected[0] == pick {
+                    b.selected.clear();
+                    b.anchor = None;
+                    deselected = true;
                 } else {
                     b.selected = vec![pick.clone()];
                     b.anchor = Some(pick.clone());
                 }
                 b.preview_item = None;
-                activate(app, &pick, !m.shift && !m.command);
+                if deselected || b.selected.is_empty() {
+                    clear_place(app);
+                } else {
+                    let active = if b.selected.contains(&pick) { pick } else { b.selected.last().cloned().unwrap_or(pick) };
+                    activate(app, &active, !m.shift && !m.command);
+                }
             }
             Act::Open(pick) => open(app, &pick),
             Act::SelectAll => app.browser.selected = picks.to_vec(),
-            Act::Clear => app.browser.selected.clear(),
+            Act::Clear => {
+                app.browser.selected.clear();
+                app.browser.anchor = None;
+                clear_place(app);
+            }
             Act::Replace(models) => app.replace_selection(&models),
             Act::BakeSkip(models, skip) => crate::satellite::set_bake_skip(app, &models, skip),
             Act::Surface(models, s) => {
@@ -1962,6 +1976,14 @@ fn change_templates(app: &mut App, i: usize, models: &[String], add: bool) {
     }
     refresh_templates(app);
     app.info(if add { tf("{0} templates added to {1}", &[&n.to_string(), &name]) } else { tf("{0} templates taken out of {1}", &[&n.to_string(), &name]) });
+}
+
+/// Clears the active item to place when the browser selection is emptied.
+fn clear_place(app: &mut App) {
+    app.place.model = None;
+    app.place.pool.clear();
+    app.place.preset = None;
+    app.place.prefab = None;
 }
 
 /// A plain click: what it stands for becomes the thing to place.

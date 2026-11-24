@@ -318,57 +318,74 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         .resizable(true)
         .vscroll(false)
         .show(ctx, |ui| {
-            let total = ui.available_size();
-            let total_h = total.y.max(360.0);
+            let avail = ui.available_rect_before_wrap();
+            let total_w = avail.width().max(1.0);
+            let total_h = avail.height().max(1.0);
             const SPLITTER_W: f32 = 6.0;
-            let max_left = (total.x - 320.0 - SPLITTER_W).clamp(260.0, 580.0);
+            let max_left = (total_w - 320.0 - SPLITTER_W).clamp(260.0, 580.0);
             let left_w = app.loot_proto.panel_width.clamp(260.0, max_left);
-            let right_w = (total.x - left_w - SPLITTER_W).max(260.0);
+            let right_w = (total_w - left_w - SPLITTER_W).max(200.0);
 
-            ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
+            // Reserve exactly the available area so neither column can ever cause a resize feedback loop.
+            let body_rect = egui::Rect::from_min_size(avail.min, Vec2::new(total_w, total_h));
+            ui.allocate_rect(body_rect, egui::Sense::hover());
 
-                // Left column: mapgroupproto.xml inspector
-                ui.allocate_ui_with_layout(Vec2::new(left_w, total_h), egui::Layout::top_down(egui::Align::Min), |ui| {
-                    ui.set_max_size(Vec2::new(left_w, total_h));
-                    draw_editor_panel(
-                        &mut app.loot_proto,
-                        ui,
-                        total_h,
-                        &limits,
-                        &mut save_requested,
-                        &mut remove_requested,
-                    );
-                });
+            let left_rect = egui::Rect::from_min_size(body_rect.min, Vec2::new(left_w, total_h));
+            let split_rect = egui::Rect::from_min_size(
+                Pos2::new(left_rect.right(), body_rect.top()),
+                Vec2::new(SPLITTER_W, total_h),
+            );
+            let right_rect = egui::Rect::from_min_size(
+                Pos2::new(split_rect.right(), body_rect.top()),
+                Vec2::new(right_w, total_h),
+            );
 
-                // Draggable vertical splitter bar
-                let (split_rect, split_resp) = ui.allocate_exact_size(Vec2::new(SPLITTER_W, total_h), egui::Sense::drag());
-                if split_resp.hovered() || split_resp.dragged() {
-                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                }
-                if split_resp.dragged() {
-                    app.loot_proto.panel_width = (app.loot_proto.panel_width + split_resp.drag_delta().x).clamp(260.0, max_left);
-                }
-                let bar_col = if split_resp.hovered() || split_resp.dragged() { theme::ACCENT } else { theme::BORDER };
-                ui.painter().rect_filled(split_rect.shrink2(Vec2::new(2.0, 0.0)), 0.0, bar_col);
+            // Left column: mapgroupproto.xml inspector
+            let mut left_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(left_rect)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            left_ui.set_clip_rect(left_rect.intersect(ui.clip_rect()));
+            draw_editor_panel(
+                &mut app.loot_proto,
+                &mut left_ui,
+                total_h,
+                &limits,
+                &mut save_requested,
+                &mut remove_requested,
+            );
 
-                // Right column: 3D GPU preview
-                ui.allocate_ui_with_layout(Vec2::new(right_w, total_h), egui::Layout::top_down(egui::Align::Min), |ui| {
-                    ui.set_max_size(Vec2::new(right_w, total_h));
-                    draw_preview_panel(
-                        &mut app.loot_proto,
-                        ui,
-                        total_h,
-                        &renderer,
-                        instances,
-                        model_ready,
-                        building_pick.as_deref(),
-                        proxy_list.as_deref().map(Vec::as_slice),
-                        &proxy_picks,
-                        &keys,
-                    );
-                });
-            });
+            // Draggable vertical splitter bar
+            let split_resp = ui.interact(split_rect, ui.id().with("loot_proto_splitter"), egui::Sense::drag());
+            if split_resp.hovered() || split_resp.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            }
+            if split_resp.dragged() {
+                app.loot_proto.panel_width = (app.loot_proto.panel_width + split_resp.drag_delta().x).clamp(260.0, max_left);
+            }
+            let bar_col = if split_resp.hovered() || split_resp.dragged() { theme::ACCENT } else { theme::BORDER };
+            ui.painter().rect_filled(split_rect.shrink2(Vec2::new(2.0, 0.0)), 0.0, bar_col);
+
+            // Right column: 3D GPU preview
+            let mut right_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(right_rect)
+                    .layout(egui::Layout::top_down(egui::Align::Min)),
+            );
+            right_ui.set_clip_rect(right_rect.intersect(ui.clip_rect()));
+            draw_preview_panel(
+                &mut app.loot_proto,
+                &mut right_ui,
+                total_h,
+                &renderer,
+                instances,
+                model_ready,
+                building_pick.as_deref(),
+                proxy_list.as_deref().map(Vec::as_slice),
+                &proxy_picks,
+                &keys,
+            );
         });
 
     app.loot_proto.open = open;
@@ -607,8 +624,8 @@ fn draw_preview_panel(
 
     // 3D OpenGL viewport fills remaining height minus the 2-line footer (never overflows `total_h`).
     let used_top = (ui.cursor().top() - start_y).max(0.0);
-    let footer_h = 38.0;
-    let view_h = (total_h - used_top - footer_h).max(160.0);
+    let footer_h = 42.0;
+    let view_h = (total_h - used_top - footer_h).max(120.0);
     let view_w = (ui.available_width() - 6.0).max(200.0);
     let (rect, resp) = ui.horizontal(|ui| {
         ui.add_space(6.0);
@@ -941,10 +958,15 @@ fn draw_editor_panel(
     remove_requested: &mut bool,
 ) {
     let footer_h = 44.0;
-    let body_h = (total_h - footer_h).max(160.0);
+    let body_h = (total_h - footer_h).max(120.0);
+    let col_rect = ui.max_rect();
+    let body_rect = egui::Rect::from_min_size(col_rect.min, Vec2::new(col_rect.width(), body_h));
+    let footer_rect = egui::Rect::from_min_max(Pos2::new(col_rect.left(), body_rect.bottom()), col_rect.max);
 
     // Scrollable inspector body styled with theme.rs Details widgets
-    egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::ZERO).show(ui, |ui| {
+    let mut body_ui = ui.new_child(egui::UiBuilder::new().max_rect(body_rect).layout(egui::Layout::top_down(egui::Align::Min)));
+    body_ui.set_clip_rect(body_rect.intersect(ui.clip_rect()));
+    egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::ZERO).show(&mut body_ui, |ui| {
         ui.set_min_height(body_h);
         ui.set_max_height(body_h);
         egui::ScrollArea::vertical()
@@ -1179,8 +1201,11 @@ fn draw_editor_panel(
                 });
     });
 
-    // Fixed bottom save/close bar inside the left column
-    egui::Frame::new().fill(theme::PANEL).stroke(Stroke::new(1.0_f32, theme::BORDER)).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+    // Fixed bottom save/close bar pinned to the bottom of the left column
+    let mut footer_ui = ui.new_child(egui::UiBuilder::new().max_rect(footer_rect).layout(egui::Layout::top_down(egui::Align::Min)));
+    footer_ui.set_clip_rect(footer_rect.intersect(ui.clip_rect()));
+    egui::Frame::new().fill(theme::PANEL).stroke(Stroke::new(1.0_f32, theme::BORDER)).inner_margin(egui::Margin::symmetric(8, 6)).show(&mut footer_ui, |ui| {
+        ui.set_min_width(footer_rect.width() - 16.0);
         ui.horizontal(|ui| {
             let save_btn = egui::Button::new(egui::RichText::new(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml"))).color(Color32::WHITE))
                 .fill(theme::ACCENT);

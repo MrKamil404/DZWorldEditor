@@ -3842,7 +3842,10 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
         Mode::Landscape if app.hole_tool => Some(BrushView { x: h[0], z: h[2], radius: app.hole_radius, falloff: 0.0, color: [1.0, 0.3, 0.3], shape: 1 }),
         Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: if app.sculpt.picture.is_some() { 0.0 } else { app.sculpt.falloff }, color: [0.25, 0.65, 1.0], shape: if app.sculpt.picture.is_some() { 1 } else { app.sculpt.shape as i32 } }),
         Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: if app.paint.picture.is_some() { 1 } else { app.paint.shape as i32 } }),
-        Mode::Place => app.place.brush.then_some(BrushView { x: h[0], z: h[2], radius: app.place.brush_radius, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
+        Mode::Place => {
+            let has_item = app.place.model.is_some() || app.place.preset.is_some() || app.place.prefab.is_some();
+            (app.place.brush && has_item).then_some(BrushView { x: h[0], z: h[2], radius: app.place.brush_radius, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 })
+        }
         Mode::Satellite => Some(BrushView { x: h[0], z: h[2], radius: app.sat.radius, falloff: 1.0 - app.sat.hardness, color: [1.0, 0.82, 0.24], shape: 0 }),
         Mode::Mission => crate::mission_ui::brush(app, h),
         _ => None,
@@ -4634,6 +4637,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         if k(a) { app.gizmo = g; }
     }
     if k(Action::GizmoSpace) { app.gizmo_local = !app.gizmo_local; }
+    if k(Action::TogglePlaceOnSurface) { app.place.snap_surface = !app.place.snap_surface; }
     for (a, v) in [(Action::View3d, ViewMode::Perspective), (Action::View2d, ViewMode::Top), (Action::ViewSplit, ViewMode::Split)] {
         if k(a) { app.view_mode = v; }
     }
