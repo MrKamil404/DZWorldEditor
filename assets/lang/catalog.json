@@ -8087,6 +8087,38 @@
   "de": "Terrain Builder ordnet Objekte nach Dateinamen zu; der volle Pfad hilft anderen Werkzeugen.",
   "pl": "Terrain Builder dopasowuje obiekty po nazwie pliku; pełna ścieżka przydaje się innym narzędziom."
  },
+ "DayZ Editor (.dze)": {
+  "de": "DayZ Editor (.dze)",
+  "pl": "DayZ Editor (.dze)"
+ },
+ "DayZ Editor / Object Spawner": {
+  "de": "DayZ Editor / Object Spawner",
+  "pl": "DayZ Editor / Object Spawner"
+ },
+ "DayZ Editor / Object Spawner (.dze, .json)...": {
+  "de": "DayZ Editor / Object Spawner (.dze, .json)...",
+  "pl": "DayZ Editor / Object Spawner (.dze, .json)..."
+ },
+ "Enable CE persistency": {
+  "de": "CE-Persistenz aktivieren",
+  "pl": "Włącz trwałość CE (enableCEPersistency)"
+ },
+ "Import DayZ Editor / Object Spawner": {
+  "de": "DayZ Editor / Object Spawner importieren",
+  "pl": "Importuj DayZ Editor / Object Spawner"
+ },
+ "Object Spawner (JSON)": {
+  "de": "Object Spawner (JSON)",
+  "pl": "Object Spawner (JSON)"
+ },
+ "Objects for DayZ Object Spawner (cfggameplay.json) or DayZ Editor (.dze).": {
+  "de": "Objekte für DayZ Object Spawner (cfggameplay.json) oder DayZ Editor (.dze).",
+  "pl": "Obiekty dla DayZ Object Spawner (cfggameplay.json) lub DayZ Editor (.dze)."
+ },
+ "Objects keep their Central Economy lifetime and persistency when spawned by Object Spawner.": {
+  "de": "Objekte behalten beim Spawnen über den Object Spawner ihre Central-Economy-Persistenz.",
+  "pl": "Obiekty zachowują trwałość i czas życia Central Economy po zespawnowaniu przez Object Spawner."
+ },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
   "pl": "Obiekty Terrain Buildera (TXT)..."

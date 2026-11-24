@@ -287,6 +287,7 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                         if ui.button(t("layers.cfg...")).clicked() { ui.close_menu(); app.import_layers_cfg(); }
                         if ui.button(t("Terrain Builder layers (TV4L)...")).clicked() { ui.close_menu(); app.import_tv4l(); }
                         if ui.button(t("Terrain Builder objects (TXT)...")).clicked() { ui.close_menu(); app.import_objects_txt(); }
+                        if ui.button(t("DayZ Editor / Object Spawner (.dze, .json)...")).clicked() { ui.close_menu(); app.import_dayz_objects(); }
                         if ui.button(t("DayZForests project...")).clicked() { ui.close_menu(); app.import_forest(); }
                         if ui.button(t("Road Studio project...")).clicked() { ui.close_menu(); app.import_road_project(); }
                         if ui.button(t("Roads from TV4P...")).clicked() { ui.close_menu(); app.import_tv4p(); }

@@ -3383,6 +3383,32 @@ impl App {
         });
     }
 
+    pub fn import_dayz_objects(&mut self) {
+        let Some(f) = rfd::FileDialog::new().add_filter("DayZ Editor / Object Spawner", &["dze", "json"]).pick_file() else { return };
+        let classes = crate::mission_ui::class_index(self);
+        let work_drive = self.settings.tools.work_drive.clone();
+        let layer_name = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "DayZ Editor".into());
+        self.import_into_project(t("Import DayZ Editor / Object Spawner"), move |w, a, _| {
+            let loaded = if classes.is_none() {
+                let root = PathBuf::from(&work_drive);
+                root.is_dir().then(|| dz_core::mission::classes::ClassIndex::scan_work_drive(&root))
+            } else {
+                None
+            };
+            let cls = classes.as_deref().or(loaded.as_ref());
+            let bytes = std::fs::read(&f)?;
+            let (list, missing) = dz_core::dayz_editor::parse_dayz_objects(&bytes, w, a, cls)?;
+            if !list.is_empty() {
+                let layer = w.add_object_layer(&layer_name);
+                for mut o in list {
+                    o.set_layer(layer);
+                    w.objects.insert(o);
+                }
+            }
+            Ok(missing.into_iter().map(|m| format!("? {m}")).collect())
+        });
+    }
+
     pub fn import_forest(&mut self) {
         let Some(f) = rfd::FileDialog::new().add_filter("DayZForests", &["json"]).pick_file() else { return };
         self.import_into_project(t("Import DayZForests project"), move |w, a, _| {

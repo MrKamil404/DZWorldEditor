@@ -136,6 +136,21 @@ impl Default for ShapesOptions {
     }
 }
 
+/// How objects are exported for DayZ Object Spawner (`cfggameplay.json`) or DayZ Editor (`.dze`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DayzObjectsOptions {
+    pub format: crate::dayz_editor::DayzObjectFormat,
+    pub exported_layers_only: bool,
+    pub visible_only: bool,
+    pub enable_ce_persistency: bool,
+}
+impl Default for DayzObjectsOptions {
+    fn default() -> Self {
+        Self { format: crate::dayz_editor::DayzObjectFormat::ObjectSpawnerJson, exported_layers_only: true, visible_only: false, enable_ce_persistency: false }
+    }
+}
+
 /// How the mission is exported.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -154,6 +169,7 @@ pub struct FileExport {
     pub layers_cfg: Option<LayersOptions>,
     pub shapes: Option<ShapesOptions>,
     pub objects: Option<ObjectsOptions>,
+    pub dayz_objects: Option<DayzObjectsOptions>,
     /// The server mission, into a folder of its name.
     pub mission: Option<MissionOptions>,
     /// Only these objects, when some are given.
@@ -179,6 +195,12 @@ impl World {
 
 /// Writes the chosen parts into `dir`; returns the files written.
 pub fn export(w: &World, db: &ModelDb, o: &FileExport, dir: &Path, job: &Job) -> Result<Vec<PathBuf>> {
+    export_with_classes(w, db, None, o, dir, job)
+}
+
+/// Writes the chosen parts into `dir`, using `classes` (when available) to map models to
+/// `CfgVehicles` class names for DayZ Object Spawner / DayZ Editor export.
+pub fn export_with_classes(w: &World, db: &ModelDb, classes: Option<&crate::mission::classes::ClassIndex>, o: &FileExport, dir: &Path, job: &Job) -> Result<Vec<PathBuf>> {
     std::fs::create_dir_all(dir).with_context(|| format!("{}", dir.display()))?;
     let mut out = Vec::new();
     let id = w.meta.map_id.clone();
@@ -214,6 +236,10 @@ pub fn export(w: &World, db: &ModelDb, o: &FileExport, dir: &Path, job: &Job) ->
     if let Some(ob) = &o.objects {
         job.stage("Writing the objects");
         out.extend(write_objects(w, db, ob, &o.selection, dir, &id)?);
+    }
+    if let Some(dz) = &o.dayz_objects {
+        job.stage("Writing DayZ objects");
+        out.push(write_dayz(w, dz, &o.selection, classes, dir, &id)?);
     }
     if let (Some(mo), Some(m)) = (&o.mission, &w.mission) {
         job.stage("Writing the mission");
@@ -383,6 +409,29 @@ fn write_objects(w: &World, db: &ModelDb, o: &ObjectsOptions, selection: &[u32],
     Ok(out)
 }
 
+fn write_dayz(
+    w: &World,
+    o: &DayzObjectsOptions,
+    selection: &[u32],
+    classes: Option<&crate::mission::classes::ClassIndex>,
+    dir: &Path,
+    id: &str,
+) -> Result<PathBuf> {
+    let chosen: Vec<&crate::objects::Obj> = if selection.is_empty() {
+        w.objects.iter().map(|(_, ob)| ob).collect()
+    } else {
+        selection.iter().filter_map(|i| w.objects.get(*i)).collect()
+    };
+    let filtered: Vec<&crate::objects::Obj> = chosen
+        .into_iter()
+        .filter(|ob| (!o.exported_layers_only || w.object_exported(ob)) && (!o.visible_only || w.object_visible(ob)))
+        .collect();
+    let json = crate::dayz_editor::write_dayz_objects(w, &filtered, o.format, o.enable_ce_persistency, classes)?;
+    let path = dir.join(format!("{id}_objects.{}", o.format.extension()));
+    atomic_write(&path, json.as_bytes())?;
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -404,6 +453,7 @@ mod tests {
             layers_cfg: Some(LayersOptions { only_used: true, ..Default::default() }),
             shapes: Some(ShapesOptions::default()),
             objects: Some(ObjectsOptions { full_path: true, offset: false, ..Default::default() }),
+            dayz_objects: None,
             mission: None,
             selection: Vec::new(),
         };

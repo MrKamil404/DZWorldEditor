@@ -8,6 +8,7 @@ pub mod assets;
 pub mod build;
 pub mod check;
 pub mod clutter;
+pub mod dayz_editor;
 pub mod dressing;
 pub mod edit;
 pub mod export;

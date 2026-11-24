@@ -27,6 +27,8 @@ pub struct ExportSettings {
     pub shapes: ShapesOptions,
     pub objects_on: bool,
     pub objects: ObjectsOptions,
+    pub dayz_objects_on: bool,
+    pub dayz_objects: DayzObjectsOptions,
     pub mission_on: bool,
     pub mission: MissionOptions,
 }
@@ -35,7 +37,8 @@ impl Default for ExportSettings {
         Self {
             folder: String::new(), selection_only: false,
             heightmap_on: true, heightmap: Default::default(), satellite_on: true, satellite: Default::default(), mask_on: true, mask: Default::default(),
-            layers_on: true, layers: Default::default(), shapes_on: false, shapes: Default::default(), objects_on: true, objects: Default::default(), mission_on: true, mission: Default::default(),
+            layers_on: true, layers: Default::default(), shapes_on: false, shapes: Default::default(), objects_on: true, objects: Default::default(),
+            dayz_objects_on: false, dayz_objects: Default::default(), mission_on: true, mission: Default::default(),
         }
     }
 }
@@ -49,6 +52,7 @@ pub enum Part {
     Layers,
     Shapes,
     Objects,
+    DayzObjects,
     Mission,
 }
 impl Part {
@@ -60,6 +64,7 @@ impl Part {
             Part::Layers => "layers.cfg".into(),
             Part::Shapes => t("Shapes (SHP)"),
             Part::Objects => t("Objects (Terrain Builder TXT)"),
+            Part::DayzObjects => t("DayZ Editor / Object Spawner"),
             Part::Mission => t("Server mission"),
         }
     }
@@ -76,12 +81,13 @@ impl ExportSettings {
             layers_cfg: on(Part::Layers, self.layers_on).then(|| self.layers.clone()),
             shapes: on(Part::Shapes, self.shapes_on).then(|| self.shapes.clone()),
             objects: on(Part::Objects, self.objects_on).then(|| self.objects.clone()),
+            dayz_objects: on(Part::DayzObjects, self.dayz_objects_on).then(|| self.dayz_objects.clone()),
             mission: on(Part::Mission, self.mission_on).then(|| self.mission.clone()),
             selection: if self.selection_only { selection } else { Vec::new() },
         }
     }
     fn any(&self) -> bool {
-        self.heightmap_on || self.satellite_on || self.mask_on || self.layers_on || self.shapes_on || self.objects_on || self.mission_on
+        self.heightmap_on || self.satellite_on || self.mask_on || self.layers_on || self.shapes_on || self.objects_on || self.dayz_objects_on || self.mission_on
     }
 }
 
@@ -198,6 +204,21 @@ pub fn window(app: &mut App, ctx: &egui::Context, only: Option<Part>, open: &mut
                 ui.checkbox(&mut o.full_path, t("Model names with their whole path")).on_hover_text(t("Terrain Builder matches objects by file name; the whole path helps other tools."));
                 ui.checkbox(&mut o.offset, t("With easting and northing"));
             });
+            part(ui, only, Part::DayzObjects, &mut s.dayz_objects_on, true, &t("Objects for DayZ Object Spawner (cfggameplay.json) or DayZ Editor (.dze)."), |ui| {
+                use dz_core::dayz_editor::DayzObjectFormat;
+                let d = &mut s.dayz_objects;
+                row(ui, &t("Format"), |ui| {
+                    ui.selectable_value(&mut d.format, DayzObjectFormat::ObjectSpawnerJson, t("Object Spawner (JSON)"));
+                    ui.selectable_value(&mut d.format, DayzObjectFormat::Dze, t("DayZ Editor (.dze)"));
+                });
+                ui.add_enabled_ui(selected > 0, |ui| {
+                    ui.checkbox(&mut s.selection_only, tf("Only the selection ({0})", &[&selected.to_string()]));
+                });
+                ui.checkbox(&mut d.exported_layers_only, t("Only layers marked for export"));
+                ui.checkbox(&mut d.visible_only, t("Only visible layers"));
+                ui.checkbox(&mut d.enable_ce_persistency, t("Enable CE persistency"))
+                    .on_hover_text(t("Objects keep their Central Economy lifetime and persistency when spawned by Object Spawner."));
+            });
             let has_mission = w.mission.is_some();
             let hint = if has_mission { tf("The mission folder {0}, as the server reads it from mpmissions.", &[&w.mission.as_ref().map(|m| m.name.clone()).unwrap_or_default()]) } else { t("The project has no mission.") };
             part(ui, only, Part::Mission, &mut s.mission_on, has_mission, &hint, |ui| {
@@ -238,8 +259,18 @@ pub fn run(app: &mut App, only: Option<Part>) {
     if doc.world.mission.is_none() { parts.mission = None; }
     let world = doc.world.export_copy(parts.satellite.is_some());
     let db = app.db.clone();
+    let classes = crate::mission_ui::class_index(app);
+    let work_drive = app.settings.tools.work_drive.clone();
+    let need_classes = parts.dayz_objects.is_some();
     app.spawn(t("Export files"), move |job| {
-        let files = export(&world, &db, &parts, &dir, job)?;
+        let loaded_classes = if need_classes && classes.is_none() {
+            let root = PathBuf::from(&work_drive);
+            root.is_dir().then(|| dz_core::mission::classes::ClassIndex::scan_work_drive(&root))
+        } else {
+            None
+        };
+        let cls = classes.as_deref().or(loaded_classes.as_ref());
+        let files = export_with_classes(&world, &db, cls, &parts, &dir, job)?;
         Ok(Box::new(move |app: &mut App| {
             for f in &files { app.log.push(crate::app::LogLine { text: f.display().to_string(), level: 0 }); }
             app.info(tf("Exported {0} files to {1}", &[&files.len().to_string(), &dir.display().to_string()]));
@@ -263,6 +294,7 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
     if ui.button(t("Mask image...")).clicked() { chosen = Some(Some(Part::Mask)); }
     if ui.button(t("layers.cfg...")).clicked() { chosen = Some(Some(Part::Layers)); }
     if ui.button(t("Terrain Builder objects (TXT)...")).clicked() { chosen = Some(Some(Part::Objects)); }
+    if ui.button(t("DayZ Editor / Object Spawner (.dze, .json)...")).clicked() { chosen = Some(Some(Part::DayzObjects)); }
     if ui.add_enabled(has_shapes, egui::Button::new(t("Shapes (SHP)..."))).on_disabled_hover_text(t("The project has no shapes.")).clicked() { chosen = Some(Some(Part::Shapes)); }
     if ui.add_enabled(w.mission.is_some(), egui::Button::new(t("Server mission..."))).on_disabled_hover_text(t("The project has no mission.")).clicked() { chosen = Some(Some(Part::Mission)); }
     if let Some(only) = chosen {
