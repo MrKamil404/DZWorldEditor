@@ -43,6 +43,7 @@ const IDENTITY_INSTANCE: [f32; 16] = [
 enum GizmoHandle {
     Axis(usize),
     Range,
+    Height,
 }
 
 #[derive(Clone, Copy)]
@@ -50,6 +51,7 @@ struct GizmoDrag {
     handle: GizmoHandle,
     origin_world: [f32; 3],
     start_t: f32,
+    start_val: f32,
 }
 
 pub struct LootProtoUi {
@@ -438,7 +440,14 @@ fn gizmo_length(eye: [f32; 3], origin: [f32; 3]) -> f32 {
     (dot(d, d).sqrt() * 0.14).clamp(0.25, 2.0)
 }
 
-fn gizmo_hit(v: &View, origin: [f32; 3], range: f32, ptr: Pos2) -> Option<GizmoHandle> {
+fn gizmo_hit(v: &View, origin: [f32; 3], range: f32, height: f32, ptr: Pos2) -> Option<GizmoHandle> {
+    // Check top height grip first so it never conflicts with the Y translation arrow below it.
+    let top = [origin[0], origin[1] + height, origin[2]];
+    if let Some(tp) = v.project(top) {
+        if tp.distance(ptr) <= 10.0 {
+            return Some(GizmoHandle::Height);
+        }
+    }
     let len = gizmo_length(v.eye, origin);
     let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
     let mut best: Option<(f32, GizmoHandle)> = None;
@@ -476,7 +485,7 @@ fn gizmo_hit(v: &View, origin: [f32; 3], range: f32, ptr: Pos2) -> Option<GizmoH
     None
 }
 
-fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], range: f32, active: Option<GizmoHandle>) {
+fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], range: f32, height: f32, active: Option<GizmoHandle>) {
     let len = gizmo_length(v.eye, origin);
     let axes = [
         ([1.0, 0.0, 0.0], Color32::from_rgb(235, 75, 75), "X"),
@@ -523,6 +532,34 @@ fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], range: f32, a
                 painter.circle_stroke(p, grip_r, Stroke::new(1.0_f32, Color32::BLACK));
             }
         }
+    }
+
+    // Height resize handle at the top of the spawn cylinder stalk.
+    let top = [origin[0], origin[1] + height, origin[2]];
+    let h_lit = active == Some(GizmoHandle::Height);
+    let h_col = if h_lit { Color32::from_rgb(120, 245, 255) } else { Color32::from_rgb(255, 210, 80) };
+    if h_lit && range > 0.01 {
+        // Show top cap ring while resizing height so ceiling clearance is immediately visible.
+        let mut prev = [top[0] + range, top[1], top[2]];
+        for k in 1..=24 {
+            let a = k as f32 * std::f32::consts::TAU / 24.0;
+            let cur = [top[0] + range * a.cos(), top[1], top[2] + range * a.sin()];
+            if let Some((p0, p1)) = v.segment(prev, cur) {
+                painter.line_segment([p0, p1], Stroke::new(2.0_f32, h_col));
+            }
+            prev = cur;
+        }
+    }
+    if let Some(tp) = v.project(top) {
+        let d = if h_lit { 6.5_f32 } else { 5.0_f32 };
+        let diamond = vec![
+            Pos2::new(tp.x, tp.y - d),
+            Pos2::new(tp.x + d, tp.y),
+            Pos2::new(tp.x, tp.y + d),
+            Pos2::new(tp.x - d, tp.y),
+        ];
+        painter.add(egui::Shape::convex_polygon(diamond, h_col, Stroke::new(1.2_f32, Color32::BLACK)));
+        painter.text(tp + Vec2::new(10.0, 0.0), egui::Align2::LEFT_CENTER, "H", egui::FontId::proportional(11.0), h_col);
     }
 }
 
@@ -638,32 +675,38 @@ fn draw_preview_panel(
 
             let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
 
-            // ---------------- Gizmo interaction (LPM drag on X/Y/Z axis or Range ring) ----------------
+            // ---------------- Gizmo interaction (LPM drag on X/Y/Z axis, Range ring, or Height handle) ----------------
             let selected_info = st.selected_point
                 .and_then(|pi| st.group.containers.get(st.selected_container)?.points.get(pi))
-                .map(|pt| (st.proto_to_world(pt.pos), pt.range));
+                .map(|pt| (st.proto_to_world(pt.pos), pt.range, pt.height));
 
             let hover_pos = resp.hover_pos();
             let hover_handle = match (&st.gizmo_drag, selected_info, hover_pos) {
                 (Some(drag), _, _) => Some(drag.handle),
-                (None, Some((origin, range)), Some(ptr)) => gizmo_hit(&v, origin, range, ptr),
+                (None, Some((origin, range, height)), Some(ptr)) => gizmo_hit(&v, origin, range, height, ptr),
                 _ => None,
             };
 
             if resp.drag_started_by(PointerButton::Primary) {
-                if let (Some((origin, range)), Some(ptr)) = (selected_info, resp.interact_pointer_pos()) {
-                    if let Some(handle) = gizmo_hit(&v, origin, range, ptr) {
+                if let (Some((origin, range, height)), Some(ptr)) = (selected_info, resp.interact_pointer_pos()) {
+                    if let Some(handle) = gizmo_hit(&v, origin, range, height, ptr) {
                         match handle {
                             GizmoHandle::Axis(axis) => {
                                 let mut dir = [0.0f32; 3];
                                 dir[axis] = 1.0;
                                 let (ro, rd) = v.ray(ptr);
                                 if let Some(t) = axis_param(origin, dir, ro, rd) {
-                                    st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: t });
+                                    st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: t, start_val: 0.0 });
                                 }
                             }
                             GizmoHandle::Range => {
-                                st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: 0.0 });
+                                st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: 0.0, start_val: range });
+                            }
+                            GizmoHandle::Height => {
+                                let (ro, rd) = v.ray(ptr);
+                                if let Some(t) = axis_param(origin, [0.0, 1.0, 0.0], ro, rd) {
+                                    st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: t, start_val: height });
+                                }
                             }
                         }
                     }
@@ -700,6 +743,17 @@ fn draw_preview_panel(
                                                 pt.range = r;
                                                 st.dirty = true;
                                             }
+                                        }
+                                    }
+                                }
+                            }
+                            GizmoHandle::Height => {
+                                if let Some(t) = axis_param(drag.origin_world, [0.0, 1.0, 0.0], ro, rd) {
+                                    let h = (drag.start_val + (t - drag.start_t)).clamp(0.1, 5.0);
+                                    if let Some(pi) = st.selected_point {
+                                        if let Some(pt) = st.group.containers.get_mut(st.selected_container).and_then(|c| c.points.get_mut(pi)) {
+                                            pt.height = h;
+                                            st.dirty = true;
                                         }
                                     }
                                 }
@@ -775,16 +829,21 @@ fn draw_preview_panel(
                 }
             }
 
-            // Draw 3D XYZ translation + range gizmo on the currently selected point
+            // Draw 3D XYZ translation + range + height gizmo on the currently selected point
             if let Some(pi) = st.selected_point {
                 if let Some(pt) = st.group.containers.get(st.selected_container).and_then(|c| c.points.get(pi)) {
-                    draw_gizmo(&painter, &v, st.proto_to_world(pt.pos), pt.range, hover_handle);
-                    if st.gizmo_drag.is_some_and(|d| d.handle == GizmoHandle::Range) {
-                        if let Some(ptr) = hover_pos {
+                    draw_gizmo(&painter, &v, st.proto_to_world(pt.pos), pt.range, pt.height, hover_handle);
+                    if let (Some(drag), Some(ptr)) = (st.gizmo_drag, hover_pos) {
+                        let live = match drag.handle {
+                            GizmoHandle::Range => Some(format!("r = {:.2} m", pt.range)),
+                            GizmoHandle::Height => Some(format!("h = {:.2} m", pt.height)),
+                            GizmoHandle::Axis(_) => None,
+                        };
+                        if let Some(text) = live {
                             painter.text(
                                 ptr + Vec2::new(14.0, -14.0),
                                 egui::Align2::LEFT_BOTTOM,
-                                format!("r = {:.2} m", pt.range),
+                                text,
                                 egui::FontId::proportional(12.0),
                                 Color32::from_rgb(120, 245, 255),
                             );
