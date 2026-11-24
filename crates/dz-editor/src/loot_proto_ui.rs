@@ -72,6 +72,7 @@ pub struct LootProtoUi {
     add_mode: bool,
     show_ranges: bool,
     show_proxies: bool,
+    panel_width: f32,
     gizmo_drag: Option<GizmoDrag>,
     dirty: bool,
 }
@@ -97,6 +98,7 @@ impl Default for LootProtoUi {
             add_mode: false,
             show_ranges: true,
             show_proxies: true,
+            panel_width: 360.0,
             gizmo_drag: None,
             dirty: false,
         }
@@ -314,29 +316,47 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         .resizable(true)
         .vscroll(false)
         .show(ctx, |ui| {
-            // Resizable left panel for mapgroupproto.xml fields; right/central area expands freely for 3D.
-            egui::SidePanel::left("loot_proto_left_panel")
-                .frame(egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::ZERO))
-                .resizable(true)
-                .default_width(360.0)
-                .min_width(270.0)
-                .max_width(580.0)
-                .show_inside(ui, |ui| {
+            let total = ui.available_size();
+            let total_h = total.y.max(360.0);
+            const SPLITTER_W: f32 = 6.0;
+            let max_left = (total.x - 320.0 - SPLITTER_W).clamp(260.0, 580.0);
+            let left_w = app.loot_proto.panel_width.clamp(260.0, max_left);
+            let right_w = (total.x - left_w - SPLITTER_W).max(260.0);
+
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+
+                // Left column: mapgroupproto.xml inspector
+                ui.allocate_ui_with_layout(Vec2::new(left_w, total_h), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_max_size(Vec2::new(left_w, total_h));
                     draw_editor_panel(
                         &mut app.loot_proto,
                         ui,
+                        total_h,
                         &limits,
                         &mut save_requested,
                         &mut remove_requested,
                     );
                 });
 
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE)
-                .show_inside(ui, |ui| {
+                // Draggable vertical splitter bar
+                let (split_rect, split_resp) = ui.allocate_exact_size(Vec2::new(SPLITTER_W, total_h), egui::Sense::drag());
+                if split_resp.hovered() || split_resp.dragged() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                }
+                if split_resp.dragged() {
+                    app.loot_proto.panel_width = (app.loot_proto.panel_width + split_resp.drag_delta().x).clamp(260.0, max_left);
+                }
+                let bar_col = if split_resp.hovered() || split_resp.dragged() { theme::ACCENT } else { theme::BORDER };
+                ui.painter().rect_filled(split_rect.shrink2(Vec2::new(2.0, 0.0)), 0.0, bar_col);
+
+                // Right column: 3D GPU preview
+                ui.allocate_ui_with_layout(Vec2::new(right_w, total_h), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.set_max_size(Vec2::new(right_w, total_h));
                     draw_preview_panel(
                         &mut app.loot_proto,
                         ui,
+                        total_h,
                         &renderer,
                         instances,
                         model_ready,
@@ -346,6 +366,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         &keys,
                     );
                 });
+            });
         });
 
     app.loot_proto.open = open;
@@ -509,6 +530,7 @@ fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], range: f32, a
 fn draw_preview_panel(
     st: &mut LootProtoUi,
     ui: &mut egui::Ui,
+    total_h: f32,
     renderer: &Arc<std::sync::Mutex<render::Renderer>>,
     instances: Vec<((u32, u8), [f32; 16])>,
     model_ready: bool,
@@ -517,56 +539,46 @@ fn draw_preview_panel(
     proxy_picks: &HashMap<u32, Arc<PickMesh>>,
     keys: &crate::keys::KeyMap,
 ) {
-    // Top toolbar inside the 3D area
-    egui::TopBottomPanel::top("loot_proto_3d_top")
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 0, top: 0, bottom: 4 }))
-        .show_inside(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                if ui.small_button(t("Iso")).clicked() { st.set_camera_preset(CameraPreset::Iso); }
-                if ui.small_button(t("Top")).clicked() { st.set_camera_preset(CameraPreset::Top); }
-                if ui.small_button(t("Front")).clicked() { st.set_camera_preset(CameraPreset::Front); }
-                if ui.small_button(t("Side")).clicked() { st.set_camera_preset(CameraPreset::Side); }
-                if ui.small_button(t("Inside")).clicked() { st.set_camera_preset(CameraPreset::Inside); }
-                ui.separator();
-                ui.checkbox(&mut st.show_ranges, t("Show ranges"));
-                ui.checkbox(&mut st.show_proxies, t("Proxies"));
-                ui.separator();
-                ui.toggle_value(&mut st.add_mode, icons::with(icons::PLUS, &t("Click 3D to add")))
-                    .on_hover_text(t("Click a surface in the 3D preview to place a new loot point there."));
-            });
-            ui.horizontal(|ui| {
-                ui.checkbox(&mut st.clip_enabled, t("Cut roof"))
-                    .on_hover_text(t("Slice the model horizontally to see inside rooms and floors."));
-                let lo = st.bounds_min[1];
-                let hi = st.bounds_max[1].max(lo + 0.2);
-                ui.add_enabled(
-                    st.clip_enabled,
-                    ValueField::new(&mut st.clip_y, lo..=hi).suffix(" m").step_by(0.05),
-                );
-            });
-        });
+    let start_y = ui.cursor().top();
 
-    // Bottom hint strip inside the 3D area
-    egui::TopBottomPanel::bottom("loot_proto_3d_bottom")
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 0, top: 4, bottom: 0 }))
-        .show_inside(ui, |ui| {
-            let hint = if st.add_mode {
-                t("RMB + WASD/QE: fly · Click a surface to add a loot point")
-            } else {
-                t("RMB + WASD/QE: fly · Wheel: zoom/speed · MMB: pan · Click: select")
-            };
-            ui.weak(hint);
-            ui.weak(&st.model);
+    // Top toolbar inside the 3D column
+    egui::Frame::new().inner_margin(egui::Margin { left: 6, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            if ui.small_button(t("Iso")).clicked() { st.set_camera_preset(CameraPreset::Iso); }
+            if ui.small_button(t("Top")).clicked() { st.set_camera_preset(CameraPreset::Top); }
+            if ui.small_button(t("Front")).clicked() { st.set_camera_preset(CameraPreset::Front); }
+            if ui.small_button(t("Side")).clicked() { st.set_camera_preset(CameraPreset::Side); }
+            if ui.small_button(t("Inside")).clicked() { st.set_camera_preset(CameraPreset::Inside); }
+            ui.separator();
+            ui.checkbox(&mut st.show_ranges, t("Show ranges"));
+            ui.checkbox(&mut st.show_proxies, t("Proxies"));
+            ui.separator();
+            ui.toggle_value(&mut st.add_mode, icons::with(icons::PLUS, &t("Click 3D to add")))
+                .on_hover_text(t("Click a surface in the 3D preview to place a new loot point there."));
         });
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut st.clip_enabled, t("Cut roof"))
+                .on_hover_text(t("Slice the model horizontally to see inside rooms and floors."));
+            let lo = st.bounds_min[1];
+            let hi = st.bounds_max[1].max(lo + 0.2);
+            ui.add_enabled(
+                st.clip_enabled,
+                ValueField::new(&mut st.clip_y, lo..=hi).suffix(" m").step_by(0.05),
+            );
+        });
+    });
 
-    // Central 3D viewport filling the exact remaining rectangle (never grows the window!)
-    egui::CentralPanel::default()
-        .frame(egui::Frame::NONE)
-        .show_inside(ui, |ui| {
-            let rect = ui.available_rect_before_wrap();
-            let resp = ui.allocate_rect(rect, egui::Sense::click_and_drag());
-            let ctx = ui.ctx();
-            let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
+    // 3D OpenGL viewport fills remaining height minus the 2-line footer (never overflows `total_h`).
+    let used_top = (ui.cursor().top() - start_y).max(0.0);
+    let footer_h = 38.0;
+    let view_h = (total_h - used_top - footer_h).max(160.0);
+    let view_w = (ui.available_width() - 6.0).max(200.0);
+    let (rect, resp) = ui.horizontal(|ui| {
+        ui.add_space(6.0);
+        ui.allocate_exact_size(Vec2::new(view_w, view_h), egui::Sense::click_and_drag())
+    }).inner;
+    let ctx = ui.ctx();
+    let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
 
             // ---------------- 3D camera controls (matching terrain 3D viewport) ----------------
             let dt = ctx.input(|i| i.stable_dt).min(0.1);
@@ -848,47 +860,39 @@ fn draw_preview_panel(
                     }
                 }
             }
-        });
+
+    // Compact 2-line footer under the 3D viewport
+    egui::Frame::new().inner_margin(egui::Margin { left: 6, right: 0, top: 4, bottom: 0 }).show(ui, |ui| {
+        let hint = if st.add_mode {
+            t("RMB + WASD/QE: fly · Click a surface to add a loot point")
+        } else {
+            t("RMB + WASD/QE: fly · Wheel: zoom/speed · MMB: pan · Click: select")
+        };
+        ui.add(egui::Label::new(egui::RichText::new(hint).small().color(theme::TEXT_DIM)).truncate());
+        ui.add(egui::Label::new(egui::RichText::new(&st.model).small().color(theme::TEXT_DIM)).truncate());
+    });
 }
 
 fn draw_editor_panel(
     st: &mut LootProtoUi,
     ui: &mut egui::Ui,
+    total_h: f32,
     limits: &proto::LimitsLists,
     save_requested: &mut bool,
     remove_requested: &mut bool,
 ) {
-    // Fixed bottom save/close bar inside the right side panel
-    egui::TopBottomPanel::bottom("loot_proto_editor_bottom")
-        .frame(egui::Frame::new().fill(theme::PANEL).stroke(Stroke::new(1.0_f32, theme::BORDER)).inner_margin(egui::Margin::same(8)))
-        .show_inside(ui, |ui| {
-            ui.horizontal(|ui| {
-                let save_btn = egui::Button::new(egui::RichText::new(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml"))).color(Color32::WHITE))
-                    .fill(theme::ACCENT);
-                if ui.add(save_btn).clicked() {
-                    *save_requested = true;
-                }
-                if st.exists_in_proto {
-                    if ui.button(icons::TRASH).on_hover_text(t("Remove from mapgroupproto.xml")).clicked() {
-                        *remove_requested = true;
-                    }
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button(t("Close")).clicked() {
-                        st.open = false;
-                    }
-                });
-            });
-        });
+    let footer_h = 44.0;
+    let body_h = (total_h - footer_h).max(160.0);
 
     // Scrollable inspector body styled with theme.rs Details widgets
-    egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::ZERO))
-        .show_inside(ui, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("loot_proto_editor_scroll")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
+    egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::ZERO).show(ui, |ui| {
+        ui.set_min_height(body_h);
+        ui.set_max_height(body_h);
+        egui::ScrollArea::vertical()
+            .id_salt("loot_proto_editor_scroll")
+            .max_height(body_h)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
                     // Header card matching the editor's Details panel
                     egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 4 }).show(ui, |ui| {
                         let subtitle = if st.exists_in_proto {
@@ -1114,7 +1118,28 @@ fn draw_editor_panel(
                         }
                     }
                 });
+    });
+
+    // Fixed bottom save/close bar inside the left column
+    egui::Frame::new().fill(theme::PANEL).stroke(Stroke::new(1.0_f32, theme::BORDER)).inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            let save_btn = egui::Button::new(egui::RichText::new(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml"))).color(Color32::WHITE))
+                .fill(theme::ACCENT);
+            if ui.add(save_btn).clicked() {
+                *save_requested = true;
+            }
+            if st.exists_in_proto {
+                if ui.button(icons::TRASH).on_hover_text(t("Remove from mapgroupproto.xml")).clicked() {
+                    *remove_requested = true;
+                }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button(t("Close")).clicked() {
+                    st.open = false;
+                }
+            });
         });
+    });
 }
 
 fn flag_chips(ui: &mut egui::Ui, choices: &[String], selected: &mut Vec<String>) -> bool {
