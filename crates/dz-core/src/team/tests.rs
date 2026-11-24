@@ -537,3 +537,149 @@ fn giving_things_to_someone_else_travels_and_undoes() {
     h.undo(&mut ania);
     assert_eq!(ania.author(mid), "");
 }
+
+#[test]
+fn order_patches_follows_dependencies_even_with_skewed_clocks() {
+    let make = |base: u64, result: u64, time: &str| {
+        (
+            PathBuf::from(format!("{result}.dzpatch")),
+            PatchHeader { format: FORMAT, base, result, author: format!("u{result}"), time: time.into(), map_id: "Team".into(), summary: Summary::default() },
+        )
+    };
+    // Patch 2 depends on patch 1, even though its clock is earlier.
+    // Patch 3 is independent of patch 1 and oldest, so it goes first.
+    // Patch 99 starts from an unknown version and cannot be merged yet.
+    let list = vec![
+        make(1, 2, "2026-11-13_17-00-00"),
+        make(10, 1, "2026-11-13_18-00-00"),
+        make(10, 3, "2026-11-13_16-00-00"),
+        make(777, 99, "2026-11-13_15-00-00"),
+    ];
+    let ordered = order_patches(list, |id| id == 10);
+    let ready: Vec<u64> = ordered.ready.iter().map(|(_, h)| h.result).collect();
+    let missing: Vec<u64> = ordered.missing_base.iter().map(|(_, h)| h.result).collect();
+    assert_eq!(ready, vec![3, 1, 2]);
+    assert_eq!(missing, vec![99]);
+}
+
+#[test]
+fn batch_merge_handles_many_parallel_patches_and_single_backup() {
+    let d = tempfile::tempdir().unwrap();
+    let folder = d.path().join("team");
+    std::fs::create_dir_all(&folder).unwrap();
+    let p_main = d.path().join("main");
+    let mut start_world = world();
+    start_world.satellite = Some(RgbImage::new(200, 200, [10, 20, 30]));
+    project::save(&start_world, &p_main, SaveParts::ALL).unwrap();
+    start(&p_main, &start_world, &folder.to_string_lossy()).unwrap();
+    let full = send_full(&p_main, "Team", "2026-11-13_08-00-00").unwrap();
+
+    // 6 teammates work from the same base (more than the old KEEP_VERSIONS = 4 limit)
+    // and each edits a distinct terrain cell and satellite pixel.
+    for i in 0..6usize {
+        let p = d.path().join(format!("p{i}"));
+        take_full(&full, &p).unwrap();
+        let mut w = project::load(&p).unwrap();
+        w.base.set(5 + i * 10, 5, 20.0 + i as f32);
+        w.satellite.as_mut().unwrap().data[i * 3] = 100 + i as u8;
+        project::save(&w, &p, SaveParts::ALL).unwrap();
+        send(&p, &w, &format!("User{i}"), &format!("2026-11-13_18-0{i}-00")).unwrap();
+    }
+
+    // Main copy merges all 6 patches in one batch.
+    let inc = incoming_ordered(&p_main, "Team");
+    assert_eq!(inc.ready.len(), 6);
+    assert!(inc.missing_base.is_empty());
+    let files: Vec<PathBuf> = inc.ready.into_iter().map(|(f, _)| f).collect();
+    let mut batch = MergeBatch::start(&p_main, files).unwrap();
+    assert!(matches!(batch.advance().unwrap(), BatchStep::Done));
+    let res = batch.commit("2026-11-13_19-00-00").unwrap();
+    assert_eq!(res.patches.len(), 6);
+    assert_eq!(res.conflicts_decided, 0);
+    assert!(incoming_ordered(&p_main, "Team").ready.is_empty());
+
+    let merged = project::load(&p_main).unwrap();
+    let sat = &merged.satellite.as_ref().unwrap().data;
+    for i in 0..6usize {
+        assert_eq!(merged.base.at(5 + i * 10, 5), 20.0 + i as f32);
+        assert_eq!(sat[i * 3], 100 + i as u8);
+    }
+    // Exactly one backup was created for the entire batch.
+    let backups: Vec<_> = std::fs::read_dir(p_main.join(TEAM_DIR).join("before-merge")).unwrap().flatten().collect();
+    assert_eq!(backups.len(), 1);
+}
+
+#[test]
+fn batch_merge_chains_pauses_on_conflicts_and_cancel_leaves_disk_untouched() {
+    let d = tempfile::tempdir().unwrap();
+    let folder = d.path().join("team");
+    std::fs::create_dir_all(&folder).unwrap();
+    let (pa, pb, pc) = (d.path().join("ania"), d.path().join("bartek"), d.path().join("celina"));
+    let start_world = world();
+    project::save(&start_world, &pa, SaveParts::ALL).unwrap();
+    start(&pa, &start_world, &folder.to_string_lossy()).unwrap();
+    let full = send_full(&pa, "Team", "2026-11-13_08-00-00").unwrap();
+    take_full(&full, &pb).unwrap();
+    take_full(&full, &pc).unwrap();
+
+    // Ania edits cell (5, 5) and sends P1 (V0 -> V1).
+    let mut ania = project::load(&pa).unwrap();
+    ania.base.set(5, 5, 25.0);
+    project::save(&ania, &pa, SaveParts::ALL).unwrap();
+    send(&pa, &ania, "Ania", "2026-11-13_18-00-00").unwrap();
+
+    // Bartek merges P1, then moves object at x=100 to x=150 and sends P2 (V1 -> V2) with an earlier clock!
+    let list_b = incoming_ordered(&pb, "Team");
+    assert_eq!(list_b.ready.len(), 1);
+    let (prep, _) = prepare(&pb, &list_b.ready[0].0).unwrap();
+    finish(&pb, prep, &HashMap::new(), "2026-11-13_18-05-00").unwrap();
+    let mut bartek = project::load(&pb).unwrap();
+    let oid = id_at(&bartek, 100.0);
+    let mut obj = *bartek.objects.get(oid).unwrap();
+    obj.x = 150.0;
+    bartek.objects.update(oid, obj);
+    project::save(&bartek, &pb, SaveParts::ALL).unwrap();
+    send(&pb, &bartek, "Bartek", "2026-11-13_17-30-00").unwrap();
+
+    // Celina moves the same object to x=120 -> will clash with Bartek's P2.
+    let mut celina = project::load(&pc).unwrap();
+    let oid_c = id_at(&celina, 100.0);
+    let mut obj_c = *celina.objects.get(oid_c).unwrap();
+    obj_c.x = 120.0;
+    celina.objects.update(oid_c, obj_c);
+    project::save(&celina, &pc, SaveParts::ALL).unwrap();
+
+    // Celina's incoming_ordered puts Ania's P1 before Bartek's P2 despite Bartek's earlier clock.
+    let inc = incoming_ordered(&pc, "Team");
+    assert_eq!(inc.ready.len(), 2);
+    assert_eq!(inc.ready[0].1.author, "Ania");
+    assert_eq!(inc.ready[1].1.author, "Bartek");
+    let p1_result = inc.ready[0].1.result;
+    let files: Vec<PathBuf> = inc.ready.into_iter().map(|(f, _)| f).collect();
+
+    // Cancelling on the conflict leaves Celina's project and `.team/versions/` on disk unchanged.
+    let mut batch = MergeBatch::start(&pc, files.clone()).unwrap();
+    let BatchStep::Conflicts(c) = batch.advance().unwrap() else { panic!("expected conflict on Bartek's patch") };
+    assert_eq!((c.index, c.total, c.header.author.as_str()), (1, 2, "Bartek"));
+    assert_eq!(c.merged.conflicts.len(), 1);
+    batch.cancel();
+    assert!(!has_version(&pc, p1_result), "cancelled batch must not publish intermediate versions");
+    let still = project::load(&pc).unwrap();
+    assert_eq!(still.base.at(5, 5), 10.0);
+    assert_eq!(still.objects.get(id_at(&still, 120.0)).unwrap().x, 120.0);
+
+    // Now resolve the conflict taking Bartek's version and commit.
+    let mut batch = MergeBatch::start(&pc, files).unwrap();
+    let BatchStep::Conflicts(c) = batch.advance().unwrap() else { panic!("expected conflict") };
+    let mut choices = HashMap::new();
+    choices.insert(c.merged.conflicts[0].key, Choice::Theirs);
+    batch.resolve(&choices).unwrap();
+    assert!(matches!(batch.advance().unwrap(), BatchStep::Done));
+    let res = batch.commit("2026-11-13_19-00-00").unwrap();
+    assert_eq!((res.patches.len(), res.conflicts_decided), (2, 1));
+
+    let final_c = project::load(&pc).unwrap();
+    assert_eq!(final_c.base.at(5, 5), 25.0);
+    assert_eq!(final_c.objects.get(id_at(&final_c, 150.0)).unwrap().x, 150.0);
+    assert!(incoming_ordered(&pc, "Team").ready.is_empty());
+}

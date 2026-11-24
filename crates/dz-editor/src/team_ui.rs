@@ -4,7 +4,7 @@ use crate::app::{App, Finish};
 use crate::i18n::{t, tf};
 use crate::icons;
 use dz_core::project;
-use dz_core::team::{self, Choice, ConflictKey, ConflictKind, Merged, PatchHeader, Prepared, Summary, TeamState};
+use dz_core::team::{self, BatchStep, Choice, ConflictKey, ConflictKind, Incoming, MergeBatch, Merged, PatchHeader, Prepared, Summary, TeamState};
 use dz_core::world::World;
 use eframe::egui;
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ pub struct TeamUi {
     /// The project the state below belongs to.
     dir: Option<PathBuf>,
     state: TeamState,
-    incoming: Vec<(PathBuf, PatchHeader)>,
+    incoming: Incoming,
     last_scan: Option<Instant>,
     merge: Option<Box<MergeView>>,
     /// A team task runs: the project on disk is being read or written.
@@ -35,8 +35,14 @@ pub struct TeamUi {
     merging: bool,
 }
 
+enum MergeMode {
+    Single(Prepared),
+    Batch { batch: MergeBatch, index: usize, total: usize },
+}
+
 struct MergeView {
-    prepared: Prepared,
+    mode: MergeMode,
+    header: PatchHeader,
     merged: Merged,
     choices: HashMap<ConflictKey, Choice>,
 }
@@ -44,7 +50,7 @@ struct MergeView {
 impl TeamUi {
     /// Changes of others waiting to be merged.
     pub fn waiting(&self) -> usize {
-        self.incoming.len()
+        self.incoming.ready.len()
     }
     /// A team task reads or writes the project now; autosave waits for it.
     pub fn busy(&self) -> bool {
@@ -67,9 +73,9 @@ fn spawn_team(app: &mut App, title: String, merging: bool, f: impl FnOnce() -> a
     app.team.merging = merging && app.team.busy;
 }
 
-/// The oldest changes of others waiting to be merged.
+/// The oldest ready changes of others waiting to be merged.
 pub fn first_waiting(app: &App) -> Option<(PathBuf, PatchHeader)> {
-    app.team.incoming.first().cloned()
+    app.team.incoming.ready.first().cloned()
 }
 
 fn project_dir(app: &App) -> Option<PathBuf> {
@@ -84,11 +90,11 @@ pub fn refresh(app: &mut App) {
     match (&dir, &app.doc) {
         (Some(d), Some(doc)) => {
             app.team.state = TeamState::load(d);
-            app.team.incoming = team::incoming(d, &doc.world.meta.map_id);
+            app.team.incoming = team::incoming_ordered(d, &doc.world.meta.map_id);
         }
         _ => {
             app.team.state = TeamState::default();
-            app.team.incoming.clear();
+            app.team.incoming = Incoming::default();
         }
     }
 }
@@ -141,7 +147,7 @@ pub fn people(app: &App) -> Vec<String> {
     let mut out = vec![doc.world.team_me.clone()];
     let others = doc.world.object_layers.iter().filter(|l| !l.deleted).map(|l| l.owner.clone())
         .chain(doc.world.authors.iter().flat_map(|a| a.values().cloned()))
-        .chain(app.team.incoming.iter().map(|(_, h)| h.author.clone()))
+        .chain(app.team.incoming.ready.iter().chain(&app.team.incoming.missing_base).map(|(_, h)| h.author.clone()))
         .chain(app.team.extra_people.iter().cloned());
     for n in others {
         if !n.is_empty() && !out.contains(&n) {
@@ -367,40 +373,121 @@ pub fn begin_merge(app: &mut App, file: PathBuf) {
     let Some(dir) = save_first(app) else { return };
     spawn_team(app, t("Reading the changes"), false, move || {
         let (prepared, merged) = team::prepare(&dir, &file)?;
+        let header = prepared.header.clone();
         Ok(Box::new(move |app: &mut App| {
-            app.team.merge = Some(Box::new(MergeView { prepared, merged, choices: HashMap::new() }));
+            app.team.merge = Some(Box::new(MergeView { mode: MergeMode::Single(prepared), header, merged, choices: HashMap::new() }));
         }) as Finish)
     });
 }
 
+/// Merges all ready incoming patches in dependency order, pausing only on patches with conflicts.
+pub fn begin_merge_all(app: &mut App) {
+    let files: Vec<PathBuf> = app.team.incoming.ready.iter().map(|(p, _)| p.clone()).collect();
+    if files.is_empty() {
+        return;
+    }
+    if files.len() == 1 {
+        begin_merge(app, files[0].clone());
+        return;
+    }
+    let Some(dir) = save_first(app) else { return };
+    let time = crate::settings::timestamp();
+    spawn_team(app, t("Merging the changes"), true, move || {
+        let batch = MergeBatch::start(&dir, files)?;
+        step_batch(dir, batch, time)
+    });
+}
+
+/// Advances a merge batch until it pauses on conflicts or finishes and reloads the world.
+fn step_batch(dir: PathBuf, mut batch: MergeBatch, time: String) -> anyhow::Result<Finish> {
+    match batch.advance()? {
+        BatchStep::Conflicts(c) => Ok(Box::new(move |app: &mut App| {
+            app.team.merge = Some(Box::new(MergeView {
+                mode: MergeMode::Batch { batch, index: c.index, total: c.total },
+                header: c.header,
+                merged: c.merged,
+                choices: HashMap::new(),
+            }));
+        }) as Finish),
+        BatchStep::Done => {
+            let result = batch.commit(&time)?;
+            let w = project::load(&dir)?;
+            Ok(Box::new(move |app: &mut App| {
+                let (camera, center, mpp) = (app.camera, app.top_center, app.top_mpp);
+                app.open_world(w, Some(dir));
+                (app.camera, app.top_center, app.top_mpp) = (camera, center, mpp);
+                refresh(app);
+                let mut authors: Vec<String> = Vec::new();
+                for r in &result.patches {
+                    if !authors.contains(&r.header.author) {
+                        authors.push(r.header.author.clone());
+                    }
+                }
+                let mut text = if result.patches.len() == 1 {
+                    tf("Merged the changes of {0}: {1}", &[&result.patches[0].header.author, &summary_text(&result.taken)])
+                } else {
+                    tf("Merged {0} patches ({1}): {2}", &[&result.patches.len().to_string(), &authors.join(", "), &summary_text(&result.taken)])
+                };
+                if result.conflicts_decided > 0 {
+                    text += &format!(" · {}", tf("{0} conflicts decided", &[&result.conflicts_decided.to_string()]));
+                }
+                app.info(text);
+                if !result.skipped.is_empty() {
+                    let names: Vec<String> = result.skipped.iter().map(|n| part_name(n)).collect();
+                    app.warn(tf("Not merged: {0}", &[&names.join(", ")]));
+                }
+                if !result.not_carried.is_empty() {
+                    let names: Vec<String> = result.not_carried.iter().map(|n| part_name(n)).collect();
+                    app.warn(tf("Changed but not carried over: {0}", &[&names.join(", ")]));
+                }
+            }) as Finish)
+        }
+    }
+}
+
 pub fn finish_merge(app: &mut App) {
     let Some(view) = app.team.merge.take() else { return };
-    let Some(dir) = save_first(app) else {
-        app.team.merge = Some(view);
-        return;
-    };
-    let MergeView { prepared, choices, .. } = *view;
-    let (who, time) = (prepared.header.author.clone(), crate::settings::timestamp());
-    spawn_team(app, t("Merging the changes"), true, move || {
-        let merged = team::finish(&dir, prepared, &choices, &time)?;
-        let w = project::load(&dir)?;
-        Ok(Box::new(move |app: &mut App| {
-            // The view stays where it was.
-            let (camera, center, mpp) = (app.camera, app.top_center, app.top_mpp);
-            app.open_world(w, Some(dir));
-            (app.camera, app.top_center, app.top_mpp) = (camera, center, mpp);
-            refresh(app);
-            let mut text = tf("Merged the changes of {0}: {1}", &[&who, &summary_text(&merged.taken)]);
-            if !merged.conflicts.is_empty() {
-                text += &format!(" · {}", tf("{0} conflicts decided", &[&merged.conflicts.len().to_string()]));
-            }
-            app.info(text);
-            if !merged.skipped.is_empty() {
-                let names: Vec<String> = merged.skipped.iter().map(|n| part_name(n)).collect();
-                app.warn(tf("Not merged: {0}", &[&names.join(", ")]));
-            }
-        }) as Finish)
-    });
+    let MergeView { mode, header, choices, .. } = *view;
+    let time = crate::settings::timestamp();
+    match mode {
+        MergeMode::Single(prepared) => {
+            let Some(dir) = save_first(app) else {
+                app.team.merge = Some(Box::new(MergeView { mode: MergeMode::Single(prepared), header, merged: view.merged, choices }));
+                return;
+            };
+            let who = header.author;
+            spawn_team(app, t("Merging the changes"), true, move || {
+                let merged = team::finish(&dir, prepared, &choices, &time)?;
+                let w = project::load(&dir)?;
+                Ok(Box::new(move |app: &mut App| {
+                    // The view stays where it was.
+                    let (camera, center, mpp) = (app.camera, app.top_center, app.top_mpp);
+                    app.open_world(w, Some(dir));
+                    (app.camera, app.top_center, app.top_mpp) = (camera, center, mpp);
+                    refresh(app);
+                    let mut text = tf("Merged the changes of {0}: {1}", &[&who, &summary_text(&merged.taken)]);
+                    if !merged.conflicts.is_empty() {
+                        text += &format!(" · {}", tf("{0} conflicts decided", &[&merged.conflicts.len().to_string()]));
+                    }
+                    app.info(text);
+                    if !merged.skipped.is_empty() {
+                        let names: Vec<String> = merged.skipped.iter().map(|n| part_name(n)).collect();
+                        app.warn(tf("Not merged: {0}", &[&names.join(", ")]));
+                    }
+                }) as Finish)
+            });
+        }
+        MergeMode::Batch { mut batch, .. } => {
+            let Some(dir) = project_dir(app) else {
+                batch.cancel();
+                return;
+            };
+            spawn_team(app, t("Merging the changes"), true, move || {
+                batch.resolve(&choices)?;
+                step_batch(dir, batch, time)
+            });
+        }
+    }
 }
 
 fn part_name(name: &str) -> String {
@@ -479,11 +566,16 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
                 }
             }).response.on_hover_text(t("Moves them to a layer of the one you choose, made when they have none. Select an area of the map to give it."));
         });
-        let label = if n > 0 { tf("Merge changes of others ({0})", &[&n.to_string()]) } else { t("Merge changes of others") };
+        let label = if n > 1 {
+            tf("Merge all changes ({0})", &[&n.to_string()])
+        } else if n == 1 {
+            tf("Merge changes of others ({0})", &[&n.to_string()])
+        } else {
+            t("Merge changes of others")
+        };
         if ui.add_enabled(ready && n > 0, egui::Button::new(icons::with(icons::GIT_MERGE, &label))).clicked() {
             ui.close_menu();
-            let first = app.team.incoming[0].0.clone();
-            begin_merge(app, first);
+            begin_merge_all(app);
         }
     });
 }
@@ -569,14 +661,27 @@ fn team_window(app: &mut App, ui: &mut egui::Ui) {
         if ui.small_button(icons::ARROWS_CLOCKWISE).on_hover_text(t("Look again")).clicked() {
             refresh(app);
         }
+        if app.team.incoming.ready.len() > 1 {
+            let label = tf("Merge all ({0})", &[&app.team.incoming.ready.len().to_string()]);
+            if ui.add_enabled(!busy && app.team.merge.is_none(), egui::Button::new(icons::with(icons::GIT_MERGE, &label)))
+                .on_hover_text(t("Merges all ready changes in order. Patches without conflicts are applied automatically; you are only asked where changes clash."))
+                .clicked()
+            {
+                begin_merge_all(app);
+            }
+        }
     });
-    if app.team.incoming.is_empty() {
+    if app.team.incoming.ready.is_empty() && app.team.incoming.missing_base.is_empty() {
         ui.weak(t("Nothing new in the team folder."));
     }
     let mut merge = None;
-    for (file, h) in &app.team.incoming {
+    for (file, h) in &app.team.incoming.ready {
+        let direct = team::has_version(&dir, h.base);
         ui.horizontal(|ui| {
-            if ui.add_enabled(!busy && app.team.merge.is_none(), egui::Button::new(icons::with(icons::GIT_MERGE, &t("Merge")))).clicked() {
+            let btn = ui.add_enabled(!busy && app.team.merge.is_none() && direct, egui::Button::new(icons::with(icons::GIT_MERGE, &t("Merge"))));
+            if !direct {
+                btn.on_disabled_hover_text(t("Needs earlier changes on the list to be merged first. Use Merge all."));
+            } else if btn.clicked() {
                 merge = Some(file.clone());
             }
             ui.vertical(|ui| {
@@ -584,6 +689,20 @@ fn team_window(app: &mut App, ui: &mut egui::Ui) {
                 ui.weak(summary_text(&h.summary));
             });
         });
+    }
+    if !app.team.incoming.missing_base.is_empty() {
+        ui.add_space(4.0);
+        ui.colored_label(ui.visuals().warn_fg_color, t("Waiting for an earlier version"))
+            .on_hover_text(t("Its starting version is not here yet. Wait for the team folder to finish syncing, or ask for a full copy."));
+        for (_, h) in &app.team.incoming.missing_base {
+            ui.horizontal(|ui| {
+                ui.add_space(12.0);
+                ui.vertical(|ui| {
+                    ui.weak(format!("{} · {}", h.author, h.time.replace('_', " ")));
+                    ui.weak(summary_text(&h.summary));
+                });
+            });
+        }
     }
     if let Some(f) = merge {
         begin_merge(app, f);
@@ -644,8 +763,16 @@ fn merge_window(app: &mut App, ctx: &egui::Context) {
     let busy = app.task.is_some();
     {
         let Some(view) = app.team.merge.as_mut() else { return };
-        let h = view.prepared.header.clone();
-        egui::Window::new(icons::with(icons::GIT_MERGE, &tf("Merge the changes of {0}", &[&h.author]))).open(&mut open).default_width(520.0).show(ctx, |ui| {
+        let h = view.header.clone();
+        let (title, go_label) = match &view.mode {
+            MergeMode::Single(_) => (tf("Merge the changes of {0}", &[&h.author]), t("Merge")),
+            MergeMode::Batch { index, total, .. } => {
+                let title = tf("Merge the changes of {0} ({1}/{2})", &[&h.author, &(index + 1).to_string(), &total.to_string()]);
+                let label = if index + 1 < *total { t("Merge and continue") } else { t("Merge") };
+                (title, label)
+            }
+        };
+        egui::Window::new(icons::with(icons::GIT_MERGE, &title)).open(&mut open).default_width(520.0).show(ctx, |ui| {
             ui.label(format!("{} · {}", h.author, h.time.replace('_', " ")));
             ui.label(tf("Brings: {0}", &[&summary_text(&h.summary)]));
             if !h.summary.not_carried.is_empty() {
@@ -697,7 +824,7 @@ fn merge_window(app: &mut App, ctx: &egui::Context) {
             ui.separator();
             ui.weak(t("Your work is saved first and the project is copied to .team/before-merge. Undo starts anew after merging."));
             ui.horizontal(|ui| {
-                if ui.add_enabled(!busy, egui::Button::new(icons::with(icons::GIT_MERGE, &t("Merge")))).clicked() {
+                if ui.add_enabled(!busy, egui::Button::new(icons::with(icons::GIT_MERGE, &go_label))).clicked() {
                     go = true;
                 }
                 if ui.button(t("Cancel")).clicked() {
@@ -712,6 +839,10 @@ fn merge_window(app: &mut App, ctx: &egui::Context) {
     if go {
         finish_merge(app);
     } else if !open || cancel {
-        app.team.merge = None;
+        if let Some(view) = app.team.merge.take() {
+            if let MergeMode::Batch { batch, .. } = view.mode {
+                batch.cancel();
+            }
+        }
     }
 }
