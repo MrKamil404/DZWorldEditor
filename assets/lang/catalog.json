@@ -10626,5 +10626,33 @@
  "Enter a prototype class name first.": {
   "de": "Gib zuerst einen Namen für die Prototyp-Klasse ein.",
   "pl": "Najpierw wpisz nazwę klasy prototypu."
+ },
+ "Show changes on the map": {
+  "de": "Änderungen auf der Karte anzeigen",
+  "pl": "Pokaż zmiany na mapie"
+ },
+ "Hide changes on the map": {
+  "de": "Änderungen auf der Karte ausblenden",
+  "pl": "Ukryj zmiany na mapie"
+ },
+ "This patch has no map area changes to highlight.": {
+  "de": "Dieser Patch enthält keine Kartenbereichs-Änderungen zum Hervorheben.",
+  "pl": "Ta paczka nie zawiera zmian obszarów mapy do zaznaczenia."
+ },
+ "Map preview: {0}": {
+  "de": "Kartenvorschau: {0}",
+  "pl": "Podgląd na mapie: {0}"
+ },
+ "Jump to area": {
+  "de": "Zum Bereich springen",
+  "pl": "Przejdź do obszaru"
+ },
+ "Clear preview": {
+  "de": "Vorschau ausblenden",
+  "pl": "Ukryj podgląd"
+ },
+ "Diff: {0}": {
+  "de": "Diff: {0}",
+  "pl": "Zmiany: {0}"
  }
 }

@@ -3732,6 +3732,7 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
         }
     }
     crate::mission_ui::draw_map(app, &painter, v, resp);
+    crate::team_ui::draw_diff_overlay(app, &painter, v);
     // Frames per second, small in the top right corner.
     if app.settings.show_fps && app.frame_ms > 0.0 {
         let text = format!("{:.0} FPS  {:.1} ms", 1000.0 / app.frame_ms, app.frame_ms);

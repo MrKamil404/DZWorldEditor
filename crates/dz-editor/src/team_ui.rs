@@ -33,6 +33,8 @@ pub struct TeamUi {
     new_person: String,
     /// The merge itself runs: the project is about to be replaced, so editing waits.
     merging: bool,
+    /// Visual diff of an incoming patch currently highlighted on the 2D/3D map.
+    pub diff_overlay: Option<team::PatchMapDiff>,
 }
 
 enum MergeMode {
@@ -85,6 +87,9 @@ fn project_dir(app: &App) -> Option<PathBuf> {
 /// Reads the team state and the waiting changes again.
 pub fn refresh(app: &mut App) {
     let dir = project_dir(app);
+    if dir != app.team.dir {
+        app.team.diff_overlay = None;
+    }
     app.team.last_scan = Some(Instant::now());
     app.team.dir = dir.clone();
     match (&dir, &app.doc) {
@@ -416,6 +421,7 @@ fn step_batch(dir: PathBuf, mut batch: MergeBatch, time: String) -> anyhow::Resu
                 let (camera, center, mpp) = (app.camera, app.top_center, app.top_mpp);
                 app.open_world(w, Some(dir));
                 (app.camera, app.top_center, app.top_mpp) = (camera, center, mpp);
+                app.team.diff_overlay = None;
                 refresh(app);
                 let mut authors: Vec<String> = Vec::new();
                 for r in &result.patches {
@@ -464,6 +470,7 @@ pub fn finish_merge(app: &mut App) {
                     let (camera, center, mpp) = (app.camera, app.top_center, app.top_mpp);
                     app.open_world(w, Some(dir));
                     (app.camera, app.top_center, app.top_mpp) = (camera, center, mpp);
+                    app.team.diff_overlay = None;
                     refresh(app);
                     let mut text = tf("Merged the changes of {0}: {1}", &[&who, &summary_text(&merged.taken)]);
                     if !merged.conflicts.is_empty() {
@@ -674,15 +681,35 @@ fn team_window(app: &mut App, ui: &mut egui::Ui) {
     if app.team.incoming.ready.is_empty() && app.team.incoming.missing_base.is_empty() {
         ui.weak(t("Nothing new in the team folder."));
     }
+    if let Some(active) = app.team.diff_overlay.clone() {
+        ui.horizontal(|ui| {
+            ui.colored_label(egui::Color32::from_rgb(255, 185, 70), tf("Map preview: {0}", &[&active.author]));
+            if let Some(c) = active.center() {
+                if ui.small_button(icons::with(icons::CROSSHAIR, &t("Jump to area"))).clicked() {
+                    show_at(app, c);
+                }
+            }
+            if ui.small_button(icons::with(icons::X, &t("Clear preview"))).clicked() {
+                app.team.diff_overlay = None;
+            }
+        });
+    }
     let mut merge = None;
+    let mut toggle_diff_file: Option<PathBuf> = None;
+    let active_file = app.team.diff_overlay.as_ref().map(|d| d.file.clone());
     for (file, h) in &app.team.incoming.ready {
         let direct = team::has_version(&dir, h.base);
+        let shown = active_file.as_ref() == Some(file);
         ui.horizontal(|ui| {
             let btn = ui.add_enabled(!busy && app.team.merge.is_none() && direct, egui::Button::new(icons::with(icons::GIT_MERGE, &t("Merge"))));
             if !direct {
                 btn.on_disabled_hover_text(t("Needs earlier changes on the list to be merged first. Use Merge all."));
             } else if btn.clicked() {
                 merge = Some(file.clone());
+            }
+            let eye_tip = if shown { t("Hide changes on the map") } else { t("Show changes on the map") };
+            if ui.add(egui::Button::new(if shown { icons::EYE_SLASH } else { icons::EYE }).selected(shown).small()).on_hover_text(eye_tip).clicked() {
+                toggle_diff_file = Some(file.clone());
             }
             ui.vertical(|ui| {
                 ui.label(format!("{} · {}", h.author, h.time.replace('_', " ")));
@@ -694,15 +721,23 @@ fn team_window(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         ui.colored_label(ui.visuals().warn_fg_color, t("Waiting for an earlier version"))
             .on_hover_text(t("Its starting version is not here yet. Wait for the team folder to finish syncing, or ask for a full copy."));
-        for (_, h) in &app.team.incoming.missing_base {
+        for (file, h) in &app.team.incoming.missing_base {
+            let shown = active_file.as_ref() == Some(file);
             ui.horizontal(|ui| {
                 ui.add_space(12.0);
+                let eye_tip = if shown { t("Hide changes on the map") } else { t("Show changes on the map") };
+                if ui.add(egui::Button::new(if shown { icons::EYE_SLASH } else { icons::EYE }).selected(shown).small()).on_hover_text(eye_tip).clicked() {
+                    toggle_diff_file = Some(file.clone());
+                }
                 ui.vertical(|ui| {
                     ui.weak(format!("{} · {}", h.author, h.time.replace('_', " ")));
                     ui.weak(summary_text(&h.summary));
                 });
             });
         }
+    }
+    if let Some(f) = toggle_diff_file {
+        toggle_diff(app, f);
     }
     if let Some(f) = merge {
         begin_merge(app, f);
@@ -760,6 +795,8 @@ fn merge_window(app: &mut App, ctx: &egui::Context) {
     let mut cancel = false;
     let mut go = false;
     let mut show = None;
+    let mut toggle_merge_diff = false;
+    let diff_active = app.team.diff_overlay.is_some();
     let busy = app.task.is_some();
     {
         let Some(view) = app.team.merge.as_mut() else { return };
@@ -773,7 +810,13 @@ fn merge_window(app: &mut App, ctx: &egui::Context) {
             }
         };
         egui::Window::new(icons::with(icons::GIT_MERGE, &title)).open(&mut open).default_width(520.0).show(ctx, |ui| {
-            ui.label(format!("{} · {}", h.author, h.time.replace('_', " ")));
+            ui.horizontal(|ui| {
+                ui.label(format!("{} · {}", h.author, h.time.replace('_', " ")));
+                let lbl = if diff_active { icons::with(icons::EYE_SLASH, &t("Hide changes on the map")) } else { icons::with(icons::EYE, &t("Show changes on the map")) };
+                if ui.add(egui::Button::new(lbl).selected(diff_active).small()).clicked() {
+                    toggle_merge_diff = true;
+                }
+            });
             ui.label(tf("Brings: {0}", &[&summary_text(&h.summary)]));
             if !h.summary.not_carried.is_empty() {
                 let names: Vec<String> = h.summary.not_carried.iter().map(|n| part_name(n)).collect();
@@ -833,6 +876,27 @@ fn merge_window(app: &mut App, ctx: &egui::Context) {
             });
         });
     }
+    if toggle_merge_diff {
+        if app.team.diff_overlay.is_some() {
+            app.team.diff_overlay = None;
+        } else if let (Some(doc), Some(view)) = (&app.doc, &app.team.merge) {
+            let diff = match &view.mode {
+                MergeMode::Single(p) => Some(p.map_diff(&doc.world)),
+                MergeMode::Batch { batch, .. } => batch.pending_diff(&doc.world),
+            };
+            if let Some(d) = diff {
+                if d.is_empty() {
+                    app.info(t("This patch has no map area changes to highlight."));
+                } else {
+                    let center = d.center();
+                    app.team.diff_overlay = Some(d);
+                    if let Some(c) = center {
+                        show_at(app, c);
+                    }
+                }
+            }
+        }
+    }
     if let Some(p) = show {
         show_at(app, p);
     }
@@ -844,5 +908,138 @@ fn merge_window(app: &mut App, ctx: &egui::Context) {
                 batch.cancel();
             }
         }
+    }
+}
+
+/// Toggles the map visual diff overlay for a `.dzpatch` file.
+pub fn toggle_diff(app: &mut App, file: PathBuf) {
+    if app.team.diff_overlay.as_ref().is_some_and(|d| d.file == file) {
+        app.team.diff_overlay = None;
+        return;
+    }
+    let Some(doc) = &app.doc else { return };
+    match team::inspect_diff(&file, &doc.world) {
+        Ok(diff) => {
+            if diff.is_empty() {
+                app.info(t("This patch has no map area changes to highlight."));
+                app.team.diff_overlay = None;
+            } else {
+                let center = diff.center();
+                app.team.diff_overlay = Some(diff);
+                if let Some(c) = center {
+                    show_at(app, c);
+                }
+            }
+        }
+        Err(e) => app.error(format!("{e:#}")),
+    }
+}
+
+/// Draws the active Team Work patch diff overlay on the 2D or 3D viewport.
+pub fn draw_diff_overlay(app: &App, painter: &egui::Painter, v: &crate::camera::View) {
+    let (Some(diff), Some(doc)) = (&app.team.diff_overlay, &app.doc) else { return };
+    let world = &doc.world;
+    use egui::{Color32, Pos2, Rect, Stroke, Vec2};
+
+    let draw_rects = |rects: &[[f32; 4]], fill: Color32, line: Color32| {
+        for &[x0, z0, x1, z1] in rects {
+            if v.ortho {
+                if let (Some(a), Some(b)) = (v.project([x0, 0.0, z1]), v.project([x1, 0.0, z0])) {
+                    let r = Rect::from_two_pos(a, b);
+                    if r.intersects(v.rect) {
+                        painter.rect(r, 0.0, fill, Stroke::new(1.2_f32, line), egui::StrokeKind::Inside);
+                    }
+                }
+            } else {
+                let corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+                let pts: Vec<Option<Pos2>> = corners.iter().map(|&[x, z]| v.project([x, world.height.sample(x, z) + 0.5, z])).collect();
+                for i in 0..4 {
+                    if let (Some(a), Some(b)) = (pts[i], pts[(i + 1) % 4]) {
+                        if v.rect.expand(400.0).contains(a) || v.rect.expand(400.0).contains(b) {
+                            painter.line_segment([a, b], Stroke::new(1.8_f32, line));
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    draw_rects(&diff.sat_tiles, Color32::from_rgba_unmultiplied(185, 115, 255, 34), Color32::from_rgb(190, 120, 255));
+    draw_rects(&diff.mask_tiles, Color32::from_rgba_unmultiplied(60, 210, 235, 38), Color32::from_rgb(60, 210, 235));
+    draw_rects(&diff.height_tiles, Color32::from_rgba_unmultiplied(255, 150, 45, 42), Color32::from_rgb(255, 155, 50));
+
+    let draw_points = |pts: &[[f32; 2]], col: Color32, cross: bool| {
+        let step = (pts.len() / 4000).max(1);
+        for p in pts.iter().step_by(step) {
+            let y = if v.ortho { 0.0 } else { world.height.sample(p[0], p[1]) + 1.0 };
+            let Some(s) = v.project([p[0], y, p[1]]).filter(|s| v.rect.contains(*s)) else { continue };
+            if cross {
+                let r = 4.0_f32;
+                painter.line_segment([s - Vec2::splat(r), s + Vec2::splat(r)], Stroke::new(1.6_f32, col));
+                painter.line_segment([Pos2::new(s.x - r, s.y + r), Pos2::new(s.x + r, s.y - r)], Stroke::new(1.6_f32, col));
+            } else {
+                painter.circle_filled(s, 3.2, col);
+                painter.circle_stroke(s, 3.2, Stroke::new(0.8_f32, Color32::BLACK));
+            }
+        }
+    };
+
+    draw_points(&diff.objects_added, Color32::from_rgb(80, 230, 110), false);
+    draw_points(&diff.objects_changed, Color32::from_rgb(255, 220, 70), false);
+    draw_points(&diff.objects_removed, Color32::from_rgb(240, 80, 80), true);
+
+    for (p, label) in &diff.elements {
+        let y = if v.ortho { 0.0 } else { world.height.sample(p[0], p[1]) + 1.5 };
+        let Some(s) = v.project([p[0], y, p[1]]).filter(|s| v.rect.contains(*s)) else { continue };
+        let d = 5.5_f32;
+        let diamond = vec![Pos2::new(s.x, s.y - d), Pos2::new(s.x + d, s.y), Pos2::new(s.x, s.y + d), Pos2::new(s.x - d, s.y)];
+        painter.add(egui::Shape::convex_polygon(diamond, Color32::from_rgb(255, 240, 120), Stroke::new(1.2_f32, Color32::BLACK)));
+        if !v.ortho || v.mpp < 4.0 {
+            painter.text(s + Vec2::new(8.0, 0.0), egui::Align2::LEFT_CENTER, label, egui::FontId::proportional(11.0), Color32::WHITE);
+        }
+    }
+
+    // Compact visual diff legend pill in the bottom-left corner of the viewport.
+    let mut parts: Vec<(Color32, String)> = Vec::new();
+    if !diff.height_tiles.is_empty() {
+        parts.push((Color32::from_rgb(255, 155, 50), format!("{} ({})", t("Terrain"), diff.height_tiles.len())));
+    }
+    if !diff.mask_tiles.is_empty() {
+        parts.push((Color32::from_rgb(60, 210, 235), format!("{} ({})", t("Surfaces"), diff.mask_tiles.len())));
+    }
+    if !diff.sat_tiles.is_empty() {
+        parts.push((Color32::from_rgb(190, 120, 255), format!("{} ({})", t("Satellite"), diff.sat_tiles.len())));
+    }
+    if !diff.objects_added.is_empty() {
+        parts.push((Color32::from_rgb(80, 230, 110), format!("+{}", diff.objects_added.len())));
+    }
+    if !diff.objects_changed.is_empty() {
+        parts.push((Color32::from_rgb(255, 220, 70), format!("~{}", diff.objects_changed.len())));
+    }
+    if !diff.objects_removed.is_empty() {
+        parts.push((Color32::from_rgb(240, 80, 80), format!("-{}", diff.objects_removed.len())));
+    }
+    let font = egui::FontId::proportional(11.5);
+    let title = tf("Diff: {0}", &[&diff.author]);
+    let title_g = painter.layout_no_wrap(title, font.clone(), Color32::WHITE);
+    let mut total_w = 14.0 + title_g.size().x;
+    let mut galleys = Vec::with_capacity(parts.len());
+    for (col, text) in parts {
+        let g = painter.layout_no_wrap(text, font.clone(), Color32::from_gray(230));
+        total_w += 18.0 + g.size().x;
+        galleys.push((col, g));
+    }
+    let pill = Rect::from_min_size(Pos2::new(v.rect.left() + 10.0, v.rect.bottom() - 34.0), Vec2::new(total_w, 24.0));
+    painter.rect(pill, 4.0, Color32::from_rgba_unmultiplied(18, 20, 24, 215), Stroke::new(1.0_f32, Color32::from_gray(75)), egui::StrokeKind::Inside);
+    let mut x = pill.left() + 8.0;
+    let cy = pill.center().y;
+    painter.galley(Pos2::new(x, cy - title_g.size().y * 0.5), title_g.clone(), Color32::WHITE);
+    x += title_g.size().x + 10.0;
+    for (col, g) in galleys {
+        painter.circle_filled(Pos2::new(x + 3.0, cy), 3.8, col);
+        x += 10.0;
+        let w = g.size().x;
+        painter.galley(Pos2::new(x, cy - g.size().y * 0.5), g, Color32::WHITE);
+        x += w + 8.0;
     }
 }
