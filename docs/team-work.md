@@ -19,7 +19,10 @@ pen drive). It is in the **Team** menu.
 * Everyone works on their own copy as usual; nothing is locked.
 * In the evening one person clicks **Send my changes**. A small `.dzpatch` file with what changed
   since the shared version goes to the team folder.
-* The others see *Team (1)* in the menu and click **Merge**. When several patches wait, **Merge all**
+* The others see *Team (1)* in the menu and click **Merge**. Before merging, click the eye icon next
+  to any incoming patch (or in the merge window) to highlight its changed terrain, surface and
+  satellite tiles, added/changed/removed objects and modified elements directly on the 2D and 3D map.
+  When several patches wait, **Merge all**
   applies them in dependency order (oldest first among independent changes). Patches without
   conflicts go through automatically; the merge window opens only where changes clash, and the
   project is backed up and saved once at the end. Where both changed the same thing, the merge
