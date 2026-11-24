@@ -250,8 +250,9 @@ fn opening_ui(ui: &mut egui::Ui, o: &mut dz_core::library::FenceOpening, cx: &Ki
 
 /// Fields of a generator. Returns true when the colour eyedropper should start.
 /// A part of a generator's settings that folds away.
-fn group(ui: &mut egui::Ui, title: String, open: bool, add: impl FnOnce(&mut egui::Ui)) {
-    egui::CollapsingHeader::new(egui::RichText::new(&title).strong()).id_salt(("gen_group", title)).default_open(open).show(ui, add);
+/// Uses a stable `id` so changing counts or markers in `title` does not collapse the section.
+fn group(ui: &mut egui::Ui, id: &str, title: String, open: bool, add: impl FnOnce(&mut egui::Ui)) {
+    egui::CollapsingHeader::new(egui::RichText::new(&title).strong()).id_salt(("gen_group", id)).default_open(open).show(ui, add);
 }
 
 /// A lower and an upper bound in one row.
@@ -302,7 +303,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
     match kind {
         GeneratorKind::Forest(g) => {
             let p = &mut g.project;
-            group(ui, t("Trees"), true, |ui| {
+            group(ui, "trees", t("Trees"), true, |ui| {
                 forest_field(ui, &t("Preset in shapes"), "area", &mut g.preset, cx, None, None);
                 number64(ui, t("Spacing"), &mut p.spacing_multiplier, 0.3..=4.0);
                 range_row(ui, t("Scale"), &mut p.scale_min, &mut p.scale_max, 0.1..=3.0, 0.01);
@@ -317,7 +318,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             });
             // The ground under the trees, with the settings DayZ Forests has for its tree layer.
             let ground = if g.ground.enabled { t("Ground under the trees") + " ✔" } else { t("Ground under the trees") };
-            group(ui, ground, false, |ui| {
+            group(ui, "ground", ground, false, |ui| {
                 ui.checkbox(&mut g.ground.enabled, t("Paint the ground under the trees")).on_hover_text(t("Kept as a mask modifier of this generator: running it again repaints it, deleting it brings the mask back."));
                 ui.add_enabled_ui(g.ground.enabled, |ui| {
                     row(ui, &t("Surface"), |ui| {
@@ -330,7 +331,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     crate::maskmods::stamp_ui(ui, &mut g.ground.stamp, "ground_shape", false);
                 });
             });
-            group(ui, format!("{} ({})", t("More presets in shapes"), g.layers.len()), false, |ui| {
+            group(ui, "layers", format!("{} ({})", t("More presets in shapes"), g.layers.len()), false, |ui| {
                 ui.weak(t("Each one fills the whole shape as well, for example undergrowth under the trees."));
                 let mut remove = None;
                 for (i, l) in g.layers.iter_mut().enumerate() {
@@ -358,7 +359,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     g.layers.push(dz_core::library::ForestLayer { preset: cx.presets.first().cloned().unwrap_or_default(), ..Default::default() });
                 }
             });
-            group(ui, format!("{} ({})", t("Zones from the mask"), g.zones.len()), false, |ui| {
+            group(ui, "zones", format!("{} ({})", t("Zones from the mask"), g.zones.len()), false, |ui| {
                 ui.weak(t("A surface of the mask and the preset planted where it is."));
                 let mut remove = None;
                 for (i, z) in g.zones.iter_mut().enumerate() {
@@ -378,7 +379,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 }
             });
             let edge = if g.project.edges.enabled { t("Forest edge") + " ✔" } else { t("Forest edge") };
-            group(ui, edge, false, |ui| {
+            group(ui, "edge", edge, false, |ui| {
                 ui.checkbox(&mut g.project.edges.enabled, t("Forest edge"));
                 ui.add_enabled_ui(g.project.edges.enabled, |ui| {
                     number64(ui, t("Edge width m"), &mut g.project.edges.band_width_m, 1.0..=80.0);
@@ -421,7 +422,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     }
                 });
             });
-            group(ui, t("Keep free of trees"), false, |ui| {
+            group(ui, "skip", t("Keep free of trees"), false, |ui| {
                 let mut remove = None;
                 for (i, s) in g.skip_surfaces.iter_mut().enumerate() {
                     ui.push_id(("skip", i), |ui| ui.horizontal(|ui| {
@@ -438,7 +439,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 margin_field(ui, t("Buildings"), &mut g.avoid_buildings);
             });
             let colours = if g.color_filter.is_some() { t("Only on satellite colours") + " ✔" } else { t("Only on satellite colours") };
-            group(ui, colours, false, |ui| {
+            group(ui, "colours", colours, false, |ui| {
                 let mut filtered = g.color_filter.is_some();
                 if ui.checkbox(&mut filtered, t("Only on satellite colours")).changed() {
                     g.color_filter = filtered.then(|| forest_core::preset::ColorFilter { samples: Vec::new(), tolerance: 60, invert: false });
@@ -463,7 +464,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     ui.checkbox(&mut f.invert, t("Everywhere except these colours"));
                 }
             });
-            group(ui, t("DayZForests project"), false, |ui| {
+            group(ui, "forest_project", t("DayZForests project"), false, |ui| {
                 let p = &g.project;
                 ui.weak(tf("{0} species, {1} areas, {2} zones in the project", &[&p.species.len().to_string(), &p.areas.len().to_string(), &p.zones.len().to_string()]));
                 ui.horizontal_wrapped(|ui| {
@@ -552,7 +553,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                     }
                 }
             });
-            group(ui, t("Yards and fences"), false, |ui| {
+            group(ui, "yards", t("Yards and fences"), false, |ui| {
                 number(ui, t("Yard round a building m"), &mut s.yard, 0.0..=30.0);
                 layer_pick(ui, "yard_surface", t("Yard surface"), &mut s.yard_surface, &cx.layers, &cx.layer_pics);
                 number(ui, t("Share of plots fenced"), &mut s.fence_share, 0.0..=1.0);
@@ -589,7 +590,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 model_field(ui, t("Corner object"), &mut g.corner_model, cx);
                 ui.weak(t("Stood on every corner of the line, such as a post or a corner piece of the same wall. The pieces stop at its sides."));
             }
-            group(ui, t("First and last object"), false, |ui| {
+            group(ui, "fence_ends", t("First and last object"), false, |ui| {
                 model_field(ui, t("First object"), &mut g.start_model, cx);
                 if !g.start_model.is_empty() { ui.checkbox(&mut g.flip_start, t("Rotate the first object by 180°")); }
                 model_field(ui, t("Last object"), &mut g.end_model, cx);
@@ -599,7 +600,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 }
             });
             let openings = g.openings.len() + usize::from(g.road_gate.is_some());
-            group(ui, format!("{} ({openings})", t("Wickets and gates")), false, |ui| {
+            group(ui, "fence_openings", format!("{} ({openings})", t("Wickets and gates")), false, |ui| {
             ui.weak(t("Each leaves a gap in the fence with its own object, or two leaves of a gate."));
             let mut drop = None;
             for (k, o) in g.openings.iter_mut().enumerate() {
@@ -825,7 +826,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Ragged edges m"), &mut g.edge_noise, 0.0..=40.0);
             ui.checkbox(&mut g.shape, t("Lay the beaches to a gentle slope"));
             if g.shape { number(ui, t("Beach slope °"), &mut g.beach_slope, 1.0..=15.0); }
-            group(ui, t("Stones along the water"), false, |ui| {
+            group(ui, "coast_stones", t("Stones along the water"), false, |ui| {
                 number(ui, t("Per hectare"), &mut g.density, 0.0..=80.0);
                 objects_ui(ui, &mut g.objects, cx);
             });
@@ -862,7 +863,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 _ => {}
             }
             if let Some(a) = &mut g.angle { number(ui, t("Direction °"), a, 0.0..=180.0); }
-            group(ui, t("Hay bales"), false, |ui| {
+            group(ui, "hay_bales", t("Hay bales"), false, |ui| {
                 number(ui, t("Per hectare"), &mut g.density, 0.0..=20.0);
                 objects_ui(ui, &mut g.objects, cx);
             });
@@ -874,23 +875,23 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Verge from the middle of the road m"), &mut g.offset, 1.0..=40.0);
             number(ui, t("Verge width m"), &mut g.verge_width, 0.5..=20.0);
             ui.checkbox(&mut g.both_sides, t("Both sides"));
-            group(ui, t("Bushes and trees"), false, |ui| {
+            group(ui, "roadside_plants", t("Bushes and trees"), false, |ui| {
                 number(ui, t("Per 100 m"), &mut g.plant_density, 0.0..=60.0);
                 number(ui, t("Band width m"), &mut g.plant_band, 0.5..=60.0);
                 objects_ui(ui, &mut g.plants, cx);
             });
-            group(ui, t("Signs"), false, |ui| {
+            group(ui, "roadside_signs", t("Signs"), false, |ui| {
                 number(ui, t("One every m (0 = none)"), &mut g.sign_spacing, 0.0..=3000.0);
                 objects_ui(ui, &mut g.signs, cx);
             });
-            group(ui, t("Posts in a row"), false, |ui| {
+            group(ui, "roadside_posts", t("Posts in a row"), false, |ui| {
                 ui.weak(t("Telegraph poles, lamps: on the right of the line, turned towards it."));
                 number(ui, t("One every m (0 = none)"), &mut g.post_spacing, 0.0..=500.0);
                 number(ui, t("From the middle m"), &mut g.post_offset, 0.0..=60.0);
                 number(ui, t("Turn °"), &mut g.post_turn, -180.0..=180.0);
                 objects_ui(ui, &mut g.posts, cx);
             });
-            group(ui, t("Stops and stations"), false, |ui| {
+            group(ui, "roadside_stops", t("Stops and stations"), false, |ui| {
                 ui.weak(t("A building beside the line, its front towards it, with a platform laid along the line."));
                 number(ui, t("One every m (0 = none)"), &mut g.stop_spacing, 0.0..=20000.0);
                 number(ui, t("From the middle m"), &mut g.stop_offset, 0.0..=80.0);
@@ -912,7 +913,7 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             row(ui, &t("Most cars in a jam"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.jam_max, 3..=20)); });
             number(ui, t("Lane from the middle m"), &mut g.lane, 0.0..=10.0);
             number(ui, t("Half the road width m"), &mut g.road_half, 1.0..=15.0);
-            group(ui, t("Wrecks"), false, |ui| {
+            group(ui, "wrecks", t("Wrecks"), false, |ui| {
                 row(ui, &t("Turn of the wrecks"), |ui| {
                     ui.add(crate::theme::ValueField::new(&mut g.wreck_turn, -180.0..=180.0).suffix("°").step_by(1.0)).on_hover_text(t("Every wreck is turned by this much. Cars face the way the traffic of their lane goes; turn them when a model faces the other way or sideways."));
                 });
@@ -925,11 +926,11 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
                 number(ui, t("Random turn on the verge ±°"), &mut g.verge_turn, 0.0..=90.0);
                 objects_ui(ui, &mut g.wrecks, cx);
             });
-            group(ui, t("Stains under wrecks"), false, |ui| {
+            group(ui, "wreck_stains", t("Stains under wrecks"), false, |ui| {
                 number(ui, t("Share of wrecks"), &mut g.under_share, 0.0..=1.0);
                 models_list(ui, &mut g.under, cx);
             });
-            group(ui, t("Road decals"), false, |ui| {
+            group(ui, "road_decals", t("Road decals"), false, |ui| {
                 number(ui, t("Per km"), &mut g.decals_per_km, 0.0..=200.0);
                 number(ui, t("Most metres from the middle"), &mut g.decal_reach, 0.0..=15.0);
                 ui.checkbox(&mut g.decals_inside, t("Keep decals inside the road")).on_hover_text(t("A wide decal stays nearer the middle, so its edge does not reach past half the road width."));
@@ -950,10 +951,10 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             number(ui, t("Share against the walls"), &mut g.against_wall, 0.0..=1.0);
             number(ui, t("Free ones up to m from the walls"), &mut g.max_distance, 0.7..=20.0);
             number(ui, t("Keep from roads m"), &mut g.keep_from_roads, 0.0..=30.0);
-            group(ui, t("Houses"), false, |ui| objects_ui(ui, &mut g.residential, cx));
-            group(ui, t("Works and sheds"), false, |ui| objects_ui(ui, &mut g.industrial, cx));
-            group(ui, t("Military buildings"), false, |ui| objects_ui(ui, &mut g.military, cx));
-            group(ui, t("Farms"), false, |ui| objects_ui(ui, &mut g.farm, cx));
+            group(ui, "dressing_houses", t("Houses"), false, |ui| objects_ui(ui, &mut g.residential, cx));
+            group(ui, "dressing_industrial", t("Works and sheds"), false, |ui| objects_ui(ui, &mut g.industrial, cx));
+            group(ui, "dressing_military", t("Military buildings"), false, |ui| objects_ui(ui, &mut g.military, cx));
+            group(ui, "dressing_farms", t("Farms"), false, |ui| objects_ui(ui, &mut g.farm, cx));
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
         }
     }
