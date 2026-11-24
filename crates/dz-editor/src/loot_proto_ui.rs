@@ -308,8 +308,8 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         .resizable(true)
         .vscroll(false)
         .show(ctx, |ui| {
-            // Resizable right panel for mapgroupproto.xml fields; left/central area expands freely for 3D.
-            egui::SidePanel::right("loot_proto_right_panel")
+            // Resizable left panel for mapgroupproto.xml fields; right/central area expands freely for 3D.
+            egui::SidePanel::left("loot_proto_left_panel")
                 .frame(egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::ZERO))
                 .resizable(true)
                 .default_width(360.0)
@@ -467,7 +467,7 @@ fn draw_preview_panel(
 ) {
     // Top toolbar inside the 3D area
     egui::TopBottomPanel::top("loot_proto_3d_top")
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 0, right: 4, top: 0, bottom: 4 }))
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 0, top: 0, bottom: 4 }))
         .show_inside(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui.small_button(t("Iso")).clicked() { st.set_camera_preset(CameraPreset::Iso); }
@@ -496,7 +496,7 @@ fn draw_preview_panel(
 
     // Bottom hint strip inside the 3D area
     egui::TopBottomPanel::bottom("loot_proto_3d_bottom")
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 0, right: 4, top: 4, bottom: 0 }))
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 0, top: 4, bottom: 0 }))
         .show_inside(ui, |ui| {
             let hint = if st.add_mode {
                 t("RMB + WASD/QE: fly · Click a surface to add a loot point")
