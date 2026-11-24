@@ -308,6 +308,7 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 if ui.add_enabled(r.is_some(), egui::Button::new(icons::with(icons::ARROW_CLOCKWISE, &format!("{} {}", t("Redo"), r.unwrap_or_default()))).shortcut_text(keys.text(Action::Redo))).clicked() { app.redo(); ui.close_menu(); }
                 ui.separator();
                 if ui.add(egui::Button::new(icons::with(icons::COPY, &t("Duplicate"))).shortcut_text(keys.text(Action::Duplicate))).clicked() { app.duplicate_selection(); ui.close_menu(); }
+                if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(icons::with(icons::ARROW_DOWN, &t("Drop onto surface"))).shortcut_text(keys.text(Action::DropOnSurface))).clicked() { crate::viewport::drop_selection_on_surface(app); ui.close_menu(); }
                 if ui.add(egui::Button::new(icons::with(icons::TRASH, &t("Delete"))).shortcut_text(keys.text(Action::Delete))).clicked() { app.delete_selection(); ui.close_menu(); }
                 ui.separator();
                 if ui.add(egui::Button::new(icons::with(icons::GEAR, &t("Settings..."))).shortcut_text(keys.text(Action::Settings))).clicked() { app.dialog = Dialog::Settings; ui.close_menu(); }
@@ -336,6 +337,13 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 crate::layout::menu(app, ui);
                 ui.separator();
                 visibility_toggles(app, ui);
+                ui.separator();
+                if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(icons::with(icons::EYE_SLASH, &t("Hide selected"))).shortcut_text(keys.text(Action::HideSelected))).clicked() { app.hide_selection(); ui.close_menu(); }
+                if ui.add_enabled(!app.selection.is_empty() || !app.hidden_objects.is_empty(), egui::Button::new(icons::with(icons::EYE, &t("Isolate selection"))).shortcut_text(keys.text(Action::IsolateSelection))).clicked() { app.isolate_selection(); ui.close_menu(); }
+                let hidden_n = app.hidden_objects.len();
+                let show_label = if hidden_n > 0 { tf("Show hidden objects ({0})", &[&hidden_n.to_string()]) } else { t("Show hidden objects") };
+                if ui.add_enabled(hidden_n > 0, egui::Button::new(icons::with(icons::EYE, &show_label)).shortcut_text(keys.text(Action::ShowHidden))).clicked() { app.show_hidden_objects(); ui.close_menu(); }
+                ui.separator();
                 ui.checkbox(&mut app.camera_under, t("Camera below the terrain")).on_hover_text(keys.tip(Action::CameraBelow));
                 ui.separator();
                 ui.checkbox(&mut app.show_land_grid, t("Land grid"));
@@ -1301,6 +1309,10 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
             if button(ui, !app.place.brush, G::PlaceOne, t("Places one")).clicked() { app.place.brush = false; }
             if button(ui, app.place.brush, G::PlacePaint, format!("{}\n{}", t("Paints"), t("Hold the button to paint objects."))).clicked() { app.place.brush = true; }
         });
+        if !app.place.brush {
+            theme::check_row(ui, &mut app.place.snap_surface, t("Place on top of objects"))
+                .on_hover_text(t("Clicks in the 3D view place the object on the roof, floor or deck under the cursor instead of on the terrain."));
+        }
         if app.place.brush {
             slider(ui, &t("Radius"), &mut app.place.brush_radius, 1.0..=300.0, true);
             slider(ui, &t("Spacing"), &mut app.place.brush_spacing, 0.3..=60.0, true);

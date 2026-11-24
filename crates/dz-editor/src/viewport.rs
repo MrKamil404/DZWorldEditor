@@ -373,7 +373,7 @@ fn pick_hits(app: &App, v: &View, s: Pos2, all: bool) -> Vec<u32> {
                 }
                 for &id in world.objects.cell((gx, gz)) {
                     let Some(ob) = world.objects.get(id) else { continue };
-                    if !world.object_interactive(ob) {
+                    if !world.object_interactive(ob) || app.hidden_objects.contains(&id) {
                         continue;
                     }
                     let path = world.objects.model_path(ob);
@@ -436,6 +436,131 @@ fn pick_hits(app: &App, v: &View, s: Pos2, all: bool) -> Vec<u32> {
         }
     }
     ids
+}
+
+/// Intersects a world-space ray against visible object meshes (falling back to bounding boxes
+/// for models whose pick mesh has not loaded yet), skipping any object id in `skip`.
+fn raycast_objects(app: &App, o: V3, d: V3, max_t: f32, skip: &std::collections::BTreeSet<u32>) -> Option<(f32, V3)> {
+    let doc = app.doc.as_ref()?;
+    let world = &doc.world;
+    let mut seen = std::collections::HashSet::new();
+    let mut candidates: Vec<(f32, u32)> = Vec::new();
+    let step = GRID_CELL * 0.5;
+    let vertical = d[0].abs() < 1e-4 && d[2].abs() < 1e-4;
+    let mut t = 0.0;
+    while t < max_t {
+        let p = add(o, mul(d, t));
+        let k = grid_key(p[0], p[2]);
+        for gz in k.1 - 1..=k.1 + 1 {
+            for gx in k.0 - 1..=k.0 + 1 {
+                if !seen.insert((gx, gz)) {
+                    continue;
+                }
+                for &id in world.objects.cell((gx, gz)) {
+                    if skip.contains(&id) || app.hidden_objects.contains(&id) {
+                        continue;
+                    }
+                    let Some(ob) = world.objects.get(id) else { continue };
+                    if !world.object_visible(ob) {
+                        continue;
+                    }
+                    let path = world.objects.model_path(ob);
+                    let info = app.db.get(path);
+                    if path.contains(r"\roads\parts\") || crate::models::is_decal_model(path, &info) {
+                        continue;
+                    }
+                    let ground = ObjectStore::origin_y(ob, &world.height);
+                    if let Some(h) = ray_box(&o, &d, ob, ground, &info) {
+                        if h <= max_t {
+                            candidates.push((h, id));
+                        }
+                    }
+                }
+            }
+        }
+        if vertical {
+            break;
+        }
+        t += step;
+    }
+    candidates.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+    let mut best: Option<f32> = None;
+    for (h, id) in candidates.into_iter().take(200) {
+        if best.is_some_and(|b| h >= b) {
+            break;
+        }
+        let Some(ob) = world.objects.get(id) else { continue };
+        let hit = match app.pick_meshes.get(&ob.model) {
+            Some(mesh) => {
+                let (lo, ld) = ray_in_model(&o, &d, ob, ObjectStore::origin_y(ob, &world.height));
+                ray_mesh(mesh, lo, ld)
+            }
+            None => Some(h),
+        };
+        if let Some(ht) = hit.filter(|&ht| ht <= max_t) {
+            if best.is_none_or(|b| ht < b) {
+                best = Some(ht);
+            }
+        }
+    }
+    best.map(|ht| (ht, add(o, mul(d, ht))))
+}
+
+/// Drops the selected objects onto the highest object surface or terrain underneath them.
+pub fn drop_selection_on_surface(app: &mut App) {
+    if app.selection.is_empty() {
+        return;
+    }
+    let Some(doc) = app.doc.as_ref() else { return };
+    let selected: Vec<u32> = app.selection.iter().copied().collect();
+    let skip = app.selection.clone();
+    let mut updates: Vec<(u32, Obj, Obj)> = Vec::new();
+    for id in selected {
+        let Some(before) = doc.world.objects.get(id).copied() else { continue };
+        if !doc.world.object_interactive(&before) {
+            continue;
+        }
+        let info = app.db.get(doc.world.objects.model_path(&before));
+        let ground = doc.world.height.sample(before.x, before.z);
+        let cur_y = ObjectStore::origin_y(&before, &doc.world.height);
+        let base_elev = if info.contact_count > 0 {
+            -info.contact_y * before.scale
+        } else if info.known {
+            -info.min[1] * before.scale
+        } else {
+            0.0
+        };
+        // Cast straight down from slightly above the object's base/origin to the terrain.
+        let start_y = (cur_y - base_elev).max(cur_y) + 0.35;
+        let max_t = (start_y - ground).max(0.0) + 1.0;
+        let surface_y = raycast_objects(app, [before.x, start_y, before.z], [0.0, -1.0, 0.0], max_t, &skip)
+            .map(|(_, p)| p[1])
+            .filter(|&sy| sy > ground)
+            .unwrap_or(ground);
+        let target_origin_y = surface_y + base_elev;
+        let mut after = before;
+        after.elevation = if after.flags & dz_core::objects::FLAG_ABSOLUTE != 0 {
+            target_origin_y
+        } else {
+            target_origin_y - ground
+        };
+        if (after.elevation - before.elevation).abs() > 1e-4 {
+            updates.push((id, before, after));
+        }
+    }
+    if updates.is_empty() {
+        return;
+    }
+    let n = updates.len();
+    let Some(doc) = app.doc.as_mut() else { return };
+    let mut hist = Vec::with_capacity(n);
+    for (id, before, after) in updates {
+        doc.world.objects.update(id, after);
+        hist.push((id, Some(before), Some(after)));
+    }
+    doc.history.push(t("Drop onto surface"), Change::Objects(hist));
+    doc.dirty.objects = true;
+    app.info(tf("Dropped {0} objects onto the surface below", &[&n.to_string()]));
 }
 
 pub(crate) fn is_plant(path: &str) -> bool {
@@ -591,7 +716,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         let (ex, ez) = (v.eye[0], v.eye[2]);
         let mut triangles_left: i64 = 8_000_000;
         world.objects.for_each_in(ex - half, ez - half, ex + half, ez + half, |id, o| {
-            if !world.object_visible(o) {
+            if !world.object_visible(o) || app.hidden_objects.contains(&id) {
                 return;
             }
             let info = &infos[o.model as usize];
@@ -628,7 +753,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         let min_size = (v.mpp * 2.0).max(0.2);
         boxes.reserve(1 << 16);
         world.objects.for_each_in(ex - half, ez - half, ex + half, ez + half, |id, o| {
-            if !world.object_visible(o) {
+            if !world.object_visible(o) || app.hidden_objects.contains(&id) {
                 return;
             }
             let sel = selection.contains(&id);
@@ -683,7 +808,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                 }
                 for &id in list {
                     let Some(o) = world.objects.get(id) else { continue };
-                    if !world.object_visible(o) {
+                    if !world.object_visible(o) || app.hidden_objects.contains(&id) {
                         continue;
                     }
                     let info = &infos[o.model as usize];
@@ -1260,8 +1385,9 @@ fn finish_place_stroke(app: &mut App) {
     }
 }
 
-/// Adds an object with the placement options in force.
-pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj)> {
+/// Adds an object with the placement options in force. When `surface_y` is given, places the
+/// object's base on that world height (for example a roof, floor or deck).
+pub(crate) fn insert_placed_at(app: &mut App, model: &str, x: f32, z: f32, surface_y: Option<f32>) -> Option<(u32, Obj)> {
     let (random, align, smin, smax) = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
     let info = app.db.get(model);
     let doc = app.doc.as_mut()?;
@@ -1282,13 +1408,28 @@ pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Optio
     let k = ((seed >> 3) & 1023) as f32 / 1023.0;
     let scale = smin + (smax - smin) * k;
     // Models with a placement property are fitted to the ground by the game; tilting them too
-    // would make them lean.
-    let (pitch, roll) = if align && !info.placement.skews() { gen::slope_angles(&doc.world.height, x, z, yaw) } else { (0.0, 0.0) };
-    // The model rests on its land contact points.
-    let elevation = if info.contact_count > 0 { -info.contact_y * scale } else { 0.0 };
+    // would make them lean. When snapping onto another object, keep the object level.
+    let (pitch, roll) = if surface_y.is_none() && align && !info.placement.skews() { gen::slope_angles(&doc.world.height, x, z, yaw) } else { (0.0, 0.0) };
+    // The model rests on its land contact points (or its bounding-box bottom on another object).
+    let base_elev = if info.contact_count > 0 {
+        -info.contact_y * scale
+    } else if surface_y.is_some() && info.known {
+        -info.min[1] * scale
+    } else {
+        0.0
+    };
+    let elevation = match surface_y {
+        Some(sy) => (sy - doc.world.height.sample(x, z)) + base_elev,
+        None => base_elev,
+    };
     let mut o = Obj { x, z, elevation, yaw, pitch, roll, scale, model: model_id, flags: 0 };
     o.set_layer(layer);
     Some((doc.world.objects.insert(o), o))
+}
+
+/// Adds an object with the placement options in force.
+pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj)> {
+    insert_placed_at(app, model, x, z, None)
 }
 
 /// The model to place: one of the models selected together in the browser, or the chosen one.
@@ -1302,12 +1443,16 @@ fn pool_model(app: &App, seed: u32) -> Option<String> {
 }
 
 pub fn place_model(app: &mut App, model: &str, x: f32, z: f32) {
+    place_model_at(app, model, x, z, None);
+}
+
+pub fn place_model_at(app: &mut App, model: &str, x: f32, z: f32, surface_y: Option<f32>) {
     let (auto_pad, falloff) = (app.place.auto_pad, app.place.pad_falloff);
-    let Some((id, o)) = insert_placed(app, model, x, z) else { return };
+    let Some((id, o)) = insert_placed_at(app, model, x, z, surface_y) else { return };
     let Some(doc) = &mut app.doc else { return };
     doc.history.push(t("Place object"), Change::Objects(vec![(id, None, Some(o))]));
     doc.dirty.objects = true;
-    if auto_pad {
+    if auto_pad && surface_y.is_none() {
         app.add_pads(&[id], falloff);
     }
 }
@@ -2220,19 +2365,27 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         }
         Mode::Place => {
             if resp.clicked() && !modifiers.alt {
-                if let (Some(id), Some(h)) = (app.place.prefab, hit) {
+                let surface = if !v.ortho && app.place.snap_surface {
+                    let (ro, rd) = v.ray(mouse);
+                    let max_t = hit.map(|p| dot(sub(p, ro), rd)).unwrap_or(2000.0).min(2000.0);
+                    raycast_objects(app, ro, rd, max_t, &std::collections::BTreeSet::new()).map(|(_, p)| p)
+                } else {
+                    None
+                };
+                let target = surface.or(hit);
+                if let (Some(id), Some(h)) = (app.place.prefab, target) {
                     app.place_prefab(id, h[0], h[2]);
                     return;
                 }
-                if let (Some(id), Some(h)) = (app.place.preset, hit) {
+                if let (Some(id), Some(h)) = (app.place.preset, target) {
                     crate::library_ui::place_preset(app, id, h[0], h[2]);
                     return;
                 }
                 app.place_counter = app.place_counter.wrapping_add(1);
                 let pick = pool_model(app, app.place_counter.wrapping_mul(2654435761));
-                match (pick, hit) {
+                match (pick, target) {
                     (Some(m), Some(h)) => {
-                        place_model(app, &m, h[0], h[2]);
+                        place_model_at(app, &m, h[0], h[2], surface.map(|p| p[1]));
                     }
                     (None, _) => app.warn(t("Choose a model in the Content Browser first")),
                     _ => {}
@@ -2549,7 +2702,7 @@ fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, op: BoxOp, out
         }
         let mut found = Vec::new();
         world.objects.for_each_in(x0, z0, x1, z1, |id, o| {
-            if !world.object_interactive(o) {
+            if !world.object_interactive(o) || app.hidden_objects.contains(&id) {
                 return;
             }
             if let Some(s) = v.project([o.x, ObjectStore::origin_y(o, &world.height), o.z]) {
@@ -4139,7 +4292,11 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         if k(Action::JoinNeighbour) { app.join_selection_to_neighbour(); }
         if k(Action::CopyAhead) { app.copy_selection_along(true); }
         if k(Action::CopyBehind) { app.copy_selection_along(false); }
+        if k(Action::DropOnSurface) { drop_selection_on_surface(app); }
     }
+    if k(Action::HideSelected) { app.hide_selection(); }
+    if k(Action::ShowHidden) { app.show_hidden_objects(); }
+    if k(Action::IsolateSelection) { app.isolate_selection(); }
     app.remember_selection();
     if matches!(app.mode, Mode::Select | Mode::Place) && app.view_hovered_last {
         if k(Action::PasteHere) { app.paste_at_cursor(false); }
@@ -4183,7 +4340,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                 app.shape.selection = d.world.shape_layers.iter().enumerate().filter(|(_, l)| l.visible).flat_map(|(li, l)| (0..l.shapes.len()).map(move |si| (li, si))).collect();
             }
         } else if let Some(d) = &app.doc {
-            app.selection = d.world.objects.iter().filter(|(_, o)| d.world.object_interactive(o)).map(|(id, _)| id).collect();
+            app.selection = d.world.objects.iter().filter(|(id, o)| d.world.object_interactive(o) && !app.hidden_objects.contains(id)).map(|(id, _)| id).collect();
             app.selection_rev += 1;
         }
     }

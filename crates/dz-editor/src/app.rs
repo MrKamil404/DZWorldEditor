@@ -197,6 +197,8 @@ pub struct PlaceSettings {
     pub pad_margin: f32,
     /// New pads level the ground to the height of their object and follow it up and down.
     pub pad_follow: bool,
+    /// Clicks in 3D place objects on top of other objects (roofs, floors, decks) instead of only terrain.
+    pub snap_surface: bool,
 }
 
 pub struct LineSettings {
@@ -475,6 +477,8 @@ pub struct App {
     pub detail_center: [f32; 2],
 
     pub selection: BTreeSet<u32>,
+    /// Objects temporarily hidden in the view during this session (not saved to the project).
+    pub hidden_objects: std::collections::HashSet<u32>,
     pub selected_modifier: Option<u64>,
     pub selection_rev: u64,
     /// The selection the outliner last scrolled to.
@@ -647,13 +651,13 @@ impl App {
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, road_guard: (u64::MAX, 0), hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08, height: None },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false, into_modifier: true, target: None },
-            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, brush_density: 2.0, brush_avoid: false, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
+            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, brush_density: 2.0, brush_avoid: false, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false, snap_surface: false },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None, live_keep: true }, live: Default::default(), road_parts: Default::default(),
             stroke: None, mask_stroke: None, mask_mod_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
+            selection: BTreeSet::new(), hidden_objects: std::collections::HashSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
             settings,
@@ -1621,6 +1625,7 @@ impl App {
         self.layer_averages.clear();
         self.detail_center = [f32::MIN, f32::MIN];
         self.selection.clear();
+        self.hidden_objects.clear();
         self.selected_modifier = None;
         self.selection_rev += 1;
         self.top_center = [side * 0.5, side * 0.5];
@@ -1916,6 +1921,53 @@ impl App {
         doc.history.push(t("Underground"), Change::Objects(change));
         doc.dirty.objects = true;
         self.status = tf(if on { "Underground flag set on {0} objects" } else { "Underground flag cleared on {0} objects" }, &[&count]);
+    }
+
+    pub fn hide_selection(&mut self) {
+        if self.selection.is_empty() {
+            return;
+        }
+        let n = self.selection.len();
+        self.hidden_objects.extend(self.selection.iter().copied());
+        self.selection.clear();
+        self.selection_rev += 1;
+        self.info(tf("Hid {0} objects", &[&n.to_string()]));
+    }
+
+    pub fn show_hidden_objects(&mut self) {
+        if self.hidden_objects.is_empty() {
+            return;
+        }
+        self.hidden_objects.clear();
+        self.info(t("All hidden objects are shown again"));
+    }
+
+    /// Hides every visible object outside the selection, or restores all hidden objects if
+    /// everything outside the selection is already hidden.
+    pub fn isolate_selection(&mut self) {
+        let Some(doc) = &self.doc else { return };
+        if self.selection.is_empty() {
+            self.show_hidden_objects();
+            return;
+        }
+        let mut to_hide = Vec::new();
+        for (id, o) in doc.world.objects.iter() {
+            if doc.world.object_visible(o) && !self.selection.contains(&id) {
+                to_hide.push(id);
+            }
+        }
+        let already_isolated = !self.hidden_objects.is_empty() && to_hide.iter().all(|id| self.hidden_objects.contains(id));
+        if already_isolated {
+            self.show_hidden_objects();
+        } else {
+            for id in to_hide {
+                self.hidden_objects.insert(id);
+            }
+            for id in &self.selection {
+                self.hidden_objects.remove(id);
+            }
+            self.info(tf("Isolated {0} objects", &[&self.selection.len().to_string()]));
+        }
     }
 
     pub fn delete_selection(&mut self) {

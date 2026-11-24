@@ -8119,6 +8119,50 @@
   "de": "Objekte behalten beim Spawnen über den Object Spawner ihre Central-Economy-Persistenz.",
   "pl": "Obiekty zachowują trwałość i czas życia Central Economy po zespawnowaniu przez Object Spawner."
  },
+ "All hidden objects are shown again": {
+  "de": "Alle verborgenen Objekte sind wieder sichtbar",
+  "pl": "Wszystkie ukryte obiekty są znów widoczne"
+ },
+ "Clicks in the 3D view place the object on the roof, floor or deck under the cursor instead of on the terrain.": {
+  "de": "Klicks in der 3D-Ansicht platzieren das Objekt auf dem Dach, Boden oder Steg unter dem Cursor statt auf dem Gelände.",
+  "pl": "Kliknięcia w widoku 3D stawiają obiekt na dachu, podłodze lub pomoście pod kursorem zamiast na terenie."
+ },
+ "Drop onto surface": {
+  "de": "Auf Oberfläche absetzen",
+  "pl": "Upuść na powierzchnię"
+ },
+ "Dropped {0} objects onto the surface below": {
+  "de": "{0} Objekte auf die Fläche darunter abgesetzt",
+  "pl": "Upuszczono {0} obiektów na powierzchnię pod spodem"
+ },
+ "Hid {0} objects": {
+  "de": "{0} Objekte ausgeblendet",
+  "pl": "Ukryto {0} obiektów"
+ },
+ "Hide selected": {
+  "de": "Auswahl ausblenden",
+  "pl": "Ukryj zaznaczone"
+ },
+ "Isolate selection": {
+  "de": "Auswahl isolieren",
+  "pl": "Izoluj zaznaczenie"
+ },
+ "Isolated {0} objects": {
+  "de": "{0} Objekte isoliert",
+  "pl": "Wyizolowano {0} obiektów"
+ },
+ "Place on top of objects": {
+  "de": "Auf anderen Objekten platzieren",
+  "pl": "Stawiaj na innych obiektach"
+ },
+ "Show hidden objects": {
+  "de": "Verborgene Objekte einblenden",
+  "pl": "Pokaż ukryte obiekty"
+ },
+ "Show hidden objects ({0})": {
+  "de": "Verborgene Objekte einblenden ({0})",
+  "pl": "Pokaż ukryte obiekty ({0})"
+ },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
   "pl": "Obiekty Terrain Buildera (TXT)..."

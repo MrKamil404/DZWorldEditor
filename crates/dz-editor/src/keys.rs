@@ -29,6 +29,9 @@ impl Shortcut {
     pub const fn shift(key: Key) -> Self {
         Self { key, ctrl: false, shift: true, alt: false }
     }
+    pub const fn alt(key: Key) -> Self {
+        Self { key, ctrl: false, shift: false, alt: true }
+    }
     /// As it is shown and stored, such as `Ctrl+Shift+S`.
     pub fn text(&self) -> String {
         let mut s = String::new();
@@ -151,12 +154,20 @@ pub enum Action {
     CopyBehind,
     /// The selection moves so its end meets the end of the object next to it.
     JoinNeighbour,
+    /// Drops the selected objects onto the highest object surface or terrain underneath.
+    DropOnSurface,
+    /// Temporarily hides the selected objects in the view.
+    HideSelected,
+    /// Shows all temporarily hidden objects again.
+    ShowHidden,
+    /// Hides everything except the selected objects (or restores all when already isolated).
+    IsolateSelection,
 }
 
 impl Action {
-    pub const ALL: [Action; 59] = [
+    pub const ALL: [Action; 63] = [
         Action::NewProject, Action::Open, Action::Save, Action::SaveAs, Action::Undo, Action::Redo, Action::Settings, Action::Shortcuts, Action::Build, Action::Play,
-        Action::SelectAll, Action::Deselect, Action::Duplicate, Action::CopyAhead, Action::CopyBehind, Action::JoinNeighbour, Action::PasteHere, Action::PasteLast, Action::Delete, Action::Focus, Action::GoTo, Action::Underground,
+        Action::SelectAll, Action::Deselect, Action::Duplicate, Action::CopyAhead, Action::CopyBehind, Action::JoinNeighbour, Action::DropOnSurface, Action::HideSelected, Action::ShowHidden, Action::IsolateSelection, Action::PasteHere, Action::PasteLast, Action::Delete, Action::Focus, Action::GoTo, Action::Underground,
         Action::ModeSelect, Action::ModeSculpt, Action::ModePaint, Action::ModePlace, Action::ModeRoads, Action::ModeShapes, Action::ModeKeyPoints, Action::ModeSatellite, Action::ModeMission,
         Action::GizmoMove, Action::GizmoRotate, Action::GizmoScale, Action::GizmoCopy, Action::GizmoSpace,
         Action::View3d, Action::View2d, Action::ViewSplit, Action::CameraBelow, Action::ToggleGrass, Action::ToggleObjects, Action::ToggleShapes,
@@ -182,6 +193,10 @@ impl Action {
             Action::CopyAhead => "Copy on ahead",
             Action::CopyBehind => "Copy on behind",
             Action::JoinNeighbour => "Join to the neighbour",
+            Action::DropOnSurface => "Drop onto surface",
+            Action::HideSelected => "Hide selected",
+            Action::ShowHidden => "Show hidden objects",
+            Action::IsolateSelection => "Isolate selection",
             Action::PasteHere => "Copy the selection to the cursor",
             Action::PasteLast => "Copy the last selection to the cursor",
             Action::Delete => "Delete",
@@ -231,7 +246,7 @@ impl Action {
         use Action::*;
         match self {
             NewProject | Open | Save | SaveAs | Undo | Redo | Settings | Shortcuts | Build | Play => "General",
-            SelectAll | Deselect | Duplicate | CopyAhead | CopyBehind | JoinNeighbour | PasteHere | PasteLast | Delete | Focus | Underground => "Selection",
+            SelectAll | Deselect | Duplicate | CopyAhead | CopyBehind | JoinNeighbour | DropOnSurface | HideSelected | ShowHidden | IsolateSelection | PasteHere | PasteLast | Delete | Focus | Underground => "Selection",
             ModeSelect | ModeSculpt | ModePaint | ModePlace | ModeRoads | ModeShapes | ModeKeyPoints | ModeSatellite | ModeMission | GizmoMove | GizmoRotate | GizmoScale | GizmoCopy | GizmoSpace => "Tools",
             GoTo | View3d | View2d | ViewSplit | CameraBelow | ToggleGrass | ToggleObjects | ToggleShapes | SearchAssets | ToggleHints => "View",
             RoadPieceAdd | RoadPiecePrev | RoadPieceNext | RoadPieceSide => "Roads piece by piece",
@@ -258,6 +273,10 @@ impl Action {
             CopyAhead => Shortcut::ctrl_shift(Key::D),
             CopyBehind => Shortcut::ctrl_shift(Key::A),
             JoinNeighbour => Shortcut::new(Key::J),
+            DropOnSurface => Shortcut::new(Key::End),
+            HideSelected => Shortcut::ctrl(Key::H),
+            ShowHidden => Shortcut::alt(Key::H),
+            IsolateSelection => Shortcut::new(Key::Slash),
             PasteHere => Shortcut::new(Key::C),
             PasteLast => Shortcut::new(Key::V),
             Delete => Shortcut::new(Key::Delete),
