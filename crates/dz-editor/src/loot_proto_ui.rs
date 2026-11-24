@@ -13,6 +13,7 @@ use crate::icons;
 use crate::keys::{Action, Hold};
 use crate::proxies::ProxyPlace;
 use crate::render::{self, ModelPreviewFrame};
+use crate::theme::{self, check_row, details_head, list_row, row, section, subsection, tool_button, vector_row, ValueField};
 use crate::viewport::{PickMesh, PROXY_BASE};
 use dz_core::mission::proto::{self, ContainerProto, GroupProto, LootPoint};
 use eframe::egui::{self, Color32, Key, PointerButton, Pos2, Stroke, Vec2};
@@ -309,9 +310,10 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         .show(ctx, |ui| {
             // Resizable right panel for mapgroupproto.xml fields; left/central area expands freely for 3D.
             egui::SidePanel::right("loot_proto_right_panel")
+                .frame(egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::ZERO))
                 .resizable(true)
-                .default_width(350.0)
-                .min_width(260.0)
+                .default_width(360.0)
+                .min_width(270.0)
                 .max_width(580.0)
                 .show_inside(ui, |ui| {
                     draw_editor_panel(
@@ -487,7 +489,7 @@ fn draw_preview_panel(
                 let hi = st.bounds_max[1].max(lo + 0.2);
                 ui.add_enabled(
                     st.clip_enabled,
-                    egui::Slider::new(&mut st.clip_y, lo..=hi).suffix(" m").fixed_decimals(2),
+                    ValueField::new(&mut st.clip_y, lo..=hi).suffix(" m").step_by(0.05),
                 );
             });
         });
@@ -773,15 +775,18 @@ fn draw_editor_panel(
 ) {
     // Fixed bottom save/close bar inside the right side panel
     egui::TopBottomPanel::bottom("loot_proto_editor_bottom")
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 0, top: 6, bottom: 0 }))
+        .frame(egui::Frame::new().fill(theme::PANEL).stroke(Stroke::new(1.0_f32, theme::BORDER)).inner_margin(egui::Margin::same(8)))
         .show_inside(ui, |ui| {
-            ui.separator();
             ui.horizontal(|ui| {
-                if ui.button(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml"))).clicked() {
+                let save_btn = egui::Button::new(egui::RichText::new(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml"))).color(Color32::WHITE))
+                    .fill(theme::ACCENT);
+                if ui.add(save_btn).clicked() {
                     *save_requested = true;
                 }
-                if st.exists_in_proto && ui.button(t("Remove from mapgroupproto.xml")).clicked() {
-                    *remove_requested = true;
+                if st.exists_in_proto {
+                    if ui.button(icons::TRASH).on_hover_text(t("Remove from mapgroupproto.xml")).clicked() {
+                        *remove_requested = true;
+                    }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(t("Close")).clicked() {
@@ -791,206 +796,227 @@ fn draw_editor_panel(
             });
         });
 
-    // Scrollable inspector body filling the rest of the right panel
+    // Scrollable inspector body styled with theme.rs Details widgets
     egui::CentralPanel::default()
-        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 0, top: 0, bottom: 0 }))
+        .frame(egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::ZERO))
         .show_inside(ui, |ui| {
-            if !st.exists_in_proto {
-                ui.colored_label(Color32::from_rgb(160, 205, 250), t("Not yet in mapgroupproto.xml — edit and save to add it."));
-                ui.add_space(2.0);
-            }
-
             egui::ScrollArea::vertical()
                 .id_salt("loot_proto_editor_scroll")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    // ---- Group properties ----
-                    egui::Grid::new("loot_group_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
-                        ui.label(t("Prototype class"));
-                        if ui.add(egui::TextEdit::singleline(&mut st.group.name).desired_width(200.0)).changed() {
-                            st.dirty = true;
-                        }
-                        ui.end_row();
+                    // Header card matching the editor's Details panel
+                    egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 8, bottom: 4 }).show(ui, |ui| {
+                        let subtitle = if st.exists_in_proto {
+                            st.model.clone()
+                        } else {
+                            t("Not yet in mapgroupproto.xml — edit and save to add it.")
+                        };
+                        details_head(ui, icons::HOUSE, theme::KIND_MODEL, &st.group.name, &subtitle);
+                    });
 
-                        ui.label(t("Max loot"));
-                        ui.horizontal(|ui| {
-                            let mut has_max = st.group.lootmax.is_some();
-                            if ui.checkbox(&mut has_max, "").changed() {
-                                st.group.lootmax = has_max.then_some(2);
-                                st.dirty = true;
-                            }
-                            if let Some(lm) = &mut st.group.lootmax {
-                                if ui.add(egui::DragValue::new(lm).range(0..=100)).changed() {
-                                    st.dirty = true;
-                                }
-                            }
-                            if ui.checkbox(&mut st.group.deloot, t("Dynamic event loot (deloot)")).changed() {
+                    // ---- Prototype / Group section ----
+                    section(ui, &icons::with(icons::CUBE, &t("Prototype class")), true, |ui| {
+                        row(ui, &t("Prototype class"), |ui| {
+                            if ui.add_sized([ui.available_width(), 22.0], egui::TextEdit::singleline(&mut st.group.name)).changed() {
                                 st.dirty = true;
                             }
                         });
-                        ui.end_row();
-                    });
-
-                    ui.add_space(4.0);
-                    egui::CollapsingHeader::new(t("Usage flags")).default_open(true).show(ui, |ui| {
-                        if flag_chips(ui, &limits.usages, &mut st.group.usages) {
+                        row(ui, &t("Max loot"), |ui| {
+                            ui.horizontal(|ui| {
+                                let mut has_max = st.group.lootmax.is_some();
+                                if ui.checkbox(&mut has_max, "").changed() {
+                                    st.group.lootmax = has_max.then_some(2);
+                                    st.dirty = true;
+                                }
+                                if let Some(lm) = &mut st.group.lootmax {
+                                    if ui.add(ValueField::new(lm, 0..=100)).changed() {
+                                        st.dirty = true;
+                                    }
+                                }
+                            });
+                        });
+                        if check_row(ui, &mut st.group.deloot, t("Dynamic event loot (deloot)")).changed() {
                             st.dirty = true;
                         }
-                    });
-                    egui::CollapsingHeader::new(t("Value flags")).default_open(false).show(ui, |ui| {
-                        if flag_chips(ui, &limits.values, &mut st.group.values) {
-                            st.dirty = true;
-                        }
-                    });
-
-                    ui.separator();
-
-                    // ---- Containers bar ----
-                    ui.horizontal_wrapped(|ui| {
-                        ui.strong(t("Containers"));
-                        for i in 0..st.group.containers.len() {
-                            let col = CONTAINER_COLORS[i % CONTAINER_COLORS.len()];
-                            let name = st.group.containers[i].name.clone();
-                            let count = st.group.containers[i].points.len();
-                            let label = egui::RichText::new(format!("● {name} ({count})")).color(col);
-                            if ui.selectable_label(st.selected_container == i, label).clicked() {
-                                st.selected_container = i;
-                                st.selected_point = (!st.group.containers[i].points.is_empty()).then_some(0);
+                        ui.add_space(2.0);
+                        subsection(ui, &t("Usage flags"), true, |ui| {
+                            if flag_chips(ui, &limits.usages, &mut st.group.usages) {
+                                st.dirty = true;
                             }
-                        }
-                        if ui.small_button(icons::with(icons::PLUS, &t("Add container"))).clicked() {
-                            let name = if st.group.containers.is_empty() {
-                                "lootFloor".to_string()
-                            } else {
-                                format!("lootshelves{}", st.group.containers.len())
-                            };
-                            st.group.containers.push(ContainerProto { name, ..ContainerProto::default() });
-                            st.selected_container = st.group.containers.len() - 1;
-                            st.selected_point = None;
-                            st.dirty = true;
-                        }
+                        });
+                        subsection(ui, &t("Value flags"), !st.group.values.is_empty(), |ui| {
+                            if flag_chips(ui, &limits.values, &mut st.group.values) {
+                                st.dirty = true;
+                            }
+                        });
                     });
 
-                    if st.selected_container >= st.group.containers.len() && !st.group.containers.is_empty() {
-                        st.selected_container = st.group.containers.len() - 1;
-                    }
-
-                    // ---- Selected container details ----
+                    // ---- Containers section ----
                     let mut delete_container = false;
                     let can_delete_container = st.group.containers.len() > 1;
-                    if let Some(c) = st.group.containers.get_mut(st.selected_container) {
-                        ui.add_space(4.0);
-                        ui.horizontal(|ui| {
-                            ui.label(t("Container name"));
-                            if ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(120.0)).changed() {
-                                st.dirty = true;
-                            }
-                            let mut has_max = c.lootmax.is_some();
-                            if ui.checkbox(&mut has_max, t("Max loot")).changed() {
-                                c.lootmax = has_max.then_some(2);
-                                st.dirty = true;
-                            }
-                            if let Some(lm) = &mut c.lootmax {
-                                if ui.add(egui::DragValue::new(lm).range(0..=100)).changed() {
-                                    st.dirty = true;
+                    section(ui, &icons::with(icons::PACKAGE, &t("Containers")), true, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for i in 0..st.group.containers.len() {
+                                let col = CONTAINER_COLORS[i % CONTAINER_COLORS.len()];
+                                let name = st.group.containers[i].name.clone();
+                                let count = st.group.containers[i].points.len();
+                                let active = st.selected_container == i;
+                                let text = egui::RichText::new(format!("● {name} ({count})"))
+                                    .color(if active { Color32::WHITE } else { col });
+                                let btn = egui::Button::new(text)
+                                    .fill(if active { theme::TOGGLE_ON } else { theme::SECTION })
+                                    .stroke(Stroke::new(1.0_f32, if active { col } else { theme::BORDER }));
+                                if ui.add(btn).clicked() {
+                                    st.selected_container = i;
+                                    st.selected_point = (!st.group.containers[i].points.is_empty()).then_some(0);
                                 }
                             }
-                            if can_delete_container && ui.small_button(t("Delete")).clicked() {
-                                delete_container = true;
-                            }
-                        });
-
-                        egui::CollapsingHeader::new(t("Categories")).default_open(true).show(ui, |ui| {
-                            if flag_chips(ui, &limits.categories, &mut c.categories) {
-                                st.dirty = true;
-                            }
-                        });
-                        egui::CollapsingHeader::new(t("Tags")).default_open(true).show(ui, |ui| {
-                            if flag_chips(ui, &limits.tags, &mut c.tags) {
+                            if ui.button(icons::with(icons::PLUS, &t("Add container"))).clicked() {
+                                let name = if st.group.containers.is_empty() {
+                                    "lootFloor".to_string()
+                                } else {
+                                    format!("lootshelves{}", st.group.containers.len())
+                                };
+                                st.group.containers.push(ContainerProto { name, ..ContainerProto::default() });
+                                st.selected_container = st.group.containers.len() - 1;
+                                st.selected_point = None;
                                 st.dirty = true;
                             }
                         });
 
-                        ui.separator();
+                        if st.selected_container >= st.group.containers.len() && !st.group.containers.is_empty() {
+                            st.selected_container = st.group.containers.len() - 1;
+                        }
 
-                        // ---- Points list ----
-                        ui.horizontal(|ui| {
-                            ui.strong(tf("Loot points ({0})", &[&c.points.len().to_string()]));
-                            if ui.small_button(icons::with(icons::PLUS, &t("Add point"))).clicked() {
-                                let pt = st.selected_point.and_then(|i| c.points.get(i)).cloned().unwrap_or_default();
-                                c.points.push(pt);
-                                st.selected_point = Some(c.points.len() - 1);
-                                st.dirty = true;
-                            }
-                            if let Some(pi) = st.selected_point {
-                                if pi < c.points.len() {
-                                    if ui.small_button(t("Duplicate")).clicked() {
+                        if let Some(c) = st.group.containers.get_mut(st.selected_container) {
+                            ui.add_space(4.0);
+                            row(ui, &t("Container name"), |ui| {
+                                ui.horizontal(|ui| {
+                                    let w = if can_delete_container { (ui.available_width() - 30.0).max(80.0) } else { ui.available_width() };
+                                    if ui.add_sized([w, 22.0], egui::TextEdit::singleline(&mut c.name)).changed() {
+                                        st.dirty = true;
+                                    }
+                                    if can_delete_container && ui.button(icons::TRASH).on_hover_text(t("Delete")).clicked() {
+                                        delete_container = true;
+                                    }
+                                });
+                            });
+                            row(ui, &t("Max loot"), |ui| {
+                                ui.horizontal(|ui| {
+                                    let mut has_max = c.lootmax.is_some();
+                                    if ui.checkbox(&mut has_max, "").changed() {
+                                        c.lootmax = has_max.then_some(2);
+                                        st.dirty = true;
+                                    }
+                                    if let Some(lm) = &mut c.lootmax {
+                                        if ui.add(ValueField::new(lm, 0..=100)).changed() {
+                                            st.dirty = true;
+                                        }
+                                    }
+                                });
+                            });
+                            ui.add_space(2.0);
+                            subsection(ui, &t("Categories"), true, |ui| {
+                                if flag_chips(ui, &limits.categories, &mut c.categories) {
+                                    st.dirty = true;
+                                }
+                            });
+                            subsection(ui, &t("Tags"), true, |ui| {
+                                if flag_chips(ui, &limits.tags, &mut c.tags) {
+                                    st.dirty = true;
+                                }
+                            });
+                        }
+                    });
+
+                    if delete_container && st.selected_container < st.group.containers.len() {
+                        st.group.containers.remove(st.selected_container);
+                        st.selected_container = st.selected_container.min(st.group.containers.len().saturating_sub(1));
+                        st.selected_point = st.group.containers.get(st.selected_container).and_then(|c| (!c.points.is_empty()).then_some(0));
+                        st.dirty = true;
+                    }
+
+                    // ---- Loot points list section ----
+                    let container_col = CONTAINER_COLORS[st.selected_container % CONTAINER_COLORS.len()];
+                    if let Some(c) = st.group.containers.get_mut(st.selected_container) {
+                        let pts_title = icons::with(icons::MAP_PIN, &tf("Loot points ({0})", &[&c.points.len().to_string()]));
+                        section(ui, &pts_title, true, |ui| {
+                            let has_sel = st.selected_point.is_some_and(|pi| pi < c.points.len());
+                            theme::button_columns(ui, 3, |cols| {
+                                if cols[0].add_sized([cols[0].available_width(), 24.0], egui::Button::new(icons::with(icons::PLUS, &t("Add point")))).clicked() {
+                                    let pt = st.selected_point.and_then(|i| c.points.get(i)).cloned().unwrap_or_default();
+                                    c.points.push(pt);
+                                    st.selected_point = Some(c.points.len() - 1);
+                                    st.dirty = true;
+                                }
+                                if cols[1].add_enabled_ui(has_sel, |ui| ui.add_sized([ui.available_width(), 24.0], egui::Button::new(icons::with(icons::COPY, &t("Duplicate"))))).inner.clicked() {
+                                    if let Some(pi) = st.selected_point {
                                         let mut dup = c.points[pi].clone();
                                         dup.pos[0] += 0.3;
                                         c.points.push(dup);
                                         st.selected_point = Some(c.points.len() - 1);
                                         st.dirty = true;
                                     }
-                                    if ui.small_button(t("Delete")).clicked() {
+                                }
+                                if cols[2].add_enabled_ui(has_sel, |ui| ui.add_sized([ui.available_width(), 24.0], egui::Button::new(icons::with(icons::TRASH, &t("Delete"))))).inner.clicked() {
+                                    if let Some(pi) = st.selected_point {
                                         c.points.remove(pi);
-                                        st.selected_point = if c.points.is_empty() {
-                                            None
-                                        } else {
-                                            Some(pi.min(c.points.len() - 1))
-                                        };
+                                        st.selected_point = if c.points.is_empty() { None } else { Some(pi.min(c.points.len() - 1)) };
                                         st.dirty = true;
                                     }
                                 }
-                            }
+                            });
+
+                            ui.add_space(4.0);
+                            egui::Frame::new()
+                                .fill(theme::DARK)
+                                .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                                .corner_radius(3)
+                                .inner_margin(egui::Margin::same(2))
+                                .show(ui, |ui| {
+                                    egui::ScrollArea::vertical().id_salt("loot_points_list").max_height(150.0).show(ui, |ui| {
+                                        for (i, pt) in c.points.iter().enumerate() {
+                                            let sel = st.selected_point == Some(i);
+                                            let flag_tag = if pt.flags & 32 != 0 { " [out]" } else { "" };
+                                            let left = format!("#{}  ({:.2}, {:.2}, {:.2}){flag_tag}", i + 1, pt.pos[0], pt.pos[1], pt.pos[2]);
+                                            let right = format!("r {:.2} · h {:.2}", pt.range, pt.height);
+                                            if list_row(ui, sel, icons::MAP_PIN, container_col, left, &right).clicked() {
+                                                st.selected_point = Some(i);
+                                            }
+                                        }
+                                    });
+                                });
                         });
 
-                        egui::ScrollArea::vertical().id_salt("loot_points_list").max_height(130.0).show(ui, |ui| {
-                            for (i, pt) in c.points.iter().enumerate() {
-                                let sel = st.selected_point == Some(i);
-                                let flag_tag = if pt.flags & 32 != 0 { " [out]" } else { "" };
-                                let text = format!(
-                                    "#{}: ({:.2}, {:.2}, {:.2})  r={:.2}  h={:.2}{flag_tag}",
-                                    i + 1, pt.pos[0], pt.pos[1], pt.pos[2], pt.range, pt.height
-                                );
-                                if ui.selectable_label(sel, text).clicked() {
-                                    st.selected_point = Some(i);
-                                }
-                            }
-                        });
-
-                        // ---- Selected point inspector ----
+                        // ---- Selected point inspector section ----
                         if let Some(pi) = st.selected_point {
                             if let Some(pt) = c.points.get_mut(pi) {
-                                ui.separator();
-                                ui.strong(tf("Point #{0}", &[&(pi + 1).to_string()]));
-                                egui::Grid::new("loot_point_inspector").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
-                                    ui.label(t("Position (X, Y, Z)"));
-                                    ui.horizontal(|ui| {
-                                        let mut changed = false;
-                                        changed |= ui.add(egui::DragValue::new(&mut pt.pos[0]).speed(0.02).prefix("X ").fixed_decimals(3)).changed();
-                                        changed |= ui.add(egui::DragValue::new(&mut pt.pos[1]).speed(0.02).prefix("Y ").fixed_decimals(3)).changed();
-                                        changed |= ui.add(egui::DragValue::new(&mut pt.pos[2]).speed(0.02).prefix("Z ").fixed_decimals(3)).changed();
-                                        if changed {
+                                let pt_title = icons::with(icons::CROSSHAIR, &tf("Point #{0}", &[&(pi + 1).to_string()]));
+                                section(ui, &pt_title, true, |ui| {
+                                    let before = pt.pos;
+                                    let (mut x, mut y, mut z) = (pt.pos[0], pt.pos[1], pt.pos[2]);
+                                    vector_row(ui, &t("Position (X, Y, Z)"), &mut [
+                                        (&mut x, 0.02, theme::AXIS[0], "X".into()),
+                                        (&mut y, 0.02, theme::AXIS[1], "Y".into()),
+                                        (&mut z, 0.02, theme::AXIS[2], "Z".into()),
+                                    ]);
+                                    pt.pos = [x, y, z];
+                                    if pt.pos != before {
+                                        st.dirty = true;
+                                    }
+
+                                    row(ui, &t("Range"), |ui| {
+                                        if ui.add(ValueField::new(&mut pt.range, 0.05..=5.0).suffix(" m").step_by(0.01)).changed() {
                                             st.dirty = true;
                                         }
                                     });
-                                    ui.end_row();
-
-                                    ui.label(t("Range"));
-                                    if ui.add(egui::DragValue::new(&mut pt.range).speed(0.02).range(0.05..=5.0).suffix(" m").fixed_decimals(3)).changed() {
-                                        st.dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    ui.label(t("Height"));
-                                    if ui.add(egui::DragValue::new(&mut pt.height).speed(0.02).range(0.1..=5.0).suffix(" m").fixed_decimals(3)).changed() {
-                                        st.dirty = true;
-                                    }
-                                    ui.end_row();
-
-                                    ui.label("");
+                                    row(ui, &t("Height"), |ui| {
+                                        if ui.add(ValueField::new(&mut pt.height, 0.1..=5.0).suffix(" m").step_by(0.01)).changed() {
+                                            st.dirty = true;
+                                        }
+                                    });
                                     let mut outdoor = pt.flags & 32 != 0;
-                                    if ui.checkbox(&mut outdoor, t("Outside / ground (flags=32)")).changed() {
+                                    if check_row(ui, &mut outdoor, t("Outside / ground (flags=32)")).changed() {
                                         if outdoor {
                                             pt.flags |= 32;
                                         } else {
@@ -998,16 +1024,9 @@ fn draw_editor_panel(
                                         }
                                         st.dirty = true;
                                     }
-                                    ui.end_row();
                                 });
                             }
                         }
-                    }
-                    if delete_container && st.selected_container < st.group.containers.len() {
-                        st.group.containers.remove(st.selected_container);
-                        st.selected_container = st.selected_container.min(st.group.containers.len().saturating_sub(1));
-                        st.selected_point = st.group.containers.get(st.selected_container).and_then(|c| (!c.points.is_empty()).then_some(0));
-                        st.dirty = true;
                     }
                 });
         });
@@ -1016,6 +1035,7 @@ fn draw_editor_panel(
 fn flag_chips(ui: &mut egui::Ui, choices: &[String], selected: &mut Vec<String>) -> bool {
     let mut changed = false;
     ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
         let mut all: Vec<String> = choices.to_vec();
         for s in selected.iter() {
             if !all.iter().any(|c| c.eq_ignore_ascii_case(s)) {
@@ -1025,7 +1045,7 @@ fn flag_chips(ui: &mut egui::Ui, choices: &[String], selected: &mut Vec<String>)
         for name in all {
             let pos = selected.iter().position(|s| s.eq_ignore_ascii_case(&name));
             let active = pos.is_some();
-            if ui.selectable_label(active, &name).clicked() {
+            if tool_button(ui, active, &name).clicked() {
                 if let Some(i) = pos {
                     selected.remove(i);
                 } else {
