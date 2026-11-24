@@ -3847,7 +3847,7 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
         Mode::Landscape if app.hole_tool => Some(BrushView { x: h[0], z: h[2], radius: app.hole_radius, falloff: 0.0, color: [1.0, 0.3, 0.3], shape: 1 }),
         Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: if app.sculpt.picture.is_some() { 0.0 } else { app.sculpt.falloff }, color: [0.25, 0.65, 1.0], shape: if app.sculpt.picture.is_some() { 1 } else { app.sculpt.shape as i32 } }),
         Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: if app.paint.picture.is_some() { 1 } else { app.paint.shape as i32 } }),
-        Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: if app.place.brush { app.place.brush_radius } else { 2.0 }, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
+        Mode::Place => app.place.brush.then_some(BrushView { x: h[0], z: h[2], radius: app.place.brush_radius, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
         Mode::Satellite => Some(BrushView { x: h[0], z: h[2], radius: app.sat.radius, falloff: 1.0 - app.sat.hardness, color: [1.0, 0.82, 0.24], shape: 0 }),
         Mode::Mission => crate::mission_ui::brush(app, h),
         _ => None,
@@ -4085,6 +4085,118 @@ pub fn surface_relief_ui(ui: &mut egui::Ui, s: &mut crate::settings::Settings) {
     ui.add(crate::theme::ValueField::new(&mut s.surface_blend, 0.0..=1.0).text(t("Surface blend by relief"))).on_hover_text(t("Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper."));
 }
 
+/// Model id namespace for Place-one 3D ghost previews of models not yet placed on the map.
+const PLACE_PREVIEW_BASE: u32 = 0x8800_0000;
+
+/// Appends a 3D ghost preview of the object (or prefab) about to be placed in `Mode::Place`
+/// (`Place one` mode), resting on the terrain or on top of another object when `snap_surface` is on.
+fn append_place_preview(app: &mut App, v: &View, resp: &egui::Response, hover: Option<V3>, objects: &mut ObjectDraw) {
+    if app.mode != Mode::Place || app.place.brush || !resp.hovered() {
+        return;
+    }
+    let Some(mouse) = resp.hover_pos() else { return };
+    let surface = if !v.ortho && app.place.snap_surface {
+        let (ro, rd) = v.ray(mouse);
+        let max_t = hover.map(|p| dot(sub(p, ro), rd)).unwrap_or(2000.0).min(2000.0);
+        raycast_objects(app, ro, rd, max_t, &std::collections::BTreeSet::new()).map(|(_, p)| p)
+    } else {
+        None
+    };
+    let Some(target) = surface.or(hover) else { return };
+
+    // Collect (model_path, offset_x, offset_z, yaw, pitch, roll, scale, surface_y) items to ghost.
+    let mut items: Vec<(String, f32, f32, f32, f32, f32, f32, Option<f32>)> = Vec::new();
+    let seed = app.place_counter.wrapping_add(1).wrapping_mul(2654435761);
+    if let Some(pid) = app.place.prefab {
+        if let Some(pf) = app.library.prefabs.iter().find(|p| p.id == pid) {
+            for it in &pf.items {
+                items.push((it.model.clone(), target[0] + it.x, target[2] + it.z, it.yaw, it.pitch, it.roll, it.scale, surface.map(|p| p[1] + it.elevation)));
+            }
+        }
+    } else if let Some(pid) = app.place.preset {
+        if let Some(pr) = app.library.objects.iter().find(|p| p.id == pid) {
+            if let Some((m, _)) = pr.items.first() {
+                let yaw = if pr.random_yaw { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
+                let scale = (pr.scale_min + pr.scale_max) * 0.5;
+                items.push((m.clone(), target[0], target[2], yaw, 0.0, 0.0, scale, surface.map(|p| p[1])));
+            }
+        }
+    } else if let Some(m) = pool_model(app, seed) {
+        let mut yaw = if app.place.random_yaw { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
+        if app.settings.keys.held(Hold::AngleSnap, app.modifiers_now) {
+            let step = app.settings.angle_step.max(0.1);
+            yaw = ((yaw / step).round() * step).rem_euclid(360.0);
+        }
+        let scale = (app.place.scale_min + app.place.scale_max) * 0.5;
+        items.push((m, target[0], target[2], yaw, 0.0, 0.0, scale, surface.map(|p| p[1])));
+    }
+    if items.is_empty() {
+        return;
+    }
+
+    let Some(doc) = &app.doc else { return };
+    let world = &doc.world;
+    let renderer = app.renderer.clone();
+    let renderer = renderer.lock().unwrap();
+    let mut flat = (*objects.instances).clone();
+    let mut groups = (*objects.groups).clone();
+    let mut boxes = (*objects.boxes).clone();
+    let mut requests: Vec<(u32, String)> = Vec::new();
+    const GHOST_TINT: [f32; 4] = [0.45, 1.0, 0.65, 0.32];
+
+    for (model, x, z, yaw, mut pitch, mut roll, scale, sy) in items {
+        let info = app.db.get(&model);
+        if sy.is_none() && app.place.align && app.place.prefab.is_none() && !info.placement.skews() {
+            (pitch, roll) = gen::slope_angles(&world.height, x, z, yaw);
+        }
+        let base_elev = if info.contact_count > 0 {
+            -info.contact_y * scale
+        } else if sy.is_some() && info.known {
+            -info.min[1] * scale
+        } else {
+            0.0
+        };
+        let ground = world.height.sample(x, z);
+        let elevation = match sy {
+            Some(y) => (y - ground) + base_elev,
+            None => base_elev,
+        };
+        let o = Obj { x, z, elevation, yaw, pitch, roll, scale, model: 0, flags: 0 };
+        let y = ObjectStore::origin_y(&o, &world.height);
+        let (placed_m, placed_y) = placed_matrix(&o, &info, &world.height, y);
+
+        let id = world.objects.models.iter().position(|p| p.path.eq_ignore_ascii_case(&model)).map(|i| i as u32).unwrap_or_else(|| {
+            let mut h: u32 = 2166136261;
+            for b in model.bytes() {
+                h ^= u32::from(b.to_ascii_lowercase());
+                h = h.wrapping_mul(16777619);
+            }
+            PLACE_PREVIEW_BASE | (h & 0x00FF_FFFF)
+        });
+        match renderer.best_lod(id, LOD_NEAR) {
+            Some((lod, _)) => {
+                let first = (flat.len() / 16) as u32;
+                write_instance(&mut flat, &placed_m, [x, placed_y, z], GHOST_TINT);
+                groups.push(((id, lod), first, 1));
+                if lod != LOD_NEAR {
+                    requests.push((id, model));
+                }
+            }
+            None => {
+                write_box(&mut boxes, &o, y, &info, GHOST_TINT, 0.3);
+                requests.push((id, model));
+            }
+        }
+    }
+    drop(renderer);
+    for (id, path) in requests {
+        app.loader.request((id, LOD_NEAR), &path);
+    }
+    objects.instances = Arc::new(flat);
+    objects.groups = Arc::new(groups);
+    objects.boxes = Arc::new(boxes);
+}
+
 fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let id = ui.id().with(if top { "top" } else { "persp" });
     let resp = ui.interact(rect, id, Sense::click_and_drag());
@@ -4139,7 +4251,8 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
             }
         }
     }
-    let objects = prepare_objects(app, &v, top);
+    let mut objects = prepare_objects(app, &v, top);
+    append_place_preview(app, &v, &resp, hover, &mut objects);
     let Some(doc) = &app.doc else { return };
     let quality = app.settings.terrain_quality;
     let patches = doc.lod.select(&v, quality);
