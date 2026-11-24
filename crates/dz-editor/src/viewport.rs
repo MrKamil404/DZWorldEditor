@@ -3848,6 +3848,20 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let used = child.min_rect();
     let back = Rect::from_min_max(rect.min + vec2(2.0, 2.0), pos2((used.right() + 6.0).min(rect.right() - 2.0), rect.top() + 32.0));
     ui.painter().set(backing, egui::Shape::rect_filled(back, 3.0, Color32::from_black_alpha(150)));
+    let cur_shading = if top { app.shading2 } else { app.shading3 };
+    let legend = match cur_shading {
+        Shading::Slope => Some(t("Slope: <20° cars · 20–42° foot · >42° steep")),
+        Shading::Density => Some(t("Density (per 100 m): green <150 · yellow 300 · red 600+")),
+        _ => None,
+    };
+    if let Some(text) = legend {
+        let p = ui.painter();
+        let galley = p.layout_no_wrap(text, egui::FontId::proportional(11.5), Color32::WHITE);
+        let pos = pos2(rect.left() + 8.0, rect.top() + 36.0);
+        let bg = Rect::from_min_size(pos - vec2(5.0, 2.0), galley.size() + vec2(10.0, 4.0));
+        p.rect_filled(bg, 3.0, Color32::from_black_alpha(150));
+        p.galley(pos, galley, Color32::WHITE);
+    }
 }
 
 /// The game's MaxTide: how far the tide moves the sea, in metres.

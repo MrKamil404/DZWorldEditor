@@ -72,6 +72,7 @@ fn describe(i: &Issue) -> String {
         IssueKind::NoKeyPoints => t("The map has no key points, so the in-game map shows no names"),
         IssueKind::NoNavmesh => t("No navmesh yet: AI does not walk until it is generated (Build > Generate navmesh)"),
         IssueKind::Mission => tf("The mission has {0} errors (Mission tab)", &[&n]),
+        IssueKind::DenseArea => tf("{0} objects in one 100 m square (may lower FPS)", &[&n]),
     }
 }
 

@@ -136,6 +136,8 @@ uniform usampler2D u_holes;
 uniform int u_has_holes;
 uniform sampler2D u_flow;
 uniform int u_has_flow;
+uniform sampler2D u_density;
+uniform int u_has_density;
 uniform vec2 u_mask_size;
 uniform sampler2DArray u_layers, u_layer_normals;
 uniform float u_tile;
@@ -364,15 +366,22 @@ void main(){
   } else if (u_mode == 4) { // height
     float t = (v_world.y - u_height_range.x) / max(u_height_range.y - u_height_range.x, 1.0);
     col = ramp(t) * (0.45 + 0.55 * max(dot(n, u_sun), 0.0) / 0.8);
-  } else if (u_mode == 5) { // slope
+  } else if (u_mode == 5) { // slope (DayZ driveable <20, foot 20-42, impassable >42)
     float s = degrees(acos(clamp(n.y, -1.0, 1.0)));
-    col = mix(vec3(0.15,0.5,0.25), vec3(0.9,0.75,0.2), smoothstep(5.0,20.0,s));
-    col = mix(col, vec3(0.85,0.15,0.1), smoothstep(22.0,40.0,s));
-  } else { // water flow over the shaded hills
+    col = mix(vec3(0.15,0.52,0.25), vec3(0.92,0.78,0.18), smoothstep(10.0, 20.0, s));
+    col = mix(col, vec3(0.88,0.22,0.10), smoothstep(22.0, 42.0, s));
+    col = mix(col, vec3(0.45,0.05,0.45), smoothstep(42.0, 55.0, s));
+  } else if (u_mode == 6) { // water flow over the shaded hills
     float w = u_has_flow != 0 ? texture(u_flow, v_world.xz / u_world).r : 0.0;
     col = vec3(0.66, 0.62, 0.55) * light;
     col = mix(col, vec3(0.35, 0.62, 0.85), smoothstep(0.35, 0.6, w));
     col = mix(col, vec3(0.05, 0.2, 0.75), smoothstep(0.6, 0.85, w));
+  } else { // object density heatmap over shaded hills
+    float d = u_has_density != 0 ? texture(u_density, v_world.xz / u_world).r : 0.0;
+    col = vec3(0.58, 0.56, 0.52) * light;
+    vec3 heat = mix(vec3(0.15, 0.68, 0.30), vec3(0.95, 0.82, 0.15), smoothstep(0.05, 0.55, d));
+    heat = mix(heat, vec3(0.92, 0.14, 0.10), smoothstep(0.55, 0.95, d));
+    col = mix(col, heat, smoothstep(0.01, 0.12, d) * 0.82);
   }
   // Contours, land grid and tiles.
   if (u_grid.x > 0.0) {
@@ -909,9 +918,10 @@ pub enum Shading {
     Slope,
     /// Where water runs and gathers; see `dz_core::analysis::wetness`.
     Flow,
+    Density,
 }
 impl Shading {
-    pub const ALL: [Shading; 7] = [Shading::Lit, Shading::Satellite, Shading::Mask, Shading::Hillshade, Shading::Height, Shading::Slope, Shading::Flow];
+    pub const ALL: [Shading; 8] = [Shading::Lit, Shading::Satellite, Shading::Mask, Shading::Hillshade, Shading::Height, Shading::Slope, Shading::Flow, Shading::Density];
     pub fn name(self) -> &'static str {
         match self {
             Shading::Lit => "Lit",
@@ -921,6 +931,7 @@ impl Shading {
             Shading::Height => "Height",
             Shading::Slope => "Slope",
             Shading::Flow => "Water flow",
+            Shading::Density => "Object density",
         }
     }
 }
@@ -1222,6 +1233,7 @@ enum Upload {
     Detail { width: i32, height: i32, rgb: Vec<u8>, rect: [f32; 4] },
     Palette { colors: Vec<[u8; 3]>, averages: Vec<[u8; 3]> },
     Flow { width: i32, height: i32, data: Vec<u8> },
+    Density { width: i32, height: i32, data: Vec<u8> },
     Layer { index: i32, size: i32, rgba: Vec<u8>, normal: Vec<u8> },
     Mesh(Box<MeshData>),
     ClearModels,
@@ -1309,6 +1321,8 @@ pub struct Renderer {
     holes: Option<glow::Texture>,
     /// Where water gathers, for the water flow shading.
     flow: Option<glow::Texture>,
+    /// Object count heatmap per 100 m cell, for the object density shading.
+    density: Option<glow::Texture>,
     sat: Option<glow::Texture>,
     detail: Option<glow::Texture>,
     detail_rect: [f32; 4],
@@ -1477,6 +1491,10 @@ impl Renderer {
     /// Where water gathers, 0 to 255, on a grid over the whole map with row 0 on the south edge.
     pub fn set_flow(&mut self, width: usize, height: usize, data: Vec<u8>) {
         self.uploads.push(Upload::Flow { width: width as i32, height: height as i32, data });
+    }
+    /// Object density heatmap, 0 to 255, on a grid over the whole map with row 0 on the south edge.
+    pub fn set_density(&mut self, width: usize, height: usize, data: Vec<u8>) {
+        self.uploads.push(Upload::Density { width: width as i32, height: height as i32, data });
     }
     pub fn set_holes(&mut self, holes: &dz_core::holes::Holes, cols: usize, rows: usize) {
         let mut data = Vec::new();
@@ -1844,6 +1862,17 @@ impl Renderer {
                     gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::R8 as i32, width, height, 0, glow::RED, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&data)));
                     set_filter(gl, glow::TEXTURE_2D, glow::LINEAR, glow::LINEAR, glow::CLAMP_TO_EDGE);
                     self.flow = Some(t);
+                }
+                Upload::Density { width, height, data } => {
+                    if let Some(t) = self.density.take() {
+                        gl.delete_texture(t);
+                    }
+                    let t = gl.create_texture()?;
+                    gl.bind_texture(glow::TEXTURE_2D, Some(t));
+                    gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+                    gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::R8 as i32, width, height, 0, glow::RED, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&data)));
+                    set_filter(gl, glow::TEXTURE_2D, glow::LINEAR, glow::LINEAR, glow::CLAMP_TO_EDGE);
+                    self.density = Some(t);
                 }
                 Upload::Holes { width, height, data } => {
                     if let Some(t) = self.holes.take() {
@@ -2518,7 +2547,9 @@ impl Renderer {
         bind(7, glow::TEXTURE_2D, self.holes.or(Some(mask)), "u_holes");
         bind(8, glow::TEXTURE_2D_ARRAY, self.layer_normals, "u_layer_normals");
         bind(9, glow::TEXTURE_2D, self.flow.or(self.palette), "u_flow");
+        bind(10, glow::TEXTURE_2D, self.density.or(self.palette), "u_density");
         gl.uniform_1_i32(u(terrain, "u_has_flow").as_ref(), self.flow.is_some() as i32);
+        gl.uniform_1_i32(u(terrain, "u_has_density").as_ref(), self.density.is_some() as i32);
         gl.uniform_1_i32(u(terrain, "u_has_holes").as_ref(), self.holes.is_some() as i32);
         gl.uniform_1_i32(u(terrain, "u_has_shadow").as_ref(), self.shadow_valid as i32);
         gl.uniform_1_f32(u(terrain, "u_bias").as_ref(), f.shadow_bias);
@@ -2710,7 +2741,7 @@ impl Renderer {
             stats.draw_calls += 1;
         }
 
-        if f.show_water && !matches!(f.shading, Shading::Mask | Shading::Height | Shading::Slope | Shading::Flow) {
+        if f.show_water && !matches!(f.shading, Shading::Mask | Shading::Height | Shading::Slope | Shading::Flow | Shading::Density) {
             gl.enable(glow::BLEND);
             gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
             gl.depth_mask(false);

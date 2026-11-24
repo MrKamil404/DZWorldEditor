@@ -383,6 +383,7 @@ pub struct App {
     /// The terrain the water flow shading was worked out for, and when.
     flow_key: u64,
     flow_at: Option<Instant>,
+    density_rev: u64,
     /// Small pictures of the surface textures, for the layer tiles of the Paint panel.
     pub layer_thumbs: Vec<Option<egui::TextureHandle>>,
     pub road_catalog: Arc<Vec<dayz_road_tool::roads::CatalogPart>>,
@@ -644,7 +645,7 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), shown_game_surfaces: false, goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), shown_game_surfaces: false, goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, density_rev: u64::MAX, layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
@@ -1355,8 +1356,27 @@ impl App {
         self.flow_at = Some(Instant::now());
     }
 
+    /// Keeps the object density heatmap texture current while either view shows `Shading::Density`.
+    fn keep_density(&mut self) {
+        let needed = (self.view_mode != ViewMode::Top && self.shading3 == Shading::Density)
+            || (self.view_mode != ViewMode::Perspective && self.shading2 == Shading::Density);
+        if !needed {
+            return;
+        }
+        let Some(d) = &self.doc else { return };
+        let rev = d.world.objects.revision;
+        if rev == self.density_rev {
+            return;
+        }
+        let grid = dz_core::analysis::DensityGrid::build(&d.world, 100.0, false);
+        let data = grid.heatmap_u8(600.0);
+        self.renderer.lock().unwrap().set_density(grid.cols, grid.rows, data);
+        self.density_rev = rev;
+    }
+
     pub fn tick(&mut self) {
         self.keep_flow();
+        self.keep_density();
         self.sync_game_surfaces();
         self.warn_foreign_edits();
         let mut messages = Vec::new();
@@ -1626,6 +1646,7 @@ impl App {
         self.detail_center = [f32::MIN, f32::MIN];
         self.selection.clear();
         self.hidden_objects.clear();
+        self.density_rev = u64::MAX;
         self.selected_modifier = None;
         self.selection_rev += 1;
         self.top_center = [side * 0.5, side * 0.5];

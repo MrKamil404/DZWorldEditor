@@ -8163,6 +8163,22 @@
   "de": "Verborgene Objekte einblenden ({0})",
   "pl": "Pokaż ukryte obiekty ({0})"
  },
+ "Density (per 100 m): green <150 · yellow 300 · red 600+": {
+  "de": "Dichte (pro 100 m): grün <150 · gelb 300 · rot 600+",
+  "pl": "Gęstość (na 100 m): zielony <150 · żółty 300 · czerwony 600+"
+ },
+ "Object density": {
+  "de": "Objektdichte",
+  "pl": "Gęstość obiektów"
+ },
+ "Slope: <20° cars · 20–42° foot · >42° steep": {
+  "de": "Hang: <20° Autos · 20–42° zu Fuß · >42° steil",
+  "pl": "Nachylenie: <20° auta · 20–42° pieszo · >42° stromo"
+ },
+ "{0} objects in one 100 m square (may lower FPS)": {
+  "de": "{0} Objekte in einem 100-m-Quadrat (kann FPS senken)",
+  "pl": "{0} obiektów w jednym kwadracie 100 m (może obniżyć FPS)"
+ },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
   "pl": "Obiekty Terrain Buildera (TXT)..."
