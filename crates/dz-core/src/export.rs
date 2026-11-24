@@ -469,20 +469,48 @@ fn world_overrides(cfg: &crate::world::MapConfig, own_ce: Option<String>) -> Str
     text("userMapPath", &cfg.user_map_path);
     text("midDetailTexture", &cfg.mid_detail_texture);
     text("terrainNormalTexture", &cfg.terrain_normal_texture);
-    for key in ["oceanMaterial", "oceanNiceMaterial", "oceanStormMaterial"] {
-        text(key, &cfg.ocean_material);
-    }
+    text("oceanMaterial", &cfg.ocean_material);
+    text("oceanNiceMaterial", if cfg.ocean_nice_material.trim().is_empty() { &cfg.ocean_material } else { &cfg.ocean_nice_material });
+    text("oceanStormMaterial", if cfg.ocean_storm_material.trim().is_empty() { &cfg.ocean_material } else { &cfg.ocean_storm_material });
+    text("envTexture", &cfg.env_texture);
+    text("atmosphereTexture", &cfg.atmosphere_texture);
     let mut number = |key: &str, v: Option<f32>| {
         if let Some(v) = v {
             out += &format!("\t\t{key}={v};\n");
         }
     };
+    number("MaxTide", cfg.max_tide);
+    number("MaxWave", cfg.max_wave);
+    number("waveAmplitude", cfg.wave_amplitude);
+    number("waveFrequency", cfg.wave_frequency);
+    number("waveOctaves", cfg.wave_octaves.map(|v| v as f32));
+    number("wavePersistence", cfg.wave_persistence);
+    number("starsIntensity", cfg.stars_intensity);
+    number("hazeDistCoef", cfg.haze_dist_coef);
+    number("hazeFogCoef", cfg.haze_fog_coef);
+    number("volFogOffset", cfg.vol_fog_offset);
+    number("satelliteNormalBlendStart", cfg.satellite_normal_blend_start);
+    number("satelliteNormalBlendEnd", cfg.satellite_normal_blend_end);
+    number("terrainNormalPower", cfg.terrain_normal_power);
+    number("soundMapAttenCoef", cfg.sound_map_atten_coef);
     number("clutterGrid", cfg.clutter_grid);
     number("clutterDist", cfg.clutter_dist);
     number("noDetailDist", cfg.no_detail_dist);
     number("fullDetailDist", cfg.full_detail_dist);
     number("minTreesInForestSquare", cfg.min_trees_in_forest_square.map(|v| v as f32));
     number("minRocksInRockSquare", cfg.min_rocks_in_rock_square.map(|v| v as f32));
+    if let Some(on) = cfg.height_blending_mode {
+        out += &format!("\t\theightBlendingMode={};\n", on as u8);
+    }
+    if let Some(on) = cfg.bicubic_mode {
+        out += &format!("\t\tbicubicMode={};\n", on as u8);
+    }
+    if let Some(sm) = &cfg.sound_map {
+        out += &format!(
+            "\t\tclass SoundMapValues: SoundMapValues\n\t\t{{\n\t\t\ttreehard={};\n\t\t\ttreesoft={};\n\t\t\tbushhard={};\n\t\t\tbushsoft={};\n\t\t\tforest={};\n\t\t\thouse={};\n\t\t\tchurch={};\n\t\t}};\n",
+            sm.treehard, sm.treesoft, sm.bushhard, sm.bushsoft, sm.forest, sm.house, sm.church
+        );
+    }
     if !cfg.cutscenes.is_empty() {
         let list = cfg.cutscenes.iter().filter(|c| !c.trim().is_empty()).map(|c| quoted(c)).collect::<Vec<_>>().join(",");
         out += &format!("\t\tcutscenes[]={{{list}}};\n");
@@ -551,10 +579,41 @@ pub fn world_config_text(w: &World, has_navmesh: bool) -> String {
     for (i, l) in w.layers.iter().enumerate() {
         materials += &format!("\t\t\tmaterial{i}=\"{}\";\n", l.material);
     }
-    let navmesh = if has_navmesh {
-        format!("\t\tclass Navmesh: Navmesh\n\t\t{{\n\t\t\tnavmeshName=\"\\{id}\\navmesh\\navmesh.nm\";\n\t\t\tclass GenParams: GenParams\n\t\t\t{{\n\t\t\t\tseedPosition[]={{{sx:.1},{sy:.1},{sz:.1}}};\n\t\t\t}};\n\t\t}};\n")
-    } else {
-        "\t\tclass Navmesh: Navmesh\n\t\t{\n\t\t\tnavmeshName=\"\";\n\t\t};\n".to_string()
+    let navmesh = {
+        let mut gp = String::new();
+        if has_navmesh {
+            gp += &format!("\t\t\t\tseedPosition[]={{{sx:.1},{sy:.1},{sz:.1}}};\n");
+        }
+        if let Some(tw) = cfg.navmesh_tile_width {
+            gp += &format!("\t\t\t\ttileWidth={tw};\n");
+        }
+        if let Some(fi) = cfg.navmesh_filter_islands {
+            gp += &format!("\t\t\t\tfilterIsolatedIslands={};\n", fi as u8);
+        }
+        if cfg.navmesh_max_slope.is_some() || cfg.navmesh_max_step.is_some() {
+            gp += "\t\t\t\tclass Agent: Agent\n\t\t\t\t{\n";
+            if let Some(s) = cfg.navmesh_max_step {
+                gp += &format!("\t\t\t\t\tmaxStepHeight={s};\n");
+            }
+            if let Some(s) = cfg.navmesh_max_slope {
+                gp += &format!("\t\t\t\t\tmaxSlope={s};\n");
+            }
+            gp += "\t\t\t\t};\n";
+        }
+        let mut nm = String::from("\t\tclass Navmesh: Navmesh\n\t\t{\n");
+        if has_navmesh {
+            nm += &format!("\t\t\tnavmeshName=\"\\{id}\\navmesh\\navmesh.nm\";\n");
+        } else {
+            nm += "\t\t\tnavmeshName=\"\";\n";
+        }
+        if let Some(fi) = cfg.navmesh_filter_islands {
+            nm += &format!("\t\t\tfilterIsolatedIslandsOnLoad={};\n", fi as u8);
+        }
+        if !gp.is_empty() {
+            nm += &format!("\t\t\tclass GenParams: GenParams\n\t\t\t{{\n{gp}\t\t\t}};\n");
+        }
+        nm += "\t\t};\n";
+        nm
     };
     let holes = if w.holes.is_empty() { String::new() } else { crate::holes::class_text(&w.holes, "\t\t") };
     let names = crate::keypoints::names_text(&w.keypoints, "\t\t\t");
@@ -597,8 +656,12 @@ pub fn world_config_text(w: &World, has_navmesh: bool) -> String {
 	{{
 		class Navmesh
 		{{
-			class GenParams;
+			class GenParams
+			{{
+				class Agent;
+			}};
 		}};
+		class SoundMapValues;
 		class UsedTerrainMaterials;
 		class OutsideTerrain
 		{{
@@ -987,6 +1050,14 @@ mod tests {
         w.meta.config.clutter_dist = Some(150.0);
         w.meta.config.min_trees_in_forest_square = Some(8);
         w.meta.config.ocean_material = "Isle\\data\\sea.emat".into();
+        w.meta.config.max_tide = Some(2.0);
+        w.meta.config.stars_intensity = Some(0.3);
+        w.meta.config.sound_map = Some(crate::world::SoundMapConfig { forest: 1.2, ..Default::default() });
+        w.meta.config.navmesh_max_slope = Some(55.0);
+        let cfg = world_config_text(&w, false);
+        assert!(cfg.contains("MaxTide=2;") && cfg.contains("starsIntensity=0.3;"), "{cfg}");
+        assert!(cfg.contains("class SoundMapValues: SoundMapValues") && cfg.contains("forest=1.2;"), "{cfg}");
+        assert!(cfg.contains("maxSlope=55;"), "{cfg}");
         let cfg = world_config_text(&w, false);
         assert!(cfg.contains("class cfgCharacterScenes\n{\n\tclass Isle\n\t{\n\t\tclass harbour") && cfg.contains("position[]={100.0,200.0,1.5};") && cfg.contains("date[]={1984,10,28,9,0};"), "{cfg}");
         assert!(cfg.contains("cutscenes[]={\"IsleIntro\"};") && cfg.contains("startTime=\"6:30\";") && cfg.contains("ceFiles=\"Isle\\ce\";"), "{cfg}");

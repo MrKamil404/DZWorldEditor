@@ -3343,6 +3343,25 @@ fn base_value(base: &dz_core::world::BaseWorld, key: &str) -> &'static str {
         "clutterGrid" => "1",
         "minTrees" => "10",
         "minRocks" => "5",
+        "envTexture" => r"DZ\Data\data\env_co.paa",
+        "atmosphereTexture" => r"DZ\worlds\chernarusplus\data\Sky_Stage01_Clear_sky.paa",
+        "maxTide" => "1.5",
+        "maxWave" => "0.25",
+        "waveAmplitude" => "0.081",
+        "waveFrequency" => "9",
+        "waveOctaves" => "6",
+        "wavePersistence" => "0.745",
+        "starsIntensity" => "0.181",
+        "hazeDistCoef" => "0",
+        "hazeFogCoef" => "1",
+        "volFogOffset" => "0",
+        "satNormStart" => "100",
+        "satNormEnd" => "500",
+        "terrainNormalPower" => "3.21",
+        "soundMapAttenCoef" => "0.01",
+        "tileWidth" => "50",
+        "maxSlope" => "60",
+        "maxStep" => "0.45",
         _ => "",
     }
 }
@@ -3522,8 +3541,80 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                     ui.separator();
                     config_text(ui, &t("Middle distance texture"), &mut m.config.mid_detail_texture, base_value(&base, "midDetailTexture"));
                     config_text(ui, &t("Terrain normal map"), &mut m.config.terrain_normal_texture, base_value(&base, "terrainNormalTexture"));
-                    config_text(ui, &t("Sea material"), &mut m.config.ocean_material, base_value(&base, "oceanMaterial"));
+                    config_number(ui, &t("Normal blend start"), &mut m.config.satellite_normal_blend_start, base_value(&base, "satNormStart"), 0.0..=5000.0, " m");
+                    config_number(ui, &t("Normal blend end"), &mut m.config.satellite_normal_blend_end, base_value(&base, "satNormEnd"), 0.0..=10000.0, " m");
+                    config_number(ui, &t("Terrain normal power"), &mut m.config.terrain_normal_power, base_value(&base, "terrainNormalPower"), 0.0..=10.0, "");
+                    for (label, id_salt, flag) in [
+                        (t("Height blending"), "cfg_hblend", &mut m.config.height_blending_mode),
+                        (t("Bicubic filtering"), "cfg_bicubic", &mut m.config.bicubic_mode),
+                    ] {
+                        row(ui, &label, |ui| {
+                            egui::ComboBox::from_id_salt(id_salt).selected_text(match flag { None => t("(from the base world)"), Some(true) => t("On"), Some(false) => t("Off") }).show_ui(ui, |ui| {
+                                ui.selectable_value(flag, None, t("(from the base world)"));
+                                ui.selectable_value(flag, Some(true), t("On"));
+                                ui.selectable_value(flag, Some(false), t("Off"));
+                            });
+                        });
+                    }
                     ui.weak(t("The textures of the base world show its own terrain; a map of its own needs its own."));
+                });
+                section(ui, &t("Sea and waves"), false, |ui| {
+                    let base = m.config.base.clone();
+                    config_text(ui, &t("Sea material"), &mut m.config.ocean_material, base_value(&base, "oceanMaterial"));
+                    config_text(ui, &t("Calm sea material"), &mut m.config.ocean_nice_material, base_value(&base, "oceanMaterial"));
+                    config_text(ui, &t("Storm sea material"), &mut m.config.ocean_storm_material, base_value(&base, "oceanMaterial"));
+                    ui.weak(t("Leave empty to reuse Sea material for calm and storm weather too."));
+                    config_number(ui, &t("Max tide"), &mut m.config.max_tide, base_value(&base, "maxTide"), 0.0..=10.0, " m");
+                    config_number(ui, &t("Max wave"), &mut m.config.max_wave, base_value(&base, "maxWave"), 0.0..=5.0, " m");
+                    config_number(ui, &t("Wave amplitude"), &mut m.config.wave_amplitude, base_value(&base, "waveAmplitude"), 0.0..=2.0, "");
+                    config_number(ui, &t("Wave frequency"), &mut m.config.wave_frequency, base_value(&base, "waveFrequency"), 0.0..=50.0, "");
+                    let mut oct = m.config.wave_octaves.map(|v| v as f32);
+                    config_number(ui, &t("Wave octaves"), &mut oct, base_value(&base, "waveOctaves"), 1.0..=12.0, "");
+                    m.config.wave_octaves = oct.map(|v| v.round() as u32);
+                    config_number(ui, &t("Wave persistence"), &mut m.config.wave_persistence, base_value(&base, "wavePersistence"), 0.0..=2.0, "");
+                });
+                section(ui, &t("Atmosphere and sky"), false, |ui| {
+                    let base = m.config.base.clone();
+                    config_text(ui, &t("Environment map (envTexture)"), &mut m.config.env_texture, base_value(&base, "envTexture"));
+                    config_text(ui, &t("Atmosphere texture"), &mut m.config.atmosphere_texture, base_value(&base, "atmosphereTexture"));
+                    config_number(ui, &t("Stars intensity"), &mut m.config.stars_intensity, base_value(&base, "starsIntensity"), 0.0..=2.0, "");
+                    config_number(ui, &t("Haze distance coef"), &mut m.config.haze_dist_coef, base_value(&base, "hazeDistCoef"), 0.0..=5.0, "");
+                    config_number(ui, &t("Haze fog coef"), &mut m.config.haze_fog_coef, base_value(&base, "hazeFogCoef"), 0.0..=5.0, "");
+                    config_number(ui, &t("Volumetric fog offset"), &mut m.config.vol_fog_offset, base_value(&base, "volFogOffset"), -500.0..=500.0, " m");
+                });
+                section(ui, &t("Ambient sound map"), false, |ui| {
+                    let base = m.config.base.clone();
+                    config_number(ui, &t("Sound map attenuation"), &mut m.config.sound_map_atten_coef, base_value(&base, "soundMapAttenCoef"), 0.0..=1.0, "");
+                    let mut own_sm = m.config.sound_map.is_some();
+                    if ui.checkbox(&mut own_sm, t("Override SoundMapValues")).changed() {
+                        m.config.sound_map = own_sm.then(Default::default);
+                    }
+                    if let Some(sm) = &mut m.config.sound_map {
+                        for (label, val) in [
+                            (t("Hard trees"), &mut sm.treehard),
+                            (t("Soft trees"), &mut sm.treesoft),
+                            (t("Hard bushes"), &mut sm.bushhard),
+                            (t("Soft bushes"), &mut sm.bushsoft),
+                            (t("Forest weight"), &mut sm.forest),
+                            (t("Houses weight"), &mut sm.house),
+                            (t("Church weight"), &mut sm.church),
+                        ] {
+                            row(ui, &label, |ui| { ui.add(egui::DragValue::new(val).speed(0.01).range(0.0..=5.0)); });
+                        }
+                    }
+                });
+                section(ui, &t("Navmesh settings"), false, |ui| {
+                    let base = m.config.base.clone();
+                    row(ui, &t("Filter isolated islands"), |ui| {
+                        egui::ComboBox::from_id_salt("cfg_nm_islands").selected_text(match m.config.navmesh_filter_islands { None => t("(from the base world)"), Some(true) => t("On"), Some(false) => t("Off") }).show_ui(ui, |ui| {
+                            ui.selectable_value(&mut m.config.navmesh_filter_islands, None, t("(from the base world)"));
+                            ui.selectable_value(&mut m.config.navmesh_filter_islands, Some(true), t("On"));
+                            ui.selectable_value(&mut m.config.navmesh_filter_islands, Some(false), t("Off"));
+                        });
+                    });
+                    config_number(ui, &t("Tile width"), &mut m.config.navmesh_tile_width, base_value(&base, "tileWidth"), 10.0..=200.0, " m");
+                    config_number(ui, &t("Agent max slope"), &mut m.config.navmesh_max_slope, base_value(&base, "maxSlope"), 10.0..=85.0, "°");
+                    config_number(ui, &t("Agent max step"), &mut m.config.navmesh_max_step, base_value(&base, "maxStep"), 0.1..=2.0, " m");
                 });
                 section(ui, &t("Detail distances"), false, |ui| {
                     let base = m.config.base.clone();

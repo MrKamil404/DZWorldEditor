@@ -8239,6 +8239,154 @@
   "de": "Nutzt clutterDist und clutterGrid aus Datei > Kartenkonfiguration (oder die Standardwerte der Basiswelt).",
   "pl": "Używa clutterDist i clutterGrid z Plik > Konfiguracja mapy (lub domyślnych z bazowego świata)."
  },
+ "Agent max slope": {
+  "de": "KI-Maximalhang",
+  "pl": "Maks. nachylenie AI"
+ },
+ "Agent max step": {
+  "de": "KI-Maximalstufe",
+  "pl": "Maks. stopień AI"
+ },
+ "Ambient sound map": {
+  "de": "Umgebungsklang-Karte",
+  "pl": "Mapa dźwięków otoczenia"
+ },
+ "Atmosphere and sky": {
+  "de": "Atmosphäre und Himmel",
+  "pl": "Atmosfera i niebo"
+ },
+ "Atmosphere texture": {
+  "de": "Atmosphärentextur",
+  "pl": "Tekstura atmosfery"
+ },
+ "Bicubic filtering": {
+  "de": "Bikubische Filterung",
+  "pl": "Filtrowanie dwusześcienne"
+ },
+ "Calm sea material": {
+  "de": "Material für ruhiges Meer",
+  "pl": "Materiał spokojnego morza"
+ },
+ "Church weight": {
+  "de": "Kirchen-Gewicht",
+  "pl": "Waga kościołów"
+ },
+ "Environment map (envTexture)": {
+  "de": "Umgebungstextur (envTexture)",
+  "pl": "Mapa odbić (envTexture)"
+ },
+ "Filter isolated islands": {
+  "de": "Isolierte Inseln filtern",
+  "pl": "Filtruj odcięte wyspy"
+ },
+ "Forest weight": {
+  "de": "Wald-Gewicht",
+  "pl": "Waga lasu"
+ },
+ "Hard bushes": {
+  "de": "Harte Büsche",
+  "pl": "Krzewy twarde"
+ },
+ "Hard trees": {
+  "de": "Laubbäume",
+  "pl": "Drzewa twarde"
+ },
+ "Haze distance coef": {
+  "de": "Dunst-Distanzfaktor",
+  "pl": "Współczynnik dystansu mgły"
+ },
+ "Haze fog coef": {
+  "de": "Dunst-Nebelfaktor",
+  "pl": "Współczynnik gęstości mgły"
+ },
+ "Height blending": {
+  "de": "Höhenmischung",
+  "pl": "Mieszanie wysokościowe"
+ },
+ "Houses weight": {
+  "de": "Häuser-Gewicht",
+  "pl": "Waga budynków"
+ },
+ "Leave empty to reuse Sea material for calm and storm weather too.": {
+  "de": "Leer lassen, um das Meermaterial auch für ruhiges und stürmisches Wetter zu verwenden.",
+  "pl": "Puste pole używa Materiału morza także przy spokojnej i sztormowej pogodzie."
+ },
+ "Max tide": {
+  "de": "Max. Gezeiten (MaxTide)",
+  "pl": "Maks. przypływ (MaxTide)"
+ },
+ "Max wave": {
+  "de": "Max. Welle (MaxWave)",
+  "pl": "Maks. fala (MaxWave)"
+ },
+ "Navmesh settings": {
+  "de": "Navmesh-Einstellungen",
+  "pl": "Ustawienia navmesha"
+ },
+ "Normal blend end": {
+  "de": "Normalen-Mischende",
+  "pl": "Koniec mieszania normalnych"
+ },
+ "Normal blend start": {
+  "de": "Normalen-Mischbeginn",
+  "pl": "Początek mieszania normalnych"
+ },
+ "Override SoundMapValues": {
+  "de": "SoundMapValues überschreiben",
+  "pl": "Nadpisz SoundMapValues"
+ },
+ "Sea and waves": {
+  "de": "Meer und Wellen",
+  "pl": "Morze i fale"
+ },
+ "Soft bushes": {
+  "de": "Weiche Büsche",
+  "pl": "Krzewy miękkie"
+ },
+ "Soft trees": {
+  "de": "Nadelbäume",
+  "pl": "Drzewa miękkie"
+ },
+ "Sound map attenuation": {
+  "de": "Klangkarten-Dämpfung",
+  "pl": "Tłumienie mapy dźwięków"
+ },
+ "Stars intensity": {
+  "de": "Sternenintensität",
+  "pl": "Jasność gwiazd"
+ },
+ "Storm sea material": {
+  "de": "Material für stürmisches Meer",
+  "pl": "Materiał sztormowego morza"
+ },
+ "Terrain normal power": {
+  "de": "Gelände-Normalenstärke",
+  "pl": "Siła mapy normalnych terenu"
+ },
+ "Tile width": {
+  "de": "Kachelbreite",
+  "pl": "Szerokość kafla"
+ },
+ "Volumetric fog offset": {
+  "de": "Volumennebel-Versatz",
+  "pl": "Przesunięcie mgły wolumetrycznej"
+ },
+ "Wave amplitude": {
+  "de": "Wellenamplitude",
+  "pl": "Amplituda fal"
+ },
+ "Wave frequency": {
+  "de": "Wellenfrequenz",
+  "pl": "Częstotliwość fal"
+ },
+ "Wave octaves": {
+  "de": "Wellenoktaven",
+  "pl": "Oktawy fal"
+ },
+ "Wave persistence": {
+  "de": "Wellenpersistenz",
+  "pl": "Trwałość fal"
+ },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
   "pl": "Obiekty Terrain Buildera (TXT)..."

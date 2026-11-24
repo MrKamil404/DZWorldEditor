@@ -143,6 +143,36 @@ pub struct MapConfig {
     pub terrain_normal_texture: String,
     /// The material of the sea, for calm, nice and stormy weather alike.
     pub ocean_material: String,
+    /// Optional separate sea materials for calm (`oceanNiceMaterial`) and stormy (`oceanStormMaterial`) weather.
+    pub ocean_nice_material: String,
+    pub ocean_storm_material: String,
+    /// Ocean tide and wave settings (`CAWorld` defaults: 1.5, 0.25, 0.081, 9, 6, 0.745).
+    pub max_tide: Option<f32>,
+    pub max_wave: Option<f32>,
+    pub wave_amplitude: Option<f32>,
+    pub wave_frequency: Option<f32>,
+    pub wave_octaves: Option<u32>,
+    pub wave_persistence: Option<f32>,
+    /// Atmosphere, reflection, fog and terrain normal blending (`CAWorld`).
+    pub env_texture: String,
+    pub atmosphere_texture: String,
+    pub stars_intensity: Option<f32>,
+    pub haze_dist_coef: Option<f32>,
+    pub haze_fog_coef: Option<f32>,
+    pub vol_fog_offset: Option<f32>,
+    pub satellite_normal_blend_start: Option<f32>,
+    pub satellite_normal_blend_end: Option<f32>,
+    pub terrain_normal_power: Option<f32>,
+    pub height_blending_mode: Option<bool>,
+    pub bicubic_mode: Option<bool>,
+    /// Ambient sound map attenuation and weights (`soundMapAttenCoef`, `class SoundMapValues`).
+    pub sound_map_atten_coef: Option<f32>,
+    pub sound_map: Option<SoundMapConfig>,
+    /// Navmesh generation overrides (`class Navmesh`).
+    pub navmesh_filter_islands: Option<bool>,
+    pub navmesh_tile_width: Option<f32>,
+    pub navmesh_max_slope: Option<f32>,
+    pub navmesh_max_step: Option<f32>,
     /// Grass and detail distances; `None` keeps the base world's.
     pub clutter_grid: Option<f32>,
     pub clutter_dist: Option<f32>,
@@ -152,6 +182,25 @@ pub struct MapConfig {
     pub min_rocks_in_rock_square: Option<u32>,
     /// The map's own surfaces and its changes to those of the game (CfgSurfaces).
     pub surfaces: Vec<crate::surfaces::MapSurface>,
+}
+
+/// Weights of `class SoundMapValues` in `CfgWorlds` (vanilla defaults from `P:\dz\data\config.cpp`).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SoundMapConfig {
+    pub treehard: f32,
+    pub treesoft: f32,
+    pub bushhard: f32,
+    pub bushsoft: f32,
+    pub forest: f32,
+    pub house: f32,
+    pub church: f32,
+}
+
+impl Default for SoundMapConfig {
+    fn default() -> Self {
+        Self { treehard: 0.03, treesoft: 0.03, bushhard: 0.0, bushsoft: 0.0, forest: 1.0, house: 0.3, church: 0.5 }
+    }
 }
 
 /// A place of the main menu: the camera stands at `position` (x, z, height over the ground)
@@ -185,6 +234,14 @@ impl Default for MapConfig {
             map_display_name_key: String::new(), map_description_key: String::new(), map_texture_closed: String::new(), map_texture_opened: String::new(), map_texture_legend: String::new(), user_map_path: String::new(),
             outside_satellite: String::new(), outside_synth: None, outside_texture: String::new(), outside_nopx: String::new(),
             mid_detail_texture: String::new(), terrain_normal_texture: String::new(), ocean_material: String::new(),
+            ocean_nice_material: String::new(), ocean_storm_material: String::new(),
+            max_tide: None, max_wave: None, wave_amplitude: None, wave_frequency: None, wave_octaves: None, wave_persistence: None,
+            env_texture: String::new(), atmosphere_texture: String::new(),
+            stars_intensity: None, haze_dist_coef: None, haze_fog_coef: None, vol_fog_offset: None,
+            satellite_normal_blend_start: None, satellite_normal_blend_end: None, terrain_normal_power: None,
+            height_blending_mode: None, bicubic_mode: None,
+            sound_map_atten_coef: None, sound_map: None,
+            navmesh_filter_islands: None, navmesh_tile_width: None, navmesh_max_slope: None, navmesh_max_step: None,
             clutter_grid: None, clutter_dist: None, no_detail_dist: None, full_detail_dist: None, min_trees_in_forest_square: None, min_rocks_in_rock_square: None,
             surfaces: Vec::new(),
         }
