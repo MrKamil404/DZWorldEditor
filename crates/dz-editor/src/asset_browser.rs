@@ -1598,9 +1598,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     if let (Pick::Prefab(id), 1) = (pick, group.len()) { event_group_menu(ui, app, *id, &mut acts); }
                                     if group.len() == 1 {
                                         if let Pick::Model(m) = pick {
-                                            if has_doc {
+                                            if let Some(ms) = app.doc.as_ref().and_then(|d| d.world.mission.as_deref()) {
                                                 let proxy = dz_core::mission::gen::proxy_class(m);
-                                                let exists = app.doc.as_ref().and_then(|d| d.world.mission.as_deref()).is_some_and(|ms| dz_core::mission::proto::has_group(ms, &proxy));
+                                                let exists = dz_core::mission::proto::has_group(ms, &proxy);
                                                 let label = if exists { t("Edit loot points (mapgroupproto.xml)...") } else { t("Add to mapgroupproto.xml...") };
                                                 if ui.button(label).on_hover_text(t("Open the 3D loot point editor for this building in mapgroupproto.xml.")).clicked() {
                                                     acts.push(Act::LootPoints(m.clone()));

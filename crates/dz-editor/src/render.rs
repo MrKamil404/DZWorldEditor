@@ -2833,17 +2833,20 @@ pub struct ModelPreviewFrame {
     pub view: View,
     pub model_key: (u32, u8),
     pub clip_y: Option<f32>,
+    /// Ground/floor plane under the building: `(center_x, floor_y, center_z, half_extent)`.
+    pub floor: [f32; 4],
 }
 
 impl Renderer {
-    /// Renders a single GPU-loaded model with studio lighting and an optional horizontal clip plane.
+    /// Renders a single GPU-loaded model with daylight sky lighting, a depth-tested ground
+    /// plane, and an optional horizontal clip plane.
     pub unsafe fn paint_model_preview(&mut self, gl: &glow::Context, f: &ModelPreviewFrame) {
         if let Err(e) = self.init(gl).and_then(|_| self.process_uploads(gl)) {
             self.error = Some(e);
             return;
         }
         let Some(p) = &self.programs else { return };
-        let mesh_prog = p.mesh;
+        let (mesh_prog, sky_prog) = (p.mesh, p.sky);
         let now = self.now();
         if let Some(m) = self.models.get_mut(&f.model_key) {
             m.used = now;
@@ -2852,34 +2855,86 @@ impl Renderer {
         gl.depth_func(glow::LEQUAL);
         gl.depth_mask(true);
         gl.clear_depth_f32(1.0);
-        gl.clear_color(0.13, 0.14, 0.17, 1.0);
+        gl.clear_color(0.55, 0.66, 0.78, 1.0);
         gl.clear(glow::DEPTH_BUFFER_BIT | glow::COLOR_BUFFER_BIT);
         gl.disable(glow::CULL_FACE);
         gl.disable(glow::BLEND);
 
-        let Some(m) = self.models.get(&f.model_key) else {
+        // Bright daylight with strong sky ambient so shaded walls and building interiors stay clearly readable.
+        let sun = crate::camera::norm([0.35, 0.88, -0.32]);
+        let sun_col = [0.55f32, 0.54, 0.50];
+        let amb = [0.78f32, 0.80, 0.84];
+        let exposure = 1.05f32;
+
+        // Sky backdrop (same shader as the main 3D viewport).
+        {
+            let us = |n: &str| gl.get_uniform_location(sky_prog, n);
+            gl.depth_mask(false);
             gl.disable(glow::DEPTH_TEST);
-            gl.enable(glow::BLEND);
-            return;
-        };
+            gl.use_program(Some(sky_prog));
+            gl.uniform_3_f32_slice(us("u_sun").as_ref(), &sun);
+            gl.uniform_3_f32_slice(us("u_sun_col").as_ref(), &sun_col);
+            gl.uniform_3_f32_slice(us("u_amb").as_ref(), &amb);
+            gl.uniform_1_f32(us("u_fog").as_ref(), 0.0);
+            gl.uniform_1_f32(us("u_exposure").as_ref(), exposure);
+            gl.uniform_1_f32(us("u_time").as_ref(), 0.0);
+            gl.uniform_3_f32_slice(us("u_f").as_ref(), &f.view.forward);
+            gl.uniform_3_f32_slice(us("u_r").as_ref(), &f.view.right);
+            gl.uniform_3_f32_slice(us("u_u").as_ref(), &f.view.up);
+            gl.uniform_2_f32(us("u_t").as_ref(), f.view.tan_half_fov * f.view.aspect, f.view.tan_half_fov);
+            gl.bind_vertex_array(self.quad_vao);
+            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+            gl.enable(glow::DEPTH_TEST);
+            gl.depth_mask(true);
+        }
+
         let u = |n: &str| gl.get_uniform_location(mesh_prog, n);
         gl.use_program(Some(mesh_prog));
-        // Studio lighting: crisp sun from upper front-right + soft neutral ambient so interiors stay readable.
-        let sun = crate::camera::norm([0.45, 0.85, 0.35]);
         gl.uniform_3_f32_slice(u("u_sun").as_ref(), &sun);
-        gl.uniform_3_f32(u("u_sun_col").as_ref(), 1.0, 0.98, 0.94);
-        gl.uniform_3_f32(u("u_amb").as_ref(), 0.42, 0.45, 0.50);
+        gl.uniform_3_f32_slice(u("u_sun_col").as_ref(), &sun_col);
+        gl.uniform_3_f32_slice(u("u_amb").as_ref(), &amb);
         gl.uniform_1_f32(u("u_fog").as_ref(), 0.0);
-        gl.uniform_1_f32(u("u_exposure").as_ref(), 1.0);
+        gl.uniform_1_f32(u("u_exposure").as_ref(), exposure);
         gl.uniform_1_f32(u("u_time").as_ref(), 0.0);
         gl.uniform_matrix_4_f32_slice(u("u_vp").as_ref(), false, &f.view.vp);
         gl.uniform_3_f32(u("u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
         gl.uniform_1_i32(u("u_tex").as_ref(), 0);
         gl.uniform_1_f32(u("u_alpha").as_ref(), 1.0);
-        gl.uniform_1_f32(u("u_clip_y").as_ref(), f.clip_y.unwrap_or(1e9));
+        gl.uniform_1_f32(u("u_clip_y").as_ref(), 1e9);
         gl.uniform_1_i32(u("u_has_shadow").as_ref(), 0);
         gl.uniform_1_i32(u("u_conform").as_ref(), 0);
         gl.uniform_1_f32(u("u_decal_lift").as_ref(), 0.0);
+        gl.uniform_1_i32(u("u_mode").as_ref(), 0);
+        gl.uniform_1_i32(u("u_textured").as_ref(), 0);
+        gl.uniform_1_f32(u("u_cut").as_ref(), 0.0);
+        gl.uniform_1_i32(u("u_decal").as_ref(), 0);
+        gl.uniform_3_f32(u("u_top").as_ref(), -1.0, 0.0, 0.0);
+
+        // Depth-tested ground slab under the building so it never bleeds through walls.
+        if let (Some(box_vao), Some(box_buf)) = (self.box_vao, self.box_instances) {
+            let [fx, fy, fz, half] = f.floor;
+            let sx = (half * 2.5).max(8.0);
+            let slab: [f32; 16] = [
+                sx, 0.0, 0.0, fx,
+                0.0, 0.04, 0.0, fy - 0.025,
+                0.0, 0.0, sx, fz,
+                0.28, 0.30, 0.33, 0.95,
+            ];
+            gl.bind_vertex_array(Some(box_vao));
+            Self::bind_mesh_instances(gl, box_buf, 0);
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&slab), glow::STREAM_DRAW);
+            gl.draw_elements_instanced(glow::TRIANGLES, 36, glow::UNSIGNED_INT, 0, 1);
+        }
+
+        let Some(m) = self.models.get(&f.model_key) else {
+            gl.disable(glow::DEPTH_TEST);
+            gl.enable(glow::BLEND);
+            gl.bind_vertex_array(None);
+            gl.use_program(None);
+            return;
+        };
+
+        gl.uniform_1_f32(u("u_clip_y").as_ref(), f.clip_y.unwrap_or(1e9));
         for k in 1..=14u32 {
             gl.uniform_1_i32(u(&format!("u_m{k}")).as_ref(), material_unit(k) as i32);
         }

@@ -89,9 +89,9 @@ binarised Chernarus WRP.
 
 ## mapgroupproto.xml (3D loot point editor)
 
-Right-click any building model in the **Content Browser** and choose **Edit loot points
-(mapgroupproto.xml)...** (or **Add to mapgroupproto.xml...** when the building has no entry yet)
-to open a standalone 3D preview and editor window:
+When the project has a server mission, right-click any building model in the **Content Browser**
+and choose **Edit loot points (mapgroupproto.xml)...** (or **Add to mapgroupproto.xml...** when
+the building has no entry yet) to open a standalone 3D preview and editor window:
 
 * **3D navigation**: uses the same GPU 3D fly-camera as the main terrain view — hold RMB and fly
   with WASD/QE (Shift for faster movement, wheel while holding RMB for speed), wheel to zoom, MMB

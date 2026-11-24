@@ -90,7 +90,11 @@ pub fn resolve_class(app: &mut App, model: &str) -> String {
 }
 
 /// Opens the standalone 3D loot point editor window for `model`.
+/// Does nothing if the open project has no server mission yet.
 pub fn open(app: &mut App, model: String) {
+    if crate::mission_ui::mission(app).is_none() {
+        return;
+    }
     let class = resolve_class(app, &model);
     let existing = crate::mission_ui::mission(app).and_then(|m| proto::read_group(m, &class));
     let (exists, group) = match existing {
@@ -207,6 +211,10 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     if !app.loot_proto.open {
         return;
     }
+    if crate::mission_ui::mission(app).is_none() {
+        app.loot_proto.open = false;
+        return;
+    }
     // Keep requesting the model if it was evicted or not loaded yet.
     let model_key = (app.loot_proto.model_id, 0u8);
     let model_ready = app.renderer.lock().is_ok_and(|r| r.has_model(model_key));
@@ -215,14 +223,12 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     }
 
     let limits = proto::limits_lists(crate::mission_ui::mission(app));
-    let has_mission = crate::mission_ui::mission(app).is_some();
     let title = tf("Loot points — {0}", &[&app.loot_proto.group.name]);
     let renderer = app.renderer.clone();
     let pick_mesh = app.pick_meshes.get(&app.loot_proto.model_id).cloned();
     let keys = app.settings.keys.clone();
 
     let mut open = app.loot_proto.open;
-    let mut create_mission = false;
     let mut save_requested = false;
     let mut remove_requested = false;
 
@@ -233,10 +239,12 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         .min_size([780.0, 480.0])
         .resizable(true)
         .show(ctx, |ui| {
+            let content_h = ui.available_height().max(320.0);
             ui.columns(2, |cols| {
                 draw_preview_column(
                     &mut app.loot_proto,
                     &mut cols[0],
+                    content_h,
                     &renderer,
                     model_key,
                     model_ready,
@@ -247,9 +255,8 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 draw_editor_column(
                     &mut app.loot_proto,
                     &mut cols[1],
+                    content_h,
                     &limits,
-                    has_mission,
-                    &mut create_mission,
                     &mut save_requested,
                     &mut remove_requested,
                 );
@@ -257,17 +264,6 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         });
 
     app.loot_proto.open = open;
-
-    if create_mission {
-        crate::mission_ui::new_mission(app);
-        if let Some(m) = crate::mission_ui::mission(app) {
-            if let Some(g) = proto::read_group(m, &app.loot_proto.group.name) {
-                app.loot_proto.exists_in_proto = true;
-                app.loot_proto.original_class = Some(g.name.clone());
-                app.loot_proto.group = g;
-            }
-        }
-    }
 
     if save_requested {
         save_to_mission(app);
@@ -281,6 +277,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
 fn draw_preview_column(
     st: &mut LootProtoUi,
     ui: &mut egui::Ui,
+    content_h: f32,
     renderer: &std::sync::Arc<std::sync::Mutex<render::Renderer>>,
     model_key: (u32, u8),
     model_ready: bool,
@@ -325,8 +322,9 @@ fn draw_preview_column(
 
     ui.add_space(4.0);
 
-    // 3D OpenGL viewport fills all remaining space in the left column
-    let avail = Vec2::new(ui.available_width().max(260.0), (ui.available_height() - 36.0).max(260.0));
+    // 3D OpenGL viewport sized strictly inside `content_h` so the resizable window never grows by itself.
+    let view_h = (content_h - 104.0).max(200.0);
+    let avail = Vec2::new(ui.available_width().max(260.0), view_h);
     let (rect, resp) = ui.allocate_exact_size(avail, egui::Sense::click_and_drag());
     let ctx = ui.ctx();
     let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
@@ -392,32 +390,22 @@ fn draw_preview_column(
     let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
     let painter = ui.painter_at(rect);
 
-    // GPU 3D render callback
+    // GPU 3D render callback (with sky lighting and depth-tested ground slab)
+    let c = st.box_center();
     painter.add(render::preview_callback(
         renderer.clone(),
-        ModelPreviewFrame { view: v, model_key, clip_y: st.clip_param() },
+        ModelPreviewFrame {
+            view: v,
+            model_key,
+            clip_y: st.clip_param(),
+            floor: [c[0], st.bounds_min[1], c[2], st.box_radius()],
+        },
     ));
     painter.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, Color32::from_gray(55)), egui::StrokeKind::Inside);
 
     if !model_ready {
         painter.text(rect.center(), egui::Align2::CENTER_CENTER, t("Loading 3D preview..."), egui::FontId::proportional(13.0), Color32::GRAY);
         ctx.request_repaint();
-    }
-
-    // Subtle 1 m reference grid at ground/floor level
-    let gy = st.bounds_min[1];
-    let half = (st.box_radius().ceil() as i32).clamp(4, 16);
-    let gx0 = st.box_center()[0].round();
-    let gz0 = st.box_center()[2].round();
-    let grid_col = Color32::from_rgba_unmultiplied(255, 255, 255, 22);
-    for i in -half..=half {
-        let d = i as f32;
-        if let Some((a, b)) = v.segment([gx0 + d, gy, gz0 - half as f32], [gx0 + d, gy, gz0 + half as f32]) {
-            painter.line_segment([a, b], Stroke::new(1.0_f32, grid_col));
-        }
-        if let Some((a, b)) = v.segment([gx0 - half as f32, gy, gz0 + d], [gx0 + half as f32, gy, gz0 + d]) {
-            painter.line_segment([a, b], Stroke::new(1.0_f32, grid_col));
-        }
     }
 
     // Draw 3D loot points, range rings, and height stalks
@@ -515,30 +503,22 @@ fn draw_preview_column(
     ui.weak(&st.model);
 }
 
-#[allow(clippy::too_many_arguments)]
 fn draw_editor_column(
     st: &mut LootProtoUi,
     ui: &mut egui::Ui,
+    content_h: f32,
     limits: &proto::LimitsLists,
-    has_mission: bool,
-    create_mission: &mut bool,
     save_requested: &mut bool,
     remove_requested: &mut bool,
 ) {
-    if !has_mission {
-        ui.horizontal(|ui| {
-            ui.colored_label(Color32::from_rgb(240, 185, 90), t("This project has no mission yet."));
-            if ui.button(t("Create mission")).clicked() {
-                *create_mission = true;
-            }
-        });
-        ui.separator();
-    } else if !st.exists_in_proto {
+    let mut header_h = 0.0;
+    if !st.exists_in_proto {
         ui.colored_label(Color32::from_rgb(160, 205, 250), t("Not yet in mapgroupproto.xml — edit and save to add it."));
         ui.add_space(2.0);
+        header_h = 22.0;
     }
 
-    egui::ScrollArea::vertical().id_salt("loot_proto_editor_scroll").max_height(ui.available_height() - 38.0).show(ui, |ui| {
+    egui::ScrollArea::vertical().id_salt("loot_proto_editor_scroll").max_height((content_h - 46.0 - header_h).max(160.0)).show(ui, |ui| {
         // ---- Group properties ----
         egui::Grid::new("loot_group_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
             ui.label(t("Prototype class"));
@@ -748,10 +728,10 @@ fn draw_editor_column(
 
     ui.separator();
     ui.horizontal(|ui| {
-        if ui.add_enabled(has_mission, egui::Button::new(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml")))).clicked() {
+        if ui.button(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml"))).clicked() {
             *save_requested = true;
         }
-        if has_mission && st.exists_in_proto && ui.button(t("Remove from mapgroupproto.xml")).clicked() {
+        if st.exists_in_proto && ui.button(t("Remove from mapgroupproto.xml")).clicked() {
             *remove_requested = true;
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

@@ -10523,14 +10523,6 @@
   "de": "3D-Vorschau wird geladen...",
   "pl": "Wczytywanie podglądu 3D..."
  },
- "This project has no mission yet.": {
-  "de": "Dieses Projekt hat noch keine Mission.",
-  "pl": "Ten projekt nie ma jeszcze misji."
- },
- "Create mission": {
-  "de": "Mission erstellen",
-  "pl": "Utwórz misję"
- },
  "Not yet in mapgroupproto.xml — edit and save to add it.": {
   "de": "Noch nicht in mapgroupproto.xml — bearbeiten und speichern zum Hinzufügen.",
   "pl": "Jeszcze nie ma w mapgroupproto.xml — edytuj i zapisz, aby dodać."
