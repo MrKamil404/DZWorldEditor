@@ -321,6 +321,19 @@ impl Settings {
         self.recent.insert(0, dir);
         self.recent.truncate(12);
     }
+    pub fn forget_recent(&mut self, dir: &std::path::Path) {
+        let before = self.recent.len();
+        self.recent.retain(|p| p != dir);
+        if self.recent.len() != before {
+            self.save();
+        }
+    }
+    pub fn clear_recent(&mut self) {
+        if !self.recent.is_empty() {
+            self.recent.clear();
+            self.save();
+        }
+    }
 }
 
 #[cfg(test)]

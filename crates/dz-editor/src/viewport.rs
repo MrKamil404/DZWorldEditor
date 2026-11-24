@@ -318,7 +318,8 @@ impl Footprint {
 
 /// Keeps the finest geometry seen of each model.
 pub fn remember_pick_mesh(meshes: &mut HashMap<u32, std::sync::Arc<PickMesh>>, m: &crate::render::MeshData) {
-    if m.key.0 >= MISSION_BASE || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
+    let is_loot_preview = m.key.0 >= crate::loot_proto_ui::PREVIEW_ID_BASE;
+    if (!is_loot_preview && m.key.0 >= MISSION_BASE) || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
         return;
     }
     let positions: Vec<[f32; 3]> = m.vertices.chunks_exact(10).map(|v| [v[0], v[1], v[2]]).collect();
@@ -4505,9 +4506,17 @@ fn welcome(app: &mut App, ui: &mut egui::Ui) {
             ui.weak(t("Recent projects"));
             for d in app.settings.recent.clone().into_iter().take(8) {
                 let name = d.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                if ui.link(name).on_hover_text(d.display().to_string()).clicked() {
-                    app.open_project(d);
-                }
+                ui.horizontal(|ui| {
+                    if ui.link(name).on_hover_text(d.display().to_string()).clicked() {
+                        app.open_project(d.clone());
+                    }
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::icons::X).small().color(theme::TEXT_DIM)).frame(false))
+                        .on_hover_text(t("Remove from recent projects"))
+                        .clicked()
+                    {
+                        app.settings.forget_recent(&d);
+                    }
+                });
             }
         }
     });

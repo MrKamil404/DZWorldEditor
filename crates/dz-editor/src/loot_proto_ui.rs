@@ -15,7 +15,7 @@ use dz_core::mission::proto::{self, ContainerProto, GroupProto, LootPoint};
 use eframe::egui::{self, Color32, Key, PointerButton, Stroke, Vec2};
 
 /// Reserved model-id namespace for isolated 3D loot previews (never collides with map/mission/proxy ids).
-const PREVIEW_ID_BASE: u32 = 0x9000_0000;
+pub(crate) const PREVIEW_ID_BASE: u32 = 0x9000_0000;
 
 const CONTAINER_COLORS: [Color32; 6] = [
     Color32::from_rgb(76, 195, 247),  // cyan

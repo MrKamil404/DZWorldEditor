@@ -10646,5 +10646,17 @@
  "Diff: {0}": {
   "de": "Diff: {0}",
   "pl": "Zmiany: {0}"
+ },
+ "Remove from recent projects": {
+  "de": "Aus den letzten Projekten entfernen",
+  "pl": "Usuń z ostatnich projektów"
+ },
+ "Clear recent projects": {
+  "de": "Letzte Projekte leeren",
+  "pl": "Wyczyść ostatnie projekty"
+ },
+ "No recent projects": {
+  "de": "Keine letzten Projekte",
+  "pl": "Brak ostatnich projektów"
  }
 }

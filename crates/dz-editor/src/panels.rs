@@ -268,9 +268,29 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 if ui.add(egui::Button::new(icons::with(icons::FILE_PLUS, &t("New project..."))).shortcut_text(keys.text(Action::NewProject))).clicked() { app.dialog = new_project_dialog(); ui.close_menu(); }
                 if ui.button(icons::with(icons::GLOBE_HEMISPHERE_EAST, &t("New project from a real place..."))).clicked() { app.dialog = real_place_dialog(); ui.close_menu(); }
                 if ui.add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Open project..."))).shortcut_text(keys.text(Action::Open))).clicked() { ui.close_menu(); app.pick_and_open(); }
-                ui.menu_button(icons::with(icons::CLOCK, &t("Recent projects")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-                    for d in app.settings.recent.clone() {
-                        if ui.button(d.display().to_string()).clicked() { ui.close_menu(); app.open_project(d); }
+                ui.menu_button(icons::with(icons::CLOCK, &t("Recent projects")), |ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    let list = app.settings.recent.clone();
+                    if list.is_empty() {
+                        ui.weak(t("No recent projects"));
+                    } else {
+                        for d in list {
+                            ui.horizontal(|ui| {
+                                if ui.button(d.display().to_string()).clicked() {
+                                    ui.close_menu();
+                                    app.open_project(d.clone());
+                                }
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.small_button(icons::X).on_hover_text(t("Remove from recent projects")).clicked() {
+                                        app.settings.forget_recent(&d);
+                                    }
+                                });
+                            });
+                        }
+                        ui.separator();
+                        if ui.button(icons::with(icons::TRASH, &t("Clear recent projects"))).clicked() {
+                            app.settings.clear_recent();
+                        }
                     }
                 });
                 ui.separator();
