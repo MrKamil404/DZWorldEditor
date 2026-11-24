@@ -8179,6 +8179,42 @@
   "de": "{0} Objekte in einem 100-m-Quadrat (kann FPS senken)",
   "pl": "{0} obiektów w jednym kwadracie 100 m (może obniżyć FPS)"
  },
+ "2D player map (PNG)": {
+  "de": "2D-Spielerkarte (PNG)",
+  "pl": "Mapa 2D dla graczy (PNG)"
+ },
+ "2D player map (PNG)...": {
+  "de": "2D-Spielerkarte (PNG)...",
+  "pl": "Mapa 2D dla graczy (PNG)..."
+ },
+ "A ready-to-share 2D map image with contours, roads, buildings, place names and grid.": {
+  "de": "Eine fertige 2D-Karte für Spieler mit Höhenlinien, Straßen, Gebäuden, Ortsnamen und Gitter.",
+  "pl": "Gotowa mapa 2D do udostępnienia graczom z warstwicami, drogami, budynkami, nazwami i siatką."
+ },
+ "Building footprints": {
+  "de": "Gebäudeumrisse",
+  "pl": "Obrysy budynków"
+ },
+ "Contour step": {
+  "de": "Höhenlinien-Abstand",
+  "pl": "Skok warstwic"
+ },
+ "Grid step": {
+  "de": "Kartenraster",
+  "pl": "Siatka mapy"
+ },
+ "Map style": {
+  "de": "Kartenstil",
+  "pl": "Styl mapy"
+ },
+ "Place names": {
+  "de": "Ortsnamen",
+  "pl": "Nazwy miejsc"
+ },
+ "Topographic": {
+  "de": "Topografisch",
+  "pl": "Topograficzna"
+ },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
   "pl": "Obiekty Terrain Buildera (TXT)..."

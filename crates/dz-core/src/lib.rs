@@ -24,6 +24,7 @@ pub mod modules;
 pub mod library;
 pub mod keypoints;
 pub mod landscape;
+pub mod map2d;
 pub mod mask_limit;
 pub mod model_info;
 pub mod noise;

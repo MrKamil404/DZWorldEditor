@@ -170,6 +170,7 @@ pub struct FileExport {
     pub shapes: Option<ShapesOptions>,
     pub objects: Option<ObjectsOptions>,
     pub dayz_objects: Option<DayzObjectsOptions>,
+    pub map2d: Option<crate::map2d::Map2dOptions>,
     /// The server mission, into a folder of its name.
     pub mission: Option<MissionOptions>,
     /// Only these objects, when some are given.
@@ -188,6 +189,8 @@ impl World {
         w.mask_mods = self.mask_mods.clone();
         w.objects = self.objects.clone();
         w.shape_layers = self.shape_layers.clone();
+        w.routes = self.routes.clone();
+        w.keypoints = self.keypoints.clone();
         w.mission = self.mission.clone();
         w
     }
@@ -240,6 +243,13 @@ pub fn export_with_classes(w: &World, db: &ModelDb, classes: Option<&crate::miss
     if let Some(dz) = &o.dayz_objects {
         job.stage("Writing DayZ objects");
         out.push(write_dayz(w, dz, &o.selection, classes, dir, &id)?);
+    }
+    if let Some(m2) = &o.map2d {
+        job.stage("Rendering 2D player map");
+        let img = crate::map2d::render(w, db, m2);
+        let path = dir.join(format!("{id}_map2d.png"));
+        save(&img, ImageFormat::Png, &path)?;
+        out.push(path);
     }
     if let (Some(mo), Some(m)) = (&o.mission, &w.mission) {
         job.stage("Writing the mission");
@@ -454,6 +464,7 @@ mod tests {
             shapes: Some(ShapesOptions::default()),
             objects: Some(ObjectsOptions { full_path: true, offset: false, ..Default::default() }),
             dayz_objects: None,
+            map2d: None,
             mission: None,
             selection: Vec::new(),
         };
