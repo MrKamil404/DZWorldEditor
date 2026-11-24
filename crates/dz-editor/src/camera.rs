@@ -73,9 +73,13 @@ pub struct View {
 
 impl View {
     pub fn perspective(cam: &Camera, rect: Rect, ground_clearance: f32) -> Self {
-        let aspect = (rect.width() / rect.height().max(1.0)).max(0.01);
         let near = (ground_clearance * 0.03).clamp(0.25, 40.0);
-        let far = 80_000.0f32;
+        Self::perspective_near(cam, rect, near, 80_000.0)
+    }
+
+    /// Perspective view with explicit near/far clip planes (used by close-up interior previews).
+    pub fn perspective_near(cam: &Camera, rect: Rect, near: f32, far: f32) -> Self {
+        let aspect = (rect.width() / rect.height().max(1.0)).max(0.01);
         let f = cam.forward();
         let r = cam.right();
         let u = cross(f, r);

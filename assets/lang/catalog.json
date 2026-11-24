@@ -8087,6 +8087,306 @@
   "de": "Terrain Builder ordnet Objekte nach Dateinamen zu; der volle Pfad hilft anderen Werkzeugen.",
   "pl": "Terrain Builder dopasowuje obiekty po nazwie pliku; pełna ścieżka przydaje się innym narzędziom."
  },
+ "DayZ Editor (.dze)": {
+  "de": "DayZ Editor (.dze)",
+  "pl": "DayZ Editor (.dze)"
+ },
+ "DayZ Editor / Object Spawner": {
+  "de": "DayZ Editor / Object Spawner",
+  "pl": "DayZ Editor / Object Spawner"
+ },
+ "DayZ Editor / Object Spawner (.dze, .json)...": {
+  "de": "DayZ Editor / Object Spawner (.dze, .json)...",
+  "pl": "DayZ Editor / Object Spawner (.dze, .json)..."
+ },
+ "Enable CE persistency": {
+  "de": "CE-Persistenz aktivieren",
+  "pl": "Włącz trwałość CE (enableCEPersistency)"
+ },
+ "Import DayZ Editor / Object Spawner": {
+  "de": "DayZ Editor / Object Spawner importieren",
+  "pl": "Importuj DayZ Editor / Object Spawner"
+ },
+ "Object Spawner (JSON)": {
+  "de": "Object Spawner (JSON)",
+  "pl": "Object Spawner (JSON)"
+ },
+ "Objects for DayZ Object Spawner (cfggameplay.json) or DayZ Editor (.dze).": {
+  "de": "Objekte für DayZ Object Spawner (cfggameplay.json) oder DayZ Editor (.dze).",
+  "pl": "Obiekty dla DayZ Object Spawner (cfggameplay.json) lub DayZ Editor (.dze)."
+ },
+ "Objects keep their Central Economy lifetime and persistency when spawned by Object Spawner.": {
+  "de": "Objekte behalten beim Spawnen über den Object Spawner ihre Central-Economy-Persistenz.",
+  "pl": "Obiekty zachowują trwałość i czas życia Central Economy po zespawnowaniu przez Object Spawner."
+ },
+ "All hidden objects are shown again": {
+  "de": "Alle verborgenen Objekte sind wieder sichtbar",
+  "pl": "Wszystkie ukryte obiekty są znów widoczne"
+ },
+ "Clicks in the 3D view place the object on the roof, floor or deck under the cursor instead of on the terrain.": {
+  "de": "Klicks in der 3D-Ansicht platzieren das Objekt auf dem Dach, Boden oder Steg unter dem Cursor statt auf dem Gelände.",
+  "pl": "Kliknięcia w widoku 3D stawiają obiekt na dachu, podłodze lub pomoście pod kursorem zamiast na terenie."
+ },
+ "Drop onto surface": {
+  "de": "Auf Oberfläche absetzen",
+  "pl": "Upuść na powierzchnię"
+ },
+ "Dropped {0} objects onto the surface below": {
+  "de": "{0} Objekte auf die Fläche darunter abgesetzt",
+  "pl": "Upuszczono {0} obiektów na powierzchnię pod spodem"
+ },
+ "Hid {0} objects": {
+  "de": "{0} Objekte ausgeblendet",
+  "pl": "Ukryto {0} obiektów"
+ },
+ "Hide selected": {
+  "de": "Auswahl ausblenden",
+  "pl": "Ukryj zaznaczone"
+ },
+ "Isolate selection": {
+  "de": "Auswahl isolieren",
+  "pl": "Izoluj zaznaczenie"
+ },
+ "Isolated {0} objects": {
+  "de": "{0} Objekte isoliert",
+  "pl": "Wyizolowano {0} obiektów"
+ },
+ "Place on top of objects": {
+  "de": "Auf anderen Objekten platzieren",
+  "pl": "Stawiaj na innych obiektach"
+ },
+ "Show hidden objects": {
+  "de": "Verborgene Objekte einblenden",
+  "pl": "Pokaż ukryte obiekty"
+ },
+ "Show hidden objects ({0})": {
+  "de": "Verborgene Objekte einblenden ({0})",
+  "pl": "Pokaż ukryte obiekty ({0})"
+ },
+ "Density (per 100 m): green <150 · yellow 300 · red 600+": {
+  "de": "Dichte (pro 100 m): grün <150 · gelb 300 · rot 600+",
+  "pl": "Gęstość (na 100 m): zielony <150 · żółty 300 · czerwony 600+"
+ },
+ "Object density": {
+  "de": "Objektdichte",
+  "pl": "Gęstość obiektów"
+ },
+ "Slope: <20° cars · 20–42° foot · >42° steep": {
+  "de": "Hang: <20° Autos · 20–42° zu Fuß · >42° steil",
+  "pl": "Nachylenie: <20° auta · 20–42° pieszo · >42° stromo"
+ },
+ "{0} objects in one 100 m square (may lower FPS)": {
+  "de": "{0} Objekte in einem 100-m-Quadrat (kann FPS senken)",
+  "pl": "{0} obiektów w jednym kwadracie 100 m (może obniżyć FPS)"
+ },
+ "2D player map (PNG)": {
+  "de": "2D-Spielerkarte (PNG)",
+  "pl": "Mapa 2D dla graczy (PNG)"
+ },
+ "2D player map (PNG)...": {
+  "de": "2D-Spielerkarte (PNG)...",
+  "pl": "Mapa 2D dla graczy (PNG)..."
+ },
+ "A ready-to-share 2D map image with contours, roads, buildings, place names and grid.": {
+  "de": "Eine fertige 2D-Karte für Spieler mit Höhenlinien, Straßen, Gebäuden, Ortsnamen und Gitter.",
+  "pl": "Gotowa mapa 2D do udostępnienia graczom z warstwicami, drogami, budynkami, nazwami i siatką."
+ },
+ "Building footprints": {
+  "de": "Gebäudeumrisse",
+  "pl": "Obrysy budynków"
+ },
+ "Contour step": {
+  "de": "Höhenlinien-Abstand",
+  "pl": "Skok warstwic"
+ },
+ "Grid step": {
+  "de": "Kartenraster",
+  "pl": "Siatka mapy"
+ },
+ "Map style": {
+  "de": "Kartenstil",
+  "pl": "Styl mapy"
+ },
+ "Place names": {
+  "de": "Ortsnamen",
+  "pl": "Nazwy miejsc"
+ },
+ "Topographic": {
+  "de": "Topografisch",
+  "pl": "Topograficzna"
+ },
+ "Editor settings": {
+  "de": "Editor-Einstellungen",
+  "pl": "Ustawienia edytora"
+ },
+ "From Map config: {0} m (grid {1} m)": {
+  "de": "Aus Kartenkonfiguration: {0} m (Raster {1} m)",
+  "pl": "Z konfiguracji mapy: {0} m (siatka {1} m)"
+ },
+ "Grass draw distance m": {
+  "de": "Gras-Sichtweite m",
+  "pl": "Zasięg rysowania trawy m"
+ },
+ "Grass range": {
+  "de": "Gras-Sichtweite",
+  "pl": "Zasięg trawy"
+ },
+ "Map config (CfgWorlds)": {
+  "de": "Kartenkonfiguration (CfgWorlds)",
+  "pl": "Konfiguracja mapy (CfgWorlds)"
+ },
+ "Uses clutterDist and clutterGrid from File > Map config (falling back to the base world's defaults).": {
+  "de": "Nutzt clutterDist und clutterGrid aus Datei > Kartenkonfiguration (oder die Standardwerte der Basiswelt).",
+  "pl": "Używa clutterDist i clutterGrid z Plik > Konfiguracja mapy (lub domyślnych z bazowego świata)."
+ },
+ "Agent max slope": {
+  "de": "KI-Maximalhang",
+  "pl": "Maks. nachylenie AI"
+ },
+ "Agent max step": {
+  "de": "KI-Maximalstufe",
+  "pl": "Maks. stopień AI"
+ },
+ "Ambient sound map": {
+  "de": "Umgebungsklang-Karte",
+  "pl": "Mapa dźwięków otoczenia"
+ },
+ "Atmosphere and sky": {
+  "de": "Atmosphäre und Himmel",
+  "pl": "Atmosfera i niebo"
+ },
+ "Atmosphere texture": {
+  "de": "Atmosphärentextur",
+  "pl": "Tekstura atmosfery"
+ },
+ "Bicubic filtering": {
+  "de": "Bikubische Filterung",
+  "pl": "Filtrowanie dwusześcienne"
+ },
+ "Calm sea material": {
+  "de": "Material für ruhiges Meer",
+  "pl": "Materiał spokojnego morza"
+ },
+ "Church weight": {
+  "de": "Kirchen-Gewicht",
+  "pl": "Waga kościołów"
+ },
+ "Environment map (envTexture)": {
+  "de": "Umgebungstextur (envTexture)",
+  "pl": "Mapa odbić (envTexture)"
+ },
+ "Filter isolated islands": {
+  "de": "Isolierte Inseln filtern",
+  "pl": "Filtruj odcięte wyspy"
+ },
+ "Forest weight": {
+  "de": "Wald-Gewicht",
+  "pl": "Waga lasu"
+ },
+ "Hard bushes": {
+  "de": "Harte Büsche",
+  "pl": "Krzewy twarde"
+ },
+ "Hard trees": {
+  "de": "Laubbäume",
+  "pl": "Drzewa twarde"
+ },
+ "Haze distance coef": {
+  "de": "Dunst-Distanzfaktor",
+  "pl": "Współczynnik dystansu mgły"
+ },
+ "Haze fog coef": {
+  "de": "Dunst-Nebelfaktor",
+  "pl": "Współczynnik gęstości mgły"
+ },
+ "Height blending": {
+  "de": "Höhenmischung",
+  "pl": "Mieszanie wysokościowe"
+ },
+ "Houses weight": {
+  "de": "Häuser-Gewicht",
+  "pl": "Waga budynków"
+ },
+ "Leave empty to reuse Sea material for calm and storm weather too.": {
+  "de": "Leer lassen, um das Meermaterial auch für ruhiges und stürmisches Wetter zu verwenden.",
+  "pl": "Puste pole używa Materiału morza także przy spokojnej i sztormowej pogodzie."
+ },
+ "Max tide": {
+  "de": "Max. Gezeiten (MaxTide)",
+  "pl": "Maks. przypływ (MaxTide)"
+ },
+ "Max wave": {
+  "de": "Max. Welle (MaxWave)",
+  "pl": "Maks. fala (MaxWave)"
+ },
+ "Navmesh settings": {
+  "de": "Navmesh-Einstellungen",
+  "pl": "Ustawienia navmesha"
+ },
+ "Normal blend end": {
+  "de": "Normalen-Mischende",
+  "pl": "Koniec mieszania normalnych"
+ },
+ "Normal blend start": {
+  "de": "Normalen-Mischbeginn",
+  "pl": "Początek mieszania normalnych"
+ },
+ "Override SoundMapValues": {
+  "de": "SoundMapValues überschreiben",
+  "pl": "Nadpisz SoundMapValues"
+ },
+ "Sea and waves": {
+  "de": "Meer und Wellen",
+  "pl": "Morze i fale"
+ },
+ "Soft bushes": {
+  "de": "Weiche Büsche",
+  "pl": "Krzewy miękkie"
+ },
+ "Soft trees": {
+  "de": "Nadelbäume",
+  "pl": "Drzewa miękkie"
+ },
+ "Sound map attenuation": {
+  "de": "Klangkarten-Dämpfung",
+  "pl": "Tłumienie mapy dźwięków"
+ },
+ "Stars intensity": {
+  "de": "Sternenintensität",
+  "pl": "Jasność gwiazd"
+ },
+ "Storm sea material": {
+  "de": "Material für stürmisches Meer",
+  "pl": "Materiał sztormowego morza"
+ },
+ "Terrain normal power": {
+  "de": "Gelände-Normalenstärke",
+  "pl": "Siła mapy normalnych terenu"
+ },
+ "Tile width": {
+  "de": "Kachelbreite",
+  "pl": "Szerokość kafla"
+ },
+ "Volumetric fog offset": {
+  "de": "Volumennebel-Versatz",
+  "pl": "Przesunięcie mgły wolumetrycznej"
+ },
+ "Wave amplitude": {
+  "de": "Wellenamplitude",
+  "pl": "Amplituda fal"
+ },
+ "Wave frequency": {
+  "de": "Wellenfrequenz",
+  "pl": "Częstotliwość fal"
+ },
+ "Wave octaves": {
+  "de": "Wellenoktaven",
+  "pl": "Oktawy fal"
+ },
+ "Wave persistence": {
+  "de": "Wellenpersistenz",
+  "pl": "Trwałość fal"
+ },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
   "pl": "Obiekty Terrain Buildera (TXT)..."
@@ -10158,5 +10458,209 @@
  "© OpenStreetMap contributors, ODbL. Each kind of shape gets its own shape layer.": {
   "de": "© OpenStreetMap-Mitwirkende, ODbL. Jede Art von Formen bekommt eine eigene Formebene.",
   "pl": "© współtwórcy OpenStreetMap, ODbL. Każdy rodzaj kształtów dostaje własną warstwę."
+ },
+ "Edit loot points (mapgroupproto.xml)...": {
+  "de": "Loot-Punkte bearbeiten (mapgroupproto.xml)...",
+  "pl": "Edytuj punkty lootu (mapgroupproto.xml)..."
+ },
+ "Add to mapgroupproto.xml...": {
+  "de": "Zu mapgroupproto.xml hinzufügen...",
+  "pl": "Dodaj do mapgroupproto.xml..."
+ },
+ "Open the 3D loot point editor for this building in mapgroupproto.xml.": {
+  "de": "Öffnet den 3D-Editor für Loot-Punkte dieses Gebäudes in mapgroupproto.xml.",
+  "pl": "Otwiera edytor 3D punktów lootu tego budynku w mapgroupproto.xml."
+ },
+ "Loot points — {0}": {
+  "de": "Loot-Punkte — {0}",
+  "pl": "Punkty lootu — {0}"
+ },
+ "Iso": {
+  "de": "Iso",
+  "pl": "Izo"
+ },
+ "Front": {
+  "de": "Vorne",
+  "pl": "Przód"
+ },
+ "Side": {
+  "de": "Seite",
+  "pl": "Bok"
+ },
+ "Inside": {
+  "de": "Innen",
+  "pl": "Wnętrze"
+ },
+ "Cut roof": {
+  "de": "Dach schneiden",
+  "pl": "Przekrój dachu"
+ },
+ "Slice the model horizontally to see inside rooms and floors.": {
+  "de": "Schneidet das Modell horizontal auf, um Räume und Böden zu sehen.",
+  "pl": "Przecina model poziomo, aby zajrzeć do wnętrza pomieszczeń i na podłogi."
+ },
+ "Click 3D to add": {
+  "de": "In 3D klicken zum Hinzufügen",
+  "pl": "Kliknij w 3D, aby dodać"
+ },
+ "Click a surface in the 3D preview to place a new loot point there.": {
+  "de": "Klicke auf eine Fläche in der 3D-Vorschau, um dort einen neuen Loot-Punkt zu setzen.",
+  "pl": "Kliknij powierzchnię w podglądzie 3D, aby postawić tam nowy punkt lootu."
+ },
+ "Show ranges": {
+  "de": "Radien anzeigen",
+  "pl": "Pokaż zasięgi"
+ },
+ "Proxies": {
+  "de": "Proxies (Möbel)",
+  "pl": "Proxy (meble)"
+ },
+ "RMB + WASD/QE: fly · Wheel: zoom/speed · MMB: pan · Click: select": {
+  "de": "RMT + WASD/QE: fliegen · Rad: Zoom/Tempo · MMT: schieben · Klick: auswählen",
+  "pl": "PPM + WASD/QE: lot · Kółko: zoom/prędkość · ŚPM: przesuwanie · LPM: wybór"
+ },
+ "RMB + WASD/QE: fly · Click a surface to add a loot point": {
+  "de": "RMT + WASD/QE: fliegen · Fläche anklicken, um Loot-Punkt hinzuzufügen",
+  "pl": "PPM + WASD/QE: lot · Kliknij powierzchnię, aby dodać punkt lootu"
+ },
+ "Loading 3D preview...": {
+  "de": "3D-Vorschau wird geladen...",
+  "pl": "Wczytywanie podglądu 3D..."
+ },
+ "Not yet in mapgroupproto.xml — edit and save to add it.": {
+  "de": "Noch nicht in mapgroupproto.xml — bearbeiten und speichern zum Hinzufügen.",
+  "pl": "Jeszcze nie ma w mapgroupproto.xml — edytuj i zapisz, aby dodać."
+ },
+ "Prototype class": {
+  "de": "Prototyp-Klasse",
+  "pl": "Klasa prototypu"
+ },
+ "Max loot": {
+  "de": "Max. Loot",
+  "pl": "Maks. lootu"
+ },
+ "Dynamic event loot (deloot)": {
+  "de": "Dynamisches Event-Loot (deloot)",
+  "pl": "Loot zdarzeń dynamicznych (deloot)"
+ },
+ "Usage flags": {
+  "de": "Verwendungs-Flags",
+  "pl": "Flagi przeznaczenia (usage)"
+ },
+ "Value flags": {
+  "de": "Wert-Flags",
+  "pl": "Flagi poziomu (value)"
+ },
+ "Containers": {
+  "de": "Container",
+  "pl": "Kontenery"
+ },
+ "Add container": {
+  "de": "Container hinzufügen",
+  "pl": "Dodaj kontener"
+ },
+ "Container name": {
+  "de": "Containername",
+  "pl": "Nazwa kontenera"
+ },
+ "Categories": {
+  "de": "Kategorien",
+  "pl": "Kategorie"
+ },
+ "Tags": {
+  "de": "Tags",
+  "pl": "Tagi"
+ },
+ "Loot points ({0})": {
+  "de": "Loot-Punkte ({0})",
+  "pl": "Punkty lootu ({0})"
+ },
+ "Add point": {
+  "de": "Punkt hinzufügen",
+  "pl": "Dodaj punkt"
+ },
+ "Point #{0}": {
+  "de": "Punkt #{0}",
+  "pl": "Punkt nr {0}"
+ },
+ "Position (X, Y, Z)": {
+  "de": "Position (X, Y, Z)",
+  "pl": "Pozycja (X, Y, Z)"
+ },
+ "Range": {
+  "de": "Radius",
+  "pl": "Zasięg"
+ },
+ "Outside / ground (flags=32)": {
+  "de": "Außen / Boden (flags=32)",
+  "pl": "Na zewnątrz / ziemia (flags=32)"
+ },
+ "Save to mapgroupproto.xml": {
+  "de": "In mapgroupproto.xml speichern",
+  "pl": "Zapisz do mapgroupproto.xml"
+ },
+ "Remove from mapgroupproto.xml": {
+  "de": "Aus mapgroupproto.xml entfernen",
+  "pl": "Usuń z mapgroupproto.xml"
+ },
+ "Saved loot points for {0} to mapgroupproto.xml.": {
+  "de": "Loot-Punkte für {0} in mapgroupproto.xml gespeichert.",
+  "pl": "Zapisano punkty lootu dla {0} w mapgroupproto.xml."
+ },
+ "Removed {0} from mapgroupproto.xml.": {
+  "de": "{0} aus mapgroupproto.xml entfernt.",
+  "pl": "Usunięto {0} z mapgroupproto.xml."
+ },
+ "Edit loot points": {
+  "de": "Loot-Punkte bearbeiten",
+  "pl": "Edytuj punkty lootu"
+ },
+ "Remove loot prototype": {
+  "de": "Loot-Prototyp entfernen",
+  "pl": "Usuń prototyp lootu"
+ },
+ "Enter a prototype class name first.": {
+  "de": "Gib zuerst einen Namen für die Prototyp-Klasse ein.",
+  "pl": "Najpierw wpisz nazwę klasy prototypu."
+ },
+ "Show changes on the map": {
+  "de": "Änderungen auf der Karte anzeigen",
+  "pl": "Pokaż zmiany na mapie"
+ },
+ "Hide changes on the map": {
+  "de": "Änderungen auf der Karte ausblenden",
+  "pl": "Ukryj zmiany na mapie"
+ },
+ "This patch has no map area changes to highlight.": {
+  "de": "Dieser Patch enthält keine Kartenbereichs-Änderungen zum Hervorheben.",
+  "pl": "Ta paczka nie zawiera zmian obszarów mapy do zaznaczenia."
+ },
+ "Map preview: {0}": {
+  "de": "Kartenvorschau: {0}",
+  "pl": "Podgląd na mapie: {0}"
+ },
+ "Jump to area": {
+  "de": "Zum Bereich springen",
+  "pl": "Przejdź do obszaru"
+ },
+ "Clear preview": {
+  "de": "Vorschau ausblenden",
+  "pl": "Ukryj podgląd"
+ },
+ "Diff: {0}": {
+  "de": "Diff: {0}",
+  "pl": "Zmiany: {0}"
+ },
+ "Remove from recent projects": {
+  "de": "Aus den letzten Projekten entfernen",
+  "pl": "Usuń z ostatnich projektów"
+ },
+ "Clear recent projects": {
+  "de": "Letzte Projekte leeren",
+  "pl": "Wyczyść ostatnie projekty"
+ },
+ "No recent projects": {
+  "de": "Keine letzten Projekte",
+  "pl": "Brak ostatnich projektów"
  }
 }

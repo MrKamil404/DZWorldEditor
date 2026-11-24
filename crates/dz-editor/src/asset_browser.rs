@@ -909,6 +909,8 @@ enum Act {
     LibMovePrefabs(String, Vec<u64>),
     /// A prefab of the selected objects.
     NewPrefab,
+    /// Open the 3D loot point editor (`mapgroupproto.xml`) for this model.
+    LootPoints(String),
 }
 
 /// Menu that assigns the surface painted under models.
@@ -1499,8 +1501,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     }
                                     if !dropped.is_empty() { acts.push(Act::IntoPreset(*id, dropped)); }
                                 }
-                                if resp.clicked() { acts.push(Act::Click(pick.clone(), ui.input(|i| i.modifiers))); }
                                 if resp.double_clicked() { acts.push(Act::Open(pick.clone())); }
+                                else if resp.clicked() { acts.push(Act::Click(pick.clone(), ui.input(|i| i.modifiers))); }
                                 if resp.secondary_clicked() && !selected { acts.push(Act::Click(pick.clone(), egui::Modifiers::NONE)); }
                                 // Dragging a selected tile takes the whole selection along.
                                 let group: Vec<Pick> = if selected && app.browser.selected.len() > 1 { app.browser.selected.clone() } else { vec![pick.clone()] };
@@ -1596,6 +1598,16 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     if let (Pick::Prefab(id), 1) = (pick, group.len()) { event_group_menu(ui, app, *id, &mut acts); }
                                     if group.len() == 1 {
                                         if let Pick::Model(m) = pick {
+                                            if let Some(ms) = app.doc.as_ref().and_then(|d| d.world.mission.as_deref()) {
+                                                let proxy = dz_core::mission::gen::proxy_class(m);
+                                                let exists = dz_core::mission::proto::has_group(ms, &proxy);
+                                                let label = if exists { t("Edit loot points (mapgroupproto.xml)...") } else { t("Add to mapgroupproto.xml...") };
+                                                if ui.button(label).on_hover_text(t("Open the 3D loot point editor for this building in mapgroupproto.xml.")).clicked() {
+                                                    acts.push(Act::LootPoints(m.clone()));
+                                                    ui.close_menu();
+                                                }
+                                                ui.separator();
+                                            }
                                             if ui.button(t("Show in its folder")).clicked() { acts.push(Act::Go(Source::Drive(m.rsplit_once('\\').map_or("", |x| x.0).to_string()))); ui.close_menu(); }
                                             if ui.button(t("Copy the path")).clicked() { ui.ctx().copy_text(m.clone()); ui.close_menu(); }
                                         }
@@ -1632,6 +1644,7 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
             }
             Act::Click(pick, m) => {
                 let b = &mut app.browser;
+                let mut deselected = false;
                 if m.shift {
                     let from = b.anchor.as_ref().and_then(|a| picks.iter().position(|p| p == a)).unwrap_or(0);
                     let to = picks.iter().position(|p| *p == pick).unwrap_or(from);
@@ -1643,16 +1656,29 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                 } else if m.command {
                     if let Some(i) = b.selected.iter().position(|p| *p == pick) { b.selected.remove(i); } else { b.selected.push(pick.clone()); }
                     b.anchor = Some(pick.clone());
+                } else if b.selected.len() == 1 && b.selected[0] == pick {
+                    b.selected.clear();
+                    b.anchor = None;
+                    deselected = true;
                 } else {
                     b.selected = vec![pick.clone()];
                     b.anchor = Some(pick.clone());
                 }
                 b.preview_item = None;
-                activate(app, &pick, !m.shift && !m.command);
+                if deselected || b.selected.is_empty() {
+                    clear_place(app);
+                } else {
+                    let active = if b.selected.contains(&pick) { pick } else { b.selected.last().cloned().unwrap_or(pick) };
+                    activate(app, &active, !m.shift && !m.command);
+                }
             }
             Act::Open(pick) => open(app, &pick),
             Act::SelectAll => app.browser.selected = picks.to_vec(),
-            Act::Clear => app.browser.selected.clear(),
+            Act::Clear => {
+                app.browser.selected.clear();
+                app.browser.anchor = None;
+                clear_place(app);
+            }
             Act::Replace(models) => app.replace_selection(&models),
             Act::BakeSkip(models, skip) => crate::satellite::set_bake_skip(app, &models, skip),
             Act::Surface(models, s) => {
@@ -1904,6 +1930,7 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                     }
                 }
             }
+            Act::LootPoints(m) => crate::loot_proto_ui::open(app, m),
         }
     }
 }
@@ -1949,6 +1976,14 @@ fn change_templates(app: &mut App, i: usize, models: &[String], add: bool) {
     }
     refresh_templates(app);
     app.info(if add { tf("{0} templates added to {1}", &[&n.to_string(), &name]) } else { tf("{0} templates taken out of {1}", &[&n.to_string(), &name]) });
+}
+
+/// Clears the active item to place when the browser selection is emptied.
+fn clear_place(app: &mut App) {
+    app.place.model = None;
+    app.place.pool.clear();
+    app.place.preset = None;
+    app.place.prefab = None;
 }
 
 /// A plain click: what it stands for becomes the thing to place.
@@ -2330,7 +2365,7 @@ pub fn dragged_picks(ctx: &egui::Context) -> Vec<Pick> {
 }
 
 /// Where the models of a drop stand round its point: (model, x offset, z offset).
-fn drop_layout(app: &App, models: &[(String, f32)]) -> Vec<(String, f32, f32)> {
+pub fn drop_layout(app: &App, models: &[(String, f32)]) -> Vec<(String, f32, f32)> {
     if models.is_empty() {
         return Vec::new();
     }
@@ -2362,29 +2397,12 @@ pub fn drop_preview(app: &App, painter: &egui::Painter, v: &crate::camera::View,
         }).collect();
         painter.add(egui::Shape::line(pts, Stroke::new(1.5f32, color)));
     };
-    let models: Vec<(String, f32)> = picks.iter().filter_map(|p| match p {
-        Pick::Model(m) => Some((m.clone(), app.place.scale_max)),
-        Pick::Preset(id) => app.library.objects.iter().find(|x| x.id == *id).and_then(|x| x.items.first().map(|i| (i.0.clone(), x.scale_max))),
-        _ => None,
-    }).collect();
-    // A mark at the point itself, seen also from far away where the outline is tiny.
-    if let Some(c) = v.project([at[0], at[1] + 0.2, at[2]]) {
-        painter.circle_stroke(c, 9.0, Stroke::new(2.0f32, color));
-        painter.circle_filled(c, 2.5, color);
-    }
-    for (m, dx, dz) in drop_layout(app, &models) {
-        let (x, z) = (at[0] + dx, at[2] + dz);
-        let info = app.db.get(&m);
-        let (min, max) = if info.known { (info.min, info.max) } else { ([-2.0, 0.0, -2.0], [2.0, 4.0, 2.0]) };
-        let y = h.sample(x, z);
-        let c = |i: usize| [x + if i & 1 == 0 { min[0] } else { max[0] }, y + if i & 2 == 0 { min[1].max(0.0) } else { max[1] }, z + if i & 4 == 0 { min[2] } else { max[2] }];
-        // The footprint on the ground, filled, and the box above it.
-        let foot: Vec<egui::Pos2> = [0usize, 1, 5, 4].iter().filter_map(|&i| { let p = c(i); v.project([p[0], h.sample(p[0], p[2]) + 0.1, p[2]]) }).collect();
-        if foot.len() == 4 {
-            painter.add(egui::Shape::convex_polygon(foot, Color32::from_rgba_unmultiplied(90, 190, 255, 45), Stroke::new(2.0f32, color)));
-        }
-        for (a, b) in [(0, 1), (1, 5), (5, 4), (4, 0), (2, 3), (3, 7), (7, 6), (6, 2), (0, 2), (1, 3), (4, 6), (5, 7)] {
-            line(c(a), c(b), 1.0);
+    let has_3d = picks.iter().any(|p| matches!(p, Pick::Model(_) | Pick::Preset(_) | Pick::Prefab(_)));
+    if !has_3d {
+        // A mark at the point itself for non-model drops (modifiers, generators, forests).
+        if let Some(c) = v.project([at[0], at[1] + 0.2, at[2]]) {
+            painter.circle_stroke(c, 9.0, Stroke::new(2.0f32, color));
+            painter.circle_filled(c, 2.5, color);
         }
     }
     for (k, p) in picks.iter().enumerate() {
@@ -2407,7 +2425,7 @@ pub fn drop_preview(app: &App, painter: &egui::Painter, v: &crate::camera::View,
 }
 
 /// Places what was dragged out of the browser together, side by side round the point.
-pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32) {
+pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32, surface_y: Option<f32>) {
     use dz_core::edit::Change;
     let mut placed: Vec<(String, (bool, bool, f32, f32))> = Vec::new();
     let defaults = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
@@ -2436,7 +2454,7 @@ pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32) {
         for ((m, options), (_, dx, dz)) in placed.iter().zip(layout) {
             let (px, pz) = (x + dx, z + dz);
             (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = *options;
-            if let Some((id, o)) = crate::viewport::insert_placed(app, m, px, pz) {
+            if let Some((id, o)) = crate::viewport::insert_placed_at(app, m, px, pz, surface_y) {
                 change.push((id, None, Some(o)));
                 ids.push(id);
             }
@@ -2448,7 +2466,7 @@ pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32) {
                 doc.dirty.objects = true;
             }
         }
-        if app.place.auto_pad { app.add_pads(&ids, app.place.pad_falloff); }
+        if app.place.auto_pad && surface_y.is_none() { app.add_pads(&ids, app.place.pad_falloff); }
         app.selection = ids.into_iter().collect();
         app.selection_rev += 1;
     }
@@ -2486,7 +2504,7 @@ pub fn script(app: &mut App, cmd: &str, arg: &str) {
     if cmd == "browserdrop" {
         let n: Vec<f32> = arg.split_whitespace().filter_map(|v| v.parse().ok()).collect();
         let picks = app.browser.selected.clone();
-        if n.len() >= 2 { drop_many(app, &picks, n[0], n[1]); }
+        if n.len() >= 2 { drop_many(app, &picks, n[0], n[1], None); }
         return;
     }
     if cmd == "browsersel" {

@@ -14,6 +14,11 @@ scales them.
 * **Move objects by dragging them**: an object held by its shape slides over the ground.
 * **Gizmo and turn centre** chooses where the gizmo stands and what the selection turns about: the average of the object positions (the default), the middle of the box that holds them, or the first selected object. Only positions count; the models are not looked into. **Shift and drag turns about the press** makes a Shift drag turn the selection about the spot of the ground where the button went down.
 * **Stick to the ground** tilts moved objects with the ground; **Align to the ground** does it now.
+* **Drop onto surface** (`End`) drops the selected objects onto the surface of objects under them
+  (such as roofs, tables or floors), or onto the terrain when nothing is below.
+* **Hide selected** (`Ctrl+H`), **Isolate selection** (`/`) and **Show hidden** (`Alt+H`, also in
+  the Edit menu) temporarily hide objects in the view while you work on a tight interior or dense
+  area. Hidden objects stay in the project and come back when shown or when the project is reopened.
 * **Duplicate** (Ctrl+D) and **Delete**. C copies the selection to the cursor, V copies the last
   selection there again.
 * **Copy direction**: click it, then click another object. The selection turns the way that object
@@ -67,9 +72,17 @@ with several models each object takes one of them.
 ## Place
 
 Choose a model in the Content Browser and click on the terrain, or drag models onto the map.
+Turn on **Place on top of objects** to snap newly placed models directly onto roofs, floors,
+shelves or other objects instead of the ground.
 **Paint with a brush** places objects as you drag, with radius, spacing and **Density** (objects per 100 m² of the zone you paint). What you paint with the button held is one zone: each part of it gets its objects once, and holding still adds nothing more. **Skip spots taken by other objects** keeps the brush out of buildings and other larger objects. Random rotation, align to
 slope and a scale range apply to every object placed: each object gets a random size in the range.
 An **object preset** places one of several models with its own settings; while one is chosen,
 **Rotation and size** shows and changes the preset's settings.
+
+## DayZ Editor and Object Spawner
+
+`File > Import` and `File > Export` also read and write **DayZ Editor** (`.dze`) and
+**Object Spawner JSON** (`cfggameplay.json`) object lists, so scenes built in-game can be brought
+into the map or exported back out for a server.
 
 [Back to the guide](guide.md)

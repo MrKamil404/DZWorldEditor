@@ -18,6 +18,7 @@ pub mod gen;
 pub mod initc;
 pub mod json;
 pub mod places;
+pub mod proto;
 pub mod templates;
 pub mod validate;
 pub mod xml;

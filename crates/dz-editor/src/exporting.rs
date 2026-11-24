@@ -27,6 +27,10 @@ pub struct ExportSettings {
     pub shapes: ShapesOptions,
     pub objects_on: bool,
     pub objects: ObjectsOptions,
+    pub dayz_objects_on: bool,
+    pub dayz_objects: DayzObjectsOptions,
+    pub map2d_on: bool,
+    pub map2d: dz_core::map2d::Map2dOptions,
     pub mission_on: bool,
     pub mission: MissionOptions,
 }
@@ -35,7 +39,8 @@ impl Default for ExportSettings {
         Self {
             folder: String::new(), selection_only: false,
             heightmap_on: true, heightmap: Default::default(), satellite_on: true, satellite: Default::default(), mask_on: true, mask: Default::default(),
-            layers_on: true, layers: Default::default(), shapes_on: false, shapes: Default::default(), objects_on: true, objects: Default::default(), mission_on: true, mission: Default::default(),
+            layers_on: true, layers: Default::default(), shapes_on: false, shapes: Default::default(), objects_on: true, objects: Default::default(),
+            dayz_objects_on: false, dayz_objects: Default::default(), map2d_on: false, map2d: Default::default(), mission_on: true, mission: Default::default(),
         }
     }
 }
@@ -49,6 +54,8 @@ pub enum Part {
     Layers,
     Shapes,
     Objects,
+    DayzObjects,
+    Map2d,
     Mission,
 }
 impl Part {
@@ -60,6 +67,8 @@ impl Part {
             Part::Layers => "layers.cfg".into(),
             Part::Shapes => t("Shapes (SHP)"),
             Part::Objects => t("Objects (Terrain Builder TXT)"),
+            Part::DayzObjects => t("DayZ Editor / Object Spawner"),
+            Part::Map2d => t("2D player map (PNG)"),
             Part::Mission => t("Server mission"),
         }
     }
@@ -76,12 +85,14 @@ impl ExportSettings {
             layers_cfg: on(Part::Layers, self.layers_on).then(|| self.layers.clone()),
             shapes: on(Part::Shapes, self.shapes_on).then(|| self.shapes.clone()),
             objects: on(Part::Objects, self.objects_on).then(|| self.objects.clone()),
+            dayz_objects: on(Part::DayzObjects, self.dayz_objects_on).then(|| self.dayz_objects.clone()),
+            map2d: on(Part::Map2d, self.map2d_on).then(|| self.map2d.clone()),
             mission: on(Part::Mission, self.mission_on).then(|| self.mission.clone()),
             selection: if self.selection_only { selection } else { Vec::new() },
         }
     }
     fn any(&self) -> bool {
-        self.heightmap_on || self.satellite_on || self.mask_on || self.layers_on || self.shapes_on || self.objects_on || self.mission_on
+        self.heightmap_on || self.satellite_on || self.mask_on || self.layers_on || self.shapes_on || self.objects_on || self.dayz_objects_on || self.map2d_on || self.mission_on
     }
 }
 
@@ -198,6 +209,55 @@ pub fn window(app: &mut App, ctx: &egui::Context, only: Option<Part>, open: &mut
                 ui.checkbox(&mut o.full_path, t("Model names with their whole path")).on_hover_text(t("Terrain Builder matches objects by file name; the whole path helps other tools."));
                 ui.checkbox(&mut o.offset, t("With easting and northing"));
             });
+            part(ui, only, Part::DayzObjects, &mut s.dayz_objects_on, true, &t("Objects for DayZ Object Spawner (cfggameplay.json) or DayZ Editor (.dze)."), |ui| {
+                use dz_core::dayz_editor::DayzObjectFormat;
+                let d = &mut s.dayz_objects;
+                row(ui, &t("Format"), |ui| {
+                    ui.selectable_value(&mut d.format, DayzObjectFormat::ObjectSpawnerJson, t("Object Spawner (JSON)"));
+                    ui.selectable_value(&mut d.format, DayzObjectFormat::Dze, t("DayZ Editor (.dze)"));
+                });
+                ui.add_enabled_ui(selected > 0, |ui| {
+                    ui.checkbox(&mut s.selection_only, tf("Only the selection ({0})", &[&selected.to_string()]));
+                });
+                ui.checkbox(&mut d.exported_layers_only, t("Only layers marked for export"));
+                ui.checkbox(&mut d.visible_only, t("Only visible layers"));
+                ui.checkbox(&mut d.enable_ce_persistency, t("Enable CE persistency"))
+                    .on_hover_text(t("Objects keep their Central Economy lifetime and persistency when spawned by Object Spawner."));
+            });
+            part(ui, only, Part::Map2d, &mut s.map2d_on, true, &t("A ready-to-share 2D map image with contours, roads, buildings, place names and grid."), |ui| {
+                use dz_core::map2d::Map2dStyle;
+                let m = &mut s.map2d;
+                row(ui, &t("Map style"), |ui| {
+                    ui.selectable_value(&mut m.style, Map2dStyle::Topographic, t("Topographic"));
+                    ui.add_enabled(has_sat, egui::SelectableLabel::new(m.style == Map2dStyle::Satellite, t("Satellite"))).clicked().then(|| m.style = Map2dStyle::Satellite);
+                });
+                row(ui, &t("Size"), |ui| {
+                    egui::ComboBox::from_id_salt("map2d_size").selected_text(format!("{} px", m.size)).show_ui(ui, |ui| {
+                        for sz in [1024, 2048, 4096, 8192] {
+                            ui.selectable_value(&mut m.size, sz, format!("{sz} px"));
+                        }
+                    });
+                });
+                row(ui, &t("Contour step"), |ui| {
+                    let lbl = |v: f32| if v <= 0.0 { t("Off") } else { format!("{v:.0} m") };
+                    egui::ComboBox::from_id_salt("map2d_contour").selected_text(lbl(m.contour_interval)).show_ui(ui, |ui| {
+                        for v in [0.0, 5.0, 10.0, 20.0, 50.0] {
+                            ui.selectable_value(&mut m.contour_interval, v, lbl(v));
+                        }
+                    });
+                });
+                row(ui, &t("Grid step"), |ui| {
+                    let lbl = |v: f32| if v <= 0.0 { t("Off") } else { format!("{v:.0} m") };
+                    egui::ComboBox::from_id_salt("map2d_grid").selected_text(lbl(m.grid_step)).show_ui(ui, |ui| {
+                        for v in [0.0, 500.0, 1000.0, 2000.0] {
+                            ui.selectable_value(&mut m.grid_step, v, lbl(v));
+                        }
+                    });
+                });
+                ui.checkbox(&mut m.roads, t("Roads"));
+                ui.checkbox(&mut m.buildings, t("Building footprints"));
+                ui.checkbox(&mut m.keypoints, t("Place names"));
+            });
             let has_mission = w.mission.is_some();
             let hint = if has_mission { tf("The mission folder {0}, as the server reads it from mpmissions.", &[&w.mission.as_ref().map(|m| m.name.clone()).unwrap_or_default()]) } else { t("The project has no mission.") };
             part(ui, only, Part::Mission, &mut s.mission_on, has_mission, &hint, |ui| {
@@ -236,10 +296,21 @@ pub fn run(app: &mut App, only: Option<Part>) {
     if doc.world.satellite.is_none() { parts.satellite = None; }
     if doc.world.shape_layers.iter().all(|l| l.shapes.is_empty()) { parts.shapes = None; }
     if doc.world.mission.is_none() { parts.mission = None; }
-    let world = doc.world.export_copy(parts.satellite.is_some());
+    let need_sat = parts.satellite.is_some() || parts.map2d.as_ref().is_some_and(|m| m.style == dz_core::map2d::Map2dStyle::Satellite);
+    let world = doc.world.export_copy(need_sat);
     let db = app.db.clone();
+    let classes = crate::mission_ui::class_index(app);
+    let work_drive = app.settings.tools.work_drive.clone();
+    let need_classes = parts.dayz_objects.is_some();
     app.spawn(t("Export files"), move |job| {
-        let files = export(&world, &db, &parts, &dir, job)?;
+        let loaded_classes = if need_classes && classes.is_none() {
+            let root = PathBuf::from(&work_drive);
+            root.is_dir().then(|| dz_core::mission::classes::ClassIndex::scan_work_drive(&root))
+        } else {
+            None
+        };
+        let cls = classes.as_deref().or(loaded_classes.as_ref());
+        let files = export_with_classes(&world, &db, cls, &parts, &dir, job)?;
         Ok(Box::new(move |app: &mut App| {
             for f in &files { app.log.push(crate::app::LogLine { text: f.display().to_string(), level: 0 }); }
             app.info(tf("Exported {0} files to {1}", &[&files.len().to_string(), &dir.display().to_string()]));
@@ -263,6 +334,8 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui) {
     if ui.button(t("Mask image...")).clicked() { chosen = Some(Some(Part::Mask)); }
     if ui.button(t("layers.cfg...")).clicked() { chosen = Some(Some(Part::Layers)); }
     if ui.button(t("Terrain Builder objects (TXT)...")).clicked() { chosen = Some(Some(Part::Objects)); }
+    if ui.button(t("DayZ Editor / Object Spawner (.dze, .json)...")).clicked() { chosen = Some(Some(Part::DayzObjects)); }
+    if ui.button(t("2D player map (PNG)...")).clicked() { chosen = Some(Some(Part::Map2d)); }
     if ui.add_enabled(has_shapes, egui::Button::new(t("Shapes (SHP)..."))).on_disabled_hover_text(t("The project has no shapes.")).clicked() { chosen = Some(Some(Part::Shapes)); }
     if ui.add_enabled(w.mission.is_some(), egui::Button::new(t("Server mission..."))).on_disabled_hover_text(t("The project has no mission.")).clicked() { chosen = Some(Some(Part::Mission)); }
     if let Some(only) = chosen {

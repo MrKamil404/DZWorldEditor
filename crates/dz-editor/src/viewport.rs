@@ -178,6 +178,65 @@ pub struct PickMesh {
     pub footprint: Footprint,
 }
 
+impl PickMesh {
+    /// Casts a ray `(ro, rd)` against this mesh in model coordinates, ignoring hits above `clip_y`.
+    pub fn raycast(&self, ro: [f32; 3], rd: [f32; 3], clip_y: Option<f32>) -> Option<(f32, [f32; 3])> {
+        self.raycast_transformed(ro, rd, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], [0.0; 3], clip_y)
+    }
+
+    /// Casts a ray `(ro, rd)` against this mesh transformed by `(axes, at)`, ignoring hits above `clip_y`.
+    pub fn raycast_transformed(&self, ro: [f32; 3], rd: [f32; 3], axes: [[f32; 3]; 3], at: [f32; 3], clip_y: Option<f32>) -> Option<(f32, [f32; 3])> {
+        let xform = |p: [f32; 3]| -> [f32; 3] {
+            [
+                axes[0][0] * p[0] + axes[1][0] * p[1] + axes[2][0] * p[2] + at[0],
+                axes[0][1] * p[0] + axes[1][1] * p[1] + axes[2][1] * p[2] + at[1],
+                axes[0][2] * p[0] + axes[1][2] * p[1] + axes[2][2] * p[2] + at[2],
+            ]
+        };
+        let mut best: Option<(f32, [f32; 3])> = None;
+        for tri in self.triangles.chunks_exact(3) {
+            let a = xform(self.positions[tri[0] as usize]);
+            let b = xform(self.positions[tri[1] as usize]);
+            let c = xform(self.positions[tri[2] as usize]);
+            if let Some(cy) = clip_y {
+                if a[1] > cy && b[1] > cy && c[1] > cy {
+                    continue;
+                }
+            }
+            let e1 = sub(b, a);
+            let e2 = sub(c, a);
+            let h = cross(rd, e2);
+            let det = dot(e1, h);
+            if det.abs() < 1e-7 {
+                continue;
+            }
+            let inv = 1.0 / det;
+            let s = sub(ro, a);
+            let u = inv * dot(s, h);
+            if !(0.0..=1.0).contains(&u) {
+                continue;
+            }
+            let q = cross(s, e1);
+            let v = inv * dot(rd, q);
+            if v < 0.0 || u + v > 1.0 {
+                continue;
+            }
+            let t = inv * dot(e2, q);
+            if t <= 0.01 {
+                continue;
+            }
+            let hit = add(ro, mul(rd, t));
+            if clip_y.is_some_and(|cy| hit[1] > cy) {
+                continue;
+            }
+            if best.is_none_or(|b| t < b.0) {
+                best = Some((t, hit));
+            }
+        }
+        best
+    }
+}
+
 /// What of a model is over each cell of the ground, seen from above, in the model's own
 /// coordinates: for each cell the lowest height its geometry reaches there.
 pub struct Footprint {
@@ -271,7 +330,8 @@ impl Footprint {
 
 /// Keeps the finest geometry seen of each model.
 pub fn remember_pick_mesh(meshes: &mut HashMap<u32, std::sync::Arc<PickMesh>>, m: &crate::render::MeshData) {
-    if m.key.0 >= MISSION_BASE || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
+    let is_mission_marker = m.key.0 >= MISSION_BASE && m.key.0 < PROXY_BASE;
+    if is_mission_marker || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
         return;
     }
     let positions: Vec<[f32; 3]> = m.vertices.chunks_exact(10).map(|v| [v[0], v[1], v[2]]).collect();
@@ -373,7 +433,7 @@ fn pick_hits(app: &App, v: &View, s: Pos2, all: bool) -> Vec<u32> {
                 }
                 for &id in world.objects.cell((gx, gz)) {
                     let Some(ob) = world.objects.get(id) else { continue };
-                    if !world.object_interactive(ob) {
+                    if !world.object_interactive(ob) || app.hidden_objects.contains(&id) {
                         continue;
                     }
                     let path = world.objects.model_path(ob);
@@ -436,6 +496,131 @@ fn pick_hits(app: &App, v: &View, s: Pos2, all: bool) -> Vec<u32> {
         }
     }
     ids
+}
+
+/// Intersects a world-space ray against visible object meshes (falling back to bounding boxes
+/// for models whose pick mesh has not loaded yet), skipping any object id in `skip`.
+fn raycast_objects(app: &App, o: V3, d: V3, max_t: f32, skip: &std::collections::BTreeSet<u32>) -> Option<(f32, V3)> {
+    let doc = app.doc.as_ref()?;
+    let world = &doc.world;
+    let mut seen = std::collections::HashSet::new();
+    let mut candidates: Vec<(f32, u32)> = Vec::new();
+    let step = GRID_CELL * 0.5;
+    let vertical = d[0].abs() < 1e-4 && d[2].abs() < 1e-4;
+    let mut t = 0.0;
+    while t < max_t {
+        let p = add(o, mul(d, t));
+        let k = grid_key(p[0], p[2]);
+        for gz in k.1 - 1..=k.1 + 1 {
+            for gx in k.0 - 1..=k.0 + 1 {
+                if !seen.insert((gx, gz)) {
+                    continue;
+                }
+                for &id in world.objects.cell((gx, gz)) {
+                    if skip.contains(&id) || app.hidden_objects.contains(&id) {
+                        continue;
+                    }
+                    let Some(ob) = world.objects.get(id) else { continue };
+                    if !world.object_visible(ob) {
+                        continue;
+                    }
+                    let path = world.objects.model_path(ob);
+                    let info = app.db.get(path);
+                    if path.contains(r"\roads\parts\") || crate::models::is_decal_model(path, &info) {
+                        continue;
+                    }
+                    let ground = ObjectStore::origin_y(ob, &world.height);
+                    if let Some(h) = ray_box(&o, &d, ob, ground, &info) {
+                        if h <= max_t {
+                            candidates.push((h, id));
+                        }
+                    }
+                }
+            }
+        }
+        if vertical {
+            break;
+        }
+        t += step;
+    }
+    candidates.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+    let mut best: Option<f32> = None;
+    for (h, id) in candidates.into_iter().take(200) {
+        if best.is_some_and(|b| h >= b) {
+            break;
+        }
+        let Some(ob) = world.objects.get(id) else { continue };
+        let hit = match app.pick_meshes.get(&ob.model) {
+            Some(mesh) => {
+                let (lo, ld) = ray_in_model(&o, &d, ob, ObjectStore::origin_y(ob, &world.height));
+                ray_mesh(mesh, lo, ld)
+            }
+            None => Some(h),
+        };
+        if let Some(ht) = hit.filter(|&ht| ht <= max_t) {
+            if best.is_none_or(|b| ht < b) {
+                best = Some(ht);
+            }
+        }
+    }
+    best.map(|ht| (ht, add(o, mul(d, ht))))
+}
+
+/// Drops the selected objects onto the highest object surface or terrain underneath them.
+pub fn drop_selection_on_surface(app: &mut App) {
+    if app.selection.is_empty() {
+        return;
+    }
+    let Some(doc) = app.doc.as_ref() else { return };
+    let selected: Vec<u32> = app.selection.iter().copied().collect();
+    let skip = app.selection.clone();
+    let mut updates: Vec<(u32, Obj, Obj)> = Vec::new();
+    for id in selected {
+        let Some(before) = doc.world.objects.get(id).copied() else { continue };
+        if !doc.world.object_interactive(&before) {
+            continue;
+        }
+        let info = app.db.get(doc.world.objects.model_path(&before));
+        let ground = doc.world.height.sample(before.x, before.z);
+        let cur_y = ObjectStore::origin_y(&before, &doc.world.height);
+        let base_elev = if info.contact_count > 0 {
+            -info.contact_y * before.scale
+        } else if info.known {
+            -info.min[1] * before.scale
+        } else {
+            0.0
+        };
+        // Cast straight down from slightly above the object's base/origin to the terrain.
+        let start_y = (cur_y - base_elev).max(cur_y) + 0.35;
+        let max_t = (start_y - ground).max(0.0) + 1.0;
+        let surface_y = raycast_objects(app, [before.x, start_y, before.z], [0.0, -1.0, 0.0], max_t, &skip)
+            .map(|(_, p)| p[1])
+            .filter(|&sy| sy > ground)
+            .unwrap_or(ground);
+        let target_origin_y = surface_y + base_elev;
+        let mut after = before;
+        after.elevation = if after.flags & dz_core::objects::FLAG_ABSOLUTE != 0 {
+            target_origin_y
+        } else {
+            target_origin_y - ground
+        };
+        if (after.elevation - before.elevation).abs() > 1e-4 {
+            updates.push((id, before, after));
+        }
+    }
+    if updates.is_empty() {
+        return;
+    }
+    let n = updates.len();
+    let Some(doc) = app.doc.as_mut() else { return };
+    let mut hist = Vec::with_capacity(n);
+    for (id, before, after) in updates {
+        doc.world.objects.update(id, after);
+        hist.push((id, Some(before), Some(after)));
+    }
+    doc.history.push(t("Drop onto surface"), Change::Objects(hist));
+    doc.dirty.objects = true;
+    app.info(tf("Dropped {0} objects onto the surface below", &[&n.to_string()]));
 }
 
 pub(crate) fn is_plant(path: &str) -> bool {
@@ -591,7 +776,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         let (ex, ez) = (v.eye[0], v.eye[2]);
         let mut triangles_left: i64 = 8_000_000;
         world.objects.for_each_in(ex - half, ez - half, ex + half, ez + half, |id, o| {
-            if !world.object_visible(o) {
+            if !world.object_visible(o) || app.hidden_objects.contains(&id) {
                 return;
             }
             let info = &infos[o.model as usize];
@@ -628,7 +813,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         let min_size = (v.mpp * 2.0).max(0.2);
         boxes.reserve(1 << 16);
         world.objects.for_each_in(ex - half, ez - half, ex + half, ez + half, |id, o| {
-            if !world.object_visible(o) {
+            if !world.object_visible(o) || app.hidden_objects.contains(&id) {
                 return;
             }
             let sel = selection.contains(&id);
@@ -683,7 +868,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                 }
                 for &id in list {
                     let Some(o) = world.objects.get(id) else { continue };
-                    if !world.object_visible(o) {
+                    if !world.object_visible(o) || app.hidden_objects.contains(&id) {
                         continue;
                     }
                     let info = &infos[o.model as usize];
@@ -851,10 +1036,17 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     }
     ghost_requests.sort_unstable();
     ghost_requests.dedup();
-    // Ground clutter on a 1 m grid, thinned with distance like the game's clutter range.
+    // Ground clutter on a grid, thinned with distance like the game's clutter range.
     let mut clutter_requests: Vec<(u32, u8)> = Vec::new();
     if !v.ortho && app.show_grass && !app.clutter_models.is_empty() {
-        const RANGE: i32 = 110;
+        let (range_f, grid_step) = match app.settings.grass_range_source {
+            crate::settings::GrassRangeSource::Editor => (app.settings.grass_range.clamp(15.0, 400.0), 1.0_f32),
+            crate::settings::GrassRangeSource::MapConfig => (
+                world.meta.config.clutter_dist.unwrap_or(125.0).clamp(15.0, 400.0),
+                world.meta.config.clutter_grid.unwrap_or(1.0).clamp(0.4, 4.0),
+            ),
+        };
+        let range_m = range_f.ceil() as i32;
         let shading = if top { app.shading2 } else { app.shading3 };
         if shading == Shading::Lit {
             let (ex, ez) = (v.eye[0].round() as i32, v.eye[2].round() as i32);
@@ -871,10 +1063,10 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
             };
             // The game keeps clutter off roads: (x, z, sin, cos, half width, half length).
             // Grass is ruled out cell by cell, one metre to a cell.
-            let side = (2 * (RANGE + 3) + 1) as usize;
-            let (ox, oz) = (ex - RANGE - 3, ez - RANGE - 3);
+            let side = (2 * (range_m + 3) + 1) as usize;
+            let (ox, oz) = (ex - range_m - 3, ez - range_m - 3);
             let mut blocked = vec![false; side * side];
-            let reach = RANGE as f32 + 40.0;
+            let reach = range_f + 40.0;
             let under_objects = app.grass_under_objects;
             let meshes = &app.pick_meshes;
             world.objects.for_each_in(v.eye[0] - reach, v.eye[2] - reach, v.eye[0] + reach, v.eye[2] + reach, |_, o| {
@@ -936,20 +1128,28 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                 let (gx, gz) = (x.floor() as i32 - ox, z.floor() as i32 - oz);
                 gx >= 0 && gz >= 0 && (gx as usize) < side && (gz as usize) < side && blocked[gz as usize * side + gx as usize]
             };
-            for z in ez - RANGE..=ez + RANGE {
-                for x in ex - RANGE..=ex + RANGE {
-                    let h = (x as u32).wrapping_mul(73856093) ^ (z as u32).wrapping_mul(19349663);
+            let g_cells = (range_f / grid_step).ceil() as i32;
+            let (gex, gez) = ((v.eye[0] / grid_step).round() as i32, (v.eye[2] / grid_step).round() as i32);
+            let near_band = range_f * 0.32;
+            let far_span = (range_f - near_band).max(1.0);
+            let fade_band = (range_f * 0.16).clamp(8.0, 25.0);
+            for gz in gez - g_cells..=gez + g_cells {
+                for gx in gex - g_cells..=gex + g_cells {
+                    let h = (gx as u32).wrapping_mul(73856093) ^ (gz as u32).wrapping_mul(19349663);
                     let h = h.wrapping_mul(2654435761);
-                    let d2 = ((x - ex).pow(2) + (z - ez).pow(2)) as f32;
-                    if d2 > (RANGE * RANGE) as f32 {
+                    let (wx, wz) = (
+                        (gx as f32 + ((h >> 10) & 255) as f32 / 255.0) * grid_step,
+                        (gz as f32 + ((h >> 18) & 255) as f32 / 255.0) * grid_step,
+                    );
+                    let d2 = (wx - v.eye[0]).powi(2) + (wz - v.eye[2]).powi(2);
+                    if d2 > range_f * range_f {
                         continue;
                     }
                     let d = d2.sqrt();
-                    let keep = if d < 35.0 { 1.0 } else { (1.0 - (d - 35.0) / 75.0).max(0.12) };
+                    let keep = if d < near_band { 1.0 } else { (1.0 - (d - near_band) / far_span).max(0.12) };
                     if (h & 1023) as f32 / 1023.0 > keep {
                         continue;
                     }
-                    let (wx, wz) = (x as f32 + ((h >> 10) & 255) as f32 / 255.0, z as f32 + ((h >> 18) & 255) as f32 / 255.0);
                     if wx < 0.0 || wz < 0.0 || wx >= size || wz >= size {
                         continue;
                     }
@@ -979,7 +1179,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                     triangles_left -= n as i64;
                     let k = ((r >> 16) & 1023) as f32 / 1023.0;
                     // Shrinks toward the edge of the range so grass does not pop in.
-                    let fade = ((RANGE as f32 - d) / 18.0).clamp(0.0, 1.0);
+                    let fade = ((range_f - d) / fade_band).clamp(0.0, 1.0);
                     let yaw = ((r >> 5) & 511) as f32 * 0.7045;
                     write_instance(instances.entry((id, lod)).or_default(), &rotation(yaw, 0.0, 0.0, (a + (b - a) * k) * fade), [wx, y, wz], ground_tint(wx, wz));
                 }
@@ -1260,8 +1460,9 @@ fn finish_place_stroke(app: &mut App) {
     }
 }
 
-/// Adds an object with the placement options in force.
-pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj)> {
+/// Adds an object with the placement options in force. When `surface_y` is given, places the
+/// object's base on that world height (for example a roof, floor or deck).
+pub(crate) fn insert_placed_at(app: &mut App, model: &str, x: f32, z: f32, surface_y: Option<f32>) -> Option<(u32, Obj)> {
     let (random, align, smin, smax) = (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max);
     let info = app.db.get(model);
     let doc = app.doc.as_mut()?;
@@ -1282,13 +1483,28 @@ pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Optio
     let k = ((seed >> 3) & 1023) as f32 / 1023.0;
     let scale = smin + (smax - smin) * k;
     // Models with a placement property are fitted to the ground by the game; tilting them too
-    // would make them lean.
-    let (pitch, roll) = if align && !info.placement.skews() { gen::slope_angles(&doc.world.height, x, z, yaw) } else { (0.0, 0.0) };
-    // The model rests on its land contact points.
-    let elevation = if info.contact_count > 0 { -info.contact_y * scale } else { 0.0 };
+    // would make them lean. When snapping onto another object, keep the object level.
+    let (pitch, roll) = if surface_y.is_none() && align && !info.placement.skews() { gen::slope_angles(&doc.world.height, x, z, yaw) } else { (0.0, 0.0) };
+    // The model rests on its land contact points (or its bounding-box bottom on another object).
+    let base_elev = if info.contact_count > 0 {
+        -info.contact_y * scale
+    } else if surface_y.is_some() && info.known {
+        -info.min[1] * scale
+    } else {
+        0.0
+    };
+    let elevation = match surface_y {
+        Some(sy) => (sy - doc.world.height.sample(x, z)) + base_elev,
+        None => base_elev,
+    };
     let mut o = Obj { x, z, elevation, yaw, pitch, roll, scale, model: model_id, flags: 0 };
     o.set_layer(layer);
     Some((doc.world.objects.insert(o), o))
+}
+
+/// Adds an object with the placement options in force.
+pub(crate) fn insert_placed(app: &mut App, model: &str, x: f32, z: f32) -> Option<(u32, Obj)> {
+    insert_placed_at(app, model, x, z, None)
 }
 
 /// The model to place: one of the models selected together in the browser, or the chosen one.
@@ -1302,12 +1518,16 @@ fn pool_model(app: &App, seed: u32) -> Option<String> {
 }
 
 pub fn place_model(app: &mut App, model: &str, x: f32, z: f32) {
+    place_model_at(app, model, x, z, None);
+}
+
+pub fn place_model_at(app: &mut App, model: &str, x: f32, z: f32, surface_y: Option<f32>) {
     let (auto_pad, falloff) = (app.place.auto_pad, app.place.pad_falloff);
-    let Some((id, o)) = insert_placed(app, model, x, z) else { return };
+    let Some((id, o)) = insert_placed_at(app, model, x, z, surface_y) else { return };
     let Some(doc) = &mut app.doc else { return };
     doc.history.push(t("Place object"), Change::Objects(vec![(id, None, Some(o))]));
     doc.dirty.objects = true;
-    if auto_pad {
+    if auto_pad && surface_y.is_none() {
         app.add_pads(&[id], falloff);
     }
 }
@@ -2088,16 +2308,18 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
     }
     // Several things dragged out of the content browser at once.
     if let Some(p) = crate::theme::take::<crate::asset_browser::Dragged>(&resp) {
-        if let Some(h) = hit {
-            crate::asset_browser::drop_many(app, &p.0, h[0], h[2]);
+        let (target, surface_y) = place_target(app, v, mouse, hit);
+        if let Some(h) = target {
+            crate::asset_browser::drop_many(app, &p.0, h[0], h[2], surface_y);
         }
         return;
     }
     // Models dropped from the content browser.
     if let Some(p) = crate::theme::take::<String>(&resp) {
-        if let Some(h) = hit {
+        let (target, surface_y) = place_target(app, v, mouse, hit);
+        if let Some(h) = target {
             let m = (*p).clone();
-            place_model(app, &m, h[0], h[2]);
+            place_model_at(app, &m, h[0], h[2], surface_y);
         }
         return;
     }
@@ -2220,19 +2442,20 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
         }
         Mode::Place => {
             if resp.clicked() && !modifiers.alt {
-                if let (Some(id), Some(h)) = (app.place.prefab, hit) {
+                let (target, surface_y) = place_target(app, v, mouse, hit);
+                if let (Some(id), Some(h)) = (app.place.prefab, target) {
                     app.place_prefab(id, h[0], h[2]);
                     return;
                 }
-                if let (Some(id), Some(h)) = (app.place.preset, hit) {
+                if let (Some(id), Some(h)) = (app.place.preset, target) {
                     crate::library_ui::place_preset(app, id, h[0], h[2]);
                     return;
                 }
                 app.place_counter = app.place_counter.wrapping_add(1);
                 let pick = pool_model(app, app.place_counter.wrapping_mul(2654435761));
-                match (pick, hit) {
+                match (pick, target) {
                     (Some(m), Some(h)) => {
-                        place_model(app, &m, h[0], h[2]);
+                        place_model_at(app, &m, h[0], h[2], surface_y);
                     }
                     (None, _) => app.warn(t("Choose a model in the Content Browser first")),
                     _ => {}
@@ -2549,7 +2772,7 @@ fn finish_selection_in(app: &mut App, v: &View, a: Pos2, b: Pos2, op: BoxOp, out
         }
         let mut found = Vec::new();
         world.objects.for_each_in(x0, z0, x1, z1, |id, o| {
-            if !world.object_interactive(o) {
+            if !world.object_interactive(o) || app.hidden_objects.contains(&id) {
                 return;
             }
             if let Some(s) = v.project([o.x, ObjectStore::origin_y(o, &world.height), o.z]) {
@@ -3564,6 +3787,7 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
         }
     }
     crate::mission_ui::draw_map(app, &painter, v, resp);
+    crate::team_ui::draw_diff_overlay(app, &painter, v);
     // Frames per second, small in the top right corner.
     if app.settings.show_fps && app.frame_ms > 0.0 {
         let text = format!("{:.0} FPS  {:.1} ms", 1000.0 / app.frame_ms, app.frame_ms);
@@ -3618,7 +3842,10 @@ fn brush_of(app: &App, hit: Option<V3>) -> Option<BrushView> {
         Mode::Landscape if app.hole_tool => Some(BrushView { x: h[0], z: h[2], radius: app.hole_radius, falloff: 0.0, color: [1.0, 0.3, 0.3], shape: 1 }),
         Mode::Landscape => Some(BrushView { x: h[0], z: h[2], radius: app.sculpt.radius, falloff: if app.sculpt.picture.is_some() { 0.0 } else { app.sculpt.falloff }, color: [0.25, 0.65, 1.0], shape: if app.sculpt.picture.is_some() { 1 } else { app.sculpt.shape as i32 } }),
         Mode::Paint => Some(BrushView { x: h[0], z: h[2], radius: app.paint.radius, falloff: 0.0, color: [1.0, 0.75, 0.2], shape: if app.paint.picture.is_some() { 1 } else { app.paint.shape as i32 } }),
-        Mode::Place => Some(BrushView { x: h[0], z: h[2], radius: if app.place.brush { app.place.brush_radius } else { 2.0 }, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 }),
+        Mode::Place => {
+            let has_item = app.place.model.is_some() || app.place.preset.is_some() || app.place.prefab.is_some();
+            (app.place.brush && has_item).then_some(BrushView { x: h[0], z: h[2], radius: app.place.brush_radius, falloff: 0.0, color: [0.3, 1.0, 0.4], shape: 0 })
+        }
         Mode::Satellite => Some(BrushView { x: h[0], z: h[2], radius: app.sat.radius, falloff: 1.0 - app.sat.hardness, color: [1.0, 0.82, 0.24], shape: 0 }),
         Mode::Mission => crate::mission_ui::brush(app, h),
         _ => None,
@@ -3695,6 +3922,20 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let used = child.min_rect();
     let back = Rect::from_min_max(rect.min + vec2(2.0, 2.0), pos2((used.right() + 6.0).min(rect.right() - 2.0), rect.top() + 32.0));
     ui.painter().set(backing, egui::Shape::rect_filled(back, 3.0, Color32::from_black_alpha(150)));
+    let cur_shading = if top { app.shading2 } else { app.shading3 };
+    let legend = match cur_shading {
+        Shading::Slope => Some(t("Slope: <20° cars · 20–42° foot · >42° steep")),
+        Shading::Density => Some(t("Density (per 100 m): green <150 · yellow 300 · red 600+")),
+        _ => None,
+    };
+    if let Some(text) = legend {
+        let p = ui.painter();
+        let galley = p.layout_no_wrap(text, egui::FontId::proportional(11.5), Color32::WHITE);
+        let pos = pos2(rect.left() + 8.0, rect.top() + 36.0);
+        let bg = Rect::from_min_size(pos - vec2(5.0, 2.0), galley.size() + vec2(10.0, 4.0));
+        p.rect_filled(bg, 3.0, Color32::from_black_alpha(150));
+        p.galley(pos, galley, Color32::WHITE);
+    }
 }
 
 /// The game's MaxTide: how far the tide moves the sea, in metres.
@@ -3743,6 +3984,34 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         row(ui, t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0);
         row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0);
         row(ui, t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0);
+        {
+            use crate::settings::GrassRangeSource;
+            let src_label = |s: GrassRangeSource| match s {
+                GrassRangeSource::Editor => t("Editor settings"),
+                GrassRangeSource::MapConfig => t("Map config (CfgWorlds)"),
+            };
+            ui.horizontal(|ui| {
+                ui.label(t("Grass range"));
+                egui::ComboBox::from_id_salt("cam_grass_src")
+                    .selected_text(src_label(app.settings.grass_range_source))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut app.settings.grass_range_source, GrassRangeSource::Editor, src_label(GrassRangeSource::Editor));
+                        ui.selectable_value(&mut app.settings.grass_range_source, GrassRangeSource::MapConfig, src_label(GrassRangeSource::MapConfig));
+                    });
+            });
+            match app.settings.grass_range_source {
+                GrassRangeSource::Editor => {
+                    row(ui, t("Grass draw distance m"), &mut app.settings.grass_range, 15.0..=300.0);
+                }
+                GrassRangeSource::MapConfig => {
+                    let (dist, grid) = app.doc.as_ref().map_or((125.0, 1.0), |d| {
+                        (d.world.meta.config.clutter_dist.unwrap_or(125.0), d.world.meta.config.clutter_grid.unwrap_or(1.0))
+                    });
+                    ui.weak(tf("From Map config: {0} m (grid {1} m)", &[&format!("{dist:.0}"), &format!("{grid:.2}")]))
+                        .on_hover_text(t("Uses clutterDist and clutterGrid from File > Map config (falling back to the base world's defaults)."));
+                }
+            }
+        }
         surface_relief_ui(ui, &mut app.settings);
         row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=1.0);
         ui.weak(t("How far the swell runs up the shore and back; the game's MaxWave is 0.25 m."));
@@ -3814,6 +4083,174 @@ pub fn surface_relief_ui(ui: &mut egui::Ui, s: &mut crate::settings::Settings) {
     ui.add(crate::theme::ValueField::new(&mut s.surface_blend, 0.0..=1.0).text(t("Surface blend by relief"))).on_hover_text(t("Where two surfaces of the mask meet, the taller parts of their relief show through first; higher makes the border sharper."));
 }
 
+/// Model id namespace for Place-one and drag-and-drop 3D ghost previews of models not yet placed on the map.
+const PLACE_PREVIEW_BASE: u32 = 0x8800_0000;
+
+/// Resolves the placement point under `mouse`: on top of another object when `snap_surface` is on
+/// in 3D view, otherwise on the terrain.
+fn place_target(app: &App, v: &View, mouse: Pos2, terrain_hit: Option<V3>) -> (Option<V3>, Option<f32>) {
+    let surface = if !v.ortho && app.place.snap_surface {
+        let (ro, rd) = v.ray(mouse);
+        let max_t = terrain_hit.map(|p| dot(sub(p, ro), rd)).unwrap_or(2000.0).min(2000.0);
+        raycast_objects(app, ro, rd, max_t, &std::collections::BTreeSet::new()).map(|(_, p)| p)
+    } else {
+        None
+    };
+    (surface.or(terrain_hit), surface.map(|p| p[1]))
+}
+
+/// Appends a 3D ghost preview of the object (or prefab) about to be placed either in `Mode::Place`
+/// (`Place one` mode) or while dragging models/presets/prefabs out of the Content Browser,
+/// resting on the terrain or on top of another object when `snap_surface` is on.
+fn append_place_preview(app: &mut App, ctx: &egui::Context, v: &View, resp: &egui::Response, hover: Option<V3>, objects: &mut ObjectDraw) {
+    let dragging = egui::DragAndDrop::has_any_payload(ctx) && resp.contains_pointer();
+    let place_one = app.mode == Mode::Place && !app.place.brush && resp.hovered();
+    if !dragging && !place_one {
+        return;
+    }
+    let mouse = if dragging { ctx.pointer_latest_pos() } else { resp.hover_pos() };
+    let Some(mouse) = mouse else { return };
+    let terrain_hit = if dragging {
+        let Some(d) = app.doc.as_ref() else { return };
+        let (ro, rd) = v.ray(mouse);
+        pick_terrain(&d.world.height, ro, rd, v.ortho)
+    } else {
+        hover
+    };
+    let (target, surface_y) = place_target(app, v, mouse, terrain_hit);
+    let Some(target) = target else { return };
+
+    // Collect (model_path, world_x, world_z, yaw, pitch, roll, scale, surface_y) items to ghost.
+    let mut items: Vec<(String, f32, f32, f32, f32, f32, f32, Option<f32>)> = Vec::new();
+    let seed = app.place_counter.wrapping_add(1).wrapping_mul(2654435761);
+    let mut from_prefab = false;
+
+    if dragging {
+        use crate::asset_browser::Pick;
+        let picks = crate::asset_browser::dragged_picks(ctx);
+        let mut models: Vec<(String, f32, bool, f32)> = Vec::new();
+        for p in &picks {
+            match p {
+                Pick::Model(m) => {
+                    let s = (app.place.scale_min + app.place.scale_max) * 0.5;
+                    models.push((m.clone(), app.place.scale_max, app.place.random_yaw, s));
+                }
+                Pick::Preset(id) => {
+                    if let Some(pr) = app.library.objects.iter().find(|x| x.id == *id) {
+                        if let Some((m, _)) = pr.items.first() {
+                            models.push((m.clone(), pr.scale_max, pr.random_yaw, (pr.scale_min + pr.scale_max) * 0.5));
+                        }
+                    }
+                }
+                Pick::Prefab(id) => {
+                    if let Some(pf) = app.library.prefabs.iter().find(|x| x.id == *id) {
+                        from_prefab = true;
+                        for it in &pf.items {
+                            items.push((it.model.clone(), target[0] + it.x, target[2] + it.z, it.yaw, it.pitch, it.roll, it.scale, surface_y.map(|sy| sy + it.elevation)));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !models.is_empty() {
+            let layout = crate::asset_browser::drop_layout(app, &models.iter().map(|(m, smax, _, _)| (m.clone(), *smax)).collect::<Vec<_>>());
+            for ((m, _, rand_yaw, scale), (_, dx, dz)) in models.into_iter().zip(layout) {
+                let yaw = if rand_yaw { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
+                items.push((m, target[0] + dx, target[2] + dz, yaw, 0.0, 0.0, scale, surface_y));
+            }
+        }
+    } else if let Some(pid) = app.place.prefab {
+        if let Some(pf) = app.library.prefabs.iter().find(|p| p.id == pid) {
+            from_prefab = true;
+            for it in &pf.items {
+                items.push((it.model.clone(), target[0] + it.x, target[2] + it.z, it.yaw, it.pitch, it.roll, it.scale, surface_y.map(|sy| sy + it.elevation)));
+            }
+        }
+    } else if let Some(pid) = app.place.preset {
+        if let Some(pr) = app.library.objects.iter().find(|p| p.id == pid) {
+            if let Some((m, _)) = pr.items.first() {
+                let yaw = if pr.random_yaw { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
+                let scale = (pr.scale_min + pr.scale_max) * 0.5;
+                items.push((m.clone(), target[0], target[2], yaw, 0.0, 0.0, scale, surface_y));
+            }
+        }
+    } else if let Some(m) = pool_model(app, seed) {
+        let mut yaw = if app.place.random_yaw { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
+        if app.settings.keys.held(Hold::AngleSnap, app.modifiers_now) {
+            let step = app.settings.angle_step.max(0.1);
+            yaw = ((yaw / step).round() * step).rem_euclid(360.0);
+        }
+        let scale = (app.place.scale_min + app.place.scale_max) * 0.5;
+        items.push((m, target[0], target[2], yaw, 0.0, 0.0, scale, surface_y));
+    }
+    if items.is_empty() {
+        return;
+    }
+
+    let Some(doc) = &app.doc else { return };
+    let world = &doc.world;
+    let renderer = app.renderer.clone();
+    let renderer = renderer.lock().unwrap();
+    let mut flat = (*objects.instances).clone();
+    let mut groups = (*objects.groups).clone();
+    let mut boxes = (*objects.boxes).clone();
+    let mut requests: Vec<(u32, String)> = Vec::new();
+    const GHOST_TINT: [f32; 4] = [0.45, 1.0, 0.65, 0.32];
+
+    for (model, x, z, yaw, mut pitch, mut roll, scale, sy) in items {
+        let info = app.db.get(&model);
+        if sy.is_none() && app.place.align && !from_prefab && !info.placement.skews() {
+            (pitch, roll) = gen::slope_angles(&world.height, x, z, yaw);
+        }
+        let base_elev = if info.contact_count > 0 {
+            -info.contact_y * scale
+        } else if sy.is_some() && info.known {
+            -info.min[1] * scale
+        } else {
+            0.0
+        };
+        let ground = world.height.sample(x, z);
+        let elevation = match sy {
+            Some(y) => (y - ground) + base_elev,
+            None => base_elev,
+        };
+        let o = Obj { x, z, elevation, yaw, pitch, roll, scale, model: 0, flags: 0 };
+        let y = ObjectStore::origin_y(&o, &world.height);
+        let (placed_m, placed_y) = placed_matrix(&o, &info, &world.height, y);
+
+        let id = world.objects.models.iter().position(|p| p.path.eq_ignore_ascii_case(&model)).map(|i| i as u32).unwrap_or_else(|| {
+            let mut h: u32 = 2166136261;
+            for b in model.bytes() {
+                h ^= u32::from(b.to_ascii_lowercase());
+                h = h.wrapping_mul(16777619);
+            }
+            PLACE_PREVIEW_BASE | (h & 0x00FF_FFFF)
+        });
+        match renderer.best_lod(id, LOD_NEAR) {
+            Some((lod, _)) => {
+                let first = (flat.len() / 16) as u32;
+                write_instance(&mut flat, &placed_m, [x, placed_y, z], GHOST_TINT);
+                groups.push(((id, lod), first, 1));
+                if lod != LOD_NEAR {
+                    requests.push((id, model));
+                }
+            }
+            None => {
+                write_box(&mut boxes, &o, y, &info, GHOST_TINT, 0.3);
+                requests.push((id, model));
+            }
+        }
+    }
+    drop(renderer);
+    for (id, path) in requests {
+        app.loader.request((id, LOD_NEAR), &path);
+    }
+    objects.instances = Arc::new(flat);
+    objects.groups = Arc::new(groups);
+    objects.boxes = Arc::new(boxes);
+}
+
 fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let id = ui.id().with(if top { "top" } else { "persp" });
     let resp = ui.interact(rect, id, Sense::click_and_drag());
@@ -3868,7 +4305,8 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
             }
         }
     }
-    let objects = prepare_objects(app, &v, top);
+    let mut objects = prepare_objects(app, &v, top);
+    append_place_preview(app, &ctx, &v, &resp, hover, &mut objects);
     let Some(doc) = &app.doc else { return };
     let quality = app.settings.terrain_quality;
     let patches = doc.lod.select(&v, quality);
@@ -3915,7 +4353,8 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         let at = ctx.pointer_latest_pos().filter(|_| over).and_then(|m| {
             let d = app.doc.as_ref()?;
             let (o, dir) = v.ray(m);
-            pick_terrain(&d.world.height, o, dir, v.ortho)
+            let ground = pick_terrain(&d.world.height, o, dir, v.ortho);
+            place_target(app, &v, m, ground).0
         });
         if let Some(at) = at {
             crate::asset_browser::drop_preview(app, &painter, &v, at);
@@ -4139,7 +4578,11 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         if k(Action::JoinNeighbour) { app.join_selection_to_neighbour(); }
         if k(Action::CopyAhead) { app.copy_selection_along(true); }
         if k(Action::CopyBehind) { app.copy_selection_along(false); }
+        if k(Action::DropOnSurface) { drop_selection_on_surface(app); }
     }
+    if k(Action::HideSelected) { app.hide_selection(); }
+    if k(Action::ShowHidden) { app.show_hidden_objects(); }
+    if k(Action::IsolateSelection) { app.isolate_selection(); }
     app.remember_selection();
     if matches!(app.mode, Mode::Select | Mode::Place) && app.view_hovered_last {
         if k(Action::PasteHere) { app.paste_at_cursor(false); }
@@ -4183,7 +4626,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
                 app.shape.selection = d.world.shape_layers.iter().enumerate().filter(|(_, l)| l.visible).flat_map(|(li, l)| (0..l.shapes.len()).map(move |si| (li, si))).collect();
             }
         } else if let Some(d) = &app.doc {
-            app.selection = d.world.objects.iter().filter(|(_, o)| d.world.object_interactive(o)).map(|(id, _)| id).collect();
+            app.selection = d.world.objects.iter().filter(|(id, o)| d.world.object_interactive(o) && !app.hidden_objects.contains(id)).map(|(id, _)| id).collect();
             app.selection_rev += 1;
         }
     }
@@ -4194,6 +4637,7 @@ fn shortcuts(app: &mut App, ctx: &egui::Context) {
         if k(a) { app.gizmo = g; }
     }
     if k(Action::GizmoSpace) { app.gizmo_local = !app.gizmo_local; }
+    if k(Action::TogglePlaceOnSurface) { app.place.snap_surface = !app.place.snap_surface; }
     for (a, v) in [(Action::View3d, ViewMode::Perspective), (Action::View2d, ViewMode::Top), (Action::ViewSplit, ViewMode::Split)] {
         if k(a) { app.view_mode = v; }
     }
@@ -4241,12 +4685,25 @@ fn welcome(app: &mut App, ui: &mut egui::Ui) {
         if !app.settings.recent.is_empty() {
             ui.add_space(14.0);
             ui.weak(t("Recent projects"));
-            for d in app.settings.recent.clone().into_iter().take(8) {
-                let name = d.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                if ui.link(name).on_hover_text(d.display().to_string()).clicked() {
-                    app.open_project(d);
+            ui.add_space(4.0);
+            ui.allocate_ui(vec2(size.x, 0.0), |ui| {
+                for d in app.settings.recent.clone().into_iter().take(8) {
+                    let name = d.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                    ui.horizontal(|ui| {
+                        if ui.link(name).on_hover_text(d.display().to_string()).clicked() {
+                            app.open_project(d.clone());
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::icons::X).small().color(theme::TEXT_DIM)).frame(false))
+                                .on_hover_text(t("Remove from recent projects"))
+                                .clicked()
+                            {
+                                app.settings.forget_recent(&d);
+                            }
+                        });
+                    });
                 }
-            }
+            });
         }
     });
 }

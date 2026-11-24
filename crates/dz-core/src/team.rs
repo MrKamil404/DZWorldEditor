@@ -1720,12 +1720,220 @@ fn save_theirs_version(versions_root: &Path, base_dir: &Path, base: &World, patc
     Ok(())
 }
 
+/// Spatial overview of what a `.dzpatch` changes on the map, for drawing a visual diff
+/// overlay before merging.
+#[derive(Clone, Debug, Default)]
+pub struct PatchMapDiff {
+    pub file: PathBuf,
+    pub author: String,
+    pub time: String,
+    /// World-space `[x0, z0, x1, z1]` squares of changed terrain height tiles.
+    pub height_tiles: Vec<[f32; 4]>,
+    /// World-space `[x0, z0, x1, z1]` squares of changed surface mask tiles (and mask modifiers).
+    pub mask_tiles: Vec<[f32; 4]>,
+    /// World-space `[x0, z0, x1, z1]` squares of changed satellite image tiles (and sat modifiers).
+    pub sat_tiles: Vec<[f32; 4]>,
+    /// World-space `(x, z)` positions of added objects.
+    pub objects_added: Vec<[f32; 2]>,
+    /// World-space `(x, z)` positions of modified objects (already present in the current world).
+    pub objects_changed: Vec<[f32; 2]>,
+    /// World-space `(x, z)` positions of removed objects (resolved from the current world).
+    pub objects_removed: Vec<[f32; 2]>,
+    /// Changed terrain modifiers, roads, or generators: `(world_xz, label)`.
+    pub elements: Vec<([f32; 2], String)>,
+    /// Bounding box `[min_x, min_z, max_x, max_z]` of all spatial changes, if any.
+    pub bounds: Option<[f32; 4]>,
+}
+
+impl PatchMapDiff {
+    pub fn is_empty(&self) -> bool {
+        self.height_tiles.is_empty()
+            && self.mask_tiles.is_empty()
+            && self.sat_tiles.is_empty()
+            && self.objects_added.is_empty()
+            && self.objects_changed.is_empty()
+            && self.objects_removed.is_empty()
+            && self.elements.is_empty()
+    }
+
+    pub fn center(&self) -> Option<[f32; 2]> {
+        self.bounds.map(|b| [(b[0] + b[2]) * 0.5, (b[1] + b[3]) * 0.5])
+    }
+}
+
+/// Reads a `.dzpatch` file and extracts every map area and object position it changes, without
+/// mutating the project.
+pub fn inspect_diff(file: &Path, world: &World) -> Result<PatchMapDiff> {
+    let bytes = std::fs::read(file).with_context(|| format!("{}", file.display()))?;
+    let patch = Patch::from_bytes(&bytes)?;
+    Ok(diff_from_patch(&patch, file.to_path_buf(), world))
+}
+
+fn diff_from_patch(patch: &Patch, file: PathBuf, world: &World) -> PatchMapDiff {
+    let b = &patch.body;
+    let size = world.meta.size_m();
+    let cell = world.meta.terrain_cell;
+    let mut bounds: Option<[f32; 4]> = None;
+    let grow_rect = |bounds: &mut Option<[f32; 4]>, r: [f32; 4]| {
+        *bounds = Some(match *bounds {
+            None => r,
+            Some(c) => [c[0].min(r[0]), c[1].min(r[1]), c[2].max(r[2]), c[3].max(r[3])],
+        });
+    };
+
+    let tw = b.terrain[0].max(world.height.cols).max(1);
+    let th = b.terrain[1].max(world.height.rows).max(1);
+    let mut height_tiles = Vec::with_capacity(b.height.len());
+    for t in &b.height {
+        let x0 = t.x as usize * TILE;
+        let y0 = t.y as usize * TILE;
+        let x1 = (x0 + TILE).min(tw);
+        let y1 = (y0 + TILE).min(th);
+        let r = [x0 as f32 * cell, y0 as f32 * cell, x1 as f32 * cell, y1 as f32 * cell];
+        grow_rect(&mut bounds, r);
+        height_tiles.push(r);
+    }
+
+    let mw = b.mask[0].max(world.mask.width).max(1);
+    let mh = b.mask[1].max(world.mask.height).max(1);
+    let m_px = size / mw as f32;
+    let mut mask_tiles = Vec::with_capacity(b.mask_tiles.len());
+    for t in &b.mask_tiles {
+        let x0 = t.x as usize * TILE;
+        let y0 = t.y as usize * TILE;
+        let x1 = (x0 + TILE).min(mw);
+        let y1 = (y0 + TILE).min(mh);
+        let r = [x0 as f32 * m_px, (size - y1 as f32 * m_px).max(0.0), x1 as f32 * m_px, (size - y0 as f32 * m_px).min(size)];
+        grow_rect(&mut bounds, r);
+        mask_tiles.push(r);
+    }
+    let mut mask_mod_keys: HashSet<(u16, u16)> = HashSet::new();
+    if let Some((at, n)) = b.mask_mods {
+        if let Ok(raw) = patch.u8s(at, n) {
+            if let Ok(layers) = MaskLayers::from_bytes(raw) {
+                for m in &layers.modifiers {
+                    mask_mod_keys.extend(m.tiles.keys().copied());
+                }
+            }
+        }
+    }
+    for d in &b.mask_mods_delta {
+        for &[tx, ty] in &d.removed_tiles {
+            mask_mod_keys.insert((tx, ty));
+        }
+    }
+    let mm_tile = crate::maskmod::TILE as f32 * m_px;
+    for (tx, ty) in mask_mod_keys {
+        let x0 = tx as f32 * mm_tile;
+        let x1 = (x0 + mm_tile).min(size);
+        let z1 = (size - ty as f32 * mm_tile).min(size);
+        let z0 = (z1 - mm_tile).max(0.0);
+        let r = [x0, z0, x1, z1];
+        grow_rect(&mut bounds, r);
+        mask_tiles.push(r);
+    }
+
+    let mut sat_tiles = Vec::new();
+    if let Some(sb) = &b.satellite {
+        let sw = sb.size[0].max(1);
+        let sh = sb.size[1].max(1);
+        let s_px = size / sw as f32;
+        for t in &sb.tiles {
+            let x0 = t.x as usize * SAT_TILE;
+            let y0 = t.y as usize * SAT_TILE;
+            let x1 = (x0 + SAT_TILE).min(sw);
+            let y1 = (y0 + SAT_TILE).min(sh);
+            let r = [x0 as f32 * s_px, (size - y1 as f32 * s_px).max(0.0), x1 as f32 * s_px, (size - y0 as f32 * s_px).min(size)];
+            grow_rect(&mut bounds, r);
+            sat_tiles.push(r);
+        }
+        let mut sat_mod_keys: HashSet<(u16, u16)> = HashSet::new();
+        if let Some((at, n)) = sb.mods {
+            if let Ok(raw) = patch.u8s(at, n) {
+                if let Ok(layers) = SatLayers::from_bytes(raw) {
+                    for m in &layers.modifiers {
+                        sat_mod_keys.extend(m.tiles.keys().copied());
+                    }
+                }
+            }
+        }
+        for d in &sb.mods_delta {
+            for &[tx, ty] in &d.removed_tiles {
+                sat_mod_keys.insert((tx, ty));
+            }
+        }
+        let st_m = SAT_TILE as f32 * s_px;
+        for (tx, ty) in sat_mod_keys {
+            let x0 = tx as f32 * st_m;
+            let x1 = (x0 + st_m).min(size);
+            let z1 = (size - ty as f32 * st_m).min(size);
+            let z0 = (z1 - st_m).max(0.0);
+            let r = [x0, z0, x1, z1];
+            grow_rect(&mut bounds, r);
+            sat_tiles.push(r);
+        }
+    }
+
+    let ids = world.objects.ids_by_uid();
+    let mut objects_added = Vec::new();
+    let mut objects_changed = Vec::new();
+    for r in &b.objects {
+        let p = [r.p[0], r.p[1]];
+        grow_rect(&mut bounds, [p[0], p[1], p[0], p[1]]);
+        if ids.contains_key(&r.uid) {
+            objects_changed.push(p);
+        } else {
+            objects_added.push(p);
+        }
+    }
+    let mut objects_removed = Vec::new();
+    for uid in &b.removed {
+        if let Some(o) = ids.get(uid).and_then(|id| world.objects.get(*id)) {
+            let p = [o.x, o.z];
+            grow_rect(&mut bounds, [p[0], p[1], p[0], p[1]]);
+            objects_removed.push(p);
+        }
+    }
+
+    let mut elements = Vec::new();
+    for (list, diff) in &b.lists {
+        for v in &diff.set {
+            if let Some(p) = place_of(v) {
+                let name = v.get("name").and_then(Value::as_str).unwrap_or("");
+                let label = if name.is_empty() { list.clone() } else { format!("{list}: {name}") };
+                grow_rect(&mut bounds, [p[0], p[1], p[0], p[1]]);
+                elements.push((p, label));
+            }
+        }
+    }
+
+    PatchMapDiff {
+        file,
+        author: patch.header.author.clone(),
+        time: patch.header.time.clone(),
+        height_tiles,
+        mask_tiles,
+        sat_tiles,
+        objects_added,
+        objects_changed,
+        objects_removed,
+        elements,
+        bounds,
+    }
+}
+
 /// A merge read and tried, waiting for the conflicts to be decided.
 pub struct Prepared {
     pub header: PatchHeader,
     pub file: PathBuf,
     patch: Patch,
     base: World,
+}
+
+impl Prepared {
+    pub fn map_diff(&self, world: &World) -> PatchMapDiff {
+        diff_from_patch(&self.patch, self.file.clone(), world)
+    }
 }
 
 /// Reads a patch and tries it on the saved project, to show what it brings and what clashes.
@@ -1855,6 +2063,13 @@ impl MergeBatch {
 
     pub fn done(&self) -> usize {
         self.index
+    }
+
+    /// Spatial diff of the patch currently paused on conflicts, if any.
+    pub fn pending_diff(&self, world: &World) -> Option<PatchMapDiff> {
+        let p = self.pending.as_ref()?;
+        let file = self.queue.get(self.index).cloned().unwrap_or_default();
+        Some(diff_from_patch(&p.patch, file, world))
     }
 
     fn batch_versions_dir(&self) -> PathBuf {

@@ -54,6 +54,8 @@ pub enum IssueKind {
     NoNavmesh,
     /// Problems the mission check finds (`count` errors).
     Mission,
+    /// A 100 m square with very many objects that may hurt client FPS (`count` objects).
+    DenseArea,
 }
 
 impl IssueKind {
@@ -61,7 +63,7 @@ impl IssueKind {
         use IssueKind::*;
         match self {
             BadMapId | BadTerrainSize | NoSatellite | MissingLayerTexture | MissingModel => Level::Error,
-            TileSurfaces | Floating | Buried | InSea | Outside | Duplicate | Overlap | EmptyRoad | BadSpawn | Mission => Level::Warning,
+            TileSurfaces | Floating | Buried | InSea | Outside | Duplicate | Overlap | EmptyRoad | BadSpawn | Mission | DenseArea => Level::Warning,
             NoKeyPoints | NoNavmesh => Level::Info,
         }
     }
@@ -264,6 +266,11 @@ fn check_objects(w: &World, db: &ModelDb, job: &Job) -> Vec<Issue> {
             let n = group.len() as f32;
             out.push(Issue { kind, at: Some([at[0] / n, at[1] / n]), count: group.len(), objects: group.iter().map(|x| x.0).collect(), name: String::new() });
         }
+    }
+    // Very dense 100 m squares hurt FPS in DayZ cities.
+    let density = crate::analysis::DensityGrid::build(w, 100.0, true);
+    for (at, count) in density.hotspots(800, 10) {
+        out.push(Issue { kind: IssueKind::DenseArea, at: Some(at), count, objects: Vec::new(), name: String::new() });
     }
     out
 }

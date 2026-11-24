@@ -54,6 +54,7 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
     }
     dialogs(app, ctx);
     crate::mission_ui::window(app, ctx);
+    crate::loot_proto_ui::window(app, ctx);
     crate::map_check::window(app, ctx);
     crate::goto::window(app, ctx);
     crate::team_ui::window(app, ctx);
@@ -267,9 +268,29 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 if ui.add(egui::Button::new(icons::with(icons::FILE_PLUS, &t("New project..."))).shortcut_text(keys.text(Action::NewProject))).clicked() { app.dialog = new_project_dialog(); ui.close_menu(); }
                 if ui.button(icons::with(icons::GLOBE_HEMISPHERE_EAST, &t("New project from a real place..."))).clicked() { app.dialog = real_place_dialog(); ui.close_menu(); }
                 if ui.add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Open project..."))).shortcut_text(keys.text(Action::Open))).clicked() { ui.close_menu(); app.pick_and_open(); }
-                ui.menu_button(icons::with(icons::CLOCK, &t("Recent projects")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-                    for d in app.settings.recent.clone() {
-                        if ui.button(d.display().to_string()).clicked() { ui.close_menu(); app.open_project(d); }
+                ui.menu_button(icons::with(icons::CLOCK, &t("Recent projects")), |ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    let list = app.settings.recent.clone();
+                    if list.is_empty() {
+                        ui.weak(t("No recent projects"));
+                    } else {
+                        for d in list {
+                            ui.horizontal(|ui| {
+                                if ui.button(d.display().to_string()).clicked() {
+                                    ui.close_menu();
+                                    app.open_project(d.clone());
+                                }
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.small_button(icons::X).on_hover_text(t("Remove from recent projects")).clicked() {
+                                        app.settings.forget_recent(&d);
+                                    }
+                                });
+                            });
+                        }
+                        ui.separator();
+                        if ui.button(icons::with(icons::TRASH, &t("Clear recent projects"))).clicked() {
+                            app.settings.clear_recent();
+                        }
                     }
                 });
                 ui.separator();
@@ -287,6 +308,7 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                         if ui.button(t("layers.cfg...")).clicked() { ui.close_menu(); app.import_layers_cfg(); }
                         if ui.button(t("Terrain Builder layers (TV4L)...")).clicked() { ui.close_menu(); app.import_tv4l(); }
                         if ui.button(t("Terrain Builder objects (TXT)...")).clicked() { ui.close_menu(); app.import_objects_txt(); }
+                        if ui.button(t("DayZ Editor / Object Spawner (.dze, .json)...")).clicked() { ui.close_menu(); app.import_dayz_objects(); }
                         if ui.button(t("DayZForests project...")).clicked() { ui.close_menu(); app.import_forest(); }
                         if ui.button(t("Road Studio project...")).clicked() { ui.close_menu(); app.import_road_project(); }
                         if ui.button(t("Roads from TV4P...")).clicked() { ui.close_menu(); app.import_tv4p(); }
@@ -307,6 +329,7 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 if ui.add_enabled(r.is_some(), egui::Button::new(icons::with(icons::ARROW_CLOCKWISE, &format!("{} {}", t("Redo"), r.unwrap_or_default()))).shortcut_text(keys.text(Action::Redo))).clicked() { app.redo(); ui.close_menu(); }
                 ui.separator();
                 if ui.add(egui::Button::new(icons::with(icons::COPY, &t("Duplicate"))).shortcut_text(keys.text(Action::Duplicate))).clicked() { app.duplicate_selection(); ui.close_menu(); }
+                if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(icons::with(icons::ARROW_DOWN, &t("Drop onto surface"))).shortcut_text(keys.text(Action::DropOnSurface))).clicked() { crate::viewport::drop_selection_on_surface(app); ui.close_menu(); }
                 if ui.add(egui::Button::new(icons::with(icons::TRASH, &t("Delete"))).shortcut_text(keys.text(Action::Delete))).clicked() { app.delete_selection(); ui.close_menu(); }
                 ui.separator();
                 if ui.add(egui::Button::new(icons::with(icons::GEAR, &t("Settings..."))).shortcut_text(keys.text(Action::Settings))).clicked() { app.dialog = Dialog::Settings; ui.close_menu(); }
@@ -335,6 +358,13 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui) {
                 crate::layout::menu(app, ui);
                 ui.separator();
                 visibility_toggles(app, ui);
+                ui.separator();
+                if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(icons::with(icons::EYE_SLASH, &t("Hide selected"))).shortcut_text(keys.text(Action::HideSelected))).clicked() { app.hide_selection(); ui.close_menu(); }
+                if ui.add_enabled(!app.selection.is_empty() || !app.hidden_objects.is_empty(), egui::Button::new(icons::with(icons::EYE, &t("Isolate selection"))).shortcut_text(keys.text(Action::IsolateSelection))).clicked() { app.isolate_selection(); ui.close_menu(); }
+                let hidden_n = app.hidden_objects.len();
+                let show_label = if hidden_n > 0 { tf("Show hidden objects ({0})", &[&hidden_n.to_string()]) } else { t("Show hidden objects") };
+                if ui.add_enabled(hidden_n > 0, egui::Button::new(icons::with(icons::EYE, &show_label)).shortcut_text(keys.text(Action::ShowHidden))).clicked() { app.show_hidden_objects(); ui.close_menu(); }
+                ui.separator();
                 ui.checkbox(&mut app.camera_under, t("Camera below the terrain")).on_hover_text(keys.tip(Action::CameraBelow));
                 ui.separator();
                 ui.checkbox(&mut app.show_land_grid, t("Land grid"));
@@ -528,6 +558,11 @@ pub(crate) fn toolbar_contents(app: &mut App, ui: &mut egui::Ui) {
             if snap_pill(ui, ground, icons::ALIGN_BOTTOM, tip.clone(), |ui| {
                 if ui.add(egui::Label::new(RichText::new(t("Ground")).color(if ground { theme::TEXT } else { theme::TEXT_DIM })).sense(egui::Sense::click())).on_hover_text(tip).clicked() { app.settings.align_to_ground = !ground; changed = true; }
             }) { app.settings.align_to_ground = !ground; changed = true; }
+            let surface = app.place.snap_surface;
+            let tip = format!("{}\n{}", keys.tip(Action::TogglePlaceOnSurface), t("Clicks in the 3D view place the object on the roof, floor or deck under the cursor instead of on the terrain."));
+            if snap_pill(ui, surface, icons::STACK, tip.clone(), |ui| {
+                if ui.add(egui::Label::new(RichText::new(t("Surface")).color(if surface { theme::TEXT } else { theme::TEXT_DIM })).sense(egui::Sense::click())).on_hover_text(tip).clicked() { app.place.snap_surface = !surface; }
+            }) { app.place.snap_surface = !surface; }
             if changed { app.settings.save(); }
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -1300,6 +1335,15 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
             if button(ui, !app.place.brush, G::PlaceOne, t("Places one")).clicked() { app.place.brush = false; }
             if button(ui, app.place.brush, G::PlacePaint, format!("{}\n{}", t("Paints"), t("Hold the button to paint objects."))).clicked() { app.place.brush = true; }
         });
+        if !app.place.brush {
+            let snap_key = app.settings.keys.text(Action::TogglePlaceOnSurface);
+            let mut tip = t("Clicks in the 3D view place the object on the roof, floor or deck under the cursor instead of on the terrain.");
+            if !snap_key.is_empty() {
+                tip.push_str(&format!(" ({snap_key})"));
+            }
+            theme::check_row(ui, &mut app.place.snap_surface, t("Place on top of objects"))
+                .on_hover_text(tip);
+        }
         if app.place.brush {
             slider(ui, &t("Radius"), &mut app.place.brush_radius, 1.0..=300.0, true);
             slider(ui, &t("Spacing"), &mut app.place.brush_spacing, 0.3..=60.0, true);
@@ -3330,6 +3374,25 @@ fn base_value(base: &dz_core::world::BaseWorld, key: &str) -> &'static str {
         "clutterGrid" => "1",
         "minTrees" => "10",
         "minRocks" => "5",
+        "envTexture" => r"DZ\Data\data\env_co.paa",
+        "atmosphereTexture" => r"DZ\worlds\chernarusplus\data\Sky_Stage01_Clear_sky.paa",
+        "maxTide" => "1.5",
+        "maxWave" => "0.25",
+        "waveAmplitude" => "0.081",
+        "waveFrequency" => "9",
+        "waveOctaves" => "6",
+        "wavePersistence" => "0.745",
+        "starsIntensity" => "0.181",
+        "hazeDistCoef" => "0",
+        "hazeFogCoef" => "1",
+        "volFogOffset" => "0",
+        "satNormStart" => "100",
+        "satNormEnd" => "500",
+        "terrainNormalPower" => "3.21",
+        "soundMapAttenCoef" => "0.01",
+        "tileWidth" => "50",
+        "maxSlope" => "60",
+        "maxStep" => "0.45",
         _ => "",
     }
 }
@@ -3509,8 +3572,80 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                     ui.separator();
                     config_text(ui, &t("Middle distance texture"), &mut m.config.mid_detail_texture, base_value(&base, "midDetailTexture"));
                     config_text(ui, &t("Terrain normal map"), &mut m.config.terrain_normal_texture, base_value(&base, "terrainNormalTexture"));
-                    config_text(ui, &t("Sea material"), &mut m.config.ocean_material, base_value(&base, "oceanMaterial"));
+                    config_number(ui, &t("Normal blend start"), &mut m.config.satellite_normal_blend_start, base_value(&base, "satNormStart"), 0.0..=5000.0, " m");
+                    config_number(ui, &t("Normal blend end"), &mut m.config.satellite_normal_blend_end, base_value(&base, "satNormEnd"), 0.0..=10000.0, " m");
+                    config_number(ui, &t("Terrain normal power"), &mut m.config.terrain_normal_power, base_value(&base, "terrainNormalPower"), 0.0..=10.0, "");
+                    for (label, id_salt, flag) in [
+                        (t("Height blending"), "cfg_hblend", &mut m.config.height_blending_mode),
+                        (t("Bicubic filtering"), "cfg_bicubic", &mut m.config.bicubic_mode),
+                    ] {
+                        row(ui, &label, |ui| {
+                            egui::ComboBox::from_id_salt(id_salt).selected_text(match flag { None => t("(from the base world)"), Some(true) => t("On"), Some(false) => t("Off") }).show_ui(ui, |ui| {
+                                ui.selectable_value(flag, None, t("(from the base world)"));
+                                ui.selectable_value(flag, Some(true), t("On"));
+                                ui.selectable_value(flag, Some(false), t("Off"));
+                            });
+                        });
+                    }
                     ui.weak(t("The textures of the base world show its own terrain; a map of its own needs its own."));
+                });
+                section(ui, &t("Sea and waves"), false, |ui| {
+                    let base = m.config.base.clone();
+                    config_text(ui, &t("Sea material"), &mut m.config.ocean_material, base_value(&base, "oceanMaterial"));
+                    config_text(ui, &t("Calm sea material"), &mut m.config.ocean_nice_material, base_value(&base, "oceanMaterial"));
+                    config_text(ui, &t("Storm sea material"), &mut m.config.ocean_storm_material, base_value(&base, "oceanMaterial"));
+                    ui.weak(t("Leave empty to reuse Sea material for calm and storm weather too."));
+                    config_number(ui, &t("Max tide"), &mut m.config.max_tide, base_value(&base, "maxTide"), 0.0..=10.0, " m");
+                    config_number(ui, &t("Max wave"), &mut m.config.max_wave, base_value(&base, "maxWave"), 0.0..=5.0, " m");
+                    config_number(ui, &t("Wave amplitude"), &mut m.config.wave_amplitude, base_value(&base, "waveAmplitude"), 0.0..=2.0, "");
+                    config_number(ui, &t("Wave frequency"), &mut m.config.wave_frequency, base_value(&base, "waveFrequency"), 0.0..=50.0, "");
+                    let mut oct = m.config.wave_octaves.map(|v| v as f32);
+                    config_number(ui, &t("Wave octaves"), &mut oct, base_value(&base, "waveOctaves"), 1.0..=12.0, "");
+                    m.config.wave_octaves = oct.map(|v| v.round() as u32);
+                    config_number(ui, &t("Wave persistence"), &mut m.config.wave_persistence, base_value(&base, "wavePersistence"), 0.0..=2.0, "");
+                });
+                section(ui, &t("Atmosphere and sky"), false, |ui| {
+                    let base = m.config.base.clone();
+                    config_text(ui, &t("Environment map (envTexture)"), &mut m.config.env_texture, base_value(&base, "envTexture"));
+                    config_text(ui, &t("Atmosphere texture"), &mut m.config.atmosphere_texture, base_value(&base, "atmosphereTexture"));
+                    config_number(ui, &t("Stars intensity"), &mut m.config.stars_intensity, base_value(&base, "starsIntensity"), 0.0..=2.0, "");
+                    config_number(ui, &t("Haze distance coef"), &mut m.config.haze_dist_coef, base_value(&base, "hazeDistCoef"), 0.0..=5.0, "");
+                    config_number(ui, &t("Haze fog coef"), &mut m.config.haze_fog_coef, base_value(&base, "hazeFogCoef"), 0.0..=5.0, "");
+                    config_number(ui, &t("Volumetric fog offset"), &mut m.config.vol_fog_offset, base_value(&base, "volFogOffset"), -500.0..=500.0, " m");
+                });
+                section(ui, &t("Ambient sound map"), false, |ui| {
+                    let base = m.config.base.clone();
+                    config_number(ui, &t("Sound map attenuation"), &mut m.config.sound_map_atten_coef, base_value(&base, "soundMapAttenCoef"), 0.0..=1.0, "");
+                    let mut own_sm = m.config.sound_map.is_some();
+                    if ui.checkbox(&mut own_sm, t("Override SoundMapValues")).changed() {
+                        m.config.sound_map = own_sm.then(Default::default);
+                    }
+                    if let Some(sm) = &mut m.config.sound_map {
+                        for (label, val) in [
+                            (t("Hard trees"), &mut sm.treehard),
+                            (t("Soft trees"), &mut sm.treesoft),
+                            (t("Hard bushes"), &mut sm.bushhard),
+                            (t("Soft bushes"), &mut sm.bushsoft),
+                            (t("Forest weight"), &mut sm.forest),
+                            (t("Houses weight"), &mut sm.house),
+                            (t("Church weight"), &mut sm.church),
+                        ] {
+                            row(ui, &label, |ui| { ui.add(egui::DragValue::new(val).speed(0.01).range(0.0..=5.0)); });
+                        }
+                    }
+                });
+                section(ui, &t("Navmesh settings"), false, |ui| {
+                    let base = m.config.base.clone();
+                    row(ui, &t("Filter isolated islands"), |ui| {
+                        egui::ComboBox::from_id_salt("cfg_nm_islands").selected_text(match m.config.navmesh_filter_islands { None => t("(from the base world)"), Some(true) => t("On"), Some(false) => t("Off") }).show_ui(ui, |ui| {
+                            ui.selectable_value(&mut m.config.navmesh_filter_islands, None, t("(from the base world)"));
+                            ui.selectable_value(&mut m.config.navmesh_filter_islands, Some(true), t("On"));
+                            ui.selectable_value(&mut m.config.navmesh_filter_islands, Some(false), t("Off"));
+                        });
+                    });
+                    config_number(ui, &t("Tile width"), &mut m.config.navmesh_tile_width, base_value(&base, "tileWidth"), 10.0..=200.0, " m");
+                    config_number(ui, &t("Agent max slope"), &mut m.config.navmesh_max_slope, base_value(&base, "maxSlope"), 10.0..=85.0, "°");
+                    config_number(ui, &t("Agent max step"), &mut m.config.navmesh_max_step, base_value(&base, "maxStep"), 0.1..=2.0, " m");
                 });
                 section(ui, &t("Detail distances"), false, |ui| {
                     let base = m.config.base.clone();

@@ -65,9 +65,11 @@ generator, road, shape, shape layer or model in the Outliner and choose **Move t
 fly to it.
 
 The bar at the top of each view chooses the shading (Lit, Satellite, Mask, Hillshade, Height,
-Slope, Water flow), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
+Slope — coloured by DayZ vehicle and foot thresholds, Object density, Water flow), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
 **Lighting** also has **Time of day** and **Overcast**: the sun of that hour at the map's
-latitude and start date, weaker and with more fog under cloud. **Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
+latitude and start date, weaker and with more fog under cloud. **Camera** also chooses whether
+the grass (clutter) draw distance uses the editor slider or the map's own **Map config**
+(`clutterDist` and `clutterGrid`). **Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
 (Shift+H), the land grid and texture tiles.
 
 `View > Full screen` (F11) gives the whole screen to the view; move the pointer to an edge for the
@@ -128,12 +130,15 @@ Generators for forests, water, fields, settlements, fences and more, and the Con
   [Maps of real places](real-places.md).
 * **Import**: a Terrain Builder or built map folder, a WRP world, and to an open project a heightmap
   (ASC), satellite image, mask image, `layers.cfg`, Terrain Builder layers (TV4L) and objects (TXT),
+  DayZ Editor (`.dze`) and Object Spawner JSON (`cfggameplay.json`),
   DayZForests and Road Studio projects, roads from TV4P and shapes (SHP, TV4S).
 * **Export**: all files at once or one at a time (heightmap, satellite image, mask, `layers.cfg`,
-  objects, shapes, server mission).
+  objects, DayZ Editor `.dze` and Object Spawner JSON, a 2D player map PNG with contours, roads,
+  buildings, grid and key points, shapes, server mission).
 * **Project settings**: name, size and the other settings of the map.
 * **Map config**: the `CfgWorlds` entry written to `config.cpp`: the name the game shows, the world
-  the map is built on, the sea, the map centre, latitude and longitude, the grid of the in-game map,
+  the map is built on, the sea and waves, atmosphere and sky, ambient sound map, navmesh settings,
+  terrain blending and clutter, the map centre, latitude and longitude, the grid of the in-game map,
   and the main menu scenes, which can be taken from where the 3D camera stands.
 
 ### Edit
@@ -151,7 +156,7 @@ every key, and which modifier keys the brushes use.
   textures missing from the work drive, no satellite image, a wrong map id) and what is most
   likely a mistake (warnings: objects hanging over the ground or wholly under it, trees and
   buildings in the sea, objects outside the map, the same object twice in one place, houses
-  standing in one another, roads without parts, a player start in the sea, errors of the mission).
+  standing in one another, very dense areas with 800 or more objects in a 100 m square, roads without parts, a player start in the sea, errors of the mission).
   A click goes to the place and selects the objects; doubled objects and those outside the map can
   be deleted from the list. Building checks the map first and waits on errors until they are
   fixed or you choose **Build anyway**; this can be turned off on the Build tab.

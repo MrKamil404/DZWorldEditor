@@ -54,7 +54,7 @@ losing anything (`DZWE_CE_DIR=<checkout> cargo test -p dz-core mission`).
 | `cfggameplay.json` | Stamina, base building, map, UI and other gameplay settings | Gameplay tab |
 | `cfgeffectarea.json` | Contaminated and other effect areas, safe positions | Effect areas tab, *Effect area* and *Safe position* tools, areas from shapes |
 | `cfgundergroundtriggers.json` | Trigger boxes darkening the view underground, breadcrumbs | Effect areas tab, *Underground trigger* tool |
-| `mapgroupproto.xml` | Loot points of each building class | Map groups tab: copy prototypes from another mission, empty prototypes |
+| `mapgroupproto.xml` | Loot points of each building class | Map groups tab; 3D loot point editor from the Content Browser right-click menu |
 | `mapgrouppos.xml` | Buildings of the map that hold loot, with position and angles | Map groups tab: made from the placed objects |
 | `mapclusterproto.xml` | Loot of clusters (fruit trees, stones) and the models that are clusters | Map groups tab |
 | `mapgroupcluster*.xml` | Cluster objects of the map | Made from the placed objects; otherwise copied as they are |
@@ -86,6 +86,27 @@ the number of value flags (8 for five, 4 for four).
 degrees, the yaw turning from the north towards the east (`atan2(dir.x, dir.z)` of the model's
 direction vector); `a` is 90° less the yaw, wrapped to (-180, 180]. Checked against the
 binarised Chernarus WRP.
+
+## mapgroupproto.xml (3D loot point editor)
+
+When the project has a server mission, right-click any building model in the **Content Browser**
+and choose **Edit loot points (mapgroupproto.xml)...** (or **Add to mapgroupproto.xml...** when
+the building has no entry yet) to open a standalone 3D preview and editor window:
+
+* **3D navigation**: uses the same GPU 3D fly-camera as the main terrain view — hold RMB and fly
+  with WASD/QE (Shift for faster movement, wheel while holding RMB for speed), wheel to zoom, MMB
+  to pan, `F` to frame the selected point, or use the **Iso**, **Top**, **Front**, **Side** and
+  **Inside** camera presets to fly straight inside rooms.
+* **Cut roof**: slides a horizontal clip plane down through the building in real time so upper
+  floors and interiors are easy to inspect.
+* **Placing and editing points**: the 3D view renders both the building and its visual **Proxies**
+  (furniture, tables, shelves). Turn on **Click 3D to add** and click any floor, table or shelf
+  (with a live target ring) to place a `<point>` in model coordinates (relative to the model's
+  bounding centre, matching DayZ). Drag the 3D **X/Y/Z gizmo** arrows on the selected point to
+  fine-tune its position, or drag the divider between the 3D view and the inspector to widen the
+  3D preview. Edit group `lootmax`, `deloot`, `usage` and `value` flags, containers (`lootFloor`,
+  `lootshelves`...) with `categories` and `tags`, and each point's `pos`, `range`, `height` and
+  outdoor `flags="32"`, then click **Save to mapgroupproto.xml**.
 
 ## Checks
 

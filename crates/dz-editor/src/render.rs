@@ -102,6 +102,7 @@ uniform mat4 u_vp;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
+uniform float u_clip_y;
 uniform vec3 u_eye;
 uniform float u_range[20];
 out vec3 v_world;
@@ -125,6 +126,7 @@ out vec4 o;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
+uniform float u_clip_y;
 uniform float u_world;
 uniform int u_mode;
 uniform vec3 u_eye;
@@ -136,6 +138,8 @@ uniform usampler2D u_holes;
 uniform int u_has_holes;
 uniform sampler2D u_flow;
 uniform int u_has_flow;
+uniform sampler2D u_density;
+uniform int u_has_density;
 uniform vec2 u_mask_size;
 uniform sampler2DArray u_layers, u_layer_normals;
 uniform float u_tile;
@@ -364,15 +368,22 @@ void main(){
   } else if (u_mode == 4) { // height
     float t = (v_world.y - u_height_range.x) / max(u_height_range.y - u_height_range.x, 1.0);
     col = ramp(t) * (0.45 + 0.55 * max(dot(n, u_sun), 0.0) / 0.8);
-  } else if (u_mode == 5) { // slope
+  } else if (u_mode == 5) { // slope (DayZ driveable <20, foot 20-42, impassable >42)
     float s = degrees(acos(clamp(n.y, -1.0, 1.0)));
-    col = mix(vec3(0.15,0.5,0.25), vec3(0.9,0.75,0.2), smoothstep(5.0,20.0,s));
-    col = mix(col, vec3(0.85,0.15,0.1), smoothstep(22.0,40.0,s));
-  } else { // water flow over the shaded hills
+    col = mix(vec3(0.15,0.52,0.25), vec3(0.92,0.78,0.18), smoothstep(10.0, 20.0, s));
+    col = mix(col, vec3(0.88,0.22,0.10), smoothstep(22.0, 42.0, s));
+    col = mix(col, vec3(0.45,0.05,0.45), smoothstep(42.0, 55.0, s));
+  } else if (u_mode == 6) { // water flow over the shaded hills
     float w = u_has_flow != 0 ? texture(u_flow, v_world.xz / u_world).r : 0.0;
     col = vec3(0.66, 0.62, 0.55) * light;
     col = mix(col, vec3(0.35, 0.62, 0.85), smoothstep(0.35, 0.6, w));
     col = mix(col, vec3(0.05, 0.2, 0.75), smoothstep(0.6, 0.85, w));
+  } else { // object density heatmap over shaded hills
+    float d = u_has_density != 0 ? texture(u_density, v_world.xz / u_world).r : 0.0;
+    col = vec3(0.58, 0.56, 0.52) * light;
+    vec3 heat = mix(vec3(0.15, 0.68, 0.30), vec3(0.95, 0.82, 0.15), smoothstep(0.05, 0.55, d));
+    heat = mix(heat, vec3(0.92, 0.14, 0.10), smoothstep(0.55, 0.95, d));
+    col = mix(col, heat, smoothstep(0.01, 0.12, d) * 0.82);
   }
   // Contours, land grid and tiles.
   if (u_grid.x > 0.0) {
@@ -458,6 +469,7 @@ uniform float u_decal_lift;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
+uniform float u_clip_y;
 uniform vec3 u_eye;
 out vec3 v_n; out vec2 v_uv; out vec2 v_uv2; out vec3 v_world; out vec3 v_round; flat out vec4 v_tint;
 flat out vec3 v_flow;
@@ -514,6 +526,7 @@ uniform int u_has_shadow;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
+uniform float u_clip_y;
 
 // Channels a compressed texture stores upside down, per slot.
 uniform vec4 u_inv[15];
@@ -557,6 +570,7 @@ float shadow(vec3 n){
 }
 //WATER
 void main(){
+  if (v_world.y > u_clip_y) discard;
   if (u_mode == 3) {
     // Rivers and ponds: how deep the water is over the ground under it.
     float depth = v_world.y - texture(u_height, (v_world.xz / u_cell + 0.5) / u_size).r;
@@ -909,9 +923,10 @@ pub enum Shading {
     Slope,
     /// Where water runs and gathers; see `dz_core::analysis::wetness`.
     Flow,
+    Density,
 }
 impl Shading {
-    pub const ALL: [Shading; 7] = [Shading::Lit, Shading::Satellite, Shading::Mask, Shading::Hillshade, Shading::Height, Shading::Slope, Shading::Flow];
+    pub const ALL: [Shading; 8] = [Shading::Lit, Shading::Satellite, Shading::Mask, Shading::Hillshade, Shading::Height, Shading::Slope, Shading::Flow, Shading::Density];
     pub fn name(self) -> &'static str {
         match self {
             Shading::Lit => "Lit",
@@ -921,6 +936,7 @@ impl Shading {
             Shading::Height => "Height",
             Shading::Slope => "Slope",
             Shading::Flow => "Water flow",
+            Shading::Density => "Object density",
         }
     }
 }
@@ -1222,6 +1238,7 @@ enum Upload {
     Detail { width: i32, height: i32, rgb: Vec<u8>, rect: [f32; 4] },
     Palette { colors: Vec<[u8; 3]>, averages: Vec<[u8; 3]> },
     Flow { width: i32, height: i32, data: Vec<u8> },
+    Density { width: i32, height: i32, data: Vec<u8> },
     Layer { index: i32, size: i32, rgba: Vec<u8>, normal: Vec<u8> },
     Mesh(Box<MeshData>),
     ClearModels,
@@ -1309,6 +1326,8 @@ pub struct Renderer {
     holes: Option<glow::Texture>,
     /// Where water gathers, for the water flow shading.
     flow: Option<glow::Texture>,
+    /// Object count heatmap per 100 m cell, for the object density shading.
+    density: Option<glow::Texture>,
     sat: Option<glow::Texture>,
     detail: Option<glow::Texture>,
     detail_rect: [f32; 4],
@@ -1478,6 +1497,10 @@ impl Renderer {
     pub fn set_flow(&mut self, width: usize, height: usize, data: Vec<u8>) {
         self.uploads.push(Upload::Flow { width: width as i32, height: height as i32, data });
     }
+    /// Object density heatmap, 0 to 255, on a grid over the whole map with row 0 on the south edge.
+    pub fn set_density(&mut self, width: usize, height: usize, data: Vec<u8>) {
+        self.uploads.push(Upload::Density { width: width as i32, height: height as i32, data });
+    }
     pub fn set_holes(&mut self, holes: &dz_core::holes::Holes, cols: usize, rows: usize) {
         let mut data = Vec::new();
         if !holes.is_empty() {
@@ -1627,6 +1650,9 @@ impl Renderer {
     pub fn best_lod(&self, model: u32, want: u8) -> Option<(u8, u32)> {
         let last = self.lod_counts.get(&model).map_or(want, |c| c.saturating_sub(1)).max(want);
         (want..=last).chain((0..want).rev()).find_map(|l| self.models.get(&(model, l)).map(|m| (l, m.triangles)))
+    }
+    pub fn has_model(&self, key: (u32, u8)) -> bool {
+        self.models.contains_key(&key)
     }
     /// Drops every model and texture, so they load again with the current settings.
     pub fn clear_models(&mut self) {
@@ -1844,6 +1870,17 @@ impl Renderer {
                     gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::R8 as i32, width, height, 0, glow::RED, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&data)));
                     set_filter(gl, glow::TEXTURE_2D, glow::LINEAR, glow::LINEAR, glow::CLAMP_TO_EDGE);
                     self.flow = Some(t);
+                }
+                Upload::Density { width, height, data } => {
+                    if let Some(t) = self.density.take() {
+                        gl.delete_texture(t);
+                    }
+                    let t = gl.create_texture()?;
+                    gl.bind_texture(glow::TEXTURE_2D, Some(t));
+                    gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+                    gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::R8 as i32, width, height, 0, glow::RED, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&data)));
+                    set_filter(gl, glow::TEXTURE_2D, glow::LINEAR, glow::LINEAR, glow::CLAMP_TO_EDGE);
+                    self.density = Some(t);
                 }
                 Upload::Holes { width, height, data } => {
                     if let Some(t) = self.holes.take() {
@@ -2353,6 +2390,7 @@ impl Renderer {
         gl.uniform_1_i32(u("u_conform").as_ref(), 0);
         gl.uniform_1_i32(u("u_mode").as_ref(), 0);
         gl.uniform_1_i32(u("u_has_shadow").as_ref(), 0);
+        gl.uniform_1_f32(u("u_clip_y").as_ref(), 1e9);
         gl.uniform_1_i32(u("u_tex").as_ref(), 0);
         gl.uniform_1_f32(u("u_alpha").as_ref(), 1.0);
         gl.uniform_4_f32_slice(u("u_inv").as_ref(), &[0.0; 60]);
@@ -2518,7 +2556,9 @@ impl Renderer {
         bind(7, glow::TEXTURE_2D, self.holes.or(Some(mask)), "u_holes");
         bind(8, glow::TEXTURE_2D_ARRAY, self.layer_normals, "u_layer_normals");
         bind(9, glow::TEXTURE_2D, self.flow.or(self.palette), "u_flow");
+        bind(10, glow::TEXTURE_2D, self.density.or(self.palette), "u_density");
         gl.uniform_1_i32(u(terrain, "u_has_flow").as_ref(), self.flow.is_some() as i32);
+        gl.uniform_1_i32(u(terrain, "u_has_density").as_ref(), self.density.is_some() as i32);
         gl.uniform_1_i32(u(terrain, "u_has_holes").as_ref(), self.holes.is_some() as i32);
         gl.uniform_1_i32(u(terrain, "u_has_shadow").as_ref(), self.shadow_valid as i32);
         gl.uniform_1_f32(u(terrain, "u_bias").as_ref(), f.shadow_bias);
@@ -2547,6 +2587,7 @@ impl Renderer {
         gl.uniform_3_f32(u(mesh_prog, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
         gl.uniform_1_i32(u(mesh_prog, "u_tex").as_ref(), 0);
         gl.uniform_1_f32(u(mesh_prog, "u_alpha").as_ref(), 1.0);
+        gl.uniform_1_f32(u(mesh_prog, "u_clip_y").as_ref(), 1e9);
         for k in 1..=14u32 {
             gl.uniform_1_i32(u(mesh_prog, &format!("u_m{k}")).as_ref(), material_unit(k) as i32);
         }
@@ -2710,7 +2751,7 @@ impl Renderer {
             stats.draw_calls += 1;
         }
 
-        if f.show_water && !matches!(f.shading, Shading::Mask | Shading::Height | Shading::Slope | Shading::Flow) {
+        if f.show_water && !matches!(f.shading, Shading::Mask | Shading::Height | Shading::Slope | Shading::Flow | Shading::Density) {
             gl.enable(glow::BLEND);
             gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
             gl.depth_mask(false);
@@ -2784,6 +2825,225 @@ impl Renderer {
         if let Some(slot) = self.view_stats.get_mut(f.viewport_key as usize) {
             *slot = stats;
         }
+    }
+}
+
+/// Parameters for rendering an isolated 3D building (and its visual proxies) inside a preview window.
+pub struct ModelPreviewFrame {
+    pub view: View,
+    /// `(model_key, 16-float instance transform)` — building plus any furniture/fitting proxies.
+    pub instances: Vec<((u32, u8), [f32; 16])>,
+    pub clip_y: Option<f32>,
+    /// Ground/floor plane under the building: `(center_x, floor_y, center_z, half_extent)`.
+    pub floor: [f32; 4],
+}
+
+impl Renderer {
+    /// Renders one or more GPU-loaded models (e.g. a building and its proxies) with daylight sky
+    /// lighting, a depth-tested ground plane, and an optional horizontal clip plane.
+    pub unsafe fn paint_model_preview(&mut self, gl: &glow::Context, f: &ModelPreviewFrame) {
+        if let Err(e) = self.init(gl).and_then(|_| self.process_uploads(gl)) {
+            self.error = Some(e);
+            return;
+        }
+        let Some(p) = &self.programs else { return };
+        let (mesh_prog, sky_prog) = (p.mesh, p.sky);
+        let now = self.now();
+        for (key, _) in &f.instances {
+            if let Some(m) = self.models.get_mut(key) {
+                m.used = now;
+            }
+        }
+        gl.enable(glow::DEPTH_TEST);
+        gl.depth_func(glow::LEQUAL);
+        gl.depth_mask(true);
+        gl.clear_depth_f32(1.0);
+        gl.clear_color(0.55, 0.66, 0.78, 1.0);
+        gl.clear(glow::DEPTH_BUFFER_BIT | glow::COLOR_BUFFER_BIT);
+        gl.disable(glow::CULL_FACE);
+        gl.disable(glow::BLEND);
+
+        // Bright daylight with strong sky ambient so shaded walls and building interiors stay clearly readable.
+        let sun = crate::camera::norm([0.35, 0.88, -0.32]);
+        let sun_col = [0.55f32, 0.54, 0.50];
+        let amb = [0.78f32, 0.80, 0.84];
+        let exposure = 1.05f32;
+
+        // Sky backdrop (same shader as the main 3D viewport).
+        {
+            let us = |n: &str| gl.get_uniform_location(sky_prog, n);
+            gl.depth_mask(false);
+            gl.disable(glow::DEPTH_TEST);
+            gl.use_program(Some(sky_prog));
+            gl.uniform_3_f32_slice(us("u_sun").as_ref(), &sun);
+            gl.uniform_3_f32_slice(us("u_sun_col").as_ref(), &sun_col);
+            gl.uniform_3_f32_slice(us("u_amb").as_ref(), &amb);
+            gl.uniform_1_f32(us("u_fog").as_ref(), 0.0);
+            gl.uniform_1_f32(us("u_exposure").as_ref(), exposure);
+            gl.uniform_1_f32(us("u_time").as_ref(), 0.0);
+            gl.uniform_3_f32_slice(us("u_f").as_ref(), &f.view.forward);
+            gl.uniform_3_f32_slice(us("u_r").as_ref(), &f.view.right);
+            gl.uniform_3_f32_slice(us("u_u").as_ref(), &f.view.up);
+            gl.uniform_2_f32(us("u_t").as_ref(), f.view.tan_half_fov * f.view.aspect, f.view.tan_half_fov);
+            gl.bind_vertex_array(self.quad_vao);
+            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+            gl.enable(glow::DEPTH_TEST);
+            gl.depth_mask(true);
+        }
+
+        let u = |n: &str| gl.get_uniform_location(mesh_prog, n);
+        gl.use_program(Some(mesh_prog));
+        gl.uniform_3_f32_slice(u("u_sun").as_ref(), &sun);
+        gl.uniform_3_f32_slice(u("u_sun_col").as_ref(), &sun_col);
+        gl.uniform_3_f32_slice(u("u_amb").as_ref(), &amb);
+        gl.uniform_1_f32(u("u_fog").as_ref(), 0.0);
+        gl.uniform_1_f32(u("u_exposure").as_ref(), exposure);
+        gl.uniform_1_f32(u("u_time").as_ref(), 0.0);
+        gl.uniform_matrix_4_f32_slice(u("u_vp").as_ref(), false, &f.view.vp);
+        gl.uniform_3_f32(u("u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
+        gl.uniform_1_i32(u("u_tex").as_ref(), 0);
+        gl.uniform_1_f32(u("u_alpha").as_ref(), 1.0);
+        gl.uniform_1_f32(u("u_clip_y").as_ref(), 1e9);
+        gl.uniform_1_i32(u("u_has_shadow").as_ref(), 0);
+        gl.uniform_1_i32(u("u_conform").as_ref(), 0);
+        gl.uniform_1_f32(u("u_decal_lift").as_ref(), 0.0);
+        gl.uniform_1_i32(u("u_mode").as_ref(), 0);
+        gl.uniform_1_i32(u("u_textured").as_ref(), 0);
+        gl.uniform_1_f32(u("u_cut").as_ref(), 0.0);
+        gl.uniform_1_i32(u("u_decal").as_ref(), 0);
+        gl.uniform_3_f32(u("u_top").as_ref(), -1.0, 0.0, 0.0);
+
+        // Depth-tested ground slab under the building so it never bleeds through walls.
+        if let (Some(box_vao), Some(box_buf)) = (self.box_vao, self.box_instances) {
+            let [fx, fy, fz, half] = f.floor;
+            let sx = (half * 2.5).max(8.0);
+            let slab: [f32; 16] = [
+                sx, 0.0, 0.0, fx,
+                0.0, 0.04, 0.0, fy - 0.025,
+                0.0, 0.0, sx, fz,
+                0.28, 0.30, 0.33, 0.95,
+            ];
+            gl.bind_vertex_array(Some(box_vao));
+            Self::bind_mesh_instances(gl, box_buf, 0);
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&slab), glow::STREAM_DRAW);
+            gl.draw_elements_instanced(glow::TRIANGLES, 36, glow::UNSIGNED_INT, 0, 1);
+        }
+
+        if f.instances.is_empty() {
+            gl.disable(glow::DEPTH_TEST);
+            gl.enable(glow::BLEND);
+            gl.bind_vertex_array(None);
+            gl.use_program(None);
+            return;
+        }
+
+        gl.uniform_1_f32(u("u_clip_y").as_ref(), f.clip_y.unwrap_or(1e9));
+        for k in 1..=14u32 {
+            gl.uniform_1_i32(u(&format!("u_m{k}")).as_ref(), material_unit(k) as i32);
+        }
+
+        const PREVIEW_SLOT: u8 = 254;
+        let buffer = match self.mesh_instances.get(&PREVIEW_SLOT) {
+            Some(b) => *b,
+            None => {
+                let b = gl.create_buffer().unwrap();
+                self.mesh_instances.insert(PREVIEW_SLOT, b);
+                b
+            }
+        };
+        let mut flat: Vec<f32> = Vec::with_capacity(f.instances.len() * 16);
+        for (_, mat) in &f.instances {
+            flat.extend_from_slice(mat);
+        }
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
+        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&flat), glow::STREAM_DRAW);
+        self.instances_uploaded.remove(&PREVIEW_SLOT);
+
+        let (mode_u, xf_u, xo_u, f0_u) = (u("u_mode"), u("u_xf"), u("u_xo"), u("u_f0"));
+        let (mc_u, power_u, cut_u, top_u, decal_u, inv_u, textured) = (
+            u("u_mc"), u("u_power"), u("u_cut"), u("u_top"), u("u_decal"), u("u_inv"), u("u_textured"),
+        );
+        gl.uniform_1_f32(cut_u.as_ref(), 0.0);
+        gl.uniform_3_f32(top_u.as_ref(), -1.0, 0.0, 0.0);
+
+        for pass in [PASS_OPAQUE, PASS_DECAL, PASS_BLEND, PASS_WATER] {
+            if pass != PASS_OPAQUE {
+                gl.enable(glow::BLEND);
+                gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+                gl.depth_mask(false);
+            }
+            if pass == PASS_DECAL || pass == PASS_BLEND {
+                gl.enable(glow::POLYGON_OFFSET_FILL);
+                gl.polygon_offset(-2.0, -2.0);
+            } else {
+                gl.disable(glow::POLYGON_OFFSET_FILL);
+            }
+            gl.uniform_1_i32(decal_u.as_ref(), (pass == PASS_DECAL || pass == PASS_BLEND) as i32);
+            for (idx, (key, _)) in f.instances.iter().enumerate() {
+                let Some(m) = self.models.get(key) else { continue };
+                if m.passes & pass == 0 {
+                    continue;
+                }
+                gl.bind_vertex_array(Some(m.vao));
+                Self::bind_mesh_instances(gl, buffer, idx as u32);
+                for (((start, n, tex, mat), batch_pass), flip) in m.batches.iter().zip(&m.batch_pass).zip(&m.batch_inv) {
+                    if *batch_pass != pass {
+                        continue;
+                    }
+                    match mat {
+                        _ if pass == PASS_WATER => gl.uniform_1_i32(mode_u.as_ref(), 3),
+                        Some(mt) => {
+                            gl.uniform_1_i32(mode_u.as_ref(), mt.mode);
+                            gl.uniform_4_f32_slice(xf_u.as_ref(), &mt.xf);
+                            gl.uniform_3_f32_slice(xo_u.as_ref(), &mt.xo);
+                            gl.uniform_1_f32(f0_u.as_ref(), mt.reflectance);
+                            gl.uniform_3_f32_slice(mc_u.as_ref(), &mt.colors);
+                            gl.uniform_4_f32_slice(inv_u.as_ref(), &mt.inv);
+                            gl.uniform_1_f32(power_u.as_ref(), mt.power);
+                            gl.uniform_1_f32(cut_u.as_ref(), mt.alpha_test);
+                            gl.uniform_3_f32_slice(top_u.as_ref(), &mt.top);
+                            if pass == PASS_BLEND {
+                                let additive = mt.blend == forest_core::model3d::Blend::Add;
+                                gl.blend_func(glow::SRC_ALPHA, if additive { glow::ONE } else { glow::ONE_MINUS_SRC_ALPHA });
+                            }
+                            for k in 1..15u32 {
+                                gl.active_texture(glow::TEXTURE0 + material_unit(k));
+                                gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[k as usize]));
+                            }
+                            gl.active_texture(glow::TEXTURE0);
+                            gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[0]));
+                        }
+                        None => {
+                            gl.uniform_1_i32(mode_u.as_ref(), 0);
+                            gl.uniform_1_f32(cut_u.as_ref(), 0.0);
+                            gl.uniform_4_f32_slice(inv_u.as_ref(), flip);
+                            gl.active_texture(glow::TEXTURE0);
+                            gl.bind_texture(glow::TEXTURE_2D, *tex);
+                        }
+                    }
+                    gl.uniform_1_i32(textured.as_ref(), tex.is_some() as i32);
+                    gl.draw_elements_instanced(glow::TRIANGLES, *n as i32, glow::UNSIGNED_INT, (*start * 4) as i32, 1);
+                }
+            }
+        }
+        gl.disable(glow::POLYGON_OFFSET_FILL);
+        gl.depth_mask(true);
+        gl.disable(glow::DEPTH_TEST);
+        gl.enable(glow::BLEND);
+        gl.bind_vertex_array(None);
+        gl.use_program(None);
+    }
+}
+
+pub fn preview_callback(r: Arc<std::sync::Mutex<Renderer>>, frame: ModelPreviewFrame) -> eframe::egui::PaintCallback {
+    let rect = frame.view.rect;
+    eframe::egui::PaintCallback {
+        rect,
+        callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
+            if let Ok(mut r) = r.lock() {
+                unsafe { r.paint_model_preview(painter.gl(), &frame) };
+            }
+        })),
     }
 }
 

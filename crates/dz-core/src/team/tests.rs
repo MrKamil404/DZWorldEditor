@@ -683,3 +683,48 @@ fn batch_merge_chains_pauses_on_conflicts_and_cancel_leaves_disk_untouched() {
     assert_eq!(final_c.objects.get(id_at(&final_c, 150.0)).unwrap().x, 150.0);
     assert!(incoming_ordered(&pc, "Team").ready.is_empty());
 }
+
+#[test]
+fn inspect_diff_reports_changed_tiles_and_objects() {
+    let dir = tempfile::tempdir().unwrap();
+    let (pa, pb, folder) = (dir.path().join("a"), dir.path().join("b"), dir.path().join("shared"));
+    std::fs::create_dir_all(&folder).unwrap();
+    let mut start_world = world();
+    // Place two known objects so one can be moved and one removed.
+    let m = start_world.objects.intern("dz\\structures\\house.p3d");
+    start_world.objects.insert(Obj { x: 100.0, z: 200.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 });
+    start_world.objects.insert(Obj { x: 300.0, z: 400.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 });
+    project::save(&start_world, &pa, SaveParts::ALL).unwrap();
+    start(&pa, &start_world, &folder.to_string_lossy()).unwrap();
+    let full = send_full(&pa, "Team", "2026-11-14_08-00-00").unwrap();
+    take_full(&full, &pb).unwrap();
+
+    // Ania edits height, mask, moves one object, deletes one, and adds a new one.
+    let mut ania = project::load(&pa).unwrap();
+    ania.base.set(5, 5, 30.0);
+    let mw = ania.mask.width;
+    ania.mask.data[2 * mw + 2] = 1;
+    let move_id = ania.objects.iter().find(|(_, o)| o.x == 100.0 && o.z == 200.0).unwrap().0;
+    let mut moved = *ania.objects.get(move_id).unwrap();
+    moved.x = 125.0;
+    ania.objects.update(move_id, moved);
+    let del_id = ania.objects.iter().find(|(_, o)| o.x == 300.0 && o.z == 400.0).unwrap().0;
+    ania.objects.remove(del_id);
+    let m2 = ania.objects.intern("dz\\structures\\shed.p3d");
+    ania.objects.insert(Obj { x: 500.0, z: 600.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m2, flags: 0 });
+    project::save(&ania, &pa, SaveParts::ALL).unwrap();
+    let (patch_file, _) = send(&pa, &ania, "Ania", "2026-11-14_09-00-00").unwrap();
+
+    // Bartek inspects Ania's patch against his current world.
+    let bartek = project::load(&pb).unwrap();
+    let diff = inspect_diff(&patch_file, &bartek).unwrap();
+    assert!(!diff.is_empty());
+    assert_eq!(diff.author, "Ania");
+    assert_eq!(diff.height_tiles.len(), 1);
+    assert_eq!(diff.mask_tiles.len(), 1);
+    assert_eq!(diff.objects_added, vec![[500.0, 600.0]]);
+    assert_eq!(diff.objects_changed, vec![[125.0, 200.0]]);
+    assert_eq!(diff.objects_removed, vec![[300.0, 400.0]]);
+    let b = diff.bounds.expect("bounds");
+    assert!(b[0] <= 125.0 && b[2] >= 500.0 && b[1] <= 200.0 && b[3] >= 600.0, "{b:?}");
+}

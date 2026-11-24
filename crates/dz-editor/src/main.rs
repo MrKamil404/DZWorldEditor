@@ -12,6 +12,7 @@ mod icons;
 mod keys;
 mod layout;
 mod library_ui;
+mod loot_proto_ui;
 mod goto;
 mod tool_icons;
 mod map_check;

@@ -482,6 +482,88 @@ impl Conditions {
     }
 }
 
+/// Object count per square cell across the map, with row 0 on the south edge (z = 0).
+#[derive(Clone, Debug, Default)]
+pub struct DensityGrid {
+    pub cols: usize,
+    pub rows: usize,
+    pub cell_m: f32,
+    pub counts: Vec<u32>,
+    pub max: u32,
+}
+
+impl DensityGrid {
+    /// Counts visible or exported objects per `cell_m` × `cell_m` square over `w`.
+    pub fn build(w: &World, cell_m: f32, exported_only: bool) -> Self {
+        let cell_m = cell_m.max(10.0);
+        let side = w.meta.size_m().max(cell_m);
+        let n = (side / cell_m).ceil().max(1.0) as usize;
+        let mut counts = vec![0u32; n * n];
+        for (_, o) in w.objects.iter() {
+            if exported_only && !w.object_exported(o) {
+                continue;
+            }
+            if !exported_only && !w.object_visible(o) {
+                continue;
+            }
+            if o.x < 0.0 || o.z < 0.0 || o.x >= side || o.z >= side {
+                continue;
+            }
+            let cx = ((o.x / cell_m) as usize).min(n - 1);
+            let cz = ((o.z / cell_m) as usize).min(n - 1);
+            counts[cz * n + cx] += 1;
+        }
+        let max = counts.iter().copied().max().unwrap_or(0);
+        Self { cols: n, rows: n, cell_m, counts, max }
+    }
+
+    /// 0..=255 heatmap image (row 0 on the south edge), gently smoothed so city centres read
+    /// cleanly; `red_at` objects per cell map to 255.
+    pub fn heatmap_u8(&self, red_at: f32) -> Vec<u8> {
+        let red_at = red_at.max(1.0);
+        let mut out = vec![0u8; self.cols * self.rows];
+        for z in 0..self.rows {
+            for x in 0..self.cols {
+                // Keep exact cell dominant (weight 4) with slight neighbour smoothing (weight 1).
+                let mut sum = self.counts[z * self.cols + x] as f32 * 4.0;
+                let mut w = 4.0f32;
+                for (dx, dz) in [(-1isize, 0), (1, 0), (0, -1), (0, 1)] {
+                    let (nx, nz) = (x as isize + dx, z as isize + dz);
+                    if nx >= 0 && nz >= 0 && (nx as usize) < self.cols && (nz as usize) < self.rows {
+                        sum += self.counts[nz as usize * self.cols + nx as usize] as f32;
+                        w += 1.0;
+                    }
+                }
+                let avg = sum / w;
+                // Preserve exact zero so empty terrain stays clean.
+                let t = if self.counts[z * self.cols + x] == 0 && avg < 1.0 {
+                    0.0
+                } else {
+                    (avg / red_at).clamp(0.0, 1.0).sqrt()
+                };
+                out[z * self.cols + x] = (t * 255.0).round() as u8;
+            }
+        }
+        out
+    }
+
+    /// Centres and counts of cells holding at least `threshold` objects, densest first.
+    pub fn hotspots(&self, threshold: u32, limit: usize) -> Vec<([f32; 2], usize)> {
+        let mut found: Vec<([f32; 2], usize)> = Vec::new();
+        for z in 0..self.rows {
+            for x in 0..self.cols {
+                let c = self.counts[z * self.cols + x];
+                if c >= threshold {
+                    found.push(([(x as f32 + 0.5) * self.cell_m, (z as f32 + 0.5) * self.cell_m], c as usize));
+                }
+            }
+        }
+        found.sort_by(|a, b| b.1.cmp(&a.1));
+        found.truncate(limit);
+        found
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -544,5 +626,23 @@ mod tests {
         assert!(c.test(&m, &n, 128.0, 4.0));
         assert!(!c.test(&m, &n, 4.0, 200.0));
         assert!(Conditions::default().test(&m, &n, 4.0, 200.0));
+    }
+
+    #[test]
+    fn object_density_counts_and_finds_hotspots() {
+        let mut w = World::new(WorldMeta::new("D", 64, 8.0), 10.0);
+        let m = w.objects.intern("dz\\structures\\a.p3d");
+        for i in 0..12 {
+            w.objects.insert(crate::objects::Obj { x: 120.0 + i as f32 * 2.0, z: 130.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 });
+        }
+        let g = DensityGrid::build(&w, 100.0, false);
+        assert_eq!(g.max, 12);
+        let hot = g.hotspots(10, 5);
+        assert_eq!(hot.len(), 1);
+        assert_eq!(hot[0].1, 12);
+        assert!((hot[0].0[0] - 150.0).abs() < 1.0 && (hot[0].0[1] - 150.0).abs() < 1.0);
+        let map = g.heatmap_u8(12.0);
+        assert_eq!(map.len(), g.cols * g.rows);
+        assert!(map[g.cols + 1] > 150);
     }
 }

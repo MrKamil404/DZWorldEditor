@@ -197,6 +197,8 @@ pub struct PlaceSettings {
     pub pad_margin: f32,
     /// New pads level the ground to the height of their object and follow it up and down.
     pub pad_follow: bool,
+    /// Clicks in 3D place objects on top of other objects (roofs, floors, decks) instead of only terrain.
+    pub snap_surface: bool,
 }
 
 pub struct LineSettings {
@@ -381,6 +383,7 @@ pub struct App {
     /// The terrain the water flow shading was worked out for, and when.
     flow_key: u64,
     flow_at: Option<Instant>,
+    density_rev: u64,
     /// Small pictures of the surface textures, for the layer tiles of the Paint panel.
     pub layer_thumbs: Vec<Option<egui::TextureHandle>>,
     pub road_catalog: Arc<Vec<dayz_road_tool::roads::CatalogPart>>,
@@ -475,6 +478,8 @@ pub struct App {
     pub detail_center: [f32; 2],
 
     pub selection: BTreeSet<u32>,
+    /// Objects temporarily hidden in the view during this session (not saved to the project).
+    pub hidden_objects: std::collections::HashSet<u32>,
     pub selected_modifier: Option<u64>,
     pub selection_rev: u64,
     /// The selection the outliner last scrolled to.
@@ -605,6 +610,8 @@ pub struct App {
     pub perf: Option<Vec<f32>>,
     /// The mission editor.
     pub mission: crate::mission_ui::MissionState,
+    /// Standalone 3D loot point editor for `mapgroupproto.xml`.
+    pub loot_proto: crate::loot_proto_ui::LootProtoUi,
     /// Team work: sending and merging the changes of several people.
     pub team: crate::team_ui::TeamUi,
 }
@@ -640,22 +647,22 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), shown_game_surfaces: false, goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, layer_thumbs: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), shown_game_surfaces: false, goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, density_rev: u64::MAX, layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, road_guard: (u64::MAX, 0), hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
             sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08, height: None },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false, into_modifier: true, target: None },
-            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, brush_density: 2.0, brush_avoid: false, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false },
+            place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, brush_density: 2.0, brush_avoid: false, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false, snap_surface: false },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None, live_keep: true }, live: Default::default(), road_parts: Default::default(),
             stroke: None, mask_stroke: None, mask_mod_stroke: None,
             camera: Camera { pos: [0.0, 300.0, 0.0], yaw: 0.8, pitch: -0.4, fov: settings.fov.clamp(20.0, 120.0).to_radians(), speed: camera_speed },
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
-            selection: BTreeSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
+            selection: BTreeSet::new(), hidden_objects: std::collections::HashSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
             task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
-            last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), team: Default::default(),
+            last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), loot_proto: Default::default(), team: Default::default(),
             settings,
         };
         app.rescan_assets();
@@ -1351,8 +1358,27 @@ impl App {
         self.flow_at = Some(Instant::now());
     }
 
+    /// Keeps the object density heatmap texture current while either view shows `Shading::Density`.
+    fn keep_density(&mut self) {
+        let needed = (self.view_mode != ViewMode::Top && self.shading3 == Shading::Density)
+            || (self.view_mode != ViewMode::Perspective && self.shading2 == Shading::Density);
+        if !needed {
+            return;
+        }
+        let Some(d) = &self.doc else { return };
+        let rev = d.world.objects.revision;
+        if rev == self.density_rev {
+            return;
+        }
+        let grid = dz_core::analysis::DensityGrid::build(&d.world, 100.0, false);
+        let data = grid.heatmap_u8(600.0);
+        self.renderer.lock().unwrap().set_density(grid.cols, grid.rows, data);
+        self.density_rev = rev;
+    }
+
     pub fn tick(&mut self) {
         self.keep_flow();
+        self.keep_density();
         self.sync_game_surfaces();
         self.warn_foreign_edits();
         let mut messages = Vec::new();
@@ -1621,6 +1647,8 @@ impl App {
         self.layer_averages.clear();
         self.detail_center = [f32::MIN, f32::MIN];
         self.selection.clear();
+        self.hidden_objects.clear();
+        self.density_rev = u64::MAX;
         self.selected_modifier = None;
         self.selection_rev += 1;
         self.top_center = [side * 0.5, side * 0.5];
@@ -1916,6 +1944,53 @@ impl App {
         doc.history.push(t("Underground"), Change::Objects(change));
         doc.dirty.objects = true;
         self.status = tf(if on { "Underground flag set on {0} objects" } else { "Underground flag cleared on {0} objects" }, &[&count]);
+    }
+
+    pub fn hide_selection(&mut self) {
+        if self.selection.is_empty() {
+            return;
+        }
+        let n = self.selection.len();
+        self.hidden_objects.extend(self.selection.iter().copied());
+        self.selection.clear();
+        self.selection_rev += 1;
+        self.info(tf("Hid {0} objects", &[&n.to_string()]));
+    }
+
+    pub fn show_hidden_objects(&mut self) {
+        if self.hidden_objects.is_empty() {
+            return;
+        }
+        self.hidden_objects.clear();
+        self.info(t("All hidden objects are shown again"));
+    }
+
+    /// Hides every visible object outside the selection, or restores all hidden objects if
+    /// everything outside the selection is already hidden.
+    pub fn isolate_selection(&mut self) {
+        let Some(doc) = &self.doc else { return };
+        if self.selection.is_empty() {
+            self.show_hidden_objects();
+            return;
+        }
+        let mut to_hide = Vec::new();
+        for (id, o) in doc.world.objects.iter() {
+            if doc.world.object_visible(o) && !self.selection.contains(&id) {
+                to_hide.push(id);
+            }
+        }
+        let already_isolated = !self.hidden_objects.is_empty() && to_hide.iter().all(|id| self.hidden_objects.contains(id));
+        if already_isolated {
+            self.show_hidden_objects();
+        } else {
+            for id in to_hide {
+                self.hidden_objects.insert(id);
+            }
+            for id in &self.selection {
+                self.hidden_objects.remove(id);
+            }
+            self.info(tf("Isolated {0} objects", &[&self.selection.len().to_string()]));
+        }
     }
 
     pub fn delete_selection(&mut self) {
@@ -3378,6 +3453,32 @@ impl App {
             let (list, missing) = dz_core::import::parse_tb_objects(&text, w, a, &db, false);
             for o in list {
                 w.objects.insert(o);
+            }
+            Ok(missing.into_iter().map(|m| format!("? {m}")).collect())
+        });
+    }
+
+    pub fn import_dayz_objects(&mut self) {
+        let Some(f) = rfd::FileDialog::new().add_filter("DayZ Editor / Object Spawner", &["dze", "json"]).pick_file() else { return };
+        let classes = crate::mission_ui::class_index(self);
+        let work_drive = self.settings.tools.work_drive.clone();
+        let layer_name = f.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "DayZ Editor".into());
+        self.import_into_project(t("Import DayZ Editor / Object Spawner"), move |w, a, _| {
+            let loaded = if classes.is_none() {
+                let root = PathBuf::from(&work_drive);
+                root.is_dir().then(|| dz_core::mission::classes::ClassIndex::scan_work_drive(&root))
+            } else {
+                None
+            };
+            let cls = classes.as_deref().or(loaded.as_ref());
+            let bytes = std::fs::read(&f)?;
+            let (list, missing) = dz_core::dayz_editor::parse_dayz_objects(&bytes, w, a, cls)?;
+            if !list.is_empty() {
+                let layer = w.add_object_layer(&layer_name);
+                for mut o in list {
+                    o.set_layer(layer);
+                    w.objects.insert(o);
+                }
             }
             Ok(missing.into_iter().map(|m| format!("? {m}")).collect())
         });
