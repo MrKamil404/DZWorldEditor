@@ -145,8 +145,8 @@ const SAT_TILE: usize = crate::satmod::TILE;
 pub const PATCH_EXT: &str = "dzpatch";
 const MAGIC: &[u8; 8] = b"DZPATCH1";
 const FORMAT: u32 = 3;
-/// Versions kept besides the base; older ones are removed.
-const KEEP_VERSIONS: usize = 4;
+/// Versions kept besides the base and versions still needed by waiting patches.
+const KEEP_VERSIONS: usize = 12;
 const SATELLITE: &str = "satellite.rgb";
 /// Settings of the map that are never merged: they make it another map.
 const FIXED_SETTINGS: [&str; 3] = ["terrain_size", "terrain_cell", "map_id"];
@@ -189,6 +189,9 @@ fn version_dir(project: &Path, id: u64) -> PathBuf {
 fn staging_dir(project: &Path) -> PathBuf {
     project.join(TEAM_DIR).join("staging")
 }
+fn batch_dir(project: &Path) -> PathBuf {
+    project.join(TEAM_DIR).join("batch")
+}
 pub fn has_version(project: &Path, id: u64) -> bool {
     project::is_project(&version_dir(project, id))
 }
@@ -201,14 +204,14 @@ fn link_or_copy(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Keeps `w` as the version `id`, with its mission. `satellite` is the file of its satellite
-/// image; a project shares it with the version when it did not change.
-pub fn save_version(project: &Path, w: &World, id: u64, keep: u64, satellite: Option<&Path>) -> Result<()> {
-    let dir = version_dir(project, id);
+/// Writes `w` as version `id` inside `versions_root` without pruning older versions.
+fn write_version_in(versions_root: &Path, w: &World, id: u64, satellite: Option<&Path>) -> Result<()> {
+    let dir = versions_root.join(format!("{id:016x}"));
     if project::is_project(&dir) {
         return Ok(());
     }
-    let tmp = versions_dir(project).join(format!("{id:016x}.tmp"));
+    std::fs::create_dir_all(versions_root)?;
+    let tmp = versions_root.join(format!("{id:016x}.tmp"));
     let _ = std::fs::remove_dir_all(&tmp);
     project::save(w, &tmp, SaveParts { height: true, mask: true, satellite: false, objects: true })?;
     if let Some(m) = &w.mission {
@@ -218,9 +221,37 @@ pub fn save_version(project: &Path, w: &World, id: u64, keep: u64, satellite: Op
         link_or_copy(s, &tmp.join(SATELLITE))?;
     }
     std::fs::rename(&tmp, &dir)?;
-    // The oldest versions go, but never the one changes are counted from.
-    let mut all: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(versions_dir(project))?.flatten()
-        .filter(|e| e.path().is_dir() && e.path() != version_dir(project, keep) && e.path() != dir && !e.path().extension().is_some_and(|x| x == "tmp"))
+    Ok(())
+}
+
+/// Writes `w` as version `id` in `.team/versions/` without pruning older versions.
+fn write_version(project: &Path, w: &World, id: u64, satellite: Option<&Path>) -> Result<()> {
+    write_version_in(&versions_dir(project), w, id, satellite)
+}
+
+/// Base versions still needed by waiting patches in the team folder.
+fn needed_bases(state: &TeamState) -> Vec<u64> {
+    if !state.started() {
+        return Vec::new();
+    }
+    std::fs::read_dir(&state.folder).into_iter().flatten().flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case(PATCH_EXT)))
+        .filter_map(|p| Patch::read_header(&p).ok())
+        .filter(|h| !state.seen.contains(&h.result))
+        .map(|h| h.base)
+        .collect()
+}
+
+/// Removes the oldest stored versions past `KEEP_VERSIONS`, never touching anything in `keep`.
+fn prune_versions(project: &Path, keep: &[u64]) -> Result<()> {
+    let vdir = versions_dir(project);
+    if !vdir.is_dir() {
+        return Ok(());
+    }
+    let protected: HashSet<PathBuf> = keep.iter().filter(|&&id| id != 0).map(|&id| version_dir(project, id)).collect();
+    let mut all: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(&vdir)?.flatten()
+        .filter(|e| e.path().is_dir() && !protected.contains(&e.path()) && !e.path().extension().is_some_and(|x| x == "tmp"))
         .map(|e| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), e.path()))
         .collect();
     all.sort();
@@ -228,6 +259,15 @@ pub fn save_version(project: &Path, w: &World, id: u64, keep: u64, satellite: Op
         let _ = std::fs::remove_dir_all(p);
     }
     Ok(())
+}
+
+/// Keeps `w` as the version `id`, with its mission. `satellite` is the file of its satellite
+/// image; a project shares it with the version when it did not change.
+pub fn save_version(project: &Path, w: &World, id: u64, keep: &[u64], satellite: Option<&Path>) -> Result<()> {
+    write_version(project, w, id, satellite)?;
+    let mut protected = keep.to_vec();
+    protected.push(id);
+    prune_versions(project, &protected)
 }
 
 pub fn load_version(project: &Path, id: u64) -> Result<World> {
@@ -259,6 +299,24 @@ pub struct Summary {
 impl Summary {
     pub fn is_empty(&self) -> bool {
         self.height_tiles + self.mask_tiles + self.satellite_tiles + self.objects_added + self.objects_changed + self.objects_removed == 0 && self.other.is_empty()
+    }
+    pub fn add_from(&mut self, o: &Summary) {
+        self.height_tiles += o.height_tiles;
+        self.mask_tiles += o.mask_tiles;
+        self.satellite_tiles += o.satellite_tiles;
+        self.objects_added += o.objects_added;
+        self.objects_changed += o.objects_changed;
+        self.objects_removed += o.objects_removed;
+        for name in &o.other {
+            if !self.other.contains(name) {
+                self.other.push(name.clone());
+            }
+        }
+        for name in &o.not_carried {
+            if !self.not_carried.contains(name) {
+                self.not_carried.push(name.clone());
+            }
+        }
     }
 }
 
@@ -1564,7 +1622,7 @@ fn place_of(v: &Value) -> Option<[f32; 2]> {
 pub fn start(project_dir: &Path, w: &World, folder: &str) -> Result<TeamState> {
     let mut state = TeamState::load(project_dir);
     let id = new_uid();
-    save_version(project_dir, w, id, state.base, Some(&project_dir.join(SATELLITE)))?;
+    save_version(project_dir, w, id, &[state.base], Some(&project_dir.join(SATELLITE)))?;
     state.base = id;
     state.seen.push(id);
     state.folder = folder.to_string();
@@ -1589,7 +1647,9 @@ pub fn send(project_dir: &Path, w: &World, author: &str, time: &str) -> Result<(
     let patch = diff(&base, Some(&version_dir(project_dir, state.base)), w, Some(project_dir), header)?;
     let summary = patch.header.summary.clone();
     let file = Path::new(&state.folder).join(format!("{}_{}_{result:016x}.{PATCH_EXT}", safe_name(time), safe_name(author)));
-    save_version(project_dir, w, result, state.base, Some(&project_dir.join(SATELLITE)))?;
+    let mut keep = needed_bases(&state);
+    keep.push(state.base);
+    save_version(project_dir, w, result, &keep, Some(&project_dir.join(SATELLITE)))?;
     atomic_write(&file, &patch.to_bytes()?)?;
     state.base = result;
     state.seen.push(result);
@@ -1597,20 +1657,67 @@ pub fn send(project_dir: &Path, w: &World, author: &str, time: &str) -> Result<(
     Ok((file, summary))
 }
 
-/// Patches in the team folder for this map that this copy has not merged or sent, oldest first.
-pub fn incoming(project_dir: &Path, map_id: &str) -> Vec<(PathBuf, PatchHeader)> {
+/// Waiting patches split into those ready to merge in dependency order (`base -> result`)
+/// and those whose base version is missing from this copy and from the waiting patches.
+#[derive(Default, Clone, Debug)]
+pub struct Incoming {
+    pub ready: Vec<(PathBuf, PatchHeader)>,
+    pub missing_base: Vec<(PathBuf, PatchHeader)>,
+}
+
+/// Orders patches so every patch comes after the one whose `result` is its `base`, breaking
+/// ties by timestamp (oldest first). Patches whose base cannot be reached go to `missing_base`.
+pub fn order_patches(mut patches: Vec<(PathBuf, PatchHeader)>, has_base: impl Fn(u64) -> bool) -> Incoming {
+    patches.sort_by(|a, b| (&a.1.time, a.1.result).cmp(&(&b.1.time, b.1.result)));
+    let mut available: HashSet<u64> = patches.iter().map(|(_, h)| h.base).filter(|&id| has_base(id)).collect();
+    let mut ready = Vec::with_capacity(patches.len());
+    while let Some(pos) = patches.iter().position(|(_, h)| available.contains(&h.base)) {
+        let item = patches.remove(pos);
+        available.insert(item.1.result);
+        ready.push(item);
+    }
+    Incoming { ready, missing_base: patches }
+}
+
+/// Patches in the team folder for this map that this copy has not merged or sent, split into
+/// mergeable patches in dependency order and those missing their base version.
+pub fn incoming_ordered(project_dir: &Path, map_id: &str) -> Incoming {
     let state = TeamState::load(project_dir);
     if !state.started() {
-        return Vec::new();
+        return Incoming::default();
     }
-    let mut out: Vec<(PathBuf, PatchHeader)> = std::fs::read_dir(&state.folder).into_iter().flatten().flatten()
+    let list: Vec<(PathBuf, PatchHeader)> = std::fs::read_dir(&state.folder).into_iter().flatten().flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case(PATCH_EXT)))
         .filter_map(|p| Patch::read_header(&p).ok().map(|h| (p, h)))
         .filter(|(_, h)| h.map_id == map_id && !state.seen.contains(&h.result))
         .collect();
-    out.sort_by(|a, b| a.1.time.cmp(&b.1.time));
-    out
+    order_patches(list, |id| has_version(project_dir, id))
+}
+
+/// Patches in the team folder for this map that this copy has not merged or sent, in
+/// dependency order (oldest first among independent patches).
+pub fn incoming(project_dir: &Path, map_id: &str) -> Vec<(PathBuf, PatchHeader)> {
+    let mut inc = incoming_ordered(project_dir, map_id);
+    inc.ready.extend(inc.missing_base);
+    inc.ready
+}
+
+/// Reconstructs the sender's version (`base + patch`) and stores it in `versions_root/<result>`
+/// so later patches can start from it. Does not prune older versions.
+fn save_theirs_version(versions_root: &Path, base_dir: &Path, base: &World, patch: &Patch, staging: &Path) -> Result<()> {
+    let result = patch.header.result;
+    if project::is_project(&versions_root.join(format!("{result:016x}"))) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(versions_root)?;
+    let theirs_sat = versions_root.join(format!("{result:016x}.satellite.tmp"));
+    let mut theirs = base.clone();
+    merge(base, patch, &mut theirs, Dirs { base: Some(base_dir), mine: Some(base_dir), satellite_out: Some(&theirs_sat), staging: Some(staging) }, &HashMap::new())?;
+    let sat = if theirs_sat.is_file() { theirs_sat.clone() } else { base_dir.join(SATELLITE) };
+    write_version_in(versions_root, &theirs, result, Some(&sat))?;
+    let _ = std::fs::remove_file(&theirs_sat);
+    Ok(())
 }
 
 /// A merge read and tried, waiting for the conflicts to be decided.
@@ -1643,13 +1750,7 @@ pub fn finish(project_dir: &Path, p: Prepared, choices: &HashMap<ConflictKey, Ch
     let staging = staging_dir(project_dir);
     let _ = std::fs::remove_dir_all(&staging);
     // The other person's state becomes a version this copy has, so later patches can start there.
-    let theirs_sat = versions_dir(project_dir).join(format!("{:016x}.satellite.tmp", header.result));
-    let mut theirs = base.clone();
-    merge(&base, &patch, &mut theirs, Dirs { base: Some(&base_dir), mine: Some(&base_dir), satellite_out: Some(&theirs_sat), staging: Some(&staging) }, &HashMap::new())?;
-    let sat = if theirs_sat.is_file() { theirs_sat.clone() } else { base_dir.join(SATELLITE) };
-    save_version(project_dir, &theirs, header.result, state.base, Some(&sat))?;
-    let _ = std::fs::remove_file(&theirs_sat);
-    drop(theirs);
+    save_theirs_version(&versions_dir(project_dir), &base_dir, &base, &patch, &staging)?;
     let satellite = project_dir.join(SATELLITE);
     let mut mine = project::load_with(project_dir, false)?;
     project::write_backup(&mine, &project_dir.join(TEAM_DIR).join("before-merge"), &safe_backup_name(time), 3, satellite.is_file().then_some(satellite.as_path()))
@@ -1665,7 +1766,273 @@ pub fn finish(project_dir: &Path, p: Prepared, choices: &HashMap<ConflictKey, Ch
     state.base = header.result;
     state.seen.push(header.result);
     state.save(project_dir)?;
+    let mut keep = needed_bases(&state);
+    keep.push(state.base);
+    prune_versions(project_dir, &keep)?;
     Ok(merged)
+}
+
+/// Result of merging one patch inside a batch.
+#[derive(Debug)]
+pub struct BatchPatchResult {
+    pub header: PatchHeader,
+    pub merged: Merged,
+}
+
+/// Combined summary of a completed batch merge.
+#[derive(Default, Debug)]
+pub struct BatchResult {
+    pub patches: Vec<BatchPatchResult>,
+    pub taken: Summary,
+    pub conflicts_decided: usize,
+    pub skipped: Vec<String>,
+    pub not_carried: Vec<String>,
+}
+
+/// A patch inside a batch that has conflicts waiting for user choices.
+pub struct BatchConflict {
+    pub index: usize,
+    pub total: usize,
+    pub header: PatchHeader,
+    pub merged: Merged,
+}
+
+/// Outcome of advancing a `MergeBatch`.
+pub enum BatchStep {
+    /// Stopped on a patch with conflicts; call `resolve` then `advance` to continue.
+    Conflicts(Box<BatchConflict>),
+    /// All patches in the queue have been merged in memory; call `commit` to save to disk.
+    Done,
+}
+
+struct PendingStep {
+    patch: Patch,
+    base: World,
+}
+
+/// Merges a sequence of patches in memory, pausing only on patches that have conflicts,
+/// then writes the project once with a single `.team/before-merge` backup.
+pub struct MergeBatch {
+    project_dir: PathBuf,
+    work_dir: PathBuf,
+    staging: PathBuf,
+    sat_dir: PathBuf,
+    sat_changed: bool,
+    mine: World,
+    queue: Vec<PathBuf>,
+    index: usize,
+    pending: Option<PendingStep>,
+    results: Vec<BatchPatchResult>,
+    committed: bool,
+}
+
+impl MergeBatch {
+    /// Starts a batch merge of `files` (already ordered by `incoming_ordered`) on top of the
+    /// saved project at `project_dir`. Nothing in the project is modified until `commit`.
+    pub fn start(project_dir: &Path, files: Vec<PathBuf>) -> Result<Self> {
+        let work_dir = batch_dir(project_dir);
+        let _ = std::fs::remove_dir_all(&work_dir);
+        let staging = work_dir.join("staging");
+        let mine = project::load_with(project_dir, false)?;
+        Ok(Self {
+            project_dir: project_dir.to_path_buf(),
+            work_dir,
+            staging,
+            sat_dir: project_dir.to_path_buf(),
+            sat_changed: false,
+            mine,
+            queue: files,
+            index: 0,
+            pending: None,
+            results: Vec::new(),
+            committed: false,
+        })
+    }
+
+    pub fn total(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn done(&self) -> usize {
+        self.index
+    }
+
+    fn batch_versions_dir(&self) -> PathBuf {
+        self.work_dir.join("versions")
+    }
+
+    fn resolve_version_dir(&self, id: u64) -> PathBuf {
+        let staged = self.batch_versions_dir().join(format!("{id:016x}"));
+        if project::is_project(&staged) { staged } else { version_dir(&self.project_dir, id) }
+    }
+
+    /// Merges clean patches automatically until either a patch has conflicts or the queue ends.
+    pub fn advance(&mut self) -> Result<BatchStep> {
+        ensure!(self.pending.is_none(), "Resolve the current conflicts before advancing");
+        while self.index < self.queue.len() {
+            let file = self.queue[self.index].clone();
+            let patch = Patch::from_bytes(&std::fs::read(&file).with_context(|| format!("{}", file.display()))?)?;
+            ensure!(patch.header.map_id == self.mine.meta.map_id, "The patch is for the map {}", patch.header.map_id);
+            let base_dir = self.resolve_version_dir(patch.header.base);
+            if !project::is_project(&base_dir) {
+                bail!("This copy does not have the version {:016x} the changes start from. Ask for a full copy of the project.", patch.header.base);
+            }
+            let base = project::load_with(&base_dir, false)?;
+            let trial_staging = self.work_dir.join("trial");
+            let _ = std::fs::remove_dir_all(&trial_staging);
+            let mut trial = self.mine.clone();
+            let trial_merged = merge(
+                &base,
+                &patch,
+                &mut trial,
+                Dirs { base: Some(&base_dir), mine: Some(&self.sat_dir), satellite_out: None, staging: Some(&trial_staging) },
+                &HashMap::new(),
+            );
+            let _ = std::fs::remove_dir_all(&trial_staging);
+            let trial_merged = trial_merged?;
+            if !trial_merged.conflicts.is_empty() {
+                let header = patch.header.clone();
+                self.pending = Some(PendingStep { patch, base });
+                return Ok(BatchStep::Conflicts(Box::new(BatchConflict {
+                    index: self.index,
+                    total: self.queue.len(),
+                    header,
+                    merged: trial_merged,
+                })));
+            }
+            self.apply_step(patch, base, &HashMap::new())?;
+            self.index += 1;
+        }
+        Ok(BatchStep::Done)
+    }
+
+    /// Applies the paused patch with the user's conflict choices. Call `advance` next.
+    pub fn resolve(&mut self, choices: &HashMap<ConflictKey, Choice>) -> Result<()> {
+        let PendingStep { patch, base } = self.pending.take().context("No conflicts waiting to be resolved")?;
+        self.apply_step(patch, base, choices)?;
+        self.index += 1;
+        Ok(())
+    }
+
+    fn apply_step(&mut self, patch: Patch, base: World, choices: &HashMap<ConflictKey, Choice>) -> Result<()> {
+        let header = patch.header.clone();
+        let base_dir = self.resolve_version_dir(header.base);
+        // Stage the sender's version inside the batch folder so chained patches can start from it,
+        // while cancelling the batch leaves `.team/versions/` completely untouched.
+        if !has_version(&self.project_dir, header.result) {
+            save_theirs_version(&self.batch_versions_dir(), &base_dir, &base, &patch, &self.staging)?;
+        }
+        let next_sat_dir = self.work_dir.join(format!("sat_{}", self.index));
+        let next_sat = if patch.body.satellite.is_some() {
+            std::fs::create_dir_all(&next_sat_dir)?;
+            Some(next_sat_dir.join(SATELLITE))
+        } else {
+            None
+        };
+        let merged = merge(
+            &base,
+            &patch,
+            &mut self.mine,
+            Dirs { base: Some(&base_dir), mine: Some(&self.sat_dir), satellite_out: next_sat.as_deref(), staging: Some(&self.staging) },
+            choices,
+        )?;
+        if next_sat.as_ref().is_some_and(|p| p.is_file()) {
+            if self.sat_changed {
+                let _ = std::fs::remove_dir_all(&self.sat_dir);
+            }
+            self.sat_dir = next_sat_dir;
+            self.sat_changed = true;
+        } else if next_sat.is_some() {
+            let _ = std::fs::remove_dir_all(&next_sat_dir);
+        }
+        self.results.push(BatchPatchResult { header, merged });
+        Ok(())
+    }
+
+    /// Writes the merged project to disk once, after a single `.team/before-merge` backup,
+    /// updates `TeamState`, and prunes old stored versions while keeping bases still needed.
+    pub fn commit(mut self, time: &str) -> Result<BatchResult> {
+        ensure!(self.pending.is_none(), "Resolve the current conflicts before committing");
+        if self.results.is_empty() {
+            self.committed = true;
+            let _ = std::fs::remove_dir_all(&self.work_dir);
+            return Ok(BatchResult::default());
+        }
+        let satellite = self.project_dir.join(SATELLITE);
+        let original = project::load_with(&self.project_dir, false)?;
+        project::write_backup(
+            &original,
+            &self.project_dir.join(TEAM_DIR).join("before-merge"),
+            &safe_backup_name(time),
+            3,
+            satellite.is_file().then_some(satellite.as_path()),
+        )
+        .context("copy of the project before merging")?;
+        drop(original);
+        // Move staged sender versions into `.team/versions/`.
+        let staged_versions = self.batch_versions_dir();
+        if staged_versions.is_dir() {
+            let vdir = versions_dir(&self.project_dir);
+            std::fs::create_dir_all(&vdir)?;
+            for e in std::fs::read_dir(&staged_versions)?.flatten() {
+                let src = e.path();
+                if src.is_dir() {
+                    let dst = vdir.join(e.file_name());
+                    if !project::is_project(&dst) {
+                        let _ = std::fs::remove_dir_all(&dst);
+                        std::fs::rename(&src, &dst)?;
+                    }
+                }
+            }
+        }
+        if self.sat_changed {
+            std::fs::rename(self.sat_dir.join(SATELLITE), &satellite)?;
+        }
+        project::save(&self.mine, &self.project_dir, SaveParts { height: true, mask: true, satellite: false, objects: true })?;
+        project::save_mission(&mut self.mine, &self.project_dir)?;
+        let mut state = TeamState::load(&self.project_dir);
+        let mut out = BatchResult::default();
+        for r in self.results.drain(..) {
+            state.base = r.header.result;
+            if !state.seen.contains(&r.header.result) {
+                state.seen.push(r.header.result);
+            }
+            out.taken.add_from(&r.merged.taken);
+            out.conflicts_decided += r.merged.conflicts.len();
+            for s in &r.merged.skipped {
+                if !out.skipped.contains(s) {
+                    out.skipped.push(s.clone());
+                }
+            }
+            for s in &r.header.summary.not_carried {
+                if !out.not_carried.contains(s) {
+                    out.not_carried.push(s.clone());
+                }
+            }
+            out.patches.push(r);
+        }
+        state.save(&self.project_dir)?;
+        let mut keep = needed_bases(&state);
+        keep.push(state.base);
+        prune_versions(&self.project_dir, &keep)?;
+        self.committed = true;
+        let _ = std::fs::remove_dir_all(&self.work_dir);
+        Ok(out)
+    }
+
+    /// Cancels the batch without modifying the project on disk.
+    pub fn cancel(mut self) {
+        self.committed = true;
+        let _ = std::fs::remove_dir_all(&self.work_dir);
+    }
+}
+
+impl Drop for MergeBatch {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = std::fs::remove_dir_all(&self.work_dir);
+        }
+    }
 }
 
 /// Backups are named like `2026-11-09_18-30-05`; `time` is expected in that form.

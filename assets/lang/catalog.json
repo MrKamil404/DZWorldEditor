@@ -4683,9 +4683,25 @@
   "de": "Zusammenführen",
   "pl": "Scal"
  },
+ "Its starting version is not here yet. Wait for the team folder to finish syncing, or ask for a full copy.": {
+  "de": "Die Ausgangsversion fehlt hier noch. Warte, bis der Teamordner synchronisiert ist, oder bitte um eine vollständige Kopie.",
+  "pl": "Brakuje tu jeszcze wersji bazowej dla tych zmian. Poczekaj na synchronizację folderu zespołu lub poproś o pełną kopię."
+ },
+ "Merge all ({0})": {
+  "de": "Alle zusammenführen ({0})",
+  "pl": "Scal wszystkie ({0})"
+ },
  "Merge all brush modifiers": {
   "de": "Alle Pinsel-Modifikatoren zusammenführen",
   "pl": "Scal wszystkie modyfikatory pędzla"
+ },
+ "Merge all changes ({0})": {
+  "de": "Alle Änderungen zusammenführen ({0})",
+  "pl": "Scal wszystkie zmiany ({0})"
+ },
+ "Merge and continue": {
+  "de": "Zusammenführen und fortfahren",
+  "pl": "Scal i kontynuuj"
  },
  "Merge changes of others": {
   "de": "Änderungen anderer zusammenführen",
@@ -4711,9 +4727,29 @@
   "de": "Änderungen von {0} zusammenführen",
   "pl": "Scal zmiany: {0}"
  },
+ "Merge the changes of {0} ({1}/{2})": {
+  "de": "Änderungen von {0} zusammenführen ({1}/{2})",
+  "pl": "Scal zmiany: {0} ({1}/{2})"
+ },
  "Merged the changes of {0}: {1}": {
   "de": "Änderungen von {0} zusammengeführt: {1}",
   "pl": "Scalono zmiany ({0}): {1}"
+ },
+ "Merged {0} patches ({1}): {2}": {
+  "de": "{0} Pakete zusammengeführt ({1}): {2}",
+  "pl": "Scalono {0} paczek zmian ({1}): {2}"
+ },
+ "Merges all ready changes in order. Patches without conflicts are applied automatically; you are only asked where changes clash.": {
+  "de": "Führt alle bereiten Änderungen der Reihe nach zusammen. Änderungen ohne Konflikte werden automatisch übernommen; gefragt wird nur bei Konflikten.",
+  "pl": "Scala wszystkie gotowe zmiany po kolei. Zmiany bez konfliktów wchodzą automatycznie; okno otworzy się tylko tam, gdzie wystąpi konflikt."
+ },
+ "Needs earlier changes on the list to be merged first. Use Merge all.": {
+  "de": "Erfordert zuerst das Zusammenführen früherer Änderungen aus der Liste. Nutze Alle zusammenführen.",
+  "pl": "Wymaga najpierw scalenia wcześniejszych zmian z listy. Użyj Scal wszystkie."
+ },
+ "Waiting for an earlier version": {
+  "de": "Wartet auf eine frühere Version",
+  "pl": "Czeka na wcześniejszą wersję"
  },
  "Merges each run of neighbouring modifiers of brush strokes into one. The mask stays as it is. In team work only your own modifiers are merged.": {
   "de": "Führt jede Folge benachbarter Modifikatoren aus Pinselstrichen zu einem zusammen. Die Maske bleibt, wie sie ist. Bei Teamarbeit werden nur deine eigenen Modifikatoren zusammengeführt.",

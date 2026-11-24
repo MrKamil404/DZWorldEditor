@@ -19,8 +19,10 @@ pen drive). It is in the **Team** menu.
 * Everyone works on their own copy as usual; nothing is locked.
 * In the evening one person clicks **Send my changes**. A small `.dzpatch` file with what changed
   since the shared version goes to the team folder.
-* The others see *Team (1)* in the menu and click **Merge**. What only the other person changed
-  is taken over, what only you changed stays. Where both changed the same thing, the merge
+* The others see *Team (1)* in the menu and click **Merge**. When several patches wait, **Merge all**
+  applies them in dependency order (oldest first among independent changes). Patches without
+  conflicts go through automatically; the merge window opens only where changes clash, and the
+  project is backed up and saved once at the end. Where both changed the same thing, the merge
   window lists it with a button that shows the place on the map, and you choose *Keep mine*,
   *Take theirs* or, for the terrain, *Add both* (the two height changes added together).
 * The one who merged sends their changes back; the first person merges them. Both now have the
@@ -78,9 +80,9 @@ travel in a patch: the patch says so, and a full copy is sent instead.
 ## Files
 
 * `.team\state.json` in the project: the team folder, the shared version and the patches merged.
-* `.team\versions\`: the last shared versions (four besides the base). They share the satellite
-  image with the project through hard links while it does not change; each version with a
-  changed image takes as much space as the image.
+* `.team\versions\`: recent shared versions (up to twelve besides the base and any versions still
+  needed by waiting patches). They share the satellite image with the project through hard links
+  while it does not change; each version with a changed image takes as much space as the image.
 * `.team\before-merge\`: a copy of the project from before each merge (the newest three). To go
   back, open the `project.dzwe` in it and use *Save as*.
 

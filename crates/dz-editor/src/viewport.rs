@@ -5329,6 +5329,10 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
                 crate::team_ui::begin_merge(app, f);
             }
         }
+        "teammergeall" => {
+            crate::team_ui::refresh(app);
+            crate::team_ui::begin_merge_all(app);
+        }
         "teammergego" => crate::team_ui::finish_merge(app),
         // `teamgive name` gives the selected objects to a layer of `name`.
         "teamgive" => crate::team_ui::give_selection(app, arg),
