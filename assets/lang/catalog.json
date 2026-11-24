@@ -10458,5 +10458,173 @@
  "© OpenStreetMap contributors, ODbL. Each kind of shape gets its own shape layer.": {
   "de": "© OpenStreetMap-Mitwirkende, ODbL. Jede Art von Formen bekommt eine eigene Formebene.",
   "pl": "© współtwórcy OpenStreetMap, ODbL. Każdy rodzaj kształtów dostaje własną warstwę."
+ },
+ "Edit loot points (mapgroupproto.xml)...": {
+  "de": "Loot-Punkte bearbeiten (mapgroupproto.xml)...",
+  "pl": "Edytuj punkty lootu (mapgroupproto.xml)..."
+ },
+ "Add to mapgroupproto.xml...": {
+  "de": "Zu mapgroupproto.xml hinzufügen...",
+  "pl": "Dodaj do mapgroupproto.xml..."
+ },
+ "Open the 3D loot point editor for this building in mapgroupproto.xml.": {
+  "de": "Öffnet den 3D-Editor für Loot-Punkte dieses Gebäudes in mapgroupproto.xml.",
+  "pl": "Otwiera edytor 3D punktów lootu tego budynku w mapgroupproto.xml."
+ },
+ "Loot points — {0}": {
+  "de": "Loot-Punkte — {0}",
+  "pl": "Punkty lootu — {0}"
+ },
+ "Iso": {
+  "de": "Iso",
+  "pl": "Izo"
+ },
+ "Front": {
+  "de": "Vorne",
+  "pl": "Przód"
+ },
+ "Side": {
+  "de": "Seite",
+  "pl": "Bok"
+ },
+ "Cut roof": {
+  "de": "Dach schneiden",
+  "pl": "Przekrój dachu"
+ },
+ "Slice the model horizontally to see inside rooms and floors.": {
+  "de": "Schneidet das Modell horizontal auf, um Räume und Böden zu sehen.",
+  "pl": "Przecina model poziomo, aby zajrzeć do wnętrza pomieszczeń i na podłogi."
+ },
+ "Click 3D to add": {
+  "de": "In 3D klicken zum Hinzufügen",
+  "pl": "Kliknij w 3D, aby dodać"
+ },
+ "Click a surface in the 3D preview to place a new loot point there.": {
+  "de": "Klicke auf eine Fläche in der 3D-Vorschau, um dort einen neuen Loot-Punkt zu setzen.",
+  "pl": "Kliknij powierzchnię w podglądzie 3D, aby postawić tam nowy punkt lootu."
+ },
+ "Show ranges": {
+  "de": "Radien anzeigen",
+  "pl": "Pokaż zasięgi"
+ },
+ "Drag to rotate · Click a point to select it": {
+  "de": "Ziehen zum Drehen · Punkt anklicken zum Auswählen",
+  "pl": "Przeciągnij, aby obrócić · Kliknij punkt, aby go zaznaczyć"
+ },
+ "Drag to rotate · Click a surface to add a loot point": {
+  "de": "Ziehen zum Drehen · Fläche anklicken, um Loot-Punkt hinzuzufügen",
+  "pl": "Przeciągnij, aby obrócić · Kliknij powierzchnię, aby dodać punkt lootu"
+ },
+ "Loading 3D preview...": {
+  "de": "3D-Vorschau wird geladen...",
+  "pl": "Wczytywanie podglądu 3D..."
+ },
+ "Could not load the 3D model for preview.": {
+  "de": "Das 3D-Modell konnte für die Vorschau nicht geladen werden.",
+  "pl": "Nie udało się wczytać modelu 3D do podglądu."
+ },
+ "This project has no mission yet.": {
+  "de": "Dieses Projekt hat noch keine Mission.",
+  "pl": "Ten projekt nie ma jeszcze misji."
+ },
+ "Create mission": {
+  "de": "Mission erstellen",
+  "pl": "Utwórz misję"
+ },
+ "Not yet in mapgroupproto.xml — edit and save to add it.": {
+  "de": "Noch nicht in mapgroupproto.xml — bearbeiten und speichern zum Hinzufügen.",
+  "pl": "Jeszcze nie ma w mapgroupproto.xml — edytuj i zapisz, aby dodać."
+ },
+ "Prototype class": {
+  "de": "Prototyp-Klasse",
+  "pl": "Klasa prototypu"
+ },
+ "Max loot": {
+  "de": "Max. Loot",
+  "pl": "Maks. lootu"
+ },
+ "Dynamic event loot (deloot)": {
+  "de": "Dynamisches Event-Loot (deloot)",
+  "pl": "Loot zdarzeń dynamicznych (deloot)"
+ },
+ "Usage flags": {
+  "de": "Verwendungs-Flags",
+  "pl": "Flagi przeznaczenia (usage)"
+ },
+ "Value flags": {
+  "de": "Wert-Flags",
+  "pl": "Flagi poziomu (value)"
+ },
+ "Containers": {
+  "de": "Container",
+  "pl": "Kontenery"
+ },
+ "Add container": {
+  "de": "Container hinzufügen",
+  "pl": "Dodaj kontener"
+ },
+ "Container name": {
+  "de": "Containername",
+  "pl": "Nazwa kontenera"
+ },
+ "Categories": {
+  "de": "Kategorien",
+  "pl": "Kategorie"
+ },
+ "Tags": {
+  "de": "Tags",
+  "pl": "Tagi"
+ },
+ "Loot points ({0})": {
+  "de": "Loot-Punkte ({0})",
+  "pl": "Punkty lootu ({0})"
+ },
+ "Add point": {
+  "de": "Punkt hinzufügen",
+  "pl": "Dodaj punkt"
+ },
+ "Point #{0}": {
+  "de": "Punkt #{0}",
+  "pl": "Punkt nr {0}"
+ },
+ "Position (X, Y, Z)": {
+  "de": "Position (X, Y, Z)",
+  "pl": "Pozycja (X, Y, Z)"
+ },
+ "Range": {
+  "de": "Radius",
+  "pl": "Zasięg"
+ },
+ "Outside / ground (flags=32)": {
+  "de": "Außen / Boden (flags=32)",
+  "pl": "Na zewnątrz / ziemia (flags=32)"
+ },
+ "Save to mapgroupproto.xml": {
+  "de": "In mapgroupproto.xml speichern",
+  "pl": "Zapisz do mapgroupproto.xml"
+ },
+ "Remove from mapgroupproto.xml": {
+  "de": "Aus mapgroupproto.xml entfernen",
+  "pl": "Usuń z mapgroupproto.xml"
+ },
+ "Saved loot points for {0} to mapgroupproto.xml.": {
+  "de": "Loot-Punkte für {0} in mapgroupproto.xml gespeichert.",
+  "pl": "Zapisano punkty lootu dla {0} w mapgroupproto.xml."
+ },
+ "Removed {0} from mapgroupproto.xml.": {
+  "de": "{0} aus mapgroupproto.xml entfernt.",
+  "pl": "Usunięto {0} z mapgroupproto.xml."
+ },
+ "Edit loot points": {
+  "de": "Loot-Punkte bearbeiten",
+  "pl": "Edytuj punkty lootu"
+ },
+ "Remove loot prototype": {
+  "de": "Loot-Prototyp entfernen",
+  "pl": "Usuń prototyp lootu"
+ },
+ "Enter a prototype class name first.": {
+  "de": "Gib zuerst einen Namen für die Prototyp-Klasse ein.",
+  "pl": "Najpierw wpisz nazwę klasy prototypu."
  }
 }

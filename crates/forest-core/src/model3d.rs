@@ -736,20 +736,108 @@ pub struct ViewFit {
 pub fn render_thumbnail(mesh: &ModelMesh, size: u32) -> Vec<u8> {
     // Flat models, such as road parts, would be a thin line from the side.
     let flat = mesh.max[1] - mesh.min[1] < 0.15 * (mesh.max[0] - mesh.min[0]).max(mesh.max[2] - mesh.min[2]);
-    render_view(mesh, size, 35f32.to_radians(), if flat { 55f32 } else { 8f32 }.to_radians()).0
+    render_view(mesh, size, 35f32.to_radians(), if flat { 55f32 } else { 8f32 }.to_radians(), None).0
 }
 
 /// Renderuje widok z boku do billboardu oraz jego dopasowanie do wymiarów modelu.
 pub fn render_impostor(mesh: &ModelMesh, size: u32) -> (Vec<u8>, ViewFit) {
-    render_view(mesh, size, 0.0, 0.0)
+    render_view(mesh, size, 0.0, 0.0, None)
 }
 
 /// A view of the model from the given angles, in radians, for a turning preview.
 pub fn render_preview(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32) -> Vec<u8> {
-    render_view(mesh, size, yaw, pitch).0
+    render_view(mesh, size, yaw, pitch, None).0
 }
 
-fn render_view(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32) -> (Vec<u8>, ViewFit) {
+/// A view of the model with an optional horizontal slice plane (`clip_y`: pixels above this
+/// model-space Y are discarded so building interiors and floors become visible), returning
+/// both the RGBA image and the orthographic `ViewFit` for projecting 3D overlays onto it.
+pub fn render_preview_clipped(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32, clip_y: Option<f32>) -> (Vec<u8>, ViewFit) {
+    render_view(mesh, size, yaw, pitch, clip_y)
+}
+
+#[inline]
+fn view_transform(p: [f32; 3], yaw: f32, pitch: f32) -> [f32; 3] {
+    let (sy, cy) = yaw.sin_cos();
+    let (sp, cp) = pitch.sin_cos();
+    let x = p[0] * cy + p[2] * sy;
+    let z = -p[0] * sy + p[2] * cy;
+    [x, p[1] * cp + z * sp, -p[1] * sp + z * cp]
+}
+
+#[inline]
+fn inv_view_transform(v: [f32; 3], yaw: f32, pitch: f32) -> [f32; 3] {
+    let (sy, cy) = yaw.sin_cos();
+    let (sp, cp) = pitch.sin_cos();
+    let y = v[1] * cp - v[2] * sp;
+    let z = v[1] * sp + v[2] * cp;
+    [v[0] * cy - z * sy, y, v[0] * sy + z * cy]
+}
+
+/// Projects a model-space point onto image pixel coordinates `[0..size, 0..size]` matching
+/// `render_preview_clipped`.
+pub fn project_point(p: [f32; 3], size: f32, yaw: f32, pitch: f32, fit: ViewFit) -> [f32; 2] {
+    let v = view_transform(p, yaw, pitch);
+    let scale = size / fit.world_size.max(1e-4);
+    let half = size * 0.5;
+    [half + (v[0] - fit.center[0]) * scale, half - (v[1] - fit.center[1]) * scale]
+}
+
+/// Casts an orthographic ray from pixel `(px, py)` in `[0..size, 0..size]` against `mesh`,
+/// ignoring hits above `clip_y`, and returns the nearest hit point in model space.
+pub fn pick_surface(mesh: &ModelMesh, px: f32, py: f32, size: f32, yaw: f32, pitch: f32, fit: ViewFit, clip_y: Option<f32>) -> Option<[f32; 3]> {
+    let scale = fit.world_size.max(1e-4) / size.max(1.0);
+    let half = size * 0.5;
+    let vx = fit.center[0] + (px - half) * scale;
+    let vy = fit.center[1] - (py - half) * scale;
+    let ro = inv_view_transform([vx, vy, -500.0], yaw, pitch);
+    let rd = inv_view_transform([0.0, 0.0, 1.0], yaw, pitch);
+    let sub = |a: [f32; 3], b: [f32; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let cross = |a: [f32; 3], b: [f32; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    let mut best: Option<(f32, [f32; 3])> = None;
+    for tri in mesh.indices.chunks_exact(3) {
+        let a = mesh.vertices[tri[0] as usize].pos;
+        let b = mesh.vertices[tri[1] as usize].pos;
+        let c = mesh.vertices[tri[2] as usize].pos;
+        if let Some(cy) = clip_y {
+            if a[1] > cy && b[1] > cy && c[1] > cy {
+                continue;
+            }
+        }
+        let e1 = sub(b, a);
+        let e2 = sub(c, a);
+        let h = cross(rd, e2);
+        let det = dot(e1, h);
+        if det.abs() < 1e-7 {
+            continue;
+        }
+        let inv = 1.0 / det;
+        let s = sub(ro, a);
+        let u = inv * dot(s, h);
+        if !(0.0..=1.0).contains(&u) {
+            continue;
+        }
+        let q = cross(s, e1);
+        let v = inv * dot(rd, q);
+        if v < 0.0 || u + v > 1.0 {
+            continue;
+        }
+        let t = inv * dot(e2, q);
+        if t <= 0.0 {
+            continue;
+        }
+        let hit = [ro[0] + rd[0] * t, ro[1] + rd[1] * t, ro[2] + rd[2] * t];
+        if clip_y.is_some_and(|cy| hit[1] > cy) {
+            continue;
+        }
+        if best.is_none_or(|b| t < b.0) {
+            best = Some((t, hit));
+        }
+    }
+    best.map(|(_, h)| h)
+}
+
+fn render_view(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32, clip_y: Option<f32>) -> (Vec<u8>, ViewFit) {
     let out_size = size as usize;
     let s = out_size * SUPERSAMPLE;
     let mut color = vec![[0u8; 4]; s * s];
@@ -814,6 +902,12 @@ fn render_view(mesh: &ModelMesh, size: u32, yaw: f32, pitch: f32) -> (Vec<u8>, V
                         continue;
                     }
                     let z = w0 * a[2] + w1 * b[2] + w2 * c[2];
+                    if let Some(cy) = clip_y {
+                        let wy = w0 * v[0].pos[1] + w1 * v[1].pos[1] + w2 * v[2].pos[1];
+                        if wy > cy {
+                            continue;
+                        }
+                    }
                     let o = y * s + x;
                     if z >= depth[o] {
                         continue;
@@ -937,6 +1031,22 @@ mod tests {
         assert_eq!(rgba.len(), 64 * 64 * 4);
         assert!((fit.world_size - 4.0 / 0.94).abs() < 1e-3, "{fit:?}");
         assert!((fit.center[1] - 2.0).abs() < 1e-3, "{fit:?}");
+    }
+
+    #[test]
+    fn clipped_preview_and_picking_work_together() {
+        let mesh = quad_mesh(); // x -1..1, y 0..4, z = 0
+        let (rgba, fit) = render_preview_clipped(&mesh, 64, 0.0, 0.0, Some(1.5));
+        let alpha = |p: [f32; 2]| rgba[(p[1].round() as usize * 64 + p[0].round() as usize) * 4 + 3];
+        let low = project_point([0.0, 0.8, 0.0], 64.0, 0.0, 0.0, fit);
+        let high = project_point([0.0, 3.0, 0.0], 64.0, 0.0, 0.0, fit);
+        assert_eq!(alpha(low), 255, "below clip plane stays visible");
+        assert_eq!(alpha(high), 0, "above clip plane is cut away");
+        let hit = pick_surface(&mesh, low[0], low[1], 64.0, 0.0, 0.0, fit, Some(1.5)).unwrap();
+        assert!((hit[0]).abs() < 0.05 && (hit[1] - 0.8).abs() < 0.05 && hit[2].abs() < 0.05, "{hit:?}");
+        assert!(pick_surface(&mesh, high[0], high[1], 64.0, 0.0, 0.0, fit, Some(1.5)).is_none());
+        let hit_hi = pick_surface(&mesh, high[0], high[1], 64.0, 0.0, 0.0, fit, None).unwrap();
+        assert!((hit_hi[1] - 3.0).abs() < 0.05, "{hit_hi:?}");
     }
 
     #[test]

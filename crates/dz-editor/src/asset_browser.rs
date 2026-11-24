@@ -909,6 +909,8 @@ enum Act {
     LibMovePrefabs(String, Vec<u64>),
     /// A prefab of the selected objects.
     NewPrefab,
+    /// Open the 3D loot point editor (`mapgroupproto.xml`) for this model.
+    LootPoints(String),
 }
 
 /// Menu that assigns the surface painted under models.
@@ -1596,6 +1598,16 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     if let (Pick::Prefab(id), 1) = (pick, group.len()) { event_group_menu(ui, app, *id, &mut acts); }
                                     if group.len() == 1 {
                                         if let Pick::Model(m) = pick {
+                                            if has_doc {
+                                                let proxy = dz_core::mission::gen::proxy_class(m);
+                                                let exists = app.doc.as_ref().and_then(|d| d.world.mission.as_deref()).is_some_and(|ms| dz_core::mission::proto::has_group(ms, &proxy));
+                                                let label = if exists { t("Edit loot points (mapgroupproto.xml)...") } else { t("Add to mapgroupproto.xml...") };
+                                                if ui.button(label).on_hover_text(t("Open the 3D loot point editor for this building in mapgroupproto.xml.")).clicked() {
+                                                    acts.push(Act::LootPoints(m.clone()));
+                                                    ui.close_menu();
+                                                }
+                                                ui.separator();
+                                            }
                                             if ui.button(t("Show in its folder")).clicked() { acts.push(Act::Go(Source::Drive(m.rsplit_once('\\').map_or("", |x| x.0).to_string()))); ui.close_menu(); }
                                             if ui.button(t("Copy the path")).clicked() { ui.ctx().copy_text(m.clone()); ui.close_menu(); }
                                         }
@@ -1904,6 +1916,7 @@ fn apply(app: &mut App, acts: Vec<Act>, picks: &[Pick]) {
                     }
                 }
             }
+            Act::LootPoints(m) => crate::loot_proto_ui::open(app, m),
         }
     }
 }

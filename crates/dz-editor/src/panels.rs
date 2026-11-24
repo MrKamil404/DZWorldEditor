@@ -54,6 +54,7 @@ pub fn ui(app: &mut App, ctx: &egui::Context) {
     }
     dialogs(app, ctx);
     crate::mission_ui::window(app, ctx);
+    crate::loot_proto_ui::window(app, ctx);
     crate::map_check::window(app, ctx);
     crate::goto::window(app, ctx);
     crate::team_ui::window(app, ctx);
