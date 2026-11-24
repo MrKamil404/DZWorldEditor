@@ -4516,20 +4516,25 @@ fn welcome(app: &mut App, ui: &mut egui::Ui) {
         if !app.settings.recent.is_empty() {
             ui.add_space(14.0);
             ui.weak(t("Recent projects"));
-            for d in app.settings.recent.clone().into_iter().take(8) {
-                let name = d.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-                ui.horizontal(|ui| {
-                    if ui.link(name).on_hover_text(d.display().to_string()).clicked() {
-                        app.open_project(d.clone());
-                    }
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::icons::X).small().color(theme::TEXT_DIM)).frame(false))
-                        .on_hover_text(t("Remove from recent projects"))
-                        .clicked()
-                    {
-                        app.settings.forget_recent(&d);
-                    }
-                });
-            }
+            ui.add_space(4.0);
+            ui.allocate_ui(vec2(size.x, 0.0), |ui| {
+                for d in app.settings.recent.clone().into_iter().take(8) {
+                    let name = d.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                    ui.horizontal(|ui| {
+                        if ui.link(name).on_hover_text(d.display().to_string()).clicked() {
+                            app.open_project(d.clone());
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::icons::X).small().color(theme::TEXT_DIM)).frame(false))
+                                .on_hover_text(t("Remove from recent projects"))
+                                .clicked()
+                            {
+                                app.settings.forget_recent(&d);
+                            }
+                        });
+                    });
+                }
+            });
         }
     });
 }
