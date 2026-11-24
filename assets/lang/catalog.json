@@ -10487,6 +10487,10 @@
   "de": "Seite",
   "pl": "Bok"
  },
+ "Inside": {
+  "de": "Innen",
+  "pl": "Wnętrze"
+ },
  "Cut roof": {
   "de": "Dach schneiden",
   "pl": "Przekrój dachu"
@@ -10507,21 +10511,17 @@
   "de": "Radien anzeigen",
   "pl": "Pokaż zasięgi"
  },
- "Drag to rotate · Click a point to select it": {
-  "de": "Ziehen zum Drehen · Punkt anklicken zum Auswählen",
-  "pl": "Przeciągnij, aby obrócić · Kliknij punkt, aby go zaznaczyć"
+ "RMB + WASD/QE: fly · Wheel: zoom/speed · MMB: pan · Click: select": {
+  "de": "RMT + WASD/QE: fliegen · Rad: Zoom/Tempo · MMT: schieben · Klick: auswählen",
+  "pl": "PPM + WASD/QE: lot · Kółko: zoom/prędkość · ŚPM: przesuwanie · LPM: wybór"
  },
- "Drag to rotate · Click a surface to add a loot point": {
-  "de": "Ziehen zum Drehen · Fläche anklicken, um Loot-Punkt hinzuzufügen",
-  "pl": "Przeciągnij, aby obrócić · Kliknij powierzchnię, aby dodać punkt lootu"
+ "RMB + WASD/QE: fly · Click a surface to add a loot point": {
+  "de": "RMT + WASD/QE: fliegen · Fläche anklicken, um Loot-Punkt hinzuzufügen",
+  "pl": "PPM + WASD/QE: lot · Kliknij powierzchnię, aby dodać punkt lootu"
  },
  "Loading 3D preview...": {
   "de": "3D-Vorschau wird geladen...",
   "pl": "Wczytywanie podglądu 3D..."
- },
- "Could not load the 3D model for preview.": {
-  "de": "Das 3D-Modell konnte für die Vorschau nicht geladen werden.",
-  "pl": "Nie udało się wczytać modelu 3D do podglądu."
  },
  "This project has no mission yet.": {
   "de": "Dieses Projekt hat noch keine Mission.",

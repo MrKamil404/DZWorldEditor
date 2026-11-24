@@ -102,6 +102,7 @@ uniform mat4 u_vp;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
+uniform float u_clip_y;
 uniform vec3 u_eye;
 uniform float u_range[20];
 out vec3 v_world;
@@ -125,6 +126,7 @@ out vec4 o;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
+uniform float u_clip_y;
 uniform float u_world;
 uniform int u_mode;
 uniform vec3 u_eye;
@@ -467,6 +469,7 @@ uniform float u_decal_lift;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
+uniform float u_clip_y;
 uniform vec3 u_eye;
 out vec3 v_n; out vec2 v_uv; out vec2 v_uv2; out vec3 v_world; out vec3 v_round; flat out vec4 v_tint;
 flat out vec3 v_flow;
@@ -523,6 +526,7 @@ uniform int u_has_shadow;
 uniform sampler2D u_height;
 uniform vec2 u_size;
 uniform float u_cell;
+uniform float u_clip_y;
 
 // Channels a compressed texture stores upside down, per slot.
 uniform vec4 u_inv[15];
@@ -566,6 +570,7 @@ float shadow(vec3 n){
 }
 //WATER
 void main(){
+  if (v_world.y > u_clip_y) discard;
   if (u_mode == 3) {
     // Rivers and ponds: how deep the water is over the ground under it.
     float depth = v_world.y - texture(u_height, (v_world.xz / u_cell + 0.5) / u_size).r;
@@ -1646,6 +1651,9 @@ impl Renderer {
         let last = self.lod_counts.get(&model).map_or(want, |c| c.saturating_sub(1)).max(want);
         (want..=last).chain((0..want).rev()).find_map(|l| self.models.get(&(model, l)).map(|m| (l, m.triangles)))
     }
+    pub fn has_model(&self, key: (u32, u8)) -> bool {
+        self.models.contains_key(&key)
+    }
     /// Drops every model and texture, so they load again with the current settings.
     pub fn clear_models(&mut self) {
         self.uploads.retain(|u| !matches!(u, Upload::Mesh(_)));
@@ -2382,6 +2390,7 @@ impl Renderer {
         gl.uniform_1_i32(u("u_conform").as_ref(), 0);
         gl.uniform_1_i32(u("u_mode").as_ref(), 0);
         gl.uniform_1_i32(u("u_has_shadow").as_ref(), 0);
+        gl.uniform_1_f32(u("u_clip_y").as_ref(), 1e9);
         gl.uniform_1_i32(u("u_tex").as_ref(), 0);
         gl.uniform_1_f32(u("u_alpha").as_ref(), 1.0);
         gl.uniform_4_f32_slice(u("u_inv").as_ref(), &[0.0; 60]);
@@ -2578,6 +2587,7 @@ impl Renderer {
         gl.uniform_3_f32(u(mesh_prog, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
         gl.uniform_1_i32(u(mesh_prog, "u_tex").as_ref(), 0);
         gl.uniform_1_f32(u(mesh_prog, "u_alpha").as_ref(), 1.0);
+        gl.uniform_1_f32(u(mesh_prog, "u_clip_y").as_ref(), 1e9);
         for k in 1..=14u32 {
             gl.uniform_1_i32(u(mesh_prog, &format!("u_m{k}")).as_ref(), material_unit(k) as i32);
         }
@@ -2815,6 +2825,166 @@ impl Renderer {
         if let Some(slot) = self.view_stats.get_mut(f.viewport_key as usize) {
             *slot = stats;
         }
+    }
+}
+
+/// Parameters for rendering a single isolated 3D model inside a floating preview window.
+pub struct ModelPreviewFrame {
+    pub view: View,
+    pub model_key: (u32, u8),
+    pub clip_y: Option<f32>,
+}
+
+impl Renderer {
+    /// Renders a single GPU-loaded model with studio lighting and an optional horizontal clip plane.
+    pub unsafe fn paint_model_preview(&mut self, gl: &glow::Context, f: &ModelPreviewFrame) {
+        if let Err(e) = self.init(gl).and_then(|_| self.process_uploads(gl)) {
+            self.error = Some(e);
+            return;
+        }
+        let Some(p) = &self.programs else { return };
+        let mesh_prog = p.mesh;
+        let now = self.now();
+        if let Some(m) = self.models.get_mut(&f.model_key) {
+            m.used = now;
+        }
+        gl.enable(glow::DEPTH_TEST);
+        gl.depth_func(glow::LEQUAL);
+        gl.depth_mask(true);
+        gl.clear_depth_f32(1.0);
+        gl.clear_color(0.13, 0.14, 0.17, 1.0);
+        gl.clear(glow::DEPTH_BUFFER_BIT | glow::COLOR_BUFFER_BIT);
+        gl.disable(glow::CULL_FACE);
+        gl.disable(glow::BLEND);
+
+        let Some(m) = self.models.get(&f.model_key) else {
+            gl.disable(glow::DEPTH_TEST);
+            gl.enable(glow::BLEND);
+            return;
+        };
+        let u = |n: &str| gl.get_uniform_location(mesh_prog, n);
+        gl.use_program(Some(mesh_prog));
+        // Studio lighting: crisp sun from upper front-right + soft neutral ambient so interiors stay readable.
+        let sun = crate::camera::norm([0.45, 0.85, 0.35]);
+        gl.uniform_3_f32_slice(u("u_sun").as_ref(), &sun);
+        gl.uniform_3_f32(u("u_sun_col").as_ref(), 1.0, 0.98, 0.94);
+        gl.uniform_3_f32(u("u_amb").as_ref(), 0.42, 0.45, 0.50);
+        gl.uniform_1_f32(u("u_fog").as_ref(), 0.0);
+        gl.uniform_1_f32(u("u_exposure").as_ref(), 1.0);
+        gl.uniform_1_f32(u("u_time").as_ref(), 0.0);
+        gl.uniform_matrix_4_f32_slice(u("u_vp").as_ref(), false, &f.view.vp);
+        gl.uniform_3_f32(u("u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
+        gl.uniform_1_i32(u("u_tex").as_ref(), 0);
+        gl.uniform_1_f32(u("u_alpha").as_ref(), 1.0);
+        gl.uniform_1_f32(u("u_clip_y").as_ref(), f.clip_y.unwrap_or(1e9));
+        gl.uniform_1_i32(u("u_has_shadow").as_ref(), 0);
+        gl.uniform_1_i32(u("u_conform").as_ref(), 0);
+        gl.uniform_1_f32(u("u_decal_lift").as_ref(), 0.0);
+        for k in 1..=14u32 {
+            gl.uniform_1_i32(u(&format!("u_m{k}")).as_ref(), material_unit(k) as i32);
+        }
+
+        const PREVIEW_SLOT: u8 = 254;
+        let buffer = match self.mesh_instances.get(&PREVIEW_SLOT) {
+            Some(b) => *b,
+            None => {
+                let b = gl.create_buffer().unwrap();
+                self.mesh_instances.insert(PREVIEW_SLOT, b);
+                b
+            }
+        };
+        const IDENTITY_INSTANCE: [f32; 16] = [
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            1.0, 1.0, 1.0, 0.0,
+        ];
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
+        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&IDENTITY_INSTANCE), glow::STREAM_DRAW);
+        self.instances_uploaded.remove(&PREVIEW_SLOT);
+
+        let (mode_u, xf_u, xo_u, f0_u) = (u("u_mode"), u("u_xf"), u("u_xo"), u("u_f0"));
+        let (mc_u, power_u, cut_u, top_u, decal_u, inv_u, textured) = (
+            u("u_mc"), u("u_power"), u("u_cut"), u("u_top"), u("u_decal"), u("u_inv"), u("u_textured"),
+        );
+        gl.uniform_1_f32(cut_u.as_ref(), 0.0);
+        gl.uniform_3_f32(top_u.as_ref(), -1.0, 0.0, 0.0);
+        gl.bind_vertex_array(Some(m.vao));
+        Self::bind_mesh_instances(gl, buffer, 0);
+
+        for pass in [PASS_OPAQUE, PASS_DECAL, PASS_BLEND, PASS_WATER] {
+            if m.passes & pass == 0 {
+                continue;
+            }
+            if pass != PASS_OPAQUE {
+                gl.enable(glow::BLEND);
+                gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+                gl.depth_mask(false);
+            }
+            if pass == PASS_DECAL || pass == PASS_BLEND {
+                gl.enable(glow::POLYGON_OFFSET_FILL);
+                gl.polygon_offset(-2.0, -2.0);
+            } else {
+                gl.disable(glow::POLYGON_OFFSET_FILL);
+            }
+            gl.uniform_1_i32(decal_u.as_ref(), (pass == PASS_DECAL || pass == PASS_BLEND) as i32);
+            for (((start, n, tex, mat), batch_pass), flip) in m.batches.iter().zip(&m.batch_pass).zip(&m.batch_inv) {
+                if *batch_pass != pass {
+                    continue;
+                }
+                match mat {
+                    _ if pass == PASS_WATER => gl.uniform_1_i32(mode_u.as_ref(), 3),
+                    Some(mt) => {
+                        gl.uniform_1_i32(mode_u.as_ref(), mt.mode);
+                        gl.uniform_4_f32_slice(xf_u.as_ref(), &mt.xf);
+                        gl.uniform_3_f32_slice(xo_u.as_ref(), &mt.xo);
+                        gl.uniform_1_f32(f0_u.as_ref(), mt.reflectance);
+                        gl.uniform_3_f32_slice(mc_u.as_ref(), &mt.colors);
+                        gl.uniform_4_f32_slice(inv_u.as_ref(), &mt.inv);
+                        gl.uniform_1_f32(power_u.as_ref(), mt.power);
+                        gl.uniform_1_f32(cut_u.as_ref(), mt.alpha_test);
+                        gl.uniform_3_f32_slice(top_u.as_ref(), &mt.top);
+                        if pass == PASS_BLEND {
+                            let additive = mt.blend == forest_core::model3d::Blend::Add;
+                            gl.blend_func(glow::SRC_ALPHA, if additive { glow::ONE } else { glow::ONE_MINUS_SRC_ALPHA });
+                        }
+                        for k in 1..15u32 {
+                            gl.active_texture(glow::TEXTURE0 + material_unit(k));
+                            gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[k as usize]));
+                        }
+                        gl.active_texture(glow::TEXTURE0);
+                        gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[0]));
+                    }
+                    None => {
+                        gl.uniform_1_i32(mode_u.as_ref(), 0);
+                        gl.uniform_1_f32(cut_u.as_ref(), 0.0);
+                        gl.uniform_4_f32_slice(inv_u.as_ref(), flip);
+                        gl.active_texture(glow::TEXTURE0);
+                        gl.bind_texture(glow::TEXTURE_2D, *tex);
+                    }
+                }
+                gl.uniform_1_i32(textured.as_ref(), tex.is_some() as i32);
+                gl.draw_elements_instanced(glow::TRIANGLES, *n as i32, glow::UNSIGNED_INT, (*start * 4) as i32, 1);
+            }
+        }
+        gl.disable(glow::POLYGON_OFFSET_FILL);
+        gl.depth_mask(true);
+        gl.disable(glow::DEPTH_TEST);
+        gl.enable(glow::BLEND);
+        gl.bind_vertex_array(None);
+        gl.use_program(None);
+    }
+}
+
+pub fn preview_callback(r: Arc<std::sync::Mutex<Renderer>>, frame: ModelPreviewFrame) -> eframe::egui::PaintCallback {
+    let rect = frame.view.rect;
+    eframe::egui::PaintCallback {
+        rect,
+        callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
+            if let Ok(mut r) = r.lock() {
+                unsafe { r.paint_model_preview(painter.gl(), &frame) };
+            }
+        })),
     }
 }
 

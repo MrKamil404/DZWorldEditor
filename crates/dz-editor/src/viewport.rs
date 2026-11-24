@@ -178,6 +178,53 @@ pub struct PickMesh {
     pub footprint: Footprint,
 }
 
+impl PickMesh {
+    /// Casts a ray `(ro, rd)` against this mesh in model coordinates, ignoring hits above `clip_y`.
+    pub fn raycast(&self, ro: [f32; 3], rd: [f32; 3], clip_y: Option<f32>) -> Option<[f32; 3]> {
+        let mut best: Option<(f32, [f32; 3])> = None;
+        for tri in self.triangles.chunks_exact(3) {
+            let a = self.positions[tri[0] as usize];
+            let b = self.positions[tri[1] as usize];
+            let c = self.positions[tri[2] as usize];
+            if let Some(cy) = clip_y {
+                if a[1] > cy && b[1] > cy && c[1] > cy {
+                    continue;
+                }
+            }
+            let e1 = sub(b, a);
+            let e2 = sub(c, a);
+            let h = cross(rd, e2);
+            let det = dot(e1, h);
+            if det.abs() < 1e-7 {
+                continue;
+            }
+            let inv = 1.0 / det;
+            let s = sub(ro, a);
+            let u = inv * dot(s, h);
+            if !(0.0..=1.0).contains(&u) {
+                continue;
+            }
+            let q = cross(s, e1);
+            let v = inv * dot(rd, q);
+            if v < 0.0 || u + v > 1.0 {
+                continue;
+            }
+            let t = inv * dot(e2, q);
+            if t <= 0.01 {
+                continue;
+            }
+            let hit = add(ro, mul(rd, t));
+            if clip_y.is_some_and(|cy| hit[1] > cy) {
+                continue;
+            }
+            if best.is_none_or(|b| t < b.0) {
+                best = Some((t, hit));
+            }
+        }
+        best.map(|(_, h)| h)
+    }
+}
+
 /// What of a model is over each cell of the ground, seen from above, in the model's own
 /// coordinates: for each cell the lowest height its geometry reaches there.
 pub struct Footprint {
