@@ -1,18 +1,23 @@
 //! Standalone 3D loot point preview and editor for `mapgroupproto.xml`.
 //!
-//! Opened from the Content Browser context menu on any building/model (`Pick::Model`).
-//! Renders the building directly on the GPU via OpenGL (`render::preview_callback`) with the
-//! same free-fly 3D camera controls as the terrain viewport (RMB + WASD/QE, Shift, MMB pan,
-//! scroll zoom/speed), an instant GPU horizontal roof-slice plane (`clip_y`), and 3D surface
-//! raycasting for placing DayZ-compliant `<point>` entries.
+//! Opened from the Content Browser context menu on any building/model (`Pick::Model`) when
+//! the project has a server mission. Renders the building and its visual proxies (furniture,
+//! tables, shelves) directly on the GPU via OpenGL (`render::preview_callback`) with the same
+//! free-fly 3D camera controls as the terrain viewport, an instant GPU horizontal roof-slice
+//! plane (`clip_y`), a 3D XYZ translation gizmo for selected points, and fast surface
+//! raycasting across both building and proxy geometry.
 use crate::app::App;
 use crate::camera::{add, dot, mul, norm, sub, Camera, View};
 use crate::i18n::{t, tf};
 use crate::icons;
 use crate::keys::{Action, Hold};
+use crate::proxies::ProxyPlace;
 use crate::render::{self, ModelPreviewFrame};
+use crate::viewport::{PickMesh, PROXY_BASE};
 use dz_core::mission::proto::{self, ContainerProto, GroupProto, LootPoint};
-use eframe::egui::{self, Color32, Key, PointerButton, Stroke, Vec2};
+use eframe::egui::{self, Color32, Key, PointerButton, Pos2, Stroke, Vec2};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Reserved model-id namespace for isolated 3D loot previews (never collides with map/mission/proxy ids).
 pub(crate) const PREVIEW_ID_BASE: u32 = 0x9000_0000;
@@ -25,6 +30,21 @@ const CONTAINER_COLORS: [Color32; 6] = [
     Color32::from_rgb(186, 104, 200), // violet
     Color32::from_rgb(255, 138, 101), // coral
 ];
+
+const IDENTITY_INSTANCE: [f32; 16] = [
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    1.0, 1.0, 1.0, 0.0,
+];
+
+#[derive(Clone, Copy)]
+struct GizmoDrag {
+    axis: usize,
+    origin_world: [f32; 3],
+    start_proto: [f32; 3],
+    start_t: f32,
+}
 
 pub struct LootProtoUi {
     pub open: bool,
@@ -45,6 +65,8 @@ pub struct LootProtoUi {
     clip_y: f32,
     add_mode: bool,
     show_ranges: bool,
+    show_proxies: bool,
+    gizmo_drag: Option<GizmoDrag>,
     dirty: bool,
 }
 
@@ -68,6 +90,8 @@ impl Default for LootProtoUi {
             clip_y: 2.5,
             add_mode: false,
             show_ranges: true,
+            show_proxies: true,
+            gizmo_drag: None,
             dirty: false,
         }
     }
@@ -119,6 +143,7 @@ pub fn open(app: &mut App, model: String) {
     ui.selected_container = 0;
     ui.selected_point = group.containers.first().and_then(|c| (!c.points.is_empty()).then_some(0));
     ui.group = group;
+    ui.gizmo_drag = None;
     ui.dirty = false;
     ui.add_mode = false;
     if info.known {
@@ -207,6 +232,15 @@ impl LootProtoUi {
     }
 }
 
+fn proxy_instance_matrix(p: &ProxyPlace) -> [f32; 16] {
+    [
+        p.axes[0][0], p.axes[1][0], p.axes[2][0], p.at[0],
+        p.axes[0][1], p.axes[1][1], p.axes[2][1], p.at[1],
+        p.axes[0][2], p.axes[1][2], p.axes[2][2], p.at[2],
+        1.0, 1.0, 1.0, 0.0,
+    ]
+}
+
 pub fn window(app: &mut App, ctx: &egui::Context) {
     if !app.loot_proto.open {
         return;
@@ -215,17 +249,51 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         app.loot_proto.open = false;
         return;
     }
-    // Keep requesting the model if it was evicted or not loaded yet.
+
+    // Load building LOD 0 and its visual proxies (furniture, shelves, tables).
+    app.proxies.poll();
     let model_key = (app.loot_proto.model_id, 0u8);
     let model_ready = app.renderer.lock().is_ok_and(|r| r.has_model(model_key));
     if !model_ready && !app.loot_proto.model.is_empty() {
         app.loader.request(model_key, &app.loot_proto.model);
     }
 
+    let mut instances: Vec<((u32, u8), [f32; 16])> = Vec::new();
+    instances.push((model_key, IDENTITY_INSTANCE));
+    let mut proxy_list: Option<Arc<Vec<ProxyPlace>>> = None;
+    if app.loot_proto.show_proxies && !app.loot_proto.model.is_empty() {
+        if let Some(list) = app.proxies.get(&app.loot_proto.model, &app.db, ctx) {
+            let renderer = app.renderer.lock().ok();
+            for p in list.iter() {
+                let pid = PROXY_BASE + p.model;
+                let key = (pid, 0u8);
+                let has = renderer.as_ref().is_some_and(|r| r.has_model(key));
+                if !has {
+                    if let Some(path) = app.proxies.models.get(p.model as usize) {
+                        app.loader.request(key, path);
+                    }
+                }
+                instances.push((key, proxy_instance_matrix(p)));
+            }
+            proxy_list = Some(list);
+        }
+    }
+
+    // Collect PickMeshes needed for building + proxy surface raycasting.
+    let building_pick = app.pick_meshes.get(&app.loot_proto.model_id).cloned();
+    let mut proxy_picks: HashMap<u32, Arc<PickMesh>> = HashMap::new();
+    if let Some(list) = &proxy_list {
+        for p in list.iter() {
+            let pid = PROXY_BASE + p.model;
+            if let Some(pm) = app.pick_meshes.get(&pid) {
+                proxy_picks.insert(p.model, pm.clone());
+            }
+        }
+    }
+
     let limits = proto::limits_lists(crate::mission_ui::mission(app));
     let title = tf("Loot points — {0}", &[&app.loot_proto.group.name]);
     let renderer = app.renderer.clone();
-    let pick_mesh = app.pick_meshes.get(&app.loot_proto.model_id).cloned();
     let keys = app.settings.keys.clone();
 
     let mut open = app.loot_proto.open;
@@ -235,32 +303,42 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     egui::Window::new(title)
         .id(egui::Id::new("loot_proto_editor_window"))
         .open(&mut open)
-        .default_size([1020.0, 640.0])
-        .min_size([780.0, 480.0])
+        .default_size([1120.0, 680.0])
+        .min_size([760.0, 460.0])
         .resizable(true)
+        .vscroll(false)
         .show(ctx, |ui| {
-            let content_h = ui.available_height().max(320.0);
-            ui.columns(2, |cols| {
-                draw_preview_column(
-                    &mut app.loot_proto,
-                    &mut cols[0],
-                    content_h,
-                    &renderer,
-                    model_key,
-                    model_ready,
-                    pick_mesh.as_deref(),
-                    &keys,
-                );
+            // Resizable right panel for mapgroupproto.xml fields; left/central area expands freely for 3D.
+            egui::SidePanel::right("loot_proto_right_panel")
+                .resizable(true)
+                .default_width(350.0)
+                .min_width(260.0)
+                .max_width(580.0)
+                .show_inside(ui, |ui| {
+                    draw_editor_panel(
+                        &mut app.loot_proto,
+                        ui,
+                        &limits,
+                        &mut save_requested,
+                        &mut remove_requested,
+                    );
+                });
 
-                draw_editor_column(
-                    &mut app.loot_proto,
-                    &mut cols[1],
-                    content_h,
-                    &limits,
-                    &mut save_requested,
-                    &mut remove_requested,
-                );
-            });
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show_inside(ui, |ui| {
+                    draw_preview_panel(
+                        &mut app.loot_proto,
+                        ui,
+                        &renderer,
+                        instances,
+                        model_ready,
+                        building_pick.as_deref(),
+                        proxy_list.as_deref().map(Vec::as_slice),
+                        &proxy_picks,
+                        &keys,
+                    );
+                });
         });
 
     app.loot_proto.open = open;
@@ -273,473 +351,666 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     }
 }
 
+/// Raycasts across both the building mesh and all visible proxy meshes (furniture, tables, shelves),
+/// returning the closest world-space hit point below `clip_y`.
+fn pick_scene_surface(
+    ro: [f32; 3],
+    rd: [f32; 3],
+    clip_y: Option<f32>,
+    building: Option<&PickMesh>,
+    proxies: Option<&[ProxyPlace]>,
+    proxy_picks: &HashMap<u32, Arc<PickMesh>>,
+) -> Option<[f32; 3]> {
+    let mut best: Option<(f32, [f32; 3])> = None;
+    if let Some(m) = building {
+        if let Some(hit) = m.raycast(ro, rd, clip_y) {
+            best = Some(hit);
+        }
+    }
+    if let Some(list) = proxies {
+        for p in list {
+            if let Some(pm) = proxy_picks.get(&p.model) {
+                if let Some(hit) = pm.raycast_transformed(ro, rd, p.axes, p.at, clip_y) {
+                    if best.is_none_or(|b| hit.0 < b.0) {
+                        best = Some(hit);
+                    }
+                }
+            }
+        }
+    }
+    best.map(|(_, h)| h)
+}
+
+/// Parameter `t` of the closest point on axis line `origin + t * dir` to camera ray `(ro, rd)`.
+fn axis_param(origin: [f32; 3], dir: [f32; 3], ro: [f32; 3], rd: [f32; 3]) -> Option<f32> {
+    let w0 = sub(origin, ro);
+    let b = dot(dir, rd);
+    let denom = 1.0 - b * b;
+    if denom.abs() < 1e-5 {
+        return None;
+    }
+    let d = dot(dir, w0);
+    let e = dot(rd, w0);
+    Some((b * e - d) / denom)
+}
+
+/// Shortest distance in pixels from point `p` to 2D segment `(a, b)`.
+fn dist_to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
+    let ab = b - a;
+    let len2 = ab.length_sq();
+    if len2 < 1e-5 {
+        return p.distance(a);
+    }
+    let t = ((p - a).dot(ab) / len2).clamp(0.0, 1.0);
+    p.distance(a + ab * t)
+}
+
+fn gizmo_length(eye: [f32; 3], origin: [f32; 3]) -> f32 {
+    let d = sub(origin, eye);
+    (dot(d, d).sqrt() * 0.14).clamp(0.25, 2.0)
+}
+
+fn gizmo_hit(v: &View, origin: [f32; 3], ptr: Pos2) -> Option<usize> {
+    let len = gizmo_length(v.eye, origin);
+    let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mut best: Option<(f32, usize)> = None;
+    for (i, dir) in axes.iter().enumerate() {
+        let end = add(origin, mul(*dir, len));
+        if let Some((a, b)) = v.segment(origin, end) {
+            let d = dist_to_segment(ptr, a, b);
+            if d <= 10.0 && best.is_none_or(|cur| d < cur.0) {
+                best = Some((d, i));
+            }
+        }
+    }
+    best.map(|(_, i)| i)
+}
+
+fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], active_axis: Option<usize>) {
+    let len = gizmo_length(v.eye, origin);
+    let axes = [
+        ([1.0, 0.0, 0.0], Color32::from_rgb(235, 75, 75), "X"),
+        ([0.0, 1.0, 0.0], Color32::from_rgb(80, 220, 95), "Y"),
+        ([0.0, 0.0, 1.0], Color32::from_rgb(80, 145, 245), "Z"),
+    ];
+    for (i, (dir, base_col, label)) in axes.iter().enumerate() {
+        let lit = active_axis == Some(i);
+        let col = if lit { Color32::from_rgb(255, 240, 80) } else { *base_col };
+        let end = add(origin, mul(*dir, len));
+        if let Some((a, b)) = v.segment(origin, end) {
+            painter.line_segment([a, b], Stroke::new(if lit { 3.5_f32 } else { 2.4_f32 }, col));
+            let d = b - a;
+            let dl = d.length();
+            if dl > 6.0 {
+                let u = d / dl;
+                let n = Vec2::new(-u.y, u.x);
+                let head = vec![b + u * 3.0, b - u * 8.0 + n * 4.5, b - u * 8.0 - n * 4.5];
+                painter.add(egui::Shape::convex_polygon(head, col, Stroke::NONE));
+                painter.text(b + u * 11.0, egui::Align2::CENTER_CENTER, *label, egui::FontId::proportional(11.0), col);
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-fn draw_preview_column(
+fn draw_preview_panel(
     st: &mut LootProtoUi,
     ui: &mut egui::Ui,
-    content_h: f32,
-    renderer: &std::sync::Arc<std::sync::Mutex<render::Renderer>>,
-    model_key: (u32, u8),
+    renderer: &Arc<std::sync::Mutex<render::Renderer>>,
+    instances: Vec<((u32, u8), [f32; 16])>,
     model_ready: bool,
-    pick_mesh: Option<&crate::viewport::PickMesh>,
+    building_pick: Option<&PickMesh>,
+    proxy_list: Option<&[ProxyPlace]>,
+    proxy_picks: &HashMap<u32, Arc<PickMesh>>,
     keys: &crate::keys::KeyMap,
 ) {
-    // Camera angle presets & mode controls
-    ui.horizontal_wrapped(|ui| {
-        if ui.small_button(t("Iso")).clicked() {
-            st.set_camera_preset(CameraPreset::Iso);
-        }
-        if ui.small_button(t("Top")).clicked() {
-            st.set_camera_preset(CameraPreset::Top);
-        }
-        if ui.small_button(t("Front")).clicked() {
-            st.set_camera_preset(CameraPreset::Front);
-        }
-        if ui.small_button(t("Side")).clicked() {
-            st.set_camera_preset(CameraPreset::Side);
-        }
-        if ui.small_button(t("Inside")).clicked() {
-            st.set_camera_preset(CameraPreset::Inside);
-        }
-        ui.separator();
-        ui.checkbox(&mut st.show_ranges, t("Show ranges"));
-        ui.separator();
-        ui.toggle_value(&mut st.add_mode, icons::with(icons::PLUS, &t("Click 3D to add")))
-            .on_hover_text(t("Click a surface in the 3D preview to place a new loot point there."));
-    });
-
-    // Horizontal roof slice slider (instant on GPU)
-    ui.horizontal(|ui| {
-        ui.checkbox(&mut st.clip_enabled, t("Cut roof"))
-            .on_hover_text(t("Slice the model horizontally to see inside rooms and floors."));
-        let lo = st.bounds_min[1];
-        let hi = st.bounds_max[1].max(lo + 0.2);
-        ui.add_enabled(
-            st.clip_enabled,
-            egui::Slider::new(&mut st.clip_y, lo..=hi).suffix(" m").fixed_decimals(2),
-        );
-    });
-
-    ui.add_space(4.0);
-
-    // 3D OpenGL viewport sized strictly inside `content_h` so the resizable window never grows by itself.
-    let view_h = (content_h - 104.0).max(200.0);
-    let avail = Vec2::new(ui.available_width().max(260.0), view_h);
-    let (rect, resp) = ui.allocate_exact_size(avail, egui::Sense::click_and_drag());
-    let ctx = ui.ctx();
-    let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
-
-    // ---------------- 3D camera controls (matching terrain 3D viewport) ----------------
-    let dt = ctx.input(|i| i.stable_dt).min(0.1);
-    let hover = resp.hovered() || resp.dragged();
-    let typing = ctx.wants_keyboard_input();
-    let (scroll, _mods) = ctx.input(|i| (i.smooth_scroll_delta.y, i.modifiers));
-    let looking = resp.dragged_by(PointerButton::Secondary);
-
-    if looking {
-        let d = resp.drag_delta();
-        st.camera.yaw += d.x * 0.0038;
-        st.camera.pitch = (st.camera.pitch - d.y * 0.0038).clamp(-1.54, 1.54);
-        if scroll != 0.0 {
-            st.camera.speed = (st.camera.speed * (scroll * 0.002).exp()).clamp(0.5, 60.0);
-        }
-        ctx.request_repaint();
-    } else if hover && scroll != 0.0 {
-        let f = st.camera.forward();
-        let dist = sub(st.camera.pos, st.box_center());
-        let step = (dot(dist, dist).sqrt() * 0.0035).clamp(0.05, 0.6);
-        st.camera.pos = add(st.camera.pos, mul(f, scroll * step));
-        ctx.request_repaint();
-    }
-    if resp.dragged_by(PointerButton::Middle) {
-        let d = resp.drag_delta();
-        let k = st.camera.speed * 0.008;
-        st.camera.pos = add(add(st.camera.pos, mul(v.right, -d.x * k)), mul(v.up, d.y * k));
-        ctx.request_repaint();
-    }
-    if (looking || hover) && !typing {
-        let (mut mv, mut fast) = ([0.0f32; 3], false);
-        ctx.input(|i| {
-            let f = st.camera.forward();
-            let r = st.camera.right();
-            fast = keys.held(Hold::Fast, i.modifiers);
-            if keys.down(i, Action::CameraForward) || i.key_down(Key::ArrowUp) { mv = add(mv, f); }
-            if keys.down(i, Action::CameraBack) || i.key_down(Key::ArrowDown) { mv = add(mv, mul(f, -1.0)); }
-            if keys.down(i, Action::CameraRight) || i.key_down(Key::ArrowRight) { mv = add(mv, r); }
-            if keys.down(i, Action::CameraLeft) || i.key_down(Key::ArrowLeft) { mv = add(mv, mul(r, -1.0)); }
-            if keys.down(i, Action::CameraUp) { mv = add(mv, [0.0, 1.0, 0.0]); }
-            if keys.down(i, Action::CameraDown) { mv = add(mv, [0.0, -1.0, 0.0]); }
-            // Press F to frame the selected point or building.
-            if i.key_pressed(Key::F) {
-                let target = st.selected_point
-                    .and_then(|pi| st.group.containers.get(st.selected_container)?.points.get(pi))
-                    .map(|pt| st.proto_to_world(pt.pos))
-                    .unwrap_or_else(|| st.box_center());
-                let f = st.camera.forward();
-                st.camera.pos = sub(target, mul(f, 3.0));
-            }
-        });
-        if dot(mv, mv) > 0.0 {
-            let speed = st.camera.speed * if fast { 3.0 } else { 1.0 };
-            st.camera.pos = add(st.camera.pos, mul(norm(mv), speed * dt));
-            ctx.request_repaint();
-        }
-    }
-
-    // Recompute view after camera movement so GPU render & overlays stay in perfect lockstep.
-    let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
-    let painter = ui.painter_at(rect);
-
-    // GPU 3D render callback (with sky lighting and depth-tested ground slab)
-    let c = st.box_center();
-    painter.add(render::preview_callback(
-        renderer.clone(),
-        ModelPreviewFrame {
-            view: v,
-            model_key,
-            clip_y: st.clip_param(),
-            floor: [c[0], st.bounds_min[1], c[2], st.box_radius()],
-        },
-    ));
-    painter.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, Color32::from_gray(55)), egui::StrokeKind::Inside);
-
-    if !model_ready {
-        painter.text(rect.center(), egui::Align2::CENTER_CENTER, t("Loading 3D preview..."), egui::FontId::proportional(13.0), Color32::GRAY);
-        ctx.request_repaint();
-    }
-
-    // Draw 3D loot points, range rings, and height stalks
-    for (ci, container) in st.group.containers.iter().enumerate() {
-        let base_col = CONTAINER_COLORS[ci % CONTAINER_COLORS.len()];
-        for (pi, pt) in container.points.iter().enumerate() {
-            let selected = ci == st.selected_container && st.selected_point == Some(pi);
-            let col = if selected { Color32::from_rgb(255, 240, 80) } else { base_col };
-            let w_foot = st.proto_to_world(pt.pos);
-            let w_top = [w_foot[0], w_foot[1] + pt.height, w_foot[2]];
-
-            if st.show_ranges && pt.range > 0.01 {
-                let stroke_w = if selected { 2.0_f32 } else { 1.2_f32 };
-                let ring_col = Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), if selected { 235 } else { 155 });
-                let mut prev = [w_foot[0] + pt.range, w_foot[1], w_foot[2]];
-                for k in 1..=20 {
-                    let a = k as f32 * std::f32::consts::TAU / 20.0;
-                    let cur = [w_foot[0] + pt.range * a.cos(), w_foot[1], w_foot[2] + pt.range * a.sin()];
-                    if let Some((p0, p1)) = v.segment(prev, cur) {
-                        painter.line_segment([p0, p1], Stroke::new(stroke_w, ring_col));
-                    }
-                    prev = cur;
-                }
-            }
-
-            if let Some((p0, p1)) = v.segment(w_foot, w_top) {
-                painter.line_segment(
-                    [p0, p1],
-                    Stroke::new(if selected { 2.2_f32 } else { 1.3_f32 }, Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 200)),
+    // Top toolbar inside the 3D area
+    egui::TopBottomPanel::top("loot_proto_3d_top")
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 0, right: 4, top: 0, bottom: 4 }))
+        .show_inside(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.small_button(t("Iso")).clicked() { st.set_camera_preset(CameraPreset::Iso); }
+                if ui.small_button(t("Top")).clicked() { st.set_camera_preset(CameraPreset::Top); }
+                if ui.small_button(t("Front")).clicked() { st.set_camera_preset(CameraPreset::Front); }
+                if ui.small_button(t("Side")).clicked() { st.set_camera_preset(CameraPreset::Side); }
+                if ui.small_button(t("Inside")).clicked() { st.set_camera_preset(CameraPreset::Inside); }
+                ui.separator();
+                ui.checkbox(&mut st.show_ranges, t("Show ranges"));
+                ui.checkbox(&mut st.show_proxies, t("Proxies"));
+                ui.separator();
+                ui.toggle_value(&mut st.add_mode, icons::with(icons::PLUS, &t("Click 3D to add")))
+                    .on_hover_text(t("Click a surface in the 3D preview to place a new loot point there."));
+            });
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut st.clip_enabled, t("Cut roof"))
+                    .on_hover_text(t("Slice the model horizontally to see inside rooms and floors."));
+                let lo = st.bounds_min[1];
+                let hi = st.bounds_max[1].max(lo + 0.2);
+                ui.add_enabled(
+                    st.clip_enabled,
+                    egui::Slider::new(&mut st.clip_y, lo..=hi).suffix(" m").fixed_decimals(2),
                 );
-            }
+            });
+        });
 
-            if let Some(foot) = v.project(w_foot) {
-                if rect.contains(foot) {
-                    let r = if selected { 6.0_f32 } else { 4.2_f32 };
-                    painter.circle_filled(foot, r, col);
-                    painter.circle_stroke(foot, r, Stroke::new(1.2_f32, Color32::BLACK));
-                    if pt.flags & 32 != 0 {
-                        painter.circle_stroke(foot, r + 2.5, Stroke::new(1.2_f32, Color32::from_rgb(255, 210, 90)));
-                    }
-                }
-            }
-        }
-    }
-
-    // LPM click: either place a new loot point on the 3D surface or select nearest point
-    if resp.clicked_by(PointerButton::Primary) {
-        if let Some(ptr) = resp.interact_pointer_pos() {
-            if st.add_mode {
-                if let Some(mesh) = pick_mesh {
-                    let (ro, rd) = v.ray(ptr);
-                    if let Some(hit) = mesh.raycast(ro, rd, st.clip_param()) {
-                        if st.group.containers.is_empty() {
-                            st.group.containers.push(ContainerProto::default());
-                            st.selected_container = 0;
-                        }
-                        let ci = st.selected_container.min(st.group.containers.len() - 1);
-                        let pt = LootPoint {
-                            pos: st.world_to_proto(hit),
-                            ..LootPoint::default()
-                        };
-                        let c = &mut st.group.containers[ci];
-                        c.points.push(pt);
-                        st.selected_point = Some(c.points.len() - 1);
-                        st.dirty = true;
-                    }
-                }
+    // Bottom hint strip inside the 3D area
+    egui::TopBottomPanel::bottom("loot_proto_3d_bottom")
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 0, right: 4, top: 4, bottom: 0 }))
+        .show_inside(ui, |ui| {
+            let hint = if st.add_mode {
+                t("RMB + WASD/QE: fly · Click a surface to add a loot point")
             } else {
-                let mut best: Option<(f32, usize, usize)> = None;
-                for (ci, container) in st.group.containers.iter().enumerate() {
-                    for (pi, pt) in container.points.iter().enumerate() {
-                        if let Some(s) = v.project(st.proto_to_world(pt.pos)) {
-                            let d = s.distance(ptr);
-                            if d <= 14.0 && best.is_none_or(|b| d < b.0) {
-                                best = Some((d, ci, pi));
+                t("RMB + WASD/QE: fly · Wheel: zoom/speed · MMB: pan · Click: select")
+            };
+            ui.weak(hint);
+            ui.weak(&st.model);
+        });
+
+    // Central 3D viewport filling the exact remaining rectangle (never grows the window!)
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show_inside(ui, |ui| {
+            let rect = ui.available_rect_before_wrap();
+            let resp = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+            let ctx = ui.ctx();
+            let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
+
+            // ---------------- 3D camera controls (matching terrain 3D viewport) ----------------
+            let dt = ctx.input(|i| i.stable_dt).min(0.1);
+            let hover = resp.hovered() || resp.dragged();
+            let typing = ctx.wants_keyboard_input();
+            let (scroll, _mods) = ctx.input(|i| (i.smooth_scroll_delta.y, i.modifiers));
+            let looking = resp.dragged_by(PointerButton::Secondary);
+
+            if looking {
+                let d = resp.drag_delta();
+                st.camera.yaw += d.x * 0.0038;
+                st.camera.pitch = (st.camera.pitch - d.y * 0.0038).clamp(-1.54, 1.54);
+                if scroll != 0.0 {
+                    st.camera.speed = (st.camera.speed * (scroll * 0.002).exp()).clamp(0.5, 60.0);
+                }
+                ctx.request_repaint();
+            } else if hover && scroll != 0.0 {
+                let f = st.camera.forward();
+                let dist = sub(st.camera.pos, st.box_center());
+                let step = (dot(dist, dist).sqrt() * 0.0035).clamp(0.05, 0.6);
+                st.camera.pos = add(st.camera.pos, mul(f, scroll * step));
+                ctx.request_repaint();
+            }
+            if resp.dragged_by(PointerButton::Middle) {
+                let d = resp.drag_delta();
+                let k = st.camera.speed * 0.008;
+                st.camera.pos = add(add(st.camera.pos, mul(v.right, -d.x * k)), mul(v.up, d.y * k));
+                ctx.request_repaint();
+            }
+            if (looking || hover) && !typing {
+                let (mut mv, mut fast) = ([0.0f32; 3], false);
+                ctx.input(|i| {
+                    let f = st.camera.forward();
+                    let r = st.camera.right();
+                    fast = keys.held(Hold::Fast, i.modifiers);
+                    if keys.down(i, Action::CameraForward) || i.key_down(Key::ArrowUp) { mv = add(mv, f); }
+                    if keys.down(i, Action::CameraBack) || i.key_down(Key::ArrowDown) { mv = add(mv, mul(f, -1.0)); }
+                    if keys.down(i, Action::CameraRight) || i.key_down(Key::ArrowRight) { mv = add(mv, r); }
+                    if keys.down(i, Action::CameraLeft) || i.key_down(Key::ArrowLeft) { mv = add(mv, mul(r, -1.0)); }
+                    if keys.down(i, Action::CameraUp) { mv = add(mv, [0.0, 1.0, 0.0]); }
+                    if keys.down(i, Action::CameraDown) { mv = add(mv, [0.0, -1.0, 0.0]); }
+                    if i.key_pressed(Key::F) {
+                        let target = st.selected_point
+                            .and_then(|pi| st.group.containers.get(st.selected_container)?.points.get(pi))
+                            .map(|pt| st.proto_to_world(pt.pos))
+                            .unwrap_or_else(|| st.box_center());
+                        let f = st.camera.forward();
+                        st.camera.pos = sub(target, mul(f, 3.0));
+                    }
+                });
+                if dot(mv, mv) > 0.0 {
+                    let speed = st.camera.speed * if fast { 3.0 } else { 1.0 };
+                    st.camera.pos = add(st.camera.pos, mul(norm(mv), speed * dt));
+                    ctx.request_repaint();
+                }
+            }
+
+            let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
+
+            // ---------------- Gizmo interaction (LPM drag on X/Y/Z axis) ----------------
+            let selected_world = st.selected_point
+                .and_then(|pi| st.group.containers.get(st.selected_container)?.points.get(pi))
+                .map(|pt| (pt.pos, st.proto_to_world(pt.pos)));
+
+            let hover_pos = resp.hover_pos();
+            let hover_axis = match (&st.gizmo_drag, selected_world, hover_pos) {
+                (Some(drag), _, _) => Some(drag.axis),
+                (None, Some((_, origin)), Some(ptr)) => gizmo_hit(&v, origin, ptr),
+                _ => None,
+            };
+
+            if resp.drag_started_by(PointerButton::Primary) {
+                if let (Some((proto_pos, origin)), Some(ptr)) = (selected_world, resp.interact_pointer_pos()) {
+                    if let Some(axis) = gizmo_hit(&v, origin, ptr) {
+                        let mut dir = [0.0f32; 3];
+                        dir[axis] = 1.0;
+                        let (ro, rd) = v.ray(ptr);
+                        if let Some(t) = axis_param(origin, dir, ro, rd) {
+                            st.gizmo_drag = Some(GizmoDrag {
+                                axis,
+                                origin_world: origin,
+                                start_proto: proto_pos,
+                                start_t: t,
+                            });
+                        }
+                    }
+                }
+            }
+            if let Some(drag) = st.gizmo_drag {
+                if resp.dragged_by(PointerButton::Primary) {
+                    if let Some(ptr) = resp.interact_pointer_pos() {
+                        let mut dir = [0.0f32; 3];
+                        dir[drag.axis] = 1.0;
+                        let (ro, rd) = v.ray(ptr);
+                        if let Some(t) = axis_param(drag.origin_world, dir, ro, rd) {
+                            if let Some(pi) = st.selected_point {
+                                if let Some(pt) = st.group.containers.get_mut(st.selected_container).and_then(|c| c.points.get_mut(pi)) {
+                                    pt.pos = drag.start_proto;
+                                    pt.pos[drag.axis] += t - drag.start_t;
+                                    st.dirty = true;
+                                }
+                            }
+                        }
+                    }
+                    ctx.request_repaint();
+                } else {
+                    st.gizmo_drag = None;
+                }
+            }
+
+            let painter = ui.painter_at(rect);
+
+            // GPU 3D render callback (building + visual proxies + sky lighting + depth-tested ground slab)
+            let c = st.box_center();
+            painter.add(render::preview_callback(
+                renderer.clone(),
+                ModelPreviewFrame {
+                    view: v,
+                    instances,
+                    clip_y: st.clip_param(),
+                    floor: [c[0], st.bounds_min[1], c[2], st.box_radius()],
+                },
+            ));
+            painter.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, Color32::from_gray(55)), egui::StrokeKind::Inside);
+
+            if !model_ready {
+                painter.text(rect.center(), egui::Align2::CENTER_CENTER, t("Loading 3D preview..."), egui::FontId::proportional(13.0), Color32::GRAY);
+                ctx.request_repaint();
+            }
+
+            // Draw 3D loot points, range rings, and height stalks
+            for (ci, container) in st.group.containers.iter().enumerate() {
+                let base_col = CONTAINER_COLORS[ci % CONTAINER_COLORS.len()];
+                for (pi, pt) in container.points.iter().enumerate() {
+                    let selected = ci == st.selected_container && st.selected_point == Some(pi);
+                    let col = if selected { Color32::from_rgb(255, 240, 80) } else { base_col };
+                    let w_foot = st.proto_to_world(pt.pos);
+                    let w_top = [w_foot[0], w_foot[1] + pt.height, w_foot[2]];
+
+                    if st.show_ranges && pt.range > 0.01 {
+                        let stroke_w = if selected { 2.0_f32 } else { 1.2_f32 };
+                        let ring_col = Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), if selected { 235 } else { 155 });
+                        let mut prev = [w_foot[0] + pt.range, w_foot[1], w_foot[2]];
+                        for k in 1..=20 {
+                            let a = k as f32 * std::f32::consts::TAU / 20.0;
+                            let cur = [w_foot[0] + pt.range * a.cos(), w_foot[1], w_foot[2] + pt.range * a.sin()];
+                            if let Some((p0, p1)) = v.segment(prev, cur) {
+                                painter.line_segment([p0, p1], Stroke::new(stroke_w, ring_col));
+                            }
+                            prev = cur;
+                        }
+                    }
+
+                    if let Some((p0, p1)) = v.segment(w_foot, w_top) {
+                        painter.line_segment(
+                            [p0, p1],
+                            Stroke::new(if selected { 2.2_f32 } else { 1.3_f32 }, Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 200)),
+                        );
+                    }
+
+                    if let Some(foot) = v.project(w_foot) {
+                        if rect.contains(foot) {
+                            let r = if selected { 6.0_f32 } else { 4.2_f32 };
+                            painter.circle_filled(foot, r, col);
+                            painter.circle_stroke(foot, r, Stroke::new(1.2_f32, Color32::BLACK));
+                            if pt.flags & 32 != 0 {
+                                painter.circle_stroke(foot, r + 2.5, Stroke::new(1.2_f32, Color32::from_rgb(255, 210, 90)));
                             }
                         }
                     }
                 }
-                if let Some((_, ci, pi)) = best {
-                    st.selected_container = ci;
-                    st.selected_point = Some(pi);
+            }
+
+            // Draw 3D XYZ translation gizmo on the currently selected point
+            if let Some(pi) = st.selected_point {
+                if let Some(pt) = st.group.containers.get(st.selected_container).and_then(|c| c.points.get(pi)) {
+                    draw_gizmo(&painter, &v, st.proto_to_world(pt.pos), hover_axis);
                 }
             }
-        }
-    }
 
-    ui.add_space(4.0);
-    let hint = if st.add_mode {
-        t("RMB + WASD/QE: fly · Click a surface to add a loot point")
-    } else {
-        t("RMB + WASD/QE: fly · Wheel: zoom/speed · MMB: pan · Click: select")
-    };
-    ui.weak(hint);
-    ui.weak(&st.model);
+            // Live 3D surface placement preview cursor when `Click 3D to add` is on
+            let mut hover_hit: Option<[f32; 3]> = None;
+            if st.add_mode && st.gizmo_drag.is_none() && hover_axis.is_none() {
+                if let Some(ptr) = hover_pos {
+                    let (ro, rd) = v.ray(ptr);
+                    hover_hit = pick_scene_surface(ro, rd, st.clip_param(), building_pick, proxy_list, proxy_picks);
+                    if let Some(hit) = hover_hit {
+                        let col = Color32::from_rgb(100, 245, 130);
+                        let mut prev = [hit[0] + 0.3, hit[1], hit[2]];
+                        for k in 1..=16 {
+                            let a = k as f32 * std::f32::consts::TAU / 16.0;
+                            let cur = [hit[0] + 0.3 * a.cos(), hit[1], hit[2] + 0.3 * a.sin()];
+                            if let Some((p0, p1)) = v.segment(prev, cur) {
+                                painter.line_segment([p0, p1], Stroke::new(1.5_f32, col));
+                            }
+                            prev = cur;
+                        }
+                        if let Some(s) = v.project(hit) {
+                            painter.circle_filled(s, 4.0, col);
+                            painter.circle_stroke(s, 4.0, Stroke::new(1.0_f32, Color32::BLACK));
+                        }
+                    }
+                }
+            }
+
+            // LPM click (when not grabbing a gizmo axis): add point on building/proxy surface or select nearest point
+            if resp.clicked_by(PointerButton::Primary) && st.gizmo_drag.is_none() && hover_axis.is_none() {
+                if let Some(ptr) = resp.interact_pointer_pos() {
+                    if st.add_mode {
+                        let hit = hover_hit.or_else(|| {
+                            let (ro, rd) = v.ray(ptr);
+                            pick_scene_surface(ro, rd, st.clip_param(), building_pick, proxy_list, proxy_picks)
+                        });
+                        if let Some(hit) = hit {
+                            if st.group.containers.is_empty() {
+                                st.group.containers.push(ContainerProto::default());
+                                st.selected_container = 0;
+                            }
+                            let ci = st.selected_container.min(st.group.containers.len() - 1);
+                            let pt = LootPoint {
+                                pos: st.world_to_proto(hit),
+                                ..LootPoint::default()
+                            };
+                            let c = &mut st.group.containers[ci];
+                            c.points.push(pt);
+                            st.selected_point = Some(c.points.len() - 1);
+                            st.dirty = true;
+                        }
+                    } else {
+                        let mut best: Option<(f32, usize, usize)> = None;
+                        for (ci, container) in st.group.containers.iter().enumerate() {
+                            for (pi, pt) in container.points.iter().enumerate() {
+                                if let Some(s) = v.project(st.proto_to_world(pt.pos)) {
+                                    let d = s.distance(ptr);
+                                    if d <= 14.0 && best.is_none_or(|b| d < b.0) {
+                                        best = Some((d, ci, pi));
+                                    }
+                                }
+                            }
+                        }
+                        if let Some((_, ci, pi)) = best {
+                            st.selected_container = ci;
+                            st.selected_point = Some(pi);
+                        }
+                    }
+                }
+            }
+        });
 }
 
-fn draw_editor_column(
+fn draw_editor_panel(
     st: &mut LootProtoUi,
     ui: &mut egui::Ui,
-    content_h: f32,
     limits: &proto::LimitsLists,
     save_requested: &mut bool,
     remove_requested: &mut bool,
 ) {
-    let mut header_h = 0.0;
-    if !st.exists_in_proto {
-        ui.colored_label(Color32::from_rgb(160, 205, 250), t("Not yet in mapgroupproto.xml — edit and save to add it."));
-        ui.add_space(2.0);
-        header_h = 22.0;
-    }
-
-    egui::ScrollArea::vertical().id_salt("loot_proto_editor_scroll").max_height((content_h - 46.0 - header_h).max(160.0)).show(ui, |ui| {
-        // ---- Group properties ----
-        egui::Grid::new("loot_group_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
-            ui.label(t("Prototype class"));
-            if ui.add(egui::TextEdit::singleline(&mut st.group.name).desired_width(220.0)).changed() {
-                st.dirty = true;
-            }
-            ui.end_row();
-
-            ui.label(t("Max loot"));
-            ui.horizontal(|ui| {
-                let mut has_max = st.group.lootmax.is_some();
-                if ui.checkbox(&mut has_max, "").changed() {
-                    st.group.lootmax = has_max.then_some(2);
-                    st.dirty = true;
-                }
-                if let Some(lm) = &mut st.group.lootmax {
-                    if ui.add(egui::DragValue::new(lm).range(0..=100)).changed() {
-                        st.dirty = true;
-                    }
-                }
-                if ui.checkbox(&mut st.group.deloot, t("Dynamic event loot (deloot)")).changed() {
-                    st.dirty = true;
-                }
-            });
-            ui.end_row();
-        });
-
-        ui.add_space(4.0);
-        egui::CollapsingHeader::new(t("Usage flags")).default_open(true).show(ui, |ui| {
-            if flag_chips(ui, &limits.usages, &mut st.group.usages) {
-                st.dirty = true;
-            }
-        });
-        egui::CollapsingHeader::new(t("Value flags")).default_open(false).show(ui, |ui| {
-            if flag_chips(ui, &limits.values, &mut st.group.values) {
-                st.dirty = true;
-            }
-        });
-
-        ui.separator();
-
-        // ---- Containers bar ----
-        ui.horizontal_wrapped(|ui| {
-            ui.strong(t("Containers"));
-            for i in 0..st.group.containers.len() {
-                let col = CONTAINER_COLORS[i % CONTAINER_COLORS.len()];
-                let name = st.group.containers[i].name.clone();
-                let count = st.group.containers[i].points.len();
-                let label = egui::RichText::new(format!("● {name} ({count})")).color(col);
-                if ui.selectable_label(st.selected_container == i, label).clicked() {
-                    st.selected_container = i;
-                    st.selected_point = (!st.group.containers[i].points.is_empty()).then_some(0);
-                }
-            }
-            if ui.small_button(icons::with(icons::PLUS, &t("Add container"))).clicked() {
-                let name = if st.group.containers.is_empty() {
-                    "lootFloor".to_string()
-                } else {
-                    format!("lootshelves{}", st.group.containers.len())
-                };
-                st.group.containers.push(ContainerProto { name, ..ContainerProto::default() });
-                st.selected_container = st.group.containers.len() - 1;
-                st.selected_point = None;
-                st.dirty = true;
-            }
-        });
-
-        if st.selected_container >= st.group.containers.len() && !st.group.containers.is_empty() {
-            st.selected_container = st.group.containers.len() - 1;
-        }
-
-        // ---- Selected container details ----
-        let mut delete_container = false;
-        let can_delete_container = st.group.containers.len() > 1;
-        if let Some(c) = st.group.containers.get_mut(st.selected_container) {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.label(t("Container name"));
-                if ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(140.0)).changed() {
-                    st.dirty = true;
-                }
-                let mut has_max = c.lootmax.is_some();
-                if ui.checkbox(&mut has_max, t("Max loot")).changed() {
-                    c.lootmax = has_max.then_some(2);
-                    st.dirty = true;
-                }
-                if let Some(lm) = &mut c.lootmax {
-                    if ui.add(egui::DragValue::new(lm).range(0..=100)).changed() {
-                        st.dirty = true;
-                    }
-                }
-                if can_delete_container && ui.small_button(t("Delete")).clicked() {
-                    delete_container = true;
-                }
-            });
-
-            egui::CollapsingHeader::new(t("Categories")).default_open(true).show(ui, |ui| {
-                if flag_chips(ui, &limits.categories, &mut c.categories) {
-                    st.dirty = true;
-                }
-            });
-            egui::CollapsingHeader::new(t("Tags")).default_open(true).show(ui, |ui| {
-                if flag_chips(ui, &limits.tags, &mut c.tags) {
-                    st.dirty = true;
-                }
-            });
-
+    // Fixed bottom save/close bar inside the right side panel
+    egui::TopBottomPanel::bottom("loot_proto_editor_bottom")
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 0, top: 6, bottom: 0 }))
+        .show_inside(ui, |ui| {
             ui.separator();
-
-            // ---- Points list ----
             ui.horizontal(|ui| {
-                ui.strong(tf("Loot points ({0})", &[&c.points.len().to_string()]));
-                if ui.small_button(icons::with(icons::PLUS, &t("Add point"))).clicked() {
-                    let pt = st.selected_point.and_then(|i| c.points.get(i)).cloned().unwrap_or_default();
-                    c.points.push(pt);
-                    st.selected_point = Some(c.points.len() - 1);
-                    st.dirty = true;
+                if ui.button(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml"))).clicked() {
+                    *save_requested = true;
                 }
-                if let Some(pi) = st.selected_point {
-                    if pi < c.points.len() {
-                        if ui.small_button(t("Duplicate")).clicked() {
-                            let mut dup = c.points[pi].clone();
-                            dup.pos[0] += 0.3;
-                            c.points.push(dup);
-                            st.selected_point = Some(c.points.len() - 1);
+                if st.exists_in_proto && ui.button(t("Remove from mapgroupproto.xml")).clicked() {
+                    *remove_requested = true;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(t("Close")).clicked() {
+                        st.open = false;
+                    }
+                });
+            });
+        });
+
+    // Scrollable inspector body filling the rest of the right panel
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE.inner_margin(egui::Margin { left: 4, right: 0, top: 0, bottom: 0 }))
+        .show_inside(ui, |ui| {
+            if !st.exists_in_proto {
+                ui.colored_label(Color32::from_rgb(160, 205, 250), t("Not yet in mapgroupproto.xml — edit and save to add it."));
+                ui.add_space(2.0);
+            }
+
+            egui::ScrollArea::vertical()
+                .id_salt("loot_proto_editor_scroll")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // ---- Group properties ----
+                    egui::Grid::new("loot_group_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+                        ui.label(t("Prototype class"));
+                        if ui.add(egui::TextEdit::singleline(&mut st.group.name).desired_width(200.0)).changed() {
                             st.dirty = true;
                         }
-                        if ui.small_button(t("Delete")).clicked() {
-                            c.points.remove(pi);
-                            st.selected_point = if c.points.is_empty() {
-                                None
-                            } else {
-                                Some(pi.min(c.points.len() - 1))
-                            };
-                            st.dirty = true;
-                        }
-                    }
-                }
-            });
+                        ui.end_row();
 
-            egui::ScrollArea::vertical().id_salt("loot_points_list").max_height(130.0).show(ui, |ui| {
-                for (i, pt) in c.points.iter().enumerate() {
-                    let sel = st.selected_point == Some(i);
-                    let flag_tag = if pt.flags & 32 != 0 { " [out]" } else { "" };
-                    let text = format!(
-                        "#{}: ({:.2}, {:.2}, {:.2})  r={:.2}  h={:.2}{flag_tag}",
-                        i + 1, pt.pos[0], pt.pos[1], pt.pos[2], pt.range, pt.height
-                    );
-                    if ui.selectable_label(sel, text).clicked() {
-                        st.selected_point = Some(i);
-                    }
-                }
-            });
-
-            // ---- Selected point inspector ----
-            if let Some(pi) = st.selected_point {
-                if let Some(pt) = c.points.get_mut(pi) {
-                    ui.separator();
-                    ui.strong(tf("Point #{0}", &[&(pi + 1).to_string()]));
-                    egui::Grid::new("loot_point_inspector").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
-                        ui.label(t("Position (X, Y, Z)"));
+                        ui.label(t("Max loot"));
                         ui.horizontal(|ui| {
-                            let mut changed = false;
-                            changed |= ui.add(egui::DragValue::new(&mut pt.pos[0]).speed(0.02).prefix("X ").fixed_decimals(3)).changed();
-                            changed |= ui.add(egui::DragValue::new(&mut pt.pos[1]).speed(0.02).prefix("Y ").fixed_decimals(3)).changed();
-                            changed |= ui.add(egui::DragValue::new(&mut pt.pos[2]).speed(0.02).prefix("Z ").fixed_decimals(3)).changed();
-                            if changed {
+                            let mut has_max = st.group.lootmax.is_some();
+                            if ui.checkbox(&mut has_max, "").changed() {
+                                st.group.lootmax = has_max.then_some(2);
+                                st.dirty = true;
+                            }
+                            if let Some(lm) = &mut st.group.lootmax {
+                                if ui.add(egui::DragValue::new(lm).range(0..=100)).changed() {
+                                    st.dirty = true;
+                                }
+                            }
+                            if ui.checkbox(&mut st.group.deloot, t("Dynamic event loot (deloot)")).changed() {
                                 st.dirty = true;
                             }
                         });
                         ui.end_row();
-
-                        ui.label(t("Range"));
-                        if ui.add(egui::DragValue::new(&mut pt.range).speed(0.02).range(0.05..=5.0).suffix(" m").fixed_decimals(3)).changed() {
-                            st.dirty = true;
-                        }
-                        ui.end_row();
-
-                        ui.label(t("Height"));
-                        if ui.add(egui::DragValue::new(&mut pt.height).speed(0.02).range(0.1..=5.0).suffix(" m").fixed_decimals(3)).changed() {
-                            st.dirty = true;
-                        }
-                        ui.end_row();
-
-                        ui.label("");
-                        let mut outdoor = pt.flags & 32 != 0;
-                        if ui.checkbox(&mut outdoor, t("Outside / ground (flags=32)")).changed() {
-                            if outdoor {
-                                pt.flags |= 32;
-                            } else {
-                                pt.flags &= !32;
-                            }
-                            st.dirty = true;
-                        }
-                        ui.end_row();
                     });
-                }
-            }
-        }
-        if delete_container && st.selected_container < st.group.containers.len() {
-            st.group.containers.remove(st.selected_container);
-            st.selected_container = st.selected_container.min(st.group.containers.len().saturating_sub(1));
-            st.selected_point = st.group.containers.get(st.selected_container).and_then(|c| (!c.points.is_empty()).then_some(0));
-            st.dirty = true;
-        }
-    });
 
-    ui.separator();
-    ui.horizontal(|ui| {
-        if ui.button(icons::with(icons::FLOPPY_DISK, &t("Save to mapgroupproto.xml"))).clicked() {
-            *save_requested = true;
-        }
-        if st.exists_in_proto && ui.button(t("Remove from mapgroupproto.xml")).clicked() {
-            *remove_requested = true;
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button(t("Close")).clicked() {
-                st.open = false;
-            }
+                    ui.add_space(4.0);
+                    egui::CollapsingHeader::new(t("Usage flags")).default_open(true).show(ui, |ui| {
+                        if flag_chips(ui, &limits.usages, &mut st.group.usages) {
+                            st.dirty = true;
+                        }
+                    });
+                    egui::CollapsingHeader::new(t("Value flags")).default_open(false).show(ui, |ui| {
+                        if flag_chips(ui, &limits.values, &mut st.group.values) {
+                            st.dirty = true;
+                        }
+                    });
+
+                    ui.separator();
+
+                    // ---- Containers bar ----
+                    ui.horizontal_wrapped(|ui| {
+                        ui.strong(t("Containers"));
+                        for i in 0..st.group.containers.len() {
+                            let col = CONTAINER_COLORS[i % CONTAINER_COLORS.len()];
+                            let name = st.group.containers[i].name.clone();
+                            let count = st.group.containers[i].points.len();
+                            let label = egui::RichText::new(format!("● {name} ({count})")).color(col);
+                            if ui.selectable_label(st.selected_container == i, label).clicked() {
+                                st.selected_container = i;
+                                st.selected_point = (!st.group.containers[i].points.is_empty()).then_some(0);
+                            }
+                        }
+                        if ui.small_button(icons::with(icons::PLUS, &t("Add container"))).clicked() {
+                            let name = if st.group.containers.is_empty() {
+                                "lootFloor".to_string()
+                            } else {
+                                format!("lootshelves{}", st.group.containers.len())
+                            };
+                            st.group.containers.push(ContainerProto { name, ..ContainerProto::default() });
+                            st.selected_container = st.group.containers.len() - 1;
+                            st.selected_point = None;
+                            st.dirty = true;
+                        }
+                    });
+
+                    if st.selected_container >= st.group.containers.len() && !st.group.containers.is_empty() {
+                        st.selected_container = st.group.containers.len() - 1;
+                    }
+
+                    // ---- Selected container details ----
+                    let mut delete_container = false;
+                    let can_delete_container = st.group.containers.len() > 1;
+                    if let Some(c) = st.group.containers.get_mut(st.selected_container) {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label(t("Container name"));
+                            if ui.add(egui::TextEdit::singleline(&mut c.name).desired_width(120.0)).changed() {
+                                st.dirty = true;
+                            }
+                            let mut has_max = c.lootmax.is_some();
+                            if ui.checkbox(&mut has_max, t("Max loot")).changed() {
+                                c.lootmax = has_max.then_some(2);
+                                st.dirty = true;
+                            }
+                            if let Some(lm) = &mut c.lootmax {
+                                if ui.add(egui::DragValue::new(lm).range(0..=100)).changed() {
+                                    st.dirty = true;
+                                }
+                            }
+                            if can_delete_container && ui.small_button(t("Delete")).clicked() {
+                                delete_container = true;
+                            }
+                        });
+
+                        egui::CollapsingHeader::new(t("Categories")).default_open(true).show(ui, |ui| {
+                            if flag_chips(ui, &limits.categories, &mut c.categories) {
+                                st.dirty = true;
+                            }
+                        });
+                        egui::CollapsingHeader::new(t("Tags")).default_open(true).show(ui, |ui| {
+                            if flag_chips(ui, &limits.tags, &mut c.tags) {
+                                st.dirty = true;
+                            }
+                        });
+
+                        ui.separator();
+
+                        // ---- Points list ----
+                        ui.horizontal(|ui| {
+                            ui.strong(tf("Loot points ({0})", &[&c.points.len().to_string()]));
+                            if ui.small_button(icons::with(icons::PLUS, &t("Add point"))).clicked() {
+                                let pt = st.selected_point.and_then(|i| c.points.get(i)).cloned().unwrap_or_default();
+                                c.points.push(pt);
+                                st.selected_point = Some(c.points.len() - 1);
+                                st.dirty = true;
+                            }
+                            if let Some(pi) = st.selected_point {
+                                if pi < c.points.len() {
+                                    if ui.small_button(t("Duplicate")).clicked() {
+                                        let mut dup = c.points[pi].clone();
+                                        dup.pos[0] += 0.3;
+                                        c.points.push(dup);
+                                        st.selected_point = Some(c.points.len() - 1);
+                                        st.dirty = true;
+                                    }
+                                    if ui.small_button(t("Delete")).clicked() {
+                                        c.points.remove(pi);
+                                        st.selected_point = if c.points.is_empty() {
+                                            None
+                                        } else {
+                                            Some(pi.min(c.points.len() - 1))
+                                        };
+                                        st.dirty = true;
+                                    }
+                                }
+                            }
+                        });
+
+                        egui::ScrollArea::vertical().id_salt("loot_points_list").max_height(130.0).show(ui, |ui| {
+                            for (i, pt) in c.points.iter().enumerate() {
+                                let sel = st.selected_point == Some(i);
+                                let flag_tag = if pt.flags & 32 != 0 { " [out]" } else { "" };
+                                let text = format!(
+                                    "#{}: ({:.2}, {:.2}, {:.2})  r={:.2}  h={:.2}{flag_tag}",
+                                    i + 1, pt.pos[0], pt.pos[1], pt.pos[2], pt.range, pt.height
+                                );
+                                if ui.selectable_label(sel, text).clicked() {
+                                    st.selected_point = Some(i);
+                                }
+                            }
+                        });
+
+                        // ---- Selected point inspector ----
+                        if let Some(pi) = st.selected_point {
+                            if let Some(pt) = c.points.get_mut(pi) {
+                                ui.separator();
+                                ui.strong(tf("Point #{0}", &[&(pi + 1).to_string()]));
+                                egui::Grid::new("loot_point_inspector").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+                                    ui.label(t("Position (X, Y, Z)"));
+                                    ui.horizontal(|ui| {
+                                        let mut changed = false;
+                                        changed |= ui.add(egui::DragValue::new(&mut pt.pos[0]).speed(0.02).prefix("X ").fixed_decimals(3)).changed();
+                                        changed |= ui.add(egui::DragValue::new(&mut pt.pos[1]).speed(0.02).prefix("Y ").fixed_decimals(3)).changed();
+                                        changed |= ui.add(egui::DragValue::new(&mut pt.pos[2]).speed(0.02).prefix("Z ").fixed_decimals(3)).changed();
+                                        if changed {
+                                            st.dirty = true;
+                                        }
+                                    });
+                                    ui.end_row();
+
+                                    ui.label(t("Range"));
+                                    if ui.add(egui::DragValue::new(&mut pt.range).speed(0.02).range(0.05..=5.0).suffix(" m").fixed_decimals(3)).changed() {
+                                        st.dirty = true;
+                                    }
+                                    ui.end_row();
+
+                                    ui.label(t("Height"));
+                                    if ui.add(egui::DragValue::new(&mut pt.height).speed(0.02).range(0.1..=5.0).suffix(" m").fixed_decimals(3)).changed() {
+                                        st.dirty = true;
+                                    }
+                                    ui.end_row();
+
+                                    ui.label("");
+                                    let mut outdoor = pt.flags & 32 != 0;
+                                    if ui.checkbox(&mut outdoor, t("Outside / ground (flags=32)")).changed() {
+                                        if outdoor {
+                                            pt.flags |= 32;
+                                        } else {
+                                            pt.flags &= !32;
+                                        }
+                                        st.dirty = true;
+                                    }
+                                    ui.end_row();
+                                });
+                            }
+                        }
+                    }
+                    if delete_container && st.selected_container < st.group.containers.len() {
+                        st.group.containers.remove(st.selected_container);
+                        st.selected_container = st.selected_container.min(st.group.containers.len().saturating_sub(1));
+                        st.selected_point = st.group.containers.get(st.selected_container).and_then(|c| (!c.points.is_empty()).then_some(0));
+                        st.dirty = true;
+                    }
+                });
         });
-    });
 }
 
 fn flag_chips(ui: &mut egui::Ui, choices: &[String], selected: &mut Vec<String>) -> bool {

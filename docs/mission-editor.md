@@ -99,9 +99,12 @@ the building has no entry yet) to open a standalone 3D preview and editor window
   **Inside** camera presets to fly straight inside rooms.
 * **Cut roof**: slides a horizontal clip plane down through the building in real time so upper
   floors and interiors are easy to inspect.
-* **Placing and editing points**: turn on **Click 3D to add** and click any floor, table or shelf
-  to add a `<point>` in model coordinates (relative to the model's bounding centre, matching DayZ).
-  Edit group `lootmax`, `deloot`, `usage` and `value` flags, containers (`lootFloor`,
+* **Placing and editing points**: the 3D view renders both the building and its visual **Proxies**
+  (furniture, tables, shelves). Turn on **Click 3D to add** and click any floor, table or shelf
+  (with a live target ring) to place a `<point>` in model coordinates (relative to the model's
+  bounding centre, matching DayZ). Drag the 3D **X/Y/Z gizmo** arrows on the selected point to
+  fine-tune its position, or drag the divider between the 3D view and the inspector to widen the
+  3D preview. Edit group `lootmax`, `deloot`, `usage` and `value` flags, containers (`lootFloor`,
   `lootshelves`...) with `categories` and `tags`, and each point's `pos`, `range`, `height` and
   outdoor `flags="32"`, then click **Save to mapgroupproto.xml**.
 

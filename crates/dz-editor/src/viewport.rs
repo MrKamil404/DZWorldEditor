@@ -180,12 +180,24 @@ pub struct PickMesh {
 
 impl PickMesh {
     /// Casts a ray `(ro, rd)` against this mesh in model coordinates, ignoring hits above `clip_y`.
-    pub fn raycast(&self, ro: [f32; 3], rd: [f32; 3], clip_y: Option<f32>) -> Option<[f32; 3]> {
+    pub fn raycast(&self, ro: [f32; 3], rd: [f32; 3], clip_y: Option<f32>) -> Option<(f32, [f32; 3])> {
+        self.raycast_transformed(ro, rd, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], [0.0; 3], clip_y)
+    }
+
+    /// Casts a ray `(ro, rd)` against this mesh transformed by `(axes, at)`, ignoring hits above `clip_y`.
+    pub fn raycast_transformed(&self, ro: [f32; 3], rd: [f32; 3], axes: [[f32; 3]; 3], at: [f32; 3], clip_y: Option<f32>) -> Option<(f32, [f32; 3])> {
+        let xform = |p: [f32; 3]| -> [f32; 3] {
+            [
+                axes[0][0] * p[0] + axes[1][0] * p[1] + axes[2][0] * p[2] + at[0],
+                axes[0][1] * p[0] + axes[1][1] * p[1] + axes[2][1] * p[2] + at[1],
+                axes[0][2] * p[0] + axes[1][2] * p[1] + axes[2][2] * p[2] + at[2],
+            ]
+        };
         let mut best: Option<(f32, [f32; 3])> = None;
         for tri in self.triangles.chunks_exact(3) {
-            let a = self.positions[tri[0] as usize];
-            let b = self.positions[tri[1] as usize];
-            let c = self.positions[tri[2] as usize];
+            let a = xform(self.positions[tri[0] as usize]);
+            let b = xform(self.positions[tri[1] as usize]);
+            let c = xform(self.positions[tri[2] as usize]);
             if let Some(cy) = clip_y {
                 if a[1] > cy && b[1] > cy && c[1] > cy {
                     continue;
@@ -221,7 +233,7 @@ impl PickMesh {
                 best = Some((t, hit));
             }
         }
-        best.map(|(_, h)| h)
+        best
     }
 }
 
@@ -318,8 +330,8 @@ impl Footprint {
 
 /// Keeps the finest geometry seen of each model.
 pub fn remember_pick_mesh(meshes: &mut HashMap<u32, std::sync::Arc<PickMesh>>, m: &crate::render::MeshData) {
-    let is_loot_preview = m.key.0 >= crate::loot_proto_ui::PREVIEW_ID_BASE;
-    if (!is_loot_preview && m.key.0 >= MISSION_BASE) || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
+    let is_mission_marker = m.key.0 >= MISSION_BASE && m.key.0 < PROXY_BASE;
+    if is_mission_marker || (m.key.1 != LOD_NEAR && meshes.contains_key(&m.key.0)) {
         return;
     }
     let positions: Vec<[f32; 3]> = m.vertices.chunks_exact(10).map(|v| [v[0], v[1], v[2]]).collect();

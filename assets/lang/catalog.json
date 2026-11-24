@@ -10511,6 +10511,10 @@
   "de": "Radien anzeigen",
   "pl": "Pokaż zasięgi"
  },
+ "Proxies": {
+  "de": "Proxies (Möbel)",
+  "pl": "Proxy (meble)"
+ },
  "RMB + WASD/QE: fly · Wheel: zoom/speed · MMB: pan · Click: select": {
   "de": "RMT + WASD/QE: fliegen · Rad: Zoom/Tempo · MMT: schieben · Klick: auswählen",
   "pl": "PPM + WASD/QE: lot · Kółko: zoom/prędkość · ŚPM: przesuwanie · LPM: wybór"

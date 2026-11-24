@@ -2828,18 +2828,19 @@ impl Renderer {
     }
 }
 
-/// Parameters for rendering a single isolated 3D model inside a floating preview window.
+/// Parameters for rendering an isolated 3D building (and its visual proxies) inside a preview window.
 pub struct ModelPreviewFrame {
     pub view: View,
-    pub model_key: (u32, u8),
+    /// `(model_key, 16-float instance transform)` — building plus any furniture/fitting proxies.
+    pub instances: Vec<((u32, u8), [f32; 16])>,
     pub clip_y: Option<f32>,
     /// Ground/floor plane under the building: `(center_x, floor_y, center_z, half_extent)`.
     pub floor: [f32; 4],
 }
 
 impl Renderer {
-    /// Renders a single GPU-loaded model with daylight sky lighting, a depth-tested ground
-    /// plane, and an optional horizontal clip plane.
+    /// Renders one or more GPU-loaded models (e.g. a building and its proxies) with daylight sky
+    /// lighting, a depth-tested ground plane, and an optional horizontal clip plane.
     pub unsafe fn paint_model_preview(&mut self, gl: &glow::Context, f: &ModelPreviewFrame) {
         if let Err(e) = self.init(gl).and_then(|_| self.process_uploads(gl)) {
             self.error = Some(e);
@@ -2848,8 +2849,10 @@ impl Renderer {
         let Some(p) = &self.programs else { return };
         let (mesh_prog, sky_prog) = (p.mesh, p.sky);
         let now = self.now();
-        if let Some(m) = self.models.get_mut(&f.model_key) {
-            m.used = now;
+        for (key, _) in &f.instances {
+            if let Some(m) = self.models.get_mut(key) {
+                m.used = now;
+            }
         }
         gl.enable(glow::DEPTH_TEST);
         gl.depth_func(glow::LEQUAL);
@@ -2926,13 +2929,13 @@ impl Renderer {
             gl.draw_elements_instanced(glow::TRIANGLES, 36, glow::UNSIGNED_INT, 0, 1);
         }
 
-        let Some(m) = self.models.get(&f.model_key) else {
+        if f.instances.is_empty() {
             gl.disable(glow::DEPTH_TEST);
             gl.enable(glow::BLEND);
             gl.bind_vertex_array(None);
             gl.use_program(None);
             return;
-        };
+        }
 
         gl.uniform_1_f32(u("u_clip_y").as_ref(), f.clip_y.unwrap_or(1e9));
         for k in 1..=14u32 {
@@ -2948,14 +2951,12 @@ impl Renderer {
                 b
             }
         };
-        const IDENTITY_INSTANCE: [f32; 16] = [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            1.0, 1.0, 1.0, 0.0,
-        ];
+        let mut flat: Vec<f32> = Vec::with_capacity(f.instances.len() * 16);
+        for (_, mat) in &f.instances {
+            flat.extend_from_slice(mat);
+        }
         gl.bind_buffer(glow::ARRAY_BUFFER, Some(buffer));
-        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&IDENTITY_INSTANCE), glow::STREAM_DRAW);
+        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&flat), glow::STREAM_DRAW);
         self.instances_uploaded.remove(&PREVIEW_SLOT);
 
         let (mode_u, xf_u, xo_u, f0_u) = (u("u_mode"), u("u_xf"), u("u_xo"), u("u_f0"));
@@ -2964,13 +2965,8 @@ impl Renderer {
         );
         gl.uniform_1_f32(cut_u.as_ref(), 0.0);
         gl.uniform_3_f32(top_u.as_ref(), -1.0, 0.0, 0.0);
-        gl.bind_vertex_array(Some(m.vao));
-        Self::bind_mesh_instances(gl, buffer, 0);
 
         for pass in [PASS_OPAQUE, PASS_DECAL, PASS_BLEND, PASS_WATER] {
-            if m.passes & pass == 0 {
-                continue;
-            }
             if pass != PASS_OPAQUE {
                 gl.enable(glow::BLEND);
                 gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
@@ -2983,43 +2979,51 @@ impl Renderer {
                 gl.disable(glow::POLYGON_OFFSET_FILL);
             }
             gl.uniform_1_i32(decal_u.as_ref(), (pass == PASS_DECAL || pass == PASS_BLEND) as i32);
-            for (((start, n, tex, mat), batch_pass), flip) in m.batches.iter().zip(&m.batch_pass).zip(&m.batch_inv) {
-                if *batch_pass != pass {
+            for (idx, (key, _)) in f.instances.iter().enumerate() {
+                let Some(m) = self.models.get(key) else { continue };
+                if m.passes & pass == 0 {
                     continue;
                 }
-                match mat {
-                    _ if pass == PASS_WATER => gl.uniform_1_i32(mode_u.as_ref(), 3),
-                    Some(mt) => {
-                        gl.uniform_1_i32(mode_u.as_ref(), mt.mode);
-                        gl.uniform_4_f32_slice(xf_u.as_ref(), &mt.xf);
-                        gl.uniform_3_f32_slice(xo_u.as_ref(), &mt.xo);
-                        gl.uniform_1_f32(f0_u.as_ref(), mt.reflectance);
-                        gl.uniform_3_f32_slice(mc_u.as_ref(), &mt.colors);
-                        gl.uniform_4_f32_slice(inv_u.as_ref(), &mt.inv);
-                        gl.uniform_1_f32(power_u.as_ref(), mt.power);
-                        gl.uniform_1_f32(cut_u.as_ref(), mt.alpha_test);
-                        gl.uniform_3_f32_slice(top_u.as_ref(), &mt.top);
-                        if pass == PASS_BLEND {
-                            let additive = mt.blend == forest_core::model3d::Blend::Add;
-                            gl.blend_func(glow::SRC_ALPHA, if additive { glow::ONE } else { glow::ONE_MINUS_SRC_ALPHA });
-                        }
-                        for k in 1..15u32 {
-                            gl.active_texture(glow::TEXTURE0 + material_unit(k));
-                            gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[k as usize]));
-                        }
-                        gl.active_texture(glow::TEXTURE0);
-                        gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[0]));
+                gl.bind_vertex_array(Some(m.vao));
+                Self::bind_mesh_instances(gl, buffer, idx as u32);
+                for (((start, n, tex, mat), batch_pass), flip) in m.batches.iter().zip(&m.batch_pass).zip(&m.batch_inv) {
+                    if *batch_pass != pass {
+                        continue;
                     }
-                    None => {
-                        gl.uniform_1_i32(mode_u.as_ref(), 0);
-                        gl.uniform_1_f32(cut_u.as_ref(), 0.0);
-                        gl.uniform_4_f32_slice(inv_u.as_ref(), flip);
-                        gl.active_texture(glow::TEXTURE0);
-                        gl.bind_texture(glow::TEXTURE_2D, *tex);
+                    match mat {
+                        _ if pass == PASS_WATER => gl.uniform_1_i32(mode_u.as_ref(), 3),
+                        Some(mt) => {
+                            gl.uniform_1_i32(mode_u.as_ref(), mt.mode);
+                            gl.uniform_4_f32_slice(xf_u.as_ref(), &mt.xf);
+                            gl.uniform_3_f32_slice(xo_u.as_ref(), &mt.xo);
+                            gl.uniform_1_f32(f0_u.as_ref(), mt.reflectance);
+                            gl.uniform_3_f32_slice(mc_u.as_ref(), &mt.colors);
+                            gl.uniform_4_f32_slice(inv_u.as_ref(), &mt.inv);
+                            gl.uniform_1_f32(power_u.as_ref(), mt.power);
+                            gl.uniform_1_f32(cut_u.as_ref(), mt.alpha_test);
+                            gl.uniform_3_f32_slice(top_u.as_ref(), &mt.top);
+                            if pass == PASS_BLEND {
+                                let additive = mt.blend == forest_core::model3d::Blend::Add;
+                                gl.blend_func(glow::SRC_ALPHA, if additive { glow::ONE } else { glow::ONE_MINUS_SRC_ALPHA });
+                            }
+                            for k in 1..15u32 {
+                                gl.active_texture(glow::TEXTURE0 + material_unit(k));
+                                gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[k as usize]));
+                            }
+                            gl.active_texture(glow::TEXTURE0);
+                            gl.bind_texture(glow::TEXTURE_2D, Some(mt.maps[0]));
+                        }
+                        None => {
+                            gl.uniform_1_i32(mode_u.as_ref(), 0);
+                            gl.uniform_1_f32(cut_u.as_ref(), 0.0);
+                            gl.uniform_4_f32_slice(inv_u.as_ref(), flip);
+                            gl.active_texture(glow::TEXTURE0);
+                            gl.bind_texture(glow::TEXTURE_2D, *tex);
+                        }
                     }
+                    gl.uniform_1_i32(textured.as_ref(), tex.is_some() as i32);
+                    gl.draw_elements_instanced(glow::TRIANGLES, *n as i32, glow::UNSIGNED_INT, (*start * 4) as i32, 1);
                 }
-                gl.uniform_1_i32(textured.as_ref(), tex.is_some() as i32);
-                gl.draw_elements_instanced(glow::TRIANGLES, *n as i32, glow::UNSIGNED_INT, (*start * 4) as i32, 1);
             }
         }
         gl.disable(glow::POLYGON_OFFSET_FILL);
