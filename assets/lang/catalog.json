@@ -8215,6 +8215,30 @@
   "de": "Topografisch",
   "pl": "Topograficzna"
  },
+ "Editor settings": {
+  "de": "Editor-Einstellungen",
+  "pl": "Ustawienia edytora"
+ },
+ "From Map config: {0} m (grid {1} m)": {
+  "de": "Aus Kartenkonfiguration: {0} m (Raster {1} m)",
+  "pl": "Z konfiguracji mapy: {0} m (siatka {1} m)"
+ },
+ "Grass draw distance m": {
+  "de": "Gras-Sichtweite m",
+  "pl": "Zasięg rysowania trawy m"
+ },
+ "Grass range": {
+  "de": "Gras-Sichtweite",
+  "pl": "Zasięg trawy"
+ },
+ "Map config (CfgWorlds)": {
+  "de": "Kartenkonfiguration (CfgWorlds)",
+  "pl": "Konfiguracja mapy (CfgWorlds)"
+ },
+ "Uses clutterDist and clutterGrid from File > Map config (falling back to the base world's defaults).": {
+  "de": "Nutzt clutterDist und clutterGrid aus Datei > Kartenkonfiguration (oder die Standardwerte der Basiswelt).",
+  "pl": "Używa clutterDist i clutterGrid z Plik > Konfiguracja mapy (lub domyślnych z bazowego świata)."
+ },
  "Terrain Builder objects (TXT)...": {
   "de": "Terrain-Builder-Objekte (TXT)...",
   "pl": "Obiekty Terrain Buildera (TXT)..."

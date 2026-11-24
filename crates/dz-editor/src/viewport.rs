@@ -976,10 +976,17 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     }
     ghost_requests.sort_unstable();
     ghost_requests.dedup();
-    // Ground clutter on a 1 m grid, thinned with distance like the game's clutter range.
+    // Ground clutter on a grid, thinned with distance like the game's clutter range.
     let mut clutter_requests: Vec<(u32, u8)> = Vec::new();
     if !v.ortho && app.show_grass && !app.clutter_models.is_empty() {
-        const RANGE: i32 = 110;
+        let (range_f, grid_step) = match app.settings.grass_range_source {
+            crate::settings::GrassRangeSource::Editor => (app.settings.grass_range.clamp(15.0, 400.0), 1.0_f32),
+            crate::settings::GrassRangeSource::MapConfig => (
+                world.meta.config.clutter_dist.unwrap_or(125.0).clamp(15.0, 400.0),
+                world.meta.config.clutter_grid.unwrap_or(1.0).clamp(0.4, 4.0),
+            ),
+        };
+        let range_m = range_f.ceil() as i32;
         let shading = if top { app.shading2 } else { app.shading3 };
         if shading == Shading::Lit {
             let (ex, ez) = (v.eye[0].round() as i32, v.eye[2].round() as i32);
@@ -996,10 +1003,10 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
             };
             // The game keeps clutter off roads: (x, z, sin, cos, half width, half length).
             // Grass is ruled out cell by cell, one metre to a cell.
-            let side = (2 * (RANGE + 3) + 1) as usize;
-            let (ox, oz) = (ex - RANGE - 3, ez - RANGE - 3);
+            let side = (2 * (range_m + 3) + 1) as usize;
+            let (ox, oz) = (ex - range_m - 3, ez - range_m - 3);
             let mut blocked = vec![false; side * side];
-            let reach = RANGE as f32 + 40.0;
+            let reach = range_f + 40.0;
             let under_objects = app.grass_under_objects;
             let meshes = &app.pick_meshes;
             world.objects.for_each_in(v.eye[0] - reach, v.eye[2] - reach, v.eye[0] + reach, v.eye[2] + reach, |_, o| {
@@ -1061,20 +1068,28 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                 let (gx, gz) = (x.floor() as i32 - ox, z.floor() as i32 - oz);
                 gx >= 0 && gz >= 0 && (gx as usize) < side && (gz as usize) < side && blocked[gz as usize * side + gx as usize]
             };
-            for z in ez - RANGE..=ez + RANGE {
-                for x in ex - RANGE..=ex + RANGE {
-                    let h = (x as u32).wrapping_mul(73856093) ^ (z as u32).wrapping_mul(19349663);
+            let g_cells = (range_f / grid_step).ceil() as i32;
+            let (gex, gez) = ((v.eye[0] / grid_step).round() as i32, (v.eye[2] / grid_step).round() as i32);
+            let near_band = range_f * 0.32;
+            let far_span = (range_f - near_band).max(1.0);
+            let fade_band = (range_f * 0.16).clamp(8.0, 25.0);
+            for gz in gez - g_cells..=gez + g_cells {
+                for gx in gex - g_cells..=gex + g_cells {
+                    let h = (gx as u32).wrapping_mul(73856093) ^ (gz as u32).wrapping_mul(19349663);
                     let h = h.wrapping_mul(2654435761);
-                    let d2 = ((x - ex).pow(2) + (z - ez).pow(2)) as f32;
-                    if d2 > (RANGE * RANGE) as f32 {
+                    let (wx, wz) = (
+                        (gx as f32 + ((h >> 10) & 255) as f32 / 255.0) * grid_step,
+                        (gz as f32 + ((h >> 18) & 255) as f32 / 255.0) * grid_step,
+                    );
+                    let d2 = (wx - v.eye[0]).powi(2) + (wz - v.eye[2]).powi(2);
+                    if d2 > range_f * range_f {
                         continue;
                     }
                     let d = d2.sqrt();
-                    let keep = if d < 35.0 { 1.0 } else { (1.0 - (d - 35.0) / 75.0).max(0.12) };
+                    let keep = if d < near_band { 1.0 } else { (1.0 - (d - near_band) / far_span).max(0.12) };
                     if (h & 1023) as f32 / 1023.0 > keep {
                         continue;
                     }
-                    let (wx, wz) = (x as f32 + ((h >> 10) & 255) as f32 / 255.0, z as f32 + ((h >> 18) & 255) as f32 / 255.0);
                     if wx < 0.0 || wz < 0.0 || wx >= size || wz >= size {
                         continue;
                     }
@@ -1104,7 +1119,7 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
                     triangles_left -= n as i64;
                     let k = ((r >> 16) & 1023) as f32 / 1023.0;
                     // Shrinks toward the edge of the range so grass does not pop in.
-                    let fade = ((RANGE as f32 - d) / 18.0).clamp(0.0, 1.0);
+                    let fade = ((range_f - d) / fade_band).clamp(0.0, 1.0);
                     let yaw = ((r >> 5) & 511) as f32 * 0.7045;
                     write_instance(instances.entry((id, lod)).or_default(), &rotation(yaw, 0.0, 0.0, (a + (b - a) * k) * fade), [wx, y, wz], ground_tint(wx, wz));
                 }
@@ -3910,6 +3925,34 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         row(ui, t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0);
         row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0);
         row(ui, t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0);
+        {
+            use crate::settings::GrassRangeSource;
+            let src_label = |s: GrassRangeSource| match s {
+                GrassRangeSource::Editor => t("Editor settings"),
+                GrassRangeSource::MapConfig => t("Map config (CfgWorlds)"),
+            };
+            ui.horizontal(|ui| {
+                ui.label(t("Grass range"));
+                egui::ComboBox::from_id_salt("cam_grass_src")
+                    .selected_text(src_label(app.settings.grass_range_source))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut app.settings.grass_range_source, GrassRangeSource::Editor, src_label(GrassRangeSource::Editor));
+                        ui.selectable_value(&mut app.settings.grass_range_source, GrassRangeSource::MapConfig, src_label(GrassRangeSource::MapConfig));
+                    });
+            });
+            match app.settings.grass_range_source {
+                GrassRangeSource::Editor => {
+                    row(ui, t("Grass draw distance m"), &mut app.settings.grass_range, 15.0..=300.0);
+                }
+                GrassRangeSource::MapConfig => {
+                    let (dist, grid) = app.doc.as_ref().map_or((125.0, 1.0), |d| {
+                        (d.world.meta.config.clutter_dist.unwrap_or(125.0), d.world.meta.config.clutter_grid.unwrap_or(1.0))
+                    });
+                    ui.weak(tf("From Map config: {0} m (grid {1} m)", &[&format!("{dist:.0}"), &format!("{grid:.2}")]))
+                        .on_hover_text(t("Uses clutterDist and clutterGrid from File > Map config (falling back to the base world's defaults)."));
+                }
+            }
+        }
         surface_relief_ui(ui, &mut app.settings);
         row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=1.0);
         ui.weak(t("How far the swell runs up the shore and back; the game's MaxWave is 0.25 m."));
