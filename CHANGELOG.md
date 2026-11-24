@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.4.0
+
+### New
+
+- **3D loot point editor for `mapgroupproto.xml`.** Right-click any building in the Content Browser
+  and choose **Loot points...** to inspect and edit its loot containers and spawn points in a
+  dedicated 3D GPU preview window (requires a mission folder):
+  - **Fly camera** with the same controls as the main 3D view (`RMB + WASD/QE`, wheel to zoom,
+    `MMB` to pan) plus quick camera presets (**Iso**, **Top**, **Front**, **Side**, **Inside**).
+  - **Visual proxies** (furniture, tables, shelves) are shown inside the building and can be
+    toggled on/off, along with a horizontal **Cut roof** slice slider to see inside rooms and floors.
+  - **Interactive 3D gizmo** for the selected loot point: move along **X / Y / Z** axes, resize
+    **range** by dragging the horizontal ring, and adjust **height** clearance by dragging the top
+    **H** handle.
+  - **Click 3D to add** places a new loot point directly onto the building floor, shelf, or table
+    surface under the cursor.
+  - Edit prototype class, max loot, dynamic event loot (`deloot`), usage/value flags, containers,
+    categories, tags, and individual point settings, then save directly to `mapgroupproto.xml`.
+- **Place on top of objects and Drop onto surface.**
+  - **Place on top of objects** snaps newly placed objects onto roofs, floors, tables, and other
+    objects instead of only the terrain. Works in **Place one** mode and when dragging assets from
+    the Content Browser. Toggle it from the new **Surface** button next to **Ground** in the
+    toolbar, the Place panel, or its shortcut (`Shift+End`).
+  - **Drop onto surface** (`Edit > Drop onto surface`, default `End`) drops already selected
+    objects onto the highest object surface or terrain underneath.
+- **3D ghost preview when placing or dragging objects.** Hovering in **Place one** mode or dragging
+  models, presets, or prefabs from the Content Browser onto the map now shows a live translucent 3D
+  preview of the object (respecting surface snapping, rotation, and scale) instead of a flat
+  circle.
+- **Hide and isolate objects.** Temporarily hide selected objects (`Ctrl+H`), isolate the current
+  selection (`/`), or show all hidden objects again (`Alt+H`).
+- **DayZ Editor (`.dze`) and Object Spawner JSON (`cfggameplay.json`) import and export.** Import
+  and export object layouts directly in DayZ Editor `.dze` format and vanilla Object Spawner JSON
+  from `File > Import` and `File > Export`.
+- **2D player map PNG export.** Export a clean top-down 2D map image with hillshade, elevation
+  contours, roads, railways, buildings, DayZ coordinate grid, and key point labels.
+- **DayZ slope thresholds and object density heatmap.**
+  - The slope overlay highlights exact DayZ walkability and climb thresholds.
+  - New **Object density** shading mode visualizes crowded areas on the map, paired with a dense
+    area warning in **Map Check**.
+- **Expanded `CfgWorlds` settings (`File > Map config...`).** Configure sea waves, atmosphere,
+  sound map, and navmesh settings directly in the GUI, written to `config.cpp` on export.
+- **Config-driven clutter (grass) draw distance.** In `3D View > Camera`, switch grass draw
+  distance between the editor setting and your map's `Map config` (`CfgWorlds`) value.
+- **Team Work visual diff overlay.** Preview incoming Team Work patches directly on the 2D and 3D
+  map (added, moved, and removed objects highlighted in color) before applying them.
+- **Manage recent projects.** Remove individual entries (`×`) or clear the whole recent projects
+  list from `File > Recent projects` and from the welcome screen.
+
+### Fixed
+
+- **Content Browser deselection.** Clicking an already-selected item in the Content Browser again
+  (or clearing the selection) deselects it and clears the active object in the Place tool, leaving a
+  normal cursor with no ghost preview or brush circle.
+- **Welcome screen recent projects** are centered neatly under the action buttons.
+- **Loot point coordinates** match DayZ Central Economy's 90-degree building frame when mapping
+  `mapgroupproto.xml` points to P3D model space.
+- **Loot point editor window** keeps a stable height and resizes cleanly in both axes without
+  drifting or clipping.
+
+### Good to know
+
+- Projects from 0.3.0 and earlier open in 0.4.0. A project saved in 0.4.0 also opens in 0.3.0; any
+  new `CfgWorlds` settings default gracefully on older versions.
+- All new `Map config` fields and `mapgroupproto.xml` edits are saved, diffed, and merged in Team
+  Work.
+- The **Drop onto surface** (`End`) shortcut drops currently selected objects; **Place on top of
+  objects** (`Shift+End`) toggles snapping for newly placed and dragged objects.
+
 ## 0.3.0
 
 ### New
