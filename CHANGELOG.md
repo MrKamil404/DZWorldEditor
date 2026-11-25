@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.4.1
+
+### New
+
+- **Realistic water painting in Satellite (`Water`).** Paint depth-graded ocean, river, and pond
+  water directly into the satellite image as a modifier (with Undo, Outliner visibility, blending,
+  export, and Team Work support):
+  - **Ocean / sea**: paints below sea level with shallow-to-deep color transitions, subtle wind
+    ripples, and optional **Shoreline foam**.
+  - **Rivers and ponds**: rasterizes placed water models with real depth-to-bed shading and ripples.
+  - **Terrain & above-water awareness**: clips underground water geometry (**Only what is above the
+    ground**) and leaves piers, bridges, rocks, boats, and buildings standing above the water
+    untouched (**Leave out objects above water**).
+  - Choose between **Natural**, **Coastal**, and **Murky** styles plus a **Blending** slider.
+- **2D player map export upgrades (`File > Export > 2D player map (PNG)...`).**
+  - **Full map resolution**: choose **Full map** (native satellite width or 1 px/m) and presets up
+    to `20480 px` (supported up to `32768 px`).
+  - **Place name font and size**: pick any common Windows font, the built-in pixel font, or browse
+    for a custom `.ttf` / `.otf` / `.ttc` font file (with full Unicode/Polish character support),
+    and choose **Small**, **Medium**, or **Large** label size.
+  - **Separate buildings and vegetation**: **Building footprints** now draws only buildings, while
+    the new **Trees and bushes** option draws all placed trees and bushes as forest canopy on the
+    map (so tree lines, groves, and forests on non-forest mask layers appear on topographic maps).
+  - **With satellite modifiers**: in Satellite style, toggle whether baked satellite modifiers are
+    included — turn off **Building footprints** to keep only what is baked into the satellite.
+- **Unified UI in Export, Key points, and Satellite Bake objects.**
+  - **Export files** window now uses the editor's native sections, aligned rows, value fields,
+    segmented controls, and accent footer bar.
+  - **Key points** tab now shows a count in the list header, full-height scrollable list with type
+    labels and double-click camera jump, and a dedicated **Selected key point** section with
+    `ValueField` controls, `Position` vector row, and **Go to** / **Delete** buttons.
+  - **Bake objects** in Satellite is organized into collapsible **What to bake**, **Left out when
+    baking the whole map** (with compact removable chips), and **Appearance** subsections, plus a
+    primary **Bake** button.
+
+### Fixed
+
+- **Vector row alignment (`Position`, `Rotation`, etc.).** Fixed a 3 px left shift in `vector_row`
+  so X/Y/Z coordinate fields line up cleanly with the value column of surrounding rows.
+- **Tree and bush detection for bare model names.** Vegetation models stored by filename only (such
+  as `t_betulapendula_2f.p3d` or `b_corylusavellana_2s.p3d`) are now consistently recognized as
+  plants across the 2D map exporter and editor.
+
+### Good to know
+
+- Projects from 0.4.0 and earlier open in 0.4.1, and projects saved in 0.4.1 open in 0.4.0 as well;
+  painted satellite water is stored as a standard satellite modifier.
+
 ## 0.4.0
 
 ### New
