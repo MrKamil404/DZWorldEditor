@@ -3,8 +3,10 @@
 use crate::model_info::ModelDb;
 use crate::terrain::RgbImage;
 use crate::world::World;
+use ab_glyph::{Font, FontVec, PxScale, ScaleFont};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Map2dStyle {
@@ -13,19 +15,43 @@ pub enum Map2dStyle {
     Satellite,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Map2dFontSize {
+    Small,
+    Medium,
+    #[default]
+    Large,
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Map2dOptions {
-    /// Output side in pixels (square image).
+    /// Output side in pixels (square image). `0` uses the map's full native resolution.
     pub size: usize,
     pub style: Map2dStyle,
+    /// When `style == Satellite`, include baked satellite modifiers (objects, roads, clone strokes).
+    #[serde(default = "default_true")]
+    pub sat_modifiers: bool,
     /// Height between minor contour lines in metres; 0 disables contours.
     pub contour_interval: f32,
     /// Coordinate grid spacing in metres; 0 disables the grid.
     pub grid_step: f32,
     pub roads: bool,
     pub buildings: bool,
+    /// Draws placed trees and bushes as forest canopy on the map.
+    #[serde(default = "default_true")]
+    pub trees: bool,
     pub keypoints: bool,
+    /// Path to a TrueType/OpenType font file for place names; empty uses the built-in pixel font.
+    #[serde(default)]
+    pub font: String,
+    /// Relative size of place name labels (`Large` matches the original default).
+    #[serde(default)]
+    pub font_size: Map2dFontSize,
 }
 
 impl Default for Map2dOptions {
@@ -33,21 +59,83 @@ impl Default for Map2dOptions {
         Self {
             size: 4096,
             style: Map2dStyle::Topographic,
+            sat_modifiers: true,
             contour_interval: 10.0,
             grid_step: 1000.0,
             roads: true,
             buildings: true,
+            trees: true,
             keypoints: true,
+            font: String::new(),
+            font_size: Map2dFontSize::Large,
         }
     }
 }
 
+/// Full native pixel side of the map (satellite width when present, otherwise 1 px/m).
+pub fn native_size(w: &World) -> usize {
+    w.satellite
+        .as_ref()
+        .map(|s| s.width)
+        .filter(|&n| n > 0)
+        .unwrap_or_else(|| w.meta.size_m().round() as usize)
+        .clamp(256, 32768)
+}
+
+/// Common system fonts found in Windows' Fonts folder, paired with their file paths.
+pub fn system_fonts() -> Vec<(String, PathBuf)> {
+    let dir = std::env::var_os("WINDIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+        .join("Fonts");
+    const CANDIDATES: &[(&str, &str)] = &[
+        ("Segoe UI", "segoeui.ttf"),
+        ("Segoe UI Semibold", "seguisb.ttf"),
+        ("Segoe UI Bold", "segoeuib.ttf"),
+        ("Arial", "arial.ttf"),
+        ("Arial Bold", "arialbd.ttf"),
+        ("Bahnschrift", "bahnschrift.ttf"),
+        ("Calibri", "calibri.ttf"),
+        ("Calibri Bold", "calibrib.ttf"),
+        ("Cambria", "cambria.ttc"),
+        ("Consolas", "consola.ttf"),
+        ("Consolas Bold", "consolab.ttf"),
+        ("Georgia", "georgia.ttf"),
+        ("Georgia Bold", "georgiab.ttf"),
+        ("Impact", "impact.ttf"),
+        ("Palatino Linotype", "pala.ttf"),
+        ("Tahoma", "tahoma.ttf"),
+        ("Tahoma Bold", "tahomabd.ttf"),
+        ("Times New Roman", "times.ttf"),
+        ("Times New Roman Bold", "timesbd.ttf"),
+        ("Trebuchet MS", "trebuc.ttf"),
+        ("Trebuchet MS Bold", "trebucbd.ttf"),
+        ("Verdana", "verdana.ttf"),
+        ("Verdana Bold", "verdanab.ttf"),
+    ];
+    let mut out = Vec::new();
+    for &(label, file) in CANDIDATES {
+        let p = dir.join(file);
+        if p.is_file() {
+            out.push((label.to_string(), p));
+        }
+    }
+    out
+}
+
 /// Renders the map to an RGB image with row 0 on the north edge.
 pub fn render(w: &World, db: &ModelDb, o: &Map2dOptions) -> RgbImage {
-    let side = o.size.clamp(256, 16384);
+    let side = if o.size == 0 { native_size(w) } else { o.size.clamp(256, 32768) };
     let world_m = w.meta.size_m().max(1.0);
     let sea = w.meta.sea_level;
-    let use_sat = o.style == Map2dStyle::Satellite && w.satellite.as_ref().is_some_and(|s| s.width > 0 && s.height > 0 && !s.data.is_empty());
+    let has_sat = w.satellite.as_ref().is_some_and(|s| s.width > 0 && s.height > 0 && !s.data.is_empty());
+    let use_sat = o.style == Map2dStyle::Satellite && has_sat;
+    let sat_unbaked = (use_sat && !o.sat_modifiers).then(|| w.sat_original());
+    let sat_ref = if use_sat {
+        sat_unbaked.as_ref().or(w.satellite.as_ref())
+    } else {
+        None
+    };
     let (h_min, h_max) = w.height.min_max();
     let land_span = (h_max - sea).max(40.0);
     let step_m = world_m / side as f32;
@@ -56,7 +144,7 @@ pub fn render(w: &World, db: &ModelDb, o: &Map2dOptions) -> RgbImage {
     // Pre-classify each surface layer for topographic tinting (forest green vs open land).
     let layer_tint: Vec<[f32; 3]> = w.layers.iter().map(|l| {
         let name = format!("{} {}", l.name, l.texture).to_ascii_lowercase();
-        if name.contains("forest") || name.contains("les") || name.contains("spruce") || name.contains("conifer") || name.contains("leaves") || name.contains("pine") {
+        if name.contains("forest") || name.contains("les") || name.contains("las") || name.contains("spruce") || name.contains("conifer") || name.contains("leaves") || name.contains("leaf") || name.contains("pine") || name.contains("broadleaf") || name.contains("deciduous") || name.contains("wood") {
             [170.0, 202.0, 152.0]
         } else if name.contains("sand") || name.contains("beach") || name.contains("gravel") {
             [232.0, 224.0, 194.0]
@@ -87,8 +175,7 @@ pub fn render(w: &World, db: &ModelDb, o: &Map2dOptions) -> RgbImage {
             let shade = (nx * -0.55 + ny * 0.70 + nz * 0.45).clamp(0.0, 1.0);
             let light = 0.72 + 0.34 * shade;
 
-            let mut rgb = if use_sat {
-                let sat = w.satellite.as_ref().unwrap();
+            let mut rgb = if let Some(sat) = sat_ref {
                 let sx = (px * sat.width / side).min(sat.width - 1);
                 let sy = (py * sat.height / side).min(sat.height - 1);
                 let idx = (sy * sat.width + sx) * 3;
@@ -157,32 +244,71 @@ pub fn render(w: &World, db: &ModelDb, o: &Map2dOptions) -> RgbImage {
     };
     let px_per_m = side as f32 / world_m;
 
-    // 2. Building footprints from placed structures.
-    if o.buildings {
-        let info_cache: Vec<_> = w.objects.models.iter().map(|m| (m.path.to_ascii_lowercase(), db.get(&m.path))).collect();
-        for (_, ob) in w.objects.iter() {
-            if !w.object_visible(ob) {
-                continue;
+    // 2. Trees and bushes canopy, and building footprints (separated cleanly like satellite bake).
+    if o.trees || o.buildings {
+        let info_cache: Vec<_> = w.objects.models.iter().map(|m| {
+            let lower = m.path.to_ascii_lowercase().replace('/', "\\");
+            let name = lower.rsplit('\\').next().unwrap_or(&lower);
+            let plant = crate::check::is_plant(&lower);
+            let info = db.get(&m.path);
+            let bush = plant && (name.starts_with("b_") || lower.contains("\\bush") || lower.contains("\\shrub") || lower.contains("\\hedge") || (info.known && (info.max[1] - info.min[1]) < 3.0));
+            let house = !plant && info.known && crate::check::is_house(&lower, &info);
+            (plant, bush, house, info)
+        }).collect();
+
+        // 2a. Trees and bushes first so buildings and roads stay crisp on top.
+        if o.trees {
+            let tree_col = if use_sat { [54, 96, 44] } else { [146, 184, 126] };
+            let bush_col = if use_sat { [72, 114, 56] } else { [166, 198, 142] };
+            for (_, ob) in w.objects.iter() {
+                if !w.object_visible(ob) {
+                    continue;
+                }
+                let &(plant, bush, _, ref info) = &info_cache[ob.model as usize];
+                if !plant {
+                    continue;
+                }
+                let radius_m = if info.known {
+                    let (hx, hz) = info.footprint();
+                    ((hx + hz) * 0.5 * ob.scale * 0.85).clamp(0.8, 14.0)
+                } else if bush {
+                    (1.3 * ob.scale).clamp(0.8, 4.0)
+                } else {
+                    (3.2 * ob.scale).clamp(1.5, 10.0)
+                };
+                let r_px = (radius_m * px_per_m).max(0.9);
+                let (px, py) = to_px(ob.x, ob.z);
+                let (col, alpha) = if bush { (bush_col, 0.52) } else { (tree_col, 0.65) };
+                fill_disc(&mut img, px, py, r_px, col, alpha);
             }
-            let (path, info) = &info_cache[ob.model as usize];
-            if !info.known || !crate::check::is_house(path, info) {
-                continue;
+        }
+
+        // 2b. Building footprints from placed structures (excluding vegetation).
+        if o.buildings {
+            for (_, ob) in w.objects.iter() {
+                if !w.object_visible(ob) {
+                    continue;
+                }
+                let &(_, _, house, ref info) = &info_cache[ob.model as usize];
+                if !house {
+                    continue;
+                }
+                let (hx, hz) = info.footprint();
+                let (cx, cz) = ((info.min[0] + info.max[0]) * 0.5 * ob.scale, (info.min[2] + info.max[2]) * 0.5 * ob.scale);
+                let (s, c) = ob.yaw.to_radians().sin_cos();
+                let corners = [
+                    [-hx * ob.scale, -hz * ob.scale],
+                    [hx * ob.scale, -hz * ob.scale],
+                    [hx * ob.scale, hz * ob.scale],
+                    [-hx * ob.scale, hz * ob.scale],
+                ];
+                let pts: [(f32, f32); 4] = corners.map(|[lx, lz]| {
+                    let wx = ob.x + (cx + lx) * c + (cz + lz) * s;
+                    let wz = ob.z - (cx + lx) * s + (cz + lz) * c;
+                    to_px(wx, wz)
+                });
+                fill_quad(&mut img, pts, [72, 68, 64], 0.85);
             }
-            let (hx, hz) = info.footprint();
-            let (cx, cz) = ((info.min[0] + info.max[0]) * 0.5 * ob.scale, (info.min[2] + info.max[2]) * 0.5 * ob.scale);
-            let (s, c) = ob.yaw.to_radians().sin_cos();
-            let corners = [
-                [-hx * ob.scale, -hz * ob.scale],
-                [hx * ob.scale, -hz * ob.scale],
-                [hx * ob.scale, hz * ob.scale],
-                [-hx * ob.scale, hz * ob.scale],
-            ];
-            let pts: [(f32, f32); 4] = corners.map(|[lx, lz]| {
-                let wx = ob.x + (cx + lx) * c + (cz + lz) * s;
-                let wz = ob.z - (cx + lx) * s + (cz + lz) * c;
-                to_px(wx, wz)
-            });
-            fill_quad(&mut img, pts, [72, 68, 64], 0.85);
         }
     }
 
@@ -249,7 +375,15 @@ pub fn render(w: &World, db: &ModelDb, o: &Map2dOptions) -> RgbImage {
 
     // 5. Key point labels (cities, villages, hills, airports...).
     if o.keypoints {
-        let base_scale = (side / 1800).max(1);
+        let ttf_font = (!o.font.trim().is_empty())
+            .then(|| std::fs::read(o.font.trim()).ok().and_then(|b| FontVec::try_from_vec(b).ok()))
+            .flatten();
+        let size_mul = match o.font_size {
+            Map2dFontSize::Small => 0.52_f32,
+            Map2dFontSize::Medium => 0.75_f32,
+            Map2dFontSize::Large => 1.0_f32,
+        };
+        let base_scale = (side / 1800).max(1) as f32;
         for kp in &w.keypoints {
             if !kp.show {
                 continue;
@@ -260,19 +394,25 @@ pub fn render(w: &World, db: &ModelDb, o: &Map2dOptions) -> RgbImage {
             }
             let (px, py) = to_px(kp.x, kp.z);
             let (ix, iy) = (px.round() as i32, py.round() as i32);
-            let (scale, fg, halo, label) = match kp.kind.as_str() {
-                "NameCityCapital" => (base_scale * 3, [20, 20, 22], [255, 252, 242], text.to_uppercase()),
-                "NameCity" => (base_scale * 2 + 1, [24, 24, 28], [255, 252, 242], text.to_string()),
-                "Airport" => (base_scale * 2, [130, 32, 28], [255, 250, 245], text.to_string()),
-                "NameVillage" => (base_scale * 2, [34, 34, 38], [255, 252, 244], text.to_string()),
+            let (raw_scale, fg, halo, label) = match kp.kind.as_str() {
+                "NameCityCapital" => (base_scale * 3.0, [20, 20, 22], [255, 252, 242], text.to_uppercase()),
+                "NameCity" => (base_scale * 2.0 + 1.0, [24, 24, 28], [255, 252, 242], text.to_string()),
+                "Airport" => (base_scale * 2.0, [130, 32, 28], [255, 250, 245], text.to_string()),
+                "NameVillage" => (base_scale * 2.0, [34, 34, 38], [255, 252, 244], text.to_string()),
                 "Hill" => {
                     let h = (w.height.sample(kp.x, kp.z) - sea).round() as i32;
-                    (base_scale.max(1) + 1, [74, 52, 34], [252, 248, 236], format!("{text} ({h}m)"))
+                    (base_scale.max(1.0) + 1.0, [74, 52, 34], [252, 248, 236], format!("{text} ({h}m)"))
                 }
-                "NameMarine" => (base_scale.max(1) + 1, [26, 68, 118], [235, 245, 255], text.to_string()),
-                _ => (base_scale.max(1) + 1, [48, 48, 52], [252, 250, 244], text.to_string()),
+                "NameMarine" => (base_scale.max(1.0) + 1.0, [26, 68, 118], [235, 245, 255], text.to_string()),
+                _ => (base_scale.max(1.0) + 1.0, [48, 48, 52], [252, 250, 244], text.to_string()),
             };
-            draw_text_centered(&mut img, &label, ix, iy, scale.clamp(1, 8), fg, halo);
+            let scaled = (raw_scale * size_mul).clamp(1.0, 14.0);
+            if let Some(font) = &ttf_font {
+                let px_height = (scaled * 9.5).clamp(10.0, 220.0);
+                draw_ttf_centered(&mut img, font, &label, ix, iy, px_height, fg, halo);
+            } else {
+                draw_text_centered(&mut img, &label, ix, iy, scaled.round().clamp(1.0, 12.0) as usize, fg, halo);
+            }
         }
     }
 
@@ -329,6 +469,28 @@ fn draw_dashed_line(img: &mut RgbImage, x0: f32, y0: f32, x1: f32, y1: f32, widt
         let b = (d + dash * 0.5).min(len) / len;
         draw_thick_line(img, x0 + (x1 - x0) * a, y0 + (y1 - y0) * a, x0 + (x1 - x0) * b, y0 + (y1 - y0) * b, width, col, 0.9);
         d += dash;
+    }
+}
+
+fn fill_disc(img: &mut RgbImage, cx: f32, cy: f32, r: f32, col: [u8; 3], alpha: f32) {
+    let min_x = (cx - r - 0.8).floor().max(0.0) as i32;
+    let max_x = (cx + r + 0.8).ceil().min(img.width as f32 - 1.0) as i32;
+    let min_y = (cy - r - 0.8).floor().max(0.0) as i32;
+    let max_y = (cy + r + 0.8).ceil().min(img.height as f32 - 1.0) as i32;
+    if max_x < min_x || max_y < min_y {
+        return;
+    }
+    let soft = (r * 0.25).clamp(0.7, 2.0);
+    for y in min_y..=max_y {
+        let dy = y as f32 + 0.5 - cy;
+        for x in min_x..=max_x {
+            let dx = x as f32 + 0.5 - cx;
+            let dist = dx.hypot(dy);
+            if dist <= r + soft * 0.5 {
+                let edge = ((r + soft * 0.5 - dist) / soft).clamp(0.0, 1.0);
+                blend_px(img, x, y, col, alpha * edge);
+            }
+        }
     }
 }
 
@@ -482,6 +644,89 @@ fn draw_text_centered(img: &mut RgbImage, text: &str, cx: i32, cy: i32, scale: u
     }
 }
 
+fn draw_ttf_centered(img: &mut RgbImage, font: &FontVec, text: &str, cx: i32, cy: i32, px_height: f32, fg: [u8; 3], halo: [u8; 3]) {
+    if text.is_empty() {
+        return;
+    }
+    let scale = PxScale::from(px_height);
+    let scaled = font.as_scaled(scale);
+    let mut pen_x = 0.0_f32;
+    let mut prev = None;
+    let mut glyphs = Vec::with_capacity(text.len());
+    for ch in text.chars() {
+        let gid = font.glyph_id(ch);
+        if let Some(p) = prev {
+            pen_x += scaled.kern(p, gid);
+        }
+        let g = gid.with_scale_and_position(scale, ab_glyph::point(pen_x, scaled.ascent()));
+        pen_x += scaled.h_advance(gid);
+        prev = Some(gid);
+        if let Some(outlined) = font.outline_glyph(g) {
+            glyphs.push(outlined);
+        }
+    }
+    if glyphs.is_empty() {
+        return;
+    }
+    let mut min_x = f32::MAX;
+    let mut min_y = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut max_y = f32::MIN;
+    for g in &glyphs {
+        let b = g.px_bounds();
+        min_x = min_x.min(b.min.x);
+        min_y = min_y.min(b.min.y);
+        max_x = max_x.max(b.max.x);
+        max_y = max_y.max(b.max.y);
+    }
+    let pad = ((px_height * 0.08).round() as i32).clamp(1, 5);
+    let bw = (max_x - min_x).ceil().max(1.0) as usize + (pad as usize) * 2 + 2;
+    let bh = (max_y - min_y).ceil().max(1.0) as usize + (pad as usize) * 2 + 2;
+    let mut mask = vec![0.0_f32; bw * bh];
+    for g in &glyphs {
+        let b = g.px_bounds();
+        let ox = (b.min.x - min_x).floor() as i32 + pad + 1;
+        let oy = (b.min.y - min_y).floor() as i32 + pad + 1;
+        g.draw(|gx, gy, cov| {
+            let x = ox + gx as i32;
+            let y = oy + gy as i32;
+            if x >= 0 && y >= 0 && (x as usize) < bw && (y as usize) < bh {
+                let idx = y as usize * bw + x as usize;
+                mask[idx] = mask[idx].max(cov.clamp(0.0, 1.0));
+            }
+        });
+    }
+    let x0 = cx - (bw as i32) / 2;
+    let y0 = cy - (bh as i32) / 2;
+    let r2 = (pad * pad) as f32 + 0.5;
+    // Draw halo (circular dilation of glyph coverage), then crisp antialiased text.
+    for y in 0..bh {
+        for x in 0..bw {
+            let mut h_cov = 0.0_f32;
+            let y_lo = (y as i32 - pad).max(0) as usize;
+            let y_hi = (y as i32 + pad).min(bh as i32 - 1) as usize;
+            let x_lo = (x as i32 - pad).max(0) as usize;
+            let x_hi = (x as i32 + pad).min(bw as i32 - 1) as usize;
+            for ny in y_lo..=y_hi {
+                let dy = ny as i32 - y as i32;
+                for nx in x_lo..=x_hi {
+                    let dx = nx as i32 - x as i32;
+                    if (dx * dx + dy * dy) as f32 <= r2 {
+                        h_cov = h_cov.max(mask[ny * bw + nx]);
+                    }
+                }
+            }
+            if h_cov > 0.01 {
+                blend_px(img, x0 + x as i32, y0 + y as i32, halo, h_cov * 0.82);
+            }
+            let f_cov = mask[y * bw + x];
+            if f_cov > 0.01 {
+                blend_px(img, x0 + x as i32, y0 + y as i32, fg, f_cov * 0.98);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,5 +771,38 @@ mod tests {
         let east = &img.data[(256 * 512 + 480) * 3..(256 * 512 + 480) * 3 + 3];
         assert!(west[2] > west[0], "sea pixel should be blue: {west:?}");
         assert!(east[0] > east[2], "land pixel should be warmer than sea: {east:?}");
+    }
+
+    #[test]
+    fn native_size_and_font_sizes_render_cleanly() {
+        let mut w = World::new(WorldMeta::new("Native", 64, 8.0), 10.0);
+        w.keypoints.push(KeyPoint { name: "Town".into(), kind: "NameCity".into(), text: "Gdańsk".into(), x: 256.0, z: 256.0, show: true, ..Default::default() });
+        assert_eq!(native_size(&w), 512);
+        let font = system_fonts().into_iter().next().map(|(_, p)| p.display().to_string()).unwrap_or_default();
+        for fs in [Map2dFontSize::Small, Map2dFontSize::Medium, Map2dFontSize::Large] {
+            let img = render(&w, &ModelDb::new(std::path::Path::new(".")), &Map2dOptions {
+                size: 0,
+                buildings: false,
+                font: font.clone(),
+                font_size: fs,
+                ..Default::default()
+            });
+            assert_eq!((img.width, img.height), (512, 512));
+        }
+    }
+
+    #[test]
+    fn placed_trees_and_bushes_paint_canopy_even_with_bare_names() {
+        use crate::objects::Obj;
+        let mut w = World::new(WorldMeta::new("Trees", 64, 8.0), 20.0);
+        let m_tree = w.objects.intern("t_betulapendula_2f.p3d");
+        let m_bush = w.objects.intern("b_corylusavellana_2s.p3d");
+        w.objects.insert(Obj { x: 256.0, z: 256.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m_tree, flags: 0 });
+        w.objects.insert(Obj { x: 128.0, z: 256.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: m_bush, flags: 0 });
+        let with_trees = render(&w, &ModelDb::new(std::path::Path::new(".")), &Map2dOptions { size: 512, trees: true, buildings: false, ..Default::default() });
+        let without_trees = render(&w, &ModelDb::new(std::path::Path::new(".")), &Map2dOptions { size: 512, trees: false, buildings: false, ..Default::default() });
+        let idx = (256 * 512 + 256) * 3;
+        assert!(with_trees.data[idx + 1] > with_trees.data[idx], "tree pixel should be greener: {:?}", &with_trees.data[idx..idx + 3]);
+        assert_ne!(&with_trees.data[idx..idx + 3], &without_trees.data[idx..idx + 3]);
     }
 }

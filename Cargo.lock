@@ -899,6 +899,7 @@ dependencies = [
 name = "dz-core"
 version = "0.4.0"
 dependencies = [
+ "ab_glyph",
  "anyhow",
  "flate2",
  "forest-core",

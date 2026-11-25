@@ -277,6 +277,24 @@ fn check_objects(w: &World, db: &ModelDb, job: &Job) -> Vec<Issue> {
 
 /// Whether a model is a house or hall that should not stand in another: large enough, and not
 /// one of the props, piles, ruins, piers and walls that are made to be set into others.
+/// Whether a model path is a tree, bush, or other vegetation (excluding ground clutter).
+pub fn is_plant(path: &str) -> bool {
+    let p = path.to_ascii_lowercase().replace('/', "\\");
+    let name = p.rsplit('\\').next().unwrap_or(&p);
+    if p.contains("\\clutter\\") || name.starts_with("c_") {
+        return false;
+    }
+    name.starts_with("t_")
+        || name.starts_with("b_")
+        || p.contains("\\tree\\")
+        || p.contains("\\trees\\")
+        || p.contains("plants")
+        || p.contains("\\bush")
+        || p.contains("\\bushes\\")
+        || p.contains("\\shrub")
+        || p.contains("\\hedge")
+}
+
 pub fn is_house(path: &str, info: &crate::model_info::ModelInfo) -> bool {
     let p = path.to_ascii_lowercase();
     const PROPS: [&str; 20] = ["misc", "garbage", "rubble", "ruins", "pier", "harbour", "platform", "proxy", "tank", "pipe", "wall", "bridge", "decal", "furniture", "signs", "power", "mound", "underground", "stairs", "pile"];

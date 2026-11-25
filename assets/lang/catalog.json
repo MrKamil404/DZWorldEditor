@@ -10662,5 +10662,41 @@
  "No recent projects": {
   "de": "Keine letzten Projekte",
   "pl": "Brak ostatnich projektów"
+ },
+ "Full map": {
+  "de": "Volle Karte",
+  "pl": "Pełna mapa"
+ },
+ "Font": {
+  "de": "Schriftart",
+  "pl": "Czcionka"
+ },
+ "Built-in (pixel)": {
+  "de": "Eingebaut (Pixel)",
+  "pl": "Wbudowana (pikselowa)"
+ },
+ "Choose a font file": {
+  "de": "Schriftdatei wählen",
+  "pl": "Wybierz plik czcionki"
+ },
+ "Font size": {
+  "de": "Schriftgröße",
+  "pl": "Rozmiar czcionki"
+ },
+ "Small": {
+  "de": "Klein",
+  "pl": "Mała"
+ },
+ "Large": {
+  "de": "Groß",
+  "pl": "Duża"
+ },
+ "Draw building outlines on top of the map; turn off to keep only what is baked into the satellite.": {
+  "de": "Zeichnet Gebäudeumrisse auf die Karte; ausschalten, um nur Eingebackenes im Satellitenbild zu behalten.",
+  "pl": "Rysuje obrysy budynków na mapie; wyłącz, aby zostawić tylko to, co wypalono w satelicie."
+ },
+ "Draws placed trees and bushes as forest canopy on the map.": {
+  "de": "Zeichnet platzierte Bäume und Büsche als Baumkronen auf der Karte.",
+  "pl": "Rysuje postawione drzewa i krzewy jako korony lasów na mapie."
  }
 }

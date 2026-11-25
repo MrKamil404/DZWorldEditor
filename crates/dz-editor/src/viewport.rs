@@ -624,7 +624,7 @@ pub fn drop_selection_on_surface(app: &mut App) {
 }
 
 pub(crate) fn is_plant(path: &str) -> bool {
-    path.contains("\\tree\\") || path.contains("\\t_") || path.contains("plants") || path.contains("\\bush") || path.contains("\\b_")
+    dz_core::check::is_plant(path)
 }
 
 /// Colour of an object in the top view, by what kind of thing it is.

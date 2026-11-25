@@ -15,6 +15,7 @@ forest-core = { path = "../forest-core" }
 road-core = { path = "../road-core" }
 sha1_smol = "1"
 flate2 = "1"
+ab_glyph = "0.2"
 ureq = { version = "2.12", default-features = false, features = ["json", "native-tls"] }
 native-tls = "0.2"
 
