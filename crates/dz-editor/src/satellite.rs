@@ -105,6 +105,14 @@ pub struct SatTool {
     pub bake_blend: f32,
     /// The blending slider is being dragged.
     blending: bool,
+    /// Realistic water painting into the satellite (ocean, rivers, ponds).
+    pub water_ocean: bool,
+    pub water_parts: bool,
+    pub water_above_ground: bool,
+    pub water_keep_above: bool,
+    pub water_foam: bool,
+    pub water_style: dz_core::satmod::WaterStyle,
+    pub water_blend: f32,
     /// A satellite made from the mask: its settings, whether it covers the whole map (or the
     /// chosen shapes), and the metres a pixel of a new image covers when the project has none.
     pub gen: dz_core::satgen::SatGenSettings,
@@ -122,7 +130,7 @@ pub struct SatTool {
 
 impl Default for SatTool {
     fn default() -> Self {
-        Self { brush: SatBrush::Clone, adjust: Adjust::default(), blur: 0.0, colour: [122, 104, 78], blend: BlendMode::Tint, fill_layer: None, correct_whole: true, correcting: None, feather: 3.0, line_width: 4.0, radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, aligned: true, anchor: None, turn: 0.0, scale: 1.0, match_colour: false, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_decals: false, bake_above_ground: true, bake_blend: 0.35, blending: false, gen: Default::default(), gen_colours: Vec::new(), gen_whole: true, gen_mpp: 1.0, classify: Default::default(), classify_whole: true, class_small: None, class_view: ClassifyView::default() }
+        Self { brush: SatBrush::Clone, adjust: Adjust::default(), blur: 0.0, colour: [122, 104, 78], blend: BlendMode::Tint, fill_layer: None, correct_whole: true, correcting: None, feather: 3.0, line_width: 4.0, radius: 8.0, hardness: 0.5, opacity: 1.0, from_file: false, file: None, source: None, aligned: true, anchor: None, turn: 0.0, scale: 1.0, match_colour: false, active: None, view_center: [0.0; 2], view_scale: 0.0, preview: None, revision: 0, stroke: None, bake_plants: false, bake_roads: false, bake_selection: true, bake_water: false, bake_decals: false, bake_above_ground: true, bake_blend: 0.35, blending: false, water_ocean: true, water_parts: true, water_above_ground: true, water_keep_above: true, water_foam: true, water_style: dz_core::satmod::WaterStyle::Natural, water_blend: 0.15, gen: Default::default(), gen_colours: Vec::new(), gen_whole: true, gen_mpp: 1.0, classify: Default::default(), classify_whole: true, class_small: None, class_view: ClassifyView::default() }
     }
 }
 
@@ -437,41 +445,148 @@ pub fn set_bake_skip(app: &mut App, models: &[String], skip: bool) {
 }
 
 /// The list of models and path parts a bake leaves out, with a field to add one.
+/// Paints realistic ocean, river, and pond water into the satellite as a modifier layer.
+pub fn bake_water_layer(app: &mut App) {
+    let Some(d) = &app.doc else { return };
+    let Some((width, height)) = d.world.satellite.as_ref().map(|s| (s.width, s.height)) else {
+        app.warn(t("The project has no satellite image"));
+        return;
+    };
+    if !app.sat.water_ocean && !app.sat.water_parts {
+        app.warn(t("Nothing chosen to paint"));
+        return;
+    }
+    let w = &d.world;
+    let sea_level = w.meta.sea_level;
+    let mut water_objects = Vec::new();
+    let mut occluders = Vec::new();
+    let collect_water = app.sat.water_parts;
+    let collect_occ = app.sat.water_keep_above;
+    for (_, o) in w.objects.iter() {
+        let underground = o.flags & dz_core::objects::FLAG_UNDERGROUND != 0;
+        if !w.object_visible(o) || underground {
+            continue;
+        }
+        let path = w.objects.model_path(o);
+        if crate::models::is_water_model(path) {
+            if collect_water {
+                water_objects.push(BakeObject {
+                    object: *o,
+                    origin_y: dz_core::objects::ObjectStore::origin_y(o, &w.height),
+                    model: path.to_string(),
+                });
+            }
+        } else if collect_occ && !crate::viewport::is_plant(path) && !crate::models::is_decal_model(path, &app.db.get(path)) {
+            let oy = dz_core::objects::ObjectStore::origin_y(o, &w.height);
+            let gy = w.height.sample(o.x, o.z);
+            let near_ocean = app.sat.water_ocean && (gy < sea_level + 15.0 || oy < sea_level + 15.0);
+            if near_ocean || collect_water {
+                occluders.push(BakeObject { object: *o, origin_y: oy, model: path.to_string() });
+            }
+        }
+    }
+    // When only rivers/ponds are painted (no ocean), keep only occluders close to a water object.
+    if collect_occ && !app.sat.water_ocean && collect_water {
+        let water_pts: Vec<(f32, f32)> = water_objects.iter().map(|b| (b.object.x, b.object.z)).collect();
+        occluders.retain(|occ| {
+            let (ox, oz) = (occ.object.x, occ.object.z);
+            water_pts.iter().any(|&(wx, wz)| (ox - wx).hypot(oz - wz) < 80.0)
+        });
+    }
+    let size = w.meta.size_m();
+    let db = app.db.clone();
+    let ground = Arc::new(w.height.clone());
+    let opts = dz_core::satmod::WaterBakeOptions {
+        ocean: app.sat.water_ocean,
+        rivers_and_ponds: app.sat.water_parts,
+        style: app.sat.water_style,
+        shoreline_foam: app.sat.water_foam,
+        above_ground: app.sat.water_above_ground,
+        sea_level,
+    };
+    let opacity = ((1.0 - app.sat.water_blend) * 255.0).round() as u8;
+    app.spawn(t("Painting water into the satellite"), move |job| {
+        let tiles = dz_core::satmod::bake_water(&water_objects, &occluders, &ground, &db, width, height, size, &opts, job);
+        Ok(Box::new(move |app: &mut App| {
+            let Some(d) = app.doc.as_mut() else { return };
+            if tiles.is_empty() {
+                app.warn(t("No water found to paint"));
+                return;
+            }
+            let before = d.world.sat.modifiers.clone();
+            let id = d.world.sat.add(SatKind::Bake, t("Water"));
+            if let Some(m) = d.world.sat.modifiers.last_mut() {
+                m.opacity = opacity;
+            }
+            let rect = d.world.sat_add_tiles(id, tiles);
+            d.history.push(t("Paint water"), Change::Satellite(before));
+            app.sat.active = Some(id);
+            if let Some(r) = rect {
+                app.satellite_changed(r);
+            }
+            app.info(t("Water painted into the satellite"));
+        }) as Finish)
+    });
+}
+
 fn bake_skip_ui(app: &mut App, ui: &mut egui::Ui) {
     let Some(d) = &app.doc else { return };
     let list = d.world.meta.bake_skip.clone();
-    ui.label(t("Left out when baking the whole map"));
-    let mut remove = None;
-    for (i, s) in list.iter().enumerate() {
-        ui.horizontal(|ui| {
-            if ui.small_button(crate::icons::X).on_hover_text(t("Bake it again")).clicked() { remove = Some(i); }
-            ui.add(egui::Label::new(egui::RichText::new(s).small()).truncate());
+    let title = if list.is_empty() {
+        t("Left out when baking the whole map")
+    } else {
+        format!("{} ({})", t("Left out when baking the whole map"), list.len())
+    };
+    crate::theme::subsection(ui, &title, false, |ui| {
+        // Quick toggle chips for common folders.
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+            for (name, part) in [("Wrecks", "\\wrecks\\"), ("Fences and walls", "\\walls\\"), ("Signs", "\\signs\\"), ("Furniture", "\\furniture\\")] {
+                let on = list.iter().any(|s| s == part);
+                if crate::theme::tool_button(ui, on, &t(name)).on_hover_text(tf("Leaves out every model whose path holds {0}", &[part])).clicked() {
+                    set_bake_skip(app, &[part.to_string()], !on);
+                }
+            }
         });
-    }
-    // Parts of the game's folders, to leave out a whole kind of object at once.
-    ui.horizontal_wrapped(|ui| {
-        for (name, part) in [("Wrecks", "\\wrecks\\"), ("Fences and walls", "\\walls\\"), ("Signs", "\\signs\\"), ("Furniture", "\\furniture\\")] {
-            let on = list.iter().any(|s| s == part);
-            if ui.selectable_label(on, t(name)).on_hover_text(tf("Leaves out every model whose path holds {0}", &[part])).clicked() {
-                set_bake_skip(app, &[part.to_string()], !on);
+        if !list.is_empty() {
+            ui.add_space(4.0);
+            let mut remove = None;
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+                for (i, s) in list.iter().enumerate() {
+                    let chip = egui::Button::new(egui::RichText::new(format!("{s}  {}", crate::icons::X)).small())
+                        .fill(crate::theme::SECTION)
+                        .stroke(egui::Stroke::new(1.0_f32, crate::theme::BORDER))
+                        .corner_radius(3.0);
+                    if ui.add(chip).on_hover_text(t("Bake it again")).clicked() {
+                        remove = Some(i);
+                    }
+                }
+            });
+            if let Some(i) = remove {
+                let s = list[i].clone();
+                set_bake_skip(app, &[s], false);
             }
         }
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            let id = egui::Id::new("bake_skip_text");
+            let mut text: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_default());
+            let edit = ui.add_sized(
+                [(ui.available_width() - 28.0).max(80.0), 22.0],
+                egui::TextEdit::singleline(&mut text).hint_text(t("Part of a model path")),
+            );
+            let add = ui.add_sized([24.0, 22.0], egui::Button::new(crate::icons::PLUS))
+                .on_hover_text(t("Leave out the models whose path holds this text."))
+                .clicked()
+                || (edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+            if add && !text.trim().is_empty() {
+                set_bake_skip(app, &[text.trim().to_string()], true);
+                text.clear();
+            }
+            ui.data_mut(|d| d.insert_temp(id, text));
+        });
     });
-    ui.horizontal(|ui| {
-        let id = egui::Id::new("bake_skip_text");
-        let mut text: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_default());
-        let edit = ui.add(egui::TextEdit::singleline(&mut text).hint_text(t("Part of a model path")).desired_width(ui.available_width() - 40.0));
-        let add = ui.small_button(crate::icons::PLUS).on_hover_text(t("Leave out the models whose path holds this text.")).clicked() || (edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-        if add && !text.trim().is_empty() {
-            set_bake_skip(app, &[text.trim().to_string()], true);
-            text.clear();
-        }
-        ui.data_mut(|d| d.insert_temp(id, text));
-    });
-    if let Some(i) = remove {
-        let s = list[i].clone();
-        set_bake_skip(app, &[s], false);
-    }
 }
 
 /// Rows of the satellite modifiers in the outliner.
@@ -1423,51 +1538,94 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     generate_section(app, ui);
     section(ui, &crate::icons::with(crate::icons::STAMP, &t("Bake objects")), false, |ui| {
         ui.weak(t("Draws the objects as seen from above into the satellite image, as a modifier that can be hidden or deleted."));
-        let selected = app.selection.len();
-        crate::theme::check_row(ui, &mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
-        crate::theme::check_row(ui, &mut app.sat.bake_plants, t("Trees and bushes too"));
-        crate::theme::check_row(ui, &mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
-        crate::theme::check_row(ui, &mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
-        crate::theme::check_row(ui, &mut app.sat.bake_decals, t("Decals too")).on_hover_text(t("Paints road damage, manholes, crossings and the marks under wrecks into the image, with their see-through parts, over the roads under them."));
-        bake_skip_ui(app, ui);
-        crate::theme::check_row(ui, &mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
-        // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.
-        let chosen = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == SatKind::Bake)).map(|m| (m.id, m.name.clone(), 1.0 - m.opacity as f32 / 255.0)));
-        if let Some((_, _, blend)) = &chosen {
-            if !ui.ctx().is_using_pointer() {
-                app.sat.bake_blend = *blend;
-            }
-        }
-        let mut changed = None;
-        row(ui, &t("Blending"), |ui| {
-            let resp = ui.add(crate::theme::ValueField::new(&mut app.sat.bake_blend, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).on_hover_text(t("How far the baked objects fade into the satellite image under them."));
-            if resp.changed() {
-                changed = Some(resp.drag_started() || !resp.dragged());
-            }
+        ui.add_space(4.0);
+        crate::theme::subsection(ui, &t("What to bake"), true, |ui| {
+            let selected = app.selection.len();
+            crate::theme::check_row(ui, &mut app.sat.bake_selection, tf("Only the selected objects ({0})", &[&selected.to_string()]));
+            crate::theme::check_row(ui, &mut app.sat.bake_plants, t("Trees and bushes too"));
+            crate::theme::check_row(ui, &mut app.sat.bake_roads, t("Road parts too")).on_hover_text(t("Paints the asphalt and verges of the road models into the image, as they look from above."));
+            crate::theme::check_row(ui, &mut app.sat.bake_water, t("Water parts too")).on_hover_text(t("Paints river and pond parts into the image, their water in the colour of water."));
+            crate::theme::check_row(ui, &mut app.sat.bake_decals, t("Decals too")).on_hover_text(t("Paints road damage, manholes, crossings and the marks under wrecks into the image, with their see-through parts, over the roads under them."));
         });
-        if let (Some(first), Some((id, _, _))) = (changed, &chosen) {
-            let opacity = ((1.0 - app.sat.bake_blend) * 255.0).round() as u8;
-            let touched = app.doc.as_mut().and_then(|d| {
-                // One undo step for a whole drag of the slider.
-                if first || !app.sat.blending {
-                    d.history.push(t("Satellite modifier"), Change::Satellite(d.world.sat.modifiers.clone()));
+        bake_skip_ui(app, ui);
+        crate::theme::subsection(ui, &t("Appearance"), true, |ui| {
+            crate::theme::check_row(ui, &mut app.sat.bake_above_ground, t("Only what is above the ground")).on_hover_text(t("Leaves out the parts of an object sunk into the terrain, so a pier half in the ground shows only its part above it."));
+            // The slider sets the blending of the next bake, and of the baked modifier chosen in the outliner.
+            let chosen = app.doc.as_ref().and_then(|d| app.sat.active.and_then(|id| d.world.sat.modifiers.iter().find(|m| m.id == id && m.kind == SatKind::Bake)).map(|m| (m.id, m.name.clone(), 1.0 - m.opacity as f32 / 255.0)));
+            if let Some((_, _, blend)) = &chosen {
+                if !ui.ctx().is_using_pointer() {
+                    app.sat.bake_blend = *blend;
                 }
-                d.world.sat_set_opacity(*id, opacity)
-            });
-            app.sat.blending = true;
-            if let Some(r) = touched {
-                app.satellite_changed(r);
             }
-        }
-        if !ui.ctx().is_using_pointer() {
-            app.sat.blending = false;
-        }
-        match &chosen {
-            Some((_, name, _)) => ui.weak(tf("Changes: {0}", &[name])),
-            None => ui.weak(t("Applies to the next bake. Choose a baked modifier in the outliner to change it.")),
-        };
-        if ui.button(t("Bake")).clicked() {
+            let mut changed = None;
+            row(ui, &t("Blending"), |ui| {
+                let resp = ui.add(crate::theme::ValueField::new(&mut app.sat.bake_blend, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).on_hover_text(t("How far the baked objects fade into the satellite image under them."));
+                if resp.changed() {
+                    changed = Some(resp.drag_started() || !resp.dragged());
+                }
+            });
+            if let (Some(first), Some((id, _, _))) = (changed, &chosen) {
+                let opacity = ((1.0 - app.sat.bake_blend) * 255.0).round() as u8;
+                let touched = app.doc.as_mut().and_then(|d| {
+                    // One undo step for a whole drag of the slider.
+                    if first || !app.sat.blending {
+                        d.history.push(t("Satellite modifier"), Change::Satellite(d.world.sat.modifiers.clone()));
+                    }
+                    d.world.sat_set_opacity(*id, opacity)
+                });
+                app.sat.blending = true;
+                if let Some(r) = touched {
+                    app.satellite_changed(r);
+                }
+            }
+            if !ui.ctx().is_using_pointer() {
+                app.sat.blending = false;
+            }
+            match &chosen {
+                Some((_, name, _)) => ui.weak(tf("Changes: {0}", &[name])),
+                None => ui.weak(t("Applies to the next bake. Choose a baked modifier in the outliner to change it.")),
+            };
+        });
+        ui.add_space(4.0);
+        let bake_btn = egui::Button::new(egui::RichText::new(crate::icons::with(crate::icons::STAMP, &t("Bake"))).color(egui::Color32::WHITE))
+            .fill(crate::theme::ACCENT)
+            .min_size(egui::vec2(ui.available_width(), 26.0));
+        if ui.add(bake_btn).clicked() {
             bake(app);
+        }
+    });
+    section(ui, &crate::icons::with(crate::icons::WAVES, &t("Water")), false, |ui| {
+        use dz_core::satmod::WaterStyle;
+        ui.weak(t("Paints realistic ocean, river and pond water into the satellite image as a modifier, with depth shading and ripples."));
+        ui.add_space(4.0);
+        crate::theme::check_row(ui, &mut app.sat.water_ocean, t("Ocean / sea"))
+            .on_hover_text(t("Paints depth-graded water everywhere below sea level."));
+        crate::theme::check_row(ui, &mut app.sat.water_parts, t("Rivers and ponds"))
+            .on_hover_text(t("Paints placed river, stream and pond models with depth shading."));
+        crate::theme::check_row(ui, &mut app.sat.water_above_ground, t("Only what is above the ground"))
+            .on_hover_text(t("Leaves out parts of river and pond models that lie under the terrain."));
+        crate::theme::check_row(ui, &mut app.sat.water_keep_above, t("Leave out objects above water"))
+            .on_hover_text(t("Keeps piers, bridges, rocks, boats and buildings standing above the water untouched."));
+        if app.sat.water_ocean {
+            crate::theme::check_row(ui, &mut app.sat.water_foam, t("Shoreline foam"));
+        }
+        row(ui, &t("Water style"), |ui| {
+            crate::theme::segmented(ui, &mut app.sat.water_style, &[
+                (WaterStyle::Natural, t("Natural"), String::new()),
+                (WaterStyle::Coastal, t("Coastal"), String::new()),
+                (WaterStyle::Murky, t("Murky"), String::new()),
+            ]);
+        });
+        row(ui, &t("Blending"), |ui| {
+            ui.add(crate::theme::ValueField::new(&mut app.sat.water_blend, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0)));
+        });
+        ui.add_space(4.0);
+        let ready = app.sat.water_ocean || app.sat.water_parts;
+        let btn = egui::Button::new(egui::RichText::new(crate::icons::with(crate::icons::WAVES, &t("Paint water"))).color(egui::Color32::WHITE))
+            .fill(crate::theme::ACCENT)
+            .min_size(egui::vec2(ui.available_width(), 26.0));
+        if ui.add_enabled(ready, btn).clicked() {
+            bake_water_layer(app);
         }
     });
     crate::panels::shortcuts(ui, |ui| {

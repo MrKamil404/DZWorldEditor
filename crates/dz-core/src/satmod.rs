@@ -1402,6 +1402,375 @@ pub fn bake_objects_with(objects: &[BakeObject], db: &ModelDb, width: usize, hei
     tiles.into_iter().map(|(k, t)| (k, Arc::new(t))).collect()
 }
 
+/// Visual palette for realistic satellite water painting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum WaterStyle {
+    /// DayZ Chernarus/Livonia realistic dark coastal blue-teal and deep inland green-teal.
+    #[default]
+    Natural,
+    /// Brighter turquoise coastal shallows and clearer inland rivers/ponds.
+    Coastal,
+    /// Darker, swampy olive-teal inland water and muted sea.
+    Murky,
+}
+
+/// Settings for [`bake_water`].
+#[derive(Clone, Debug)]
+pub struct WaterBakeOptions {
+    pub ocean: bool,
+    pub rivers_and_ponds: bool,
+    pub style: WaterStyle,
+    pub shoreline_foam: bool,
+    pub above_ground: bool,
+    pub sea_level: f32,
+}
+
+impl Default for WaterBakeOptions {
+    fn default() -> Self {
+        Self {
+            ocean: true,
+            rivers_and_ponds: true,
+            style: WaterStyle::Natural,
+            shoreline_foam: true,
+            above_ground: true,
+            sea_level: 0.0,
+        }
+    }
+}
+
+#[inline]
+fn hash2(ix: i32, iy: i32) -> f32 {
+    let mut n = (ix.wrapping_mul(374761393)) ^ (iy.wrapping_mul(668265263));
+    n = (n ^ (n >> 13)).wrapping_mul(1274126177);
+    ((n ^ (n >> 16)) as u32 & 0xFFFF) as f32 / 65535.0
+}
+
+#[inline]
+fn value_noise(x: f32, y: f32) -> f32 {
+    let (ix, iy) = (x.floor() as i32, y.floor() as i32);
+    let (fx, fy) = (x - ix as f32, y - iy as f32);
+    let (ux, uy) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
+    let a = hash2(ix, iy);
+    let b = hash2(ix + 1, iy);
+    let c = hash2(ix, iy + 1);
+    let d = hash2(ix + 1, iy + 1);
+    let ab = a + (b - a) * ux;
+    let cd = c + (d - c) * ux;
+    ab + (cd - ab) * uy
+}
+
+/// Subtle multi-octave wind ripple texture in world metres, centred around 0.
+#[inline]
+fn water_ripples(wx: f32, wz: f32) -> f32 {
+    // Slightly anisotropic wind direction (SW -> NE) like satellite imagery over sea/lakes.
+    let u = wx * 0.78 + wz * 0.62;
+    let v = -wx * 0.62 + wz * 0.78;
+    let n1 = value_noise(u * 0.045, v * 0.14);
+    let n2 = value_noise(u * 0.13 + 17.3, v * 0.36 - 9.1);
+    let n3 = value_noise(wx * 0.31 - 5.2, wz * 0.31 + 11.7);
+    (n1 * 0.55 + n2 * 0.30 + n3 * 0.15) - 0.5
+}
+
+#[inline]
+fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    let t = t.clamp(0.0, 1.0);
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+}
+
+fn ocean_pixel(wx: f32, wz: f32, depth: f32, style: WaterStyle, foam: bool) -> [u8; 4] {
+    let (shallow, mid, deep) = match style {
+        WaterStyle::Natural => ([46.0, 82.0, 82.0], [22.0, 56.0, 74.0], [11.0, 28.0, 44.0]),
+        WaterStyle::Coastal => ([62.0, 118.0, 118.0], [26.0, 78.0, 102.0], [14.0, 38.0, 62.0]),
+        WaterStyle::Murky => ([48.0, 68.0, 56.0], [24.0, 46.0, 48.0], [12.0, 24.0, 32.0]),
+    };
+    let t1 = (depth / 4.5).clamp(0.0, 1.0);
+    let t2 = ((depth - 4.0) / 28.0).clamp(0.0, 1.0);
+    let mut rgb = lerp3(lerp3(shallow, mid, t1), deep, t2);
+    let rip = water_ripples(wx, wz);
+    let rip_amp = (10.0 + 8.0 * (1.0 - t2)) * (depth / 0.8).clamp(0.2, 1.0);
+    for ch in &mut rgb {
+        *ch += rip * rip_amp;
+    }
+    if foam && depth > 0.03 && depth < 0.75 {
+        let band = 1.0 - ((depth - 0.22).abs() / 0.50).clamp(0.0, 1.0);
+        let noise = value_noise(wx * 0.22 + 3.1, wz * 0.22 - 4.7);
+        let f = (band * band * (noise * 1.45 - 0.35).clamp(0.0, 1.0)) * 0.55;
+        rgb = lerp3(rgb, [196.0, 206.0, 208.0], f);
+    }
+    let alpha = (depth / 1.35).clamp(0.0, 1.0).powf(0.65);
+    [
+        rgb[0].clamp(0.0, 255.0) as u8,
+        rgb[1].clamp(0.0, 255.0) as u8,
+        rgb[2].clamp(0.0, 255.0) as u8,
+        (alpha * 255.0).round().clamp(0.0, 255.0) as u8,
+    ]
+}
+
+fn inland_water_pixel(wx: f32, wz: f32, depth: f32, style: WaterStyle) -> [u8; 4] {
+    let (shallow, deep) = match style {
+        WaterStyle::Natural => ([48.0, 74.0, 62.0], [20.0, 46.0, 46.0]),
+        WaterStyle::Coastal => ([54.0, 94.0, 86.0], [22.0, 62.0, 68.0]),
+        WaterStyle::Murky => ([52.0, 64.0, 44.0], [24.0, 38.0, 30.0]),
+    };
+    let t = (depth / 2.2).clamp(0.0, 1.0);
+    let mut rgb = lerp3(shallow, deep, t);
+    let rip = water_ripples(wx * 1.6, wz * 1.6);
+    for ch in &mut rgb {
+        *ch += rip * 11.0;
+    }
+    let alpha = if depth <= 0.02 { 0.45 } else { (0.35 + 0.61 * (depth / 0.85).clamp(0.0, 1.0)).clamp(0.35, 0.96) };
+    [
+        rgb[0].clamp(0.0, 255.0) as u8,
+        rgb[1].clamp(0.0, 255.0) as u8,
+        rgb[2].clamp(0.0, 255.0) as u8,
+        (alpha * 255.0).round().clamp(0.0, 255.0) as u8,
+    ]
+}
+
+/// Rasterizes the maximum above-ground Y height of solid objects (piers, bridges, rocks, buildings)
+/// so realistic water painting leaves anything standing above the water surface untouched.
+fn rasterize_occluder_heights(
+    occluders: &[BakeObject],
+    ground: &crate::terrain::Heightmap,
+    db: &ModelDb,
+    width: usize,
+    height: usize,
+    size: f32,
+    job: &Job,
+) -> HashMap<Key, Vec<f32>> {
+    let mut occ: HashMap<Key, Vec<f32>> = HashMap::new();
+    let mut meshes: HashMap<&str, Option<BakeMesh>> = HashMap::new();
+    let (sx, sy) = (width as f32 / size, height as f32 / size);
+    for (n, b) in occluders.iter().enumerate() {
+        if n % 128 == 0 && job.cancelled() {
+            break;
+        }
+        let Some(bm) = meshes.entry(b.model.as_str()).or_insert_with(|| load_bake_mesh(db, &b.model, false)) else { continue };
+        let o = &b.object;
+        let m = crate::objects::rotation(o.yaw, o.pitch, o.roll, o.scale);
+        let world = |p: [f32; 3]| -> [f32; 3] {
+            let p = [p[0] + bm.center[0], p[1] + bm.center[1], p[2] + bm.center[2]];
+            [
+                o.x + m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2],
+                b.origin_y + m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2],
+                o.z + m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2],
+            ]
+        };
+        for batch in &bm.mesh.batches {
+            if batch.shading.and_then(|i| bm.mesh.shadings.get(i)).is_some_and(|s| s.kind == ShadingKind::Water) {
+                continue;
+            }
+            let range = batch.first_index as usize..(batch.first_index + batch.index_count) as usize;
+            let Some(indices) = bm.mesh.indices.get(range) else { continue };
+            for tri in indices.chunks_exact(3) {
+                let v = [&bm.mesh.vertices[tri[0] as usize], &bm.mesh.vertices[tri[1] as usize], &bm.mesh.vertices[tri[2] as usize]];
+                let w = [world(v[0].pos), world(v[1].pos), world(v[2].pos)];
+                let p = [[w[0][0] * sx, height as f32 - w[0][2] * sy], [w[1][0] * sx, height as f32 - w[1][2] * sy], [w[2][0] * sx, height as f32 - w[2][2] * sy]];
+                let area = (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]);
+                if area.abs() < 1e-6 {
+                    continue;
+                }
+                let lo = [p[0][0].min(p[1][0]).min(p[2][0]), p[0][1].min(p[1][1]).min(p[2][1])];
+                let hi = [p[0][0].max(p[1][0]).max(p[2][0]), p[0][1].max(p[1][1]).max(p[2][1])];
+                if hi[0] < 0.0 || hi[1] < 0.0 || lo[0] >= width as f32 || lo[1] >= height as f32 {
+                    continue;
+                }
+                let (x0, y0) = (lo[0].floor().max(0.0) as usize, lo[1].floor().max(0.0) as usize);
+                let (x1, y1) = ((hi[0].ceil() as usize).min(width - 1), (hi[1].ceil() as usize).min(height - 1));
+                for y in y0..=y1 {
+                    for x in x0..=x1 {
+                        let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                        let b0 = ((p[1][0] - px) * (p[2][1] - py) - (p[1][1] - py) * (p[2][0] - px)) / area;
+                        let b1 = ((p[2][0] - px) * (p[0][1] - py) - (p[2][1] - py) * (p[0][0] - px)) / area;
+                        let b2 = 1.0 - b0 - b1;
+                        if b0 < 0.0 || b1 < 0.0 || b2 < 0.0 {
+                            continue;
+                        }
+                        let top = b0 * w[0][1] + b1 * w[1][1] + b2 * w[2][1];
+                        if top < ground.sample(px / sx, (height as f32 - py) / sy) - 0.05 {
+                            continue;
+                        }
+                        let key = ((x / TILE) as u16, (y / TILE) as u16);
+                        let at = (y % TILE) * TILE + x % TILE;
+                        let z = occ.entry(key).or_insert_with(|| vec![f32::MIN; TILE * TILE]);
+                        if top > z[at] {
+                            z[at] = top;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    occ
+}
+
+/// Paints realistic ocean, river, and pond water into satellite modifier tiles, clipping underground
+/// water geometry against the terrain and leaving objects standing above the water untouched.
+#[allow(clippy::too_many_arguments)]
+pub fn bake_water(
+    water_objects: &[BakeObject],
+    occluders: &[BakeObject],
+    ground: &crate::terrain::Heightmap,
+    db: &ModelDb,
+    width: usize,
+    height: usize,
+    size: f32,
+    opts: &WaterBakeOptions,
+    job: &Job,
+) -> HashMap<Key, Tile> {
+    use rayon::prelude::*;
+    if width == 0 || height == 0 || size <= 0.0 {
+        return HashMap::new();
+    }
+    let (sx, sy) = (width as f32 / size, height as f32 / size);
+
+    // 1. Optional occluder height buffer (piers, bridges, rocks, buildings above water).
+    let occ = if !occluders.is_empty() {
+        job.stage("Checking objects above water");
+        rasterize_occluder_heights(occluders, ground, db, width, height, size, job)
+    } else {
+        HashMap::new()
+    };
+    if job.cancelled() {
+        return HashMap::new();
+    }
+
+    let mut tiles: HashMap<Key, Vec<u8>> = HashMap::new();
+
+    // 2. Ocean / sea below `sea_level`, computed in parallel per tile.
+    if opts.ocean {
+        job.stage("Painting ocean water");
+        let tx_count = width.div_ceil(TILE);
+        let ty_count = height.div_ceil(TILE);
+        let keys: Vec<Key> = (0..ty_count).flat_map(|ty| (0..tx_count).map(move |tx| (tx as u16, ty as u16))).collect();
+        let ocean_tiles: Vec<(Key, Vec<u8>)> = keys
+            .par_iter()
+            .filter_map(|&key| {
+                if job.cancelled() {
+                    return None;
+                }
+                let x0 = key.0 as usize * TILE;
+                let y0 = key.1 as usize * TILE;
+                let x1 = (x0 + TILE).min(width);
+                let y1 = (y0 + TILE).min(height);
+                let occ_tile = occ.get(&key);
+                let mut buf: Option<Vec<u8>> = None;
+                for y in y0..y1 {
+                    let wz = (height as f32 - (y as f32 + 0.5)) / sy;
+                    let ly = y - y0;
+                    for x in x0..x1 {
+                        let wx = (x as f32 + 0.5) / sx;
+                        let gy = ground.sample(wx, wz);
+                        if gy >= opts.sea_level {
+                            continue;
+                        }
+                        let lx = x - x0;
+                        let at = ly * TILE + lx;
+                        if occ_tile.is_some_and(|o| o[at] > opts.sea_level + 0.05) {
+                            continue;
+                        }
+                        let depth = opts.sea_level - gy;
+                        let rgba = ocean_pixel(wx, wz, depth, opts.style, opts.shoreline_foam);
+                        if rgba[3] == 0 {
+                            continue;
+                        }
+                        let dst = buf.get_or_insert_with(|| vec![0u8; TILE * TILE * 4]);
+                        dst[at * 4..at * 4 + 4].copy_from_slice(&rgba);
+                    }
+                }
+                buf.map(|b| (key, b))
+            })
+            .collect();
+        for (k, b) in ocean_tiles {
+            tiles.insert(k, b);
+        }
+    }
+
+    // 3. Rivers and ponds from placed water models, clipped against terrain and occluders.
+    if opts.rivers_and_ponds && !water_objects.is_empty() && !job.cancelled() {
+        job.stage("Painting rivers and ponds");
+        let mut meshes: HashMap<&str, Option<BakeMesh>> = HashMap::new();
+        let mut water_z: HashMap<Key, Vec<f32>> = HashMap::new();
+        for (n, b) in water_objects.iter().enumerate() {
+            if n % 64 == 0 {
+                if job.cancelled() {
+                    break;
+                }
+                job.set_progress(n as f32 / water_objects.len().max(1) as f32);
+            }
+            let Some(bm) = meshes.entry(b.model.as_str()).or_insert_with(|| load_bake_mesh(db, &b.model, false)) else { continue };
+            let o = &b.object;
+            let m = crate::objects::rotation(o.yaw, o.pitch, o.roll, o.scale);
+            let world = |p: [f32; 3]| -> [f32; 3] {
+                let p = [p[0] + bm.center[0], p[1] + bm.center[1], p[2] + bm.center[2]];
+                [
+                    o.x + m[0][0] * p[0] + m[1][0] * p[1] + m[2][0] * p[2],
+                    b.origin_y + m[0][1] * p[0] + m[1][1] * p[1] + m[2][1] * p[2],
+                    o.z + m[0][2] * p[0] + m[1][2] * p[1] + m[2][2] * p[2],
+                ]
+            };
+            let has_water_shader = bm.mesh.batches.iter().any(|bt| bt.shading.and_then(|i| bm.mesh.shadings.get(i)).is_some_and(|s| s.kind == ShadingKind::Water));
+            for batch in &bm.mesh.batches {
+                if has_water_shader && !batch.shading.and_then(|i| bm.mesh.shadings.get(i)).is_some_and(|s| s.kind == ShadingKind::Water) {
+                    continue;
+                }
+                let range = batch.first_index as usize..(batch.first_index + batch.index_count) as usize;
+                let Some(indices) = bm.mesh.indices.get(range) else { continue };
+                for tri in indices.chunks_exact(3) {
+                    let v = [&bm.mesh.vertices[tri[0] as usize], &bm.mesh.vertices[tri[1] as usize], &bm.mesh.vertices[tri[2] as usize]];
+                    let w = [world(v[0].pos), world(v[1].pos), world(v[2].pos)];
+                    let p = [[w[0][0] * sx, height as f32 - w[0][2] * sy], [w[1][0] * sx, height as f32 - w[1][2] * sy], [w[2][0] * sx, height as f32 - w[2][2] * sy]];
+                    let area = (p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]);
+                    if area.abs() < 1e-6 {
+                        continue;
+                    }
+                    let lo = [p[0][0].min(p[1][0]).min(p[2][0]), p[0][1].min(p[1][1]).min(p[2][1])];
+                    let hi = [p[0][0].max(p[1][0]).max(p[2][0]), p[0][1].max(p[1][1]).max(p[2][1])];
+                    if hi[0] < 0.0 || hi[1] < 0.0 || lo[0] >= width as f32 || lo[1] >= height as f32 {
+                        continue;
+                    }
+                    let (x0, y0) = (lo[0].floor().max(0.0) as usize, lo[1].floor().max(0.0) as usize);
+                    let (x1, y1) = ((hi[0].ceil() as usize).min(width - 1), (hi[1].ceil() as usize).min(height - 1));
+                    for y in y0..=y1 {
+                        for x in x0..=x1 {
+                            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+                            let b0 = ((p[1][0] - px) * (p[2][1] - py) - (p[1][1] - py) * (p[2][0] - px)) / area;
+                            let b1 = ((p[2][0] - px) * (p[0][1] - py) - (p[2][1] - py) * (p[0][0] - px)) / area;
+                            let b2 = 1.0 - b0 - b1;
+                            if b0 < 0.0 || b1 < 0.0 || b2 < 0.0 {
+                                continue;
+                            }
+                            let top = b0 * w[0][1] + b1 * w[1][1] + b2 * w[2][1];
+                            let (wx, wz) = (px / sx, (height as f32 - py) / sy);
+                            let gy = ground.sample(wx, wz);
+                            if opts.above_ground && top < gy - 0.05 {
+                                continue;
+                            }
+                            let key = ((x / TILE) as u16, (y / TILE) as u16);
+                            let at = (y % TILE) * TILE + x % TILE;
+                            if occ.get(&key).is_some_and(|o| o[at] > top + 0.05) {
+                                continue;
+                            }
+                            let wz_buf = water_z.entry(key).or_insert_with(|| vec![f32::MIN; TILE * TILE]);
+                            if top <= wz_buf[at] {
+                                continue;
+                            }
+                            wz_buf[at] = top;
+                            let depth = (top - gy).max(0.0);
+                            let rgba = inland_water_pixel(wx, wz, depth, opts.style);
+                            let dst = tiles.entry(key).or_insert_with(|| vec![0u8; TILE * TILE * 4]);
+                            dst[at * 4..at * 4 + 4].copy_from_slice(&rgba);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    job.set_progress(1.0);
+    tiles.into_iter().map(|(k, t)| (k, Arc::new(t))).collect()
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1709,5 +2078,29 @@ mod tests {
         assert_eq!(pixel(&w, 20, 20), [10, 20, 30]);
         let back = SatLayers::from_bytes(&w.sat.to_bytes()).unwrap();
         assert_eq!(back.modifiers[0].opacity, 0);
+    }
+
+    #[test]
+    fn bake_water_paints_ocean_with_depth_and_leaves_dry_land_alone() {
+        let mut hm = crate::terrain::Heightmap::new(32, 32, 8.0, 10.0);
+        // West half slopes underwater, east half stays dry above sea_level = 5.0.
+        for j in 0..32 {
+            for i in 0..32 {
+                hm.set(i, j, (i as f32 - 12.0) * 1.5);
+            }
+        }
+        let opts = WaterBakeOptions { ocean: true, rivers_and_ponds: false, sea_level: 5.0, ..Default::default() };
+        let tiles = bake_water(&[], &[], &hm, &ModelDb::new(Path::new(".")), 256, 256, 256.0, &opts, &Job::default());
+        assert!(!tiles.is_empty(), "ocean tiles should be generated");
+        // Deep west pixel (x=8, y=128) is painted opaque bluish water.
+        let west_tile = tiles.get(&(0, 1)).expect("west tile");
+        let w_at = (0 * TILE + 8) * 4;
+        assert!(west_tile[w_at + 3] > 200, "deep ocean alpha should be high: {}", west_tile[w_at + 3]);
+        assert!(west_tile[w_at + 2] > west_tile[w_at], "deep ocean should be bluer than red: {:?}", &west_tile[w_at..w_at + 4]);
+        // Far east tile (x=200 -> tx=1) is completely dry -> no tile or alpha 0.
+        if let Some(east_tile) = tiles.get(&(1, 1)) {
+            let e_at = (0 * TILE + 100) * 4;
+            assert_eq!(east_tile[e_at + 3], 0, "dry land must remain unpainted");
+        }
     }
 }

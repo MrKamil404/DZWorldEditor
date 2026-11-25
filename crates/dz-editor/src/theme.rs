@@ -232,23 +232,25 @@ pub fn row_switch(ui: &mut egui::Ui, on: bool, icon_on: &str, icon_off: &str, ti
 pub fn vector_row(ui: &mut egui::Ui, label: &str, fields: &mut [(&mut f32, f64, Color32, String)]) -> bool {
     let mut done = false;
     row(ui, label, |ui| {
-        ui.spacing_mut().item_spacing.x = 3.0;
-        let n = fields.len() as f32;
-        let width = ((ui.available_width() - 3.0 * (n - 1.0)) / n).max(30.0);
-        for (v, speed, color, tip) in fields.iter_mut() {
-            // A turned and turned back value may be -0, shown as "-0.0"; it is the same as 0.
-            if **v == 0.0 { **v = 0.0; }
-            // Shown with up to three decimals, and without a minus for what rounds to zero.
-            let r = ui.add_sized([width, 22.0], egui::DragValue::new(&mut **v).speed(*speed).custom_formatter(|n, _| {
-                let s = format!("{n:.3}");
-                let s = s.trim_end_matches('0').trim_end_matches('.').to_string();
-                if s == "-0" { "0".to_string() } else { s }
-            }));
-            let bar = egui::Rect::from_min_size(r.rect.min, egui::vec2(3.0, r.rect.height()));
-            ui.painter().rect_filled(bar, CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }, *color);
-            done |= r.drag_stopped() || r.lost_focus();
-            if !tip.is_empty() { r.on_hover_text(tip.as_str()); }
-        }
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 3.0;
+            let n = fields.len() as f32;
+            let width = ((ui.available_width() - 3.0 * (n - 1.0)) / n).max(30.0);
+            for (v, speed, color, tip) in fields.iter_mut() {
+                // A turned and turned back value may be -0, shown as "-0.0"; it is the same as 0.
+                if **v == 0.0 { **v = 0.0; }
+                // Shown with up to three decimals, and without a minus for what rounds to zero.
+                let r = ui.add_sized([width, 22.0], egui::DragValue::new(&mut **v).speed(*speed).custom_formatter(|n, _| {
+                    let s = format!("{n:.3}");
+                    let s = s.trim_end_matches('0').trim_end_matches('.').to_string();
+                    if s == "-0" { "0".to_string() } else { s }
+                }));
+                let bar = egui::Rect::from_min_size(r.rect.min, egui::vec2(3.0, r.rect.height()));
+                ui.painter().rect_filled(bar, CornerRadius { nw: 3, sw: 3, ne: 0, se: 0 }, *color);
+                done |= r.drag_stopped() || r.lost_focus();
+                if !tip.is_empty() { r.on_hover_text(tip.as_str()); }
+            }
+        });
     });
     done
 }

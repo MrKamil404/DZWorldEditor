@@ -10698,5 +10698,89 @@
  "Draws placed trees and bushes as forest canopy on the map.": {
   "de": "Zeichnet platzierte Bäume und Büsche als Baumkronen auf der Karte.",
   "pl": "Rysuje postawione drzewa i krzewy jako korony lasów na mapie."
+ },
+ "Selected key point": {
+  "de": "Ausgewählter Keypoint",
+  "pl": "Zaznaczony keypoint"
+ },
+ "What to bake": {
+  "de": "Was einbacken",
+  "pl": "Co wypalić"
+ },
+ "Appearance": {
+  "de": "Darstellung",
+  "pl": "Wygląd"
+ },
+ "Nothing chosen to paint": {
+  "de": "Nichts zum Malen ausgewählt",
+  "pl": "Nie wybrano nic do malowania"
+ },
+ "Painting water into the satellite": {
+  "de": "Wasser wird ins Satellitenbild gemalt",
+  "pl": "Malowanie wody na satelicie"
+ },
+ "No water found to paint": {
+  "de": "Kein Wasser zum Malen gefunden",
+  "pl": "Nie znaleziono wody do namalowania"
+ },
+ "Paint water": {
+  "de": "Wasser malen",
+  "pl": "Namaluj wodę"
+ },
+ "Water painted into the satellite": {
+  "de": "Wasser wurde ins Satellitenbild gemalt",
+  "pl": "Woda namalowana na satelicie"
+ },
+ "Paints realistic ocean, river and pond water into the satellite image as a modifier, with depth shading and ripples.": {
+  "de": "Malt realistisches Meer-, Fluss- und Teichwasser mit Tiefenschattierung und Wellen als Modifikator ins Satellitenbild.",
+  "pl": "Maluje realistyczną wodę (ocean, rzeki, stawy) na satelicie jako modyfikator z głębią i falami."
+ },
+ "Ocean / sea": {
+  "de": "Meer / Ozean",
+  "pl": "Ocean / morze"
+ },
+ "Paints depth-graded water everywhere below sea level.": {
+  "de": "Malt tiefenabgestuftes Wasser überall unterhalb des Meeresspiegels.",
+  "pl": "Maluje wodę z gradientem głębokości wszędzie poniżej poziomu morza."
+ },
+ "Rivers and ponds": {
+  "de": "Flüsse und Teiche",
+  "pl": "Rzeki i stawy"
+ },
+ "Paints placed river, stream and pond models with depth shading.": {
+  "de": "Malt platzierte Fluss-, Bach- und Teichmodelle mit Tiefenschattierung.",
+  "pl": "Maluje postawione modele rzek, strumieni i stawów z cieniowaniem głębokości."
+ },
+ "Leaves out parts of river and pond models that lie under the terrain.": {
+  "de": "Lässt Teile von Fluss- und Teichmodellen weg, die unter dem Gelände liegen.",
+  "pl": "Pomija fragmenty modeli rzek i stawów schowane pod terenem."
+ },
+ "Leave out objects above water": {
+  "de": "Objekte über Wasser aussparen",
+  "pl": "Pomiń obiekty nad wodą"
+ },
+ "Keeps piers, bridges, rocks, boats and buildings standing above the water untouched.": {
+  "de": "Lässt Stege, Brücken, Felsen, Boote und Gebäude über dem Wasser unberührt.",
+  "pl": "Zostawia pomosty, mosty, skały, łodzie i budynki wystające nad wodę nienaruszone."
+ },
+ "Shoreline foam": {
+  "de": "Uferschaum",
+  "pl": "Piana przy brzegu"
+ },
+ "Water style": {
+  "de": "Wasserstil",
+  "pl": "Styl wody"
+ },
+ "Natural": {
+  "de": "Natürlich",
+  "pl": "Naturalny"
+ },
+ "Coastal": {
+  "de": "Küste",
+  "pl": "Przybrzeżny"
+ },
+ "Murky": {
+  "de": "Trüb",
+  "pl": "Mętny"
  }
 }

@@ -1491,61 +1491,127 @@ fn keypoints_mode(app: &mut App, ui: &mut egui::Ui) {
         });
         about(ui, &if app.shape.keypoint_adding { t("A click on the map adds a key point.") } else { t("Click selects a key point. Drag moves it, Delete removes it.") });
     });
-    section(ui, &icons::with(icons::LIST_BULLETS, &t("Key points")), true, |ui| keypoints_ui(app, ui));
+    let total = app.doc.as_ref().map(|d| d.world.keypoints.len()).unwrap_or(0);
+    let list_title = if total > 0 {
+        format!("{} ({total})", icons::with(icons::LIST_BULLETS, &t("Key points")))
+    } else {
+        icons::with(icons::LIST_BULLETS, &t("Key points"))
+    };
+    section(ui, &list_title, true, |ui| keypoints_list_ui(app, ui));
+    section(ui, &icons::with(icons::CROSSHAIR, &t("Selected key point")), true, |ui| keypoint_details_ui(app, ui));
 }
 
-
-/// The key points of the map, as Terrain Builder's selection properties show them.
-fn keypoints_ui(app: &mut App, ui: &mut egui::Ui) {
-    use dz_core::keypoints::TYPES;
+/// Filterable list of map key points styled with native `theme::list_row` widgets.
+fn keypoints_list_ui(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
-        let import = ui.button(t("Import...")).on_hover_text("TV4P, HPP");
-        ui.add(egui::TextEdit::singleline(&mut app.shape.keypoint_filter).hint_text(format!("{} {}", icons::MAGNIFYING_GLASS, t("Search..."))).desired_width(f32::INFINITY));
-        if import.clicked() { app.import_keypoints(); }
+        if ui.button(icons::with(icons::DOWNLOAD_SIMPLE, &t("Import..."))).on_hover_text("TV4P, HPP").clicked() {
+            app.import_keypoints();
+        }
+        ui.add(egui::TextEdit::singleline(&mut app.shape.keypoint_filter)
+            .hint_text(format!("{} {}", icons::MAGNIFYING_GLASS, t("Search...")))
+            .desired_width(f32::INFINITY));
     });
     let filter = app.shape.keypoint_filter.to_lowercase();
     let Some(doc) = &app.doc else { return };
-    let names: Vec<(usize, String)> = doc.world.keypoints.iter().enumerate().filter(|(_, k)| k.name.to_lowercase().contains(&filter)).map(|(i, k)| (i, k.name.clone())).collect();
-    egui::ScrollArea::vertical().id_salt("keypoints").max_height(140.0).show(ui, |ui| {
-        for (i, name) in names {
-            if theme::list_row(ui, app.shape.keypoint == Some(i), icons::MAP_PIN, theme::KIND_POINT, name.as_str(), "").clicked() { app.shape.keypoint = Some(i); }
+    let items: Vec<(usize, String, String, bool, f32, f32)> = doc.world.keypoints.iter().enumerate()
+        .filter(|(_, k)| k.name.to_lowercase().contains(&filter) || k.text.to_lowercase().contains(&filter) || k.kind.to_lowercase().contains(&filter))
+        .map(|(i, k)| (i, k.name.clone(), k.kind.clone(), k.show, k.x, k.z))
+        .collect();
+    let has_selected = app.shape.keypoint.is_some_and(|i| i < doc.world.keypoints.len());
+    let max_h = if has_selected { 220.0 } else { (ui.available_height() - 120.0).clamp(180.0, 420.0) };
+    let mut jump: Option<(f32, f32)> = None;
+    egui::ScrollArea::vertical().id_salt("keypoints").max_height(max_h).auto_shrink([false, true]).show(ui, |ui| {
+        for (i, name, kind, show, x, z) in items {
+            let tint = if show { theme::KIND_POINT } else { theme::TEXT_DIM };
+            let r = theme::list_row(ui, app.shape.keypoint == Some(i), icons::MAP_PIN, tint, name.as_str(), &kind);
+            if r.clicked() { app.shape.keypoint = Some(i); }
+            if r.double_clicked() { jump = Some((x, z)); }
         }
     });
+    if let Some((x, z)) = jump {
+        let ground = app.doc.as_ref().map(|d| d.world.height.sample(x, z)).unwrap_or(0.0);
+        app.camera.pos = [x, ground + 80.0, z - 120.0];
+        app.camera.look_at([x, ground, z]);
+        app.top_center = [x, z];
+    }
+}
+
+/// Selected key point inspector styled with native `theme` rows, `ValueField`, and `vector_row`.
+fn keypoint_details_ui(app: &mut App, ui: &mut egui::Ui) {
+    use dz_core::keypoints::TYPES;
     let Some(i) = app.shape.keypoint.filter(|i| app.doc.as_ref().is_some_and(|d| *i < d.world.keypoints.len())) else {
         app.shape.keypoint = None;
+        ui.weak(t("Nothing selected"));
         return;
     };
-    let doc = app.doc.as_mut().unwrap();
-    let mut k = doc.world.keypoints[i].clone();
-    ui.separator();
-    row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut k.name); });
-    row(ui, &t("Type"), |ui| {
-        egui::ComboBox::from_id_salt("keypoint type").selected_text(k.kind.clone()).show_ui(ui, |ui| {
-            for n in TYPES { ui.selectable_value(&mut k.kind, n.to_string(), n); }
+    let mut jump: Option<(f32, f32)> = None;
+    let mut delete = false;
+    {
+        let doc = app.doc.as_mut().unwrap();
+        let mut k = doc.world.keypoints[i].clone();
+        theme::details_head(ui, icons::MAP_PIN, theme::KIND_POINT, &k.name, &k.kind);
+        ui.add_space(4.0);
+        row(ui, &t("Name"), |ui| {
+            ui.add_sized([ui.available_width(), 22.0], egui::TextEdit::singleline(&mut k.name));
         });
-    });
-    ui.label(t("Properties"));
-    ui.add(egui::TextEdit::multiline(&mut k.properties).desired_rows(2));
-    let number = |ui: &mut egui::Ui, label: &str, v: &mut f32, speed: f64| row(ui, label, |ui| { ui.add(egui::DragValue::new(v).speed(speed).max_decimals(3)); });
-    number(ui, "X", &mut k.x, 1.0);
-    number(ui, "Y", &mut k.z, 1.0);
-    number(ui, &t("Angle"), &mut k.angle, 0.5);
-    number(ui, &t("Width"), &mut k.width, 1.0);
-    number(ui, &t("Height"), &mut k.height, 1.0);
-    theme::check_row(ui, &mut k.show, t("Show on map"));
-    row(ui, &t("Text"), |ui| { ui.text_edit_singleline(&mut k.text); });
-    let edited = k != doc.world.keypoints[i];
-    if edited {
-        let before = doc.world.keypoints.clone();
-        app.shape.keypoints_before.get_or_insert(before);
-        doc.world.keypoints[i] = k;
-    } else if !ui.ctx().wants_keyboard_input() && !ui.ctx().input(|p| p.pointer.any_down()) {
-        // A whole edit is one undo step.
-        if !app.shape.keypoint_moving {
-            if let Some(before) = app.shape.keypoints_before.take().filter(|b| *b != doc.world.keypoints) { doc.history.push(t("Edit key point"), dz_core::edit::Change::KeyPoints(before)); }
+        row(ui, &t("Type"), |ui| {
+            egui::ComboBox::from_id_salt("keypoint type").width(ui.available_width()).selected_text(k.kind.clone()).show_ui(ui, |ui| {
+                for n in TYPES { ui.selectable_value(&mut k.kind, n.to_string(), n); }
+            });
+        });
+        row(ui, &t("Text"), |ui| {
+            ui.add_sized([ui.available_width(), 22.0], egui::TextEdit::singleline(&mut k.text));
+        });
+        theme::check_row(ui, &mut k.show, t("Show on map"));
+        theme::vector_row(ui, &t("Position"), &mut [
+            (&mut k.x, 1.0, theme::AXIS[0], "X".into()),
+            (&mut k.z, 1.0, theme::AXIS[2], "Y".into()),
+        ]);
+        row(ui, &t("Angle"), |ui| {
+            ui.add(theme::ValueField::new(&mut k.angle, -360.0..=360.0).step_by(0.5).suffix("°"));
+        });
+        row(ui, &t("Width"), |ui| {
+            ui.add(theme::ValueField::new(&mut k.width, 0.0..=5000.0).step_by(1.0).suffix(" m"));
+        });
+        row(ui, &t("Height"), |ui| {
+            ui.add(theme::ValueField::new(&mut k.height, 0.0..=5000.0).step_by(1.0).suffix(" m"));
+        });
+        theme::subsection(ui, &t("Properties"), !k.properties.trim().is_empty(), |ui| {
+            ui.add(egui::TextEdit::multiline(&mut k.properties).desired_rows(3).desired_width(f32::INFINITY));
+        });
+        ui.add_space(4.0);
+        let (kx, kz) = (k.x, k.z);
+        theme::button_columns(ui, 2, |cols| {
+            if cols[0].add_sized([cols[0].available_width(), 24.0], egui::Button::new(icons::with(icons::CROSSHAIR, &t("Go to")))).clicked() {
+                jump = Some((kx, kz));
+            }
+            if cols[1].add_sized([cols[1].available_width(), 24.0], egui::Button::new(icons::with(icons::TRASH, &t("Delete")))).clicked() {
+                delete = true;
+            }
+        });
+        let edited = k != doc.world.keypoints[i];
+        if edited {
+            let before = doc.world.keypoints.clone();
+            app.shape.keypoints_before.get_or_insert(before);
+            doc.world.keypoints[i] = k;
+        } else if !ui.ctx().wants_keyboard_input() && !ui.ctx().input(|p| p.pointer.any_down()) {
+            // A whole edit is one undo step.
+            if !app.shape.keypoint_moving {
+                if let Some(before) = app.shape.keypoints_before.take().filter(|b| *b != doc.world.keypoints) {
+                    doc.history.push(t("Edit key point"), dz_core::edit::Change::KeyPoints(before));
+                }
+            }
         }
     }
-    if ui.button(t("Delete")).clicked() { app.delete_keypoint(i); }
+    if let Some((x, z)) = jump {
+        let ground = app.doc.as_ref().map(|d| d.world.height.sample(x, z)).unwrap_or(0.0);
+        app.camera.pos = [x, ground + 80.0, z - 120.0];
+        app.camera.look_at([x, ground, z]);
+        app.top_center = [x, z];
+    }
+    if delete {
+        app.delete_keypoint(i);
+    }
 }
 
 /// Vertices, attributes and layer of the selected shapes.
