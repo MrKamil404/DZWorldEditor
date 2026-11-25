@@ -1,0 +1,314 @@
+/*
+ * DZ World Editor web theme — matched to crates/dz-editor/src/theme.rs
+ * Unreal Engine 5 / Enfusion Workbench dark panel aesthetic.
+ */
+
+:root,
+.dark {
+  /* Core editor palette from theme.rs */
+  --dz-gap: #101010;
+  --dz-field: #0f0f0f;
+  --dz-dark: #151515;
+  --dz-strip: #1a1a1a;
+  --dz-panel: #1c1c1c;
+  --dz-bg: #242424;
+  --dz-row-alt: #272727;
+  --dz-section: #2e2e2e;
+  --dz-hover: #383838;
+  --dz-border: #383838;
+  --dz-border-strong: #484848;
+
+  --dz-accent: #0a74e0;
+  --dz-accent-hover: #1a84f0;
+  --dz-accent-soft: #1d3550;
+  --dz-toggle-on: #2d3a4a;
+  --dz-toggle-on-text: #7dbcff;
+  --dz-focus: #e2b33c;
+  --dz-play: #2f8f3e;
+  --dz-play-hover: #38a649;
+
+  --dz-text: #c8c8c8;
+  --dz-text-bright: #ececec;
+  --dz-text-dim: #969696;
+  --dz-link: #4da3ff;
+
+  --dz-ok: #5ab45a;
+  --dz-warn: #e6aa3c;
+  --dz-error: #e65046;
+
+  /* Outliner kind colours */
+  --dz-kind-terrain: #b08f6a;
+  --dz-kind-road: #c9a86a;
+  --dz-kind-generator: #8fbf7f;
+  --dz-kind-point: #e2b33c;
+  --dz-kind-shape: #b07fd9;
+  --dz-kind-layer: #7f9cbf;
+  --dz-kind-model: #6d9ee8;
+  --dz-kind-image: #60b4c8;
+
+  /* Map VitePress tokens to the editor theme */
+  --vp-c-bg: var(--dz-bg);
+  --vp-c-bg-alt: var(--dz-strip);
+  --vp-c-bg-elv: var(--dz-panel);
+  --vp-c-bg-soft: var(--dz-section);
+
+  --vp-c-border: var(--dz-border);
+  --vp-c-divider: var(--dz-gap);
+  --vp-c-gutter: var(--dz-gap);
+
+  --vp-c-text-1: var(--dz-text-bright);
+  --vp-c-text-2: var(--dz-text);
+  --vp-c-text-3: var(--dz-text-dim);
+
+  --vp-c-brand-1: var(--dz-link);
+  --vp-c-brand-2: var(--dz-accent);
+  --vp-c-brand-3: var(--dz-accent);
+  --vp-c-brand-soft: var(--dz-accent-soft);
+
+  --vp-c-default-1: var(--dz-text-bright);
+  --vp-c-default-2: var(--dz-text);
+  --vp-c-default-3: var(--dz-text-dim);
+  --vp-c-default-soft: var(--dz-section);
+
+  --vp-c-tip-1: var(--dz-ok);
+  --vp-c-tip-soft: rgba(90, 180, 90, 0.14);
+  --vp-c-warning-1: var(--dz-warn);
+  --vp-c-warning-soft: rgba(230, 170, 60, 0.14);
+  --vp-c-danger-1: var(--dz-error);
+  --vp-c-danger-soft: rgba(230, 80, 70, 0.14);
+
+  --vp-nav-height: 48px;
+  --vp-nav-bg-color: var(--dz-strip);
+  --vp-sidebar-bg-color: var(--dz-panel);
+  --vp-local-nav-bg-color: var(--dz-strip);
+
+  --vp-code-block-bg: var(--dz-dark);
+  --vp-code-bg: var(--dz-dark);
+  --vp-code-color: var(--dz-toggle-on-text);
+
+  --vp-button-brand-bg: var(--dz-accent);
+  --vp-button-brand-hover-bg: var(--dz-accent-hover);
+  --vp-button-brand-text: #ffffff;
+  --vp-button-alt-bg: var(--dz-section);
+  --vp-button-alt-hover-bg: var(--dz-hover);
+  --vp-button-alt-border: var(--dz-border);
+  --vp-button-alt-text: var(--dz-text-bright);
+
+  --vp-font-family-base: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --vp-font-family-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Global scrollbar matching editor */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--dz-strip);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dz-hover);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+/* Top navigation bar — like the editor's menu strip */
+.VPNavBar {
+  background-color: var(--dz-strip) !important;
+  border-bottom: 1px solid var(--dz-gap) !important;
+}
+
+.VPNavBar .content-body {
+  background-color: var(--dz-strip) !important;
+}
+
+.VPNavBarTitle .title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em;
+  color: var(--dz-text-bright) !important;
+}
+
+.VPNavBarTitle .logo {
+  height: 20px !important;
+  margin-right: 8px !important;
+}
+
+.VPNavBarMenuLink {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--dz-text) !important;
+  padding: 0 10px !important;
+}
+
+.VPNavBarMenuLink:hover,
+.VPNavBarMenuLink.active {
+  color: var(--dz-text-bright) !important;
+}
+
+/* Local search field — darker FIELD input */
+.DocSearch-Button,
+.VPNavBarSearchButton {
+  background-color: var(--dz-field) !important;
+  border: 1px solid var(--dz-border) !important;
+  border-radius: 3px !important;
+  height: 28px !important;
+}
+
+.DocSearch-Button:hover,
+.VPNavBarSearchButton:hover {
+  border-color: var(--dz-accent) !important;
+}
+
+/* Sidebar — styled like the Outliner docked panel */
+.VPSidebar {
+  background-color: var(--dz-panel) !important;
+  border-right: 3px solid var(--dz-gap) !important;
+}
+
+.VPSidebarItem.level-0 > .item > .text {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dz-text-dim) !important;
+  padding: 4px 0 !important;
+}
+
+.VPSidebarItem.level-1 .link {
+  border-radius: 3px;
+  padding: 3px 8px !important;
+  margin: 1px 0;
+  transition: background-color 0.12s;
+}
+
+.VPSidebarItem.level-1 .link:hover {
+  background-color: #323232;
+}
+
+.VPSidebarItem.level-1.is-active > .item > .link {
+  background-color: var(--dz-accent-soft) !important;
+  color: #ffffff !important;
+}
+
+.VPSidebarItem.level-1.is-active > .item > .link > .text {
+  color: #ffffff !important;
+  font-weight: 500;
+}
+
+/* Documentation content styling */
+.vp-doc {
+  color: var(--dz-text);
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+
+.vp-doc h1 {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--dz-text-bright);
+  border-bottom: 1px solid var(--dz-border);
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.vp-doc h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--dz-text-bright);
+  border-top: 1px solid var(--dz-border);
+  padding-top: 20px;
+  margin-top: 32px;
+}
+
+.vp-doc h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dz-text-bright);
+}
+
+.vp-doc a {
+  color: var(--dz-link);
+  text-decoration: none;
+}
+
+.vp-doc a:hover {
+  text-decoration: underline;
+}
+
+.vp-doc img {
+  border: 1px solid var(--dz-border);
+  border-radius: 4px;
+  background: var(--dz-gap);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.vp-doc table {
+  border-collapse: collapse;
+  width: 100%;
+  display: table;
+  border: 1px solid var(--dz-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.vp-doc th {
+  background-color: var(--dz-section) !important;
+  color: var(--dz-text-bright);
+  font-size: 12.5px;
+  font-weight: 600;
+  border-color: var(--dz-border) !important;
+}
+
+.vp-doc td {
+  border-color: var(--dz-border) !important;
+  font-size: 13.5px;
+}
+
+.vp-doc tr:nth-child(2n) {
+  background-color: var(--dz-row-alt) !important;
+}
+
+.vp-doc :not(pre) > code {
+  background-color: var(--dz-dark);
+  border: 1px solid var(--dz-border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 12.5px;
+  color: var(--dz-toggle-on-text);
+}
+
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--dz-border);
+  border-radius: 4px !important;
+}
+
+/* Right outline (Details panel feel) */
+.VPDocAsideOutline .outline-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dz-text-dim);
+}
+
+.VPDocAsideOutline .outline-marker {
+  background-color: var(--dz-accent);
+  width: 2px;
+}
+
+/* Previous / Next page buttons */
+.VPDocFooter .pager-link {
+  background-color: var(--dz-panel);
+  border: 1px solid var(--dz-border);
+  border-radius: 4px;
+}
+
+.VPDocFooter .pager-link:hover {
+  border-color: var(--dz-accent);
+  background-color: var(--dz-section);
+}
