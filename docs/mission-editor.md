@@ -102,9 +102,10 @@ the building has no entry yet) to open a standalone 3D preview and editor window
 * **Placing and editing points**: the 3D view renders both the building and its visual **Proxies**
   (furniture, tables, shelves). Turn on **Click 3D to add** and click any floor, table or shelf
   (with a live target ring) to place a `<point>` in model coordinates (relative to the model's
-  bounding centre, matching DayZ). Drag the 3D **X/Y/Z gizmo** arrows on the selected point to
-  fine-tune its position, or drag the divider between the 3D view and the inspector to widen the
-  3D preview. Edit group `lootmax`, `deloot`, `usage` and `value` flags, containers (`lootFloor`,
+  bounding centre, matching DayZ). On the selected point, drag the 3D **X/Y/Z gizmo** arrows to
+  fine-tune its position, drag the horizontal **range ring** to resize `range`, or drag the top
+  **H** handle to adjust `height` clearance; drag the divider between the left inspector and the 3D
+  view to resize the layout. Edit group `lootmax`, `deloot`, `usage` and `value` flags, containers (`lootFloor`,
   `lootshelves`...) with `categories` and `tags`, and each point's `pos`, `range`, `height` and
   outdoor `flags="32"`, then click **Save to mapgroupproto.xml**.
 

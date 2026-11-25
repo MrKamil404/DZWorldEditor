@@ -2,16 +2,22 @@
 
 ![The satellite tools](screenshots/satellite.jpg)
 
-* **Bake objects** draws the objects as seen from above into the satellite image: the selected ones
-  or all, optionally trees and bushes, road parts, water parts and decals, only what is above the
-  ground, with a blending of the edges. **Decals too** paints road damage, manholes, crossings and
-  the marks under wrecks with the see-through parts of their pictures, over the roads baked with
-  them; only what stands clearly above a decal (a car, a roof, a tree) hides it. Baking the whole map can leave things out, so wrecks, rubbish or fences do
+* **Bake objects** draws the objects as seen from above into the satellite image, organized into
+  **What to bake** (selected objects or all, trees and bushes, road parts, water parts, and decals),
+  **Left out when baking the whole map** (quick toggles and removable path chips such as `\wrecks\`),
+  and **Appearance** (**Only what is above the ground** and **Blending**). **Decals too** paints road
+  damage, manholes, crossings and the marks under wrecks with the see-through parts of their
+  pictures, over the roads baked with them; only what stands clearly above a decal (a car, a roof, a
+  tree) hides it. Baking the whole map can leave things out, so wrecks, rubbish or fences do
   not end up in the image: turn off **Bake into the satellite** in the menu of an object layer (the
   layers of a built map are sorted by kind), or right click a model in the Outliner or the Content
-  Browser and choose **Leave out of the satellite bake**. The list of left out models and path
-  parts (such as `\wrecks\`) is in the Bake objects section, and is kept in the project. Objects you
-  select by hand are always baked.
+  Browser and choose **Leave out of the satellite bake**. Objects you select by hand are always baked.
+* **Water** paints realistic ocean, river and pond water into the satellite image as a modifier:
+  **Ocean / sea** shades water below sea level by depth with subtle ripples and optional
+  **Shoreline foam**; **Rivers and ponds** paints placed water models by depth to the terrain bed.
+  **Only what is above the ground** clips water meshes buried under hills, and **Leave out objects
+  above water** keeps piers, bridges, rocks, boats and buildings standing above the water untouched.
+  Choose **Natural**, **Coastal** or **Murky** style and **Blending**.
 * **Clone brush** copies from another place of the satellite image or from a picture you load.
   Choose the source in the preview, then paint on the map.
 

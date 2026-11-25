@@ -25,7 +25,8 @@ tab has a page of its own:
 * **Toolbar**: Save, Undo and Redo, the nine tabs (keys 1-9), the gizmo (Move, Rotate, Scale, Copy in
   a row, and World or Local axes), snapping (the grid: when on, moving along an arrow or over the
   ground goes by its step, 1 m at first, as Ctrl does while held; the angle step that Ctrl turns
-  by; and Ground, objects that stick to the ground), the views (3D, 2D, 3D | 2D) and **Build** and **Play**.
+  by; **Ground**, objects that stick to the ground; and **Surface**, placing objects on top of other
+  objects, `Shift+End`), the views (3D, 2D, 3D | 2D) and **Build** and **Play**.
 * **Tools** (left): the settings of the current tab. The panel is named after the tab.
 * **Viewport**: the map in 3D, in 2D, or both side by side, with a thin yellow frame.
 * **Outliner** (right): terrain, mask and satellite modifiers, generators, roads and object
@@ -109,7 +110,7 @@ Named places of the map. See [Shapes and key points](shapes.md#key-points).
 
 ### 8 Satellite
 
-Bakes objects and decals into the satellite image, clone and colour brushes, colour correction and a satellite from the mask. See [Satellite image](satellite.md).
+Bakes objects, decals and realistic water (ocean, rivers and ponds) into the satellite image, clone and colour brushes, colour correction and a satellite from the mask. See [Satellite image](satellite.md).
 
 ### 9 Mission
 
@@ -133,8 +134,9 @@ Generators for forests, water, fields, settlements, fences and more, and the Con
   DayZ Editor (`.dze`) and Object Spawner JSON (`cfggameplay.json`),
   DayZForests and Road Studio projects, roads from TV4P and shapes (SHP, TV4S).
 * **Export**: all files at once or one at a time (heightmap, satellite image, mask, `layers.cfg`,
-  objects, DayZ Editor `.dze` and Object Spawner JSON, a 2D player map PNG with contours, roads,
-  buildings, grid and key points, shapes, server mission).
+  objects, DayZ Editor `.dze` and Object Spawner JSON, a 2D player map PNG up to full map resolution
+  with contours, roads, buildings, tree/bush canopy, grid and key points in a chosen font and size,
+  shapes, server mission).
 * **Project settings**: name, size and the other settings of the map.
 * **Map config**: the `CfgWorlds` entry written to `config.cpp`: the name the game shows, the world
   the map is built on, the sea and waves, atmosphere and sky, ambient sound map, navmesh settings,

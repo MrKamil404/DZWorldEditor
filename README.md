@@ -15,7 +15,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces, terrain stamps (craters, hills, quarries, your own pictures or pieces of terrain) and non-destructive modifiers
 - **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile, and a view that shows the surfaces as the built map will
 - **Map surfaces** (`CfgSurfaces`): new surfaces for your own textures and changes to the game's, with grass, sounds and physics, and a material window for each layer
-- **Satellite image** editing: bake objects, roads, water and decals into it, a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite (by colour groups, by the natural colours of a real photo, or by colours you pick), all as modifiers that can be hidden, deleted or, for brush strokes, merged
+- **Satellite image** editing: bake objects, roads, water and decals into it, paint realistic ocean, river and pond water (with depth shading, ripples, shoreline foam, and above-water object awareness), a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite (by colour groups, by the natural colours of a real photo, or by colours you pick), all as modifiers that can be hidden, deleted or, for brush strokes, merged
 - **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, surface snapping ("place on top of objects" and Drop onto surface), hide/isolate selection, painting objects with a brush, prefabs, replacing models and undo
 - **Rows of walls and fences**: drag copies out in a row with the copy gizmo, turn them about their joint, join them to the next piece with a gap, copy the direction of another object, and take the copies from an object preset (a broken fence now and then)
 - **Roads and railways** fitted from the game's own parts, with embankments, bridges, level crossings and roundabouts
@@ -24,7 +24,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Library sharing**: export generators, presets and prefabs as `.dzwelib` files and import them on another computer
 - **Key points** for named places on the map, compatible with Terrain Builder
 - **Map config**: the `CfgWorlds` entry of the map, with its base world, map grid, clutter, sea waves, atmosphere, ambient sound map, navmesh settings and main menu scenes
-- **Terrain Builder, DayZ Editor and 2D map export**: import Terrain Builder projects, built WRP worlds, DayZ Editor (`.dze`) and Object Spawner JSON (`cfggameplay.json`), and export a 2D player map PNG with contours, roads, buildings, grid and place names
+- **Terrain Builder, DayZ Editor and 2D map export**: import Terrain Builder projects, built WRP worlds, DayZ Editor (`.dze`) and Object Spawner JSON (`cfggameplay.json`), and export a 2D player map PNG (up to full map resolution) with contours, roads, separate building footprints and tree/bush canopy, grid, and place names in a chosen font and size
 - **One-click build and test**: export, binarise with AddonBuilder and start a local server and client, after a **map check** that finds missing models and textures, floating, buried and doubled objects and more
 - **Everything in the mod**: the map's own surfaces and Central Economy, extra folders such as your own buildings, and signed PBOs
 - **Automatic backups** and a built-in updater
@@ -74,7 +74,7 @@ You need Windows 10 or 11 and a graphics card with OpenGL 3.3. The model library
 | 5 | Roads | Roads, railways and objects along a line, by points, live or piece by piece |
 | 6 | Shapes | Draw polygons, lines and points that generators can work on |
 | 7 | Key points | Add, move and edit named places |
-| 8 | Satellite | Bake objects into the satellite image, clone brush, colour correction, satellite from the mask |
+| 8 | Satellite | Bake objects and realistic water into the satellite image, clone brush, colour correction, satellite from the mask |
 | 9 | Mission | The server mission on the map (experimental) |
 
 **3D camera:** hold the right mouse button and use WASD/QE. Shift goes faster, and the wheel changes speed while the right button is held.

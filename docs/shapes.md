@@ -19,7 +19,9 @@ of the view shows the same: blue where water runs and gathers, darker where more
 ![Key points](screenshots/keypoints.jpg)
 
 Named places of the map (cities, villages, hills...) as Terrain Builder has them. **Add** places a
-new one, **Edit** selects, moves and deletes them; **Import...** reads them from a file. They are
+new one, **Edit** selects, moves and deletes them; **Import...** reads them from a file. Search the
+list by name, text or type, double-click a key point (or click **Go to** in **Selected key point**)
+to fly the camera there, and edit its type, text, position, angle, size and properties. They are
 written to the `Names` of the world config on export, so the in-game map shows them.
 
 [Back to the guide](guide.md)
