@@ -986,7 +986,7 @@ impl<'a> PopupWindow<'a> {
             .title_bar(false)
             .frame(frame)
             .vscroll(false)
-            .movable(false);
+            .movable(!(state.maximized && self.allow_maximize));
 
         if state.minimized {
             let w = state.restore_size.map(|s| s.x).unwrap_or(self.default_size[0]).clamp(280.0, 460.0);
@@ -1016,10 +1016,10 @@ impl<'a> PopupWindow<'a> {
         let mut toggle_max = false;
         let mut pop_out = false;
         let mut close_clicked = false;
-        let mut drag_delta = egui::Vec2::ZERO;
 
         win.show(ctx, |ui| {
             // Custom title bar spanning the full width of the window.
+            // Allocated without a drag widget so egui::Window's native zero-lag drag moves it.
             let bar_w = ui.available_width().max(220.0);
             let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, TITLE_H), egui::Sense::hover());
             let rounding = if state.minimized {
@@ -1083,13 +1083,12 @@ impl<'a> PopupWindow<'a> {
                 }
             }
 
-            // Draggable title area on the left of the buttons.
+            // Title area on the left of the buttons: leaves pointer drags to egui::Window's native
+            // movable handler (zero lag), while still handling double-click to maximize/restore.
             let drag_rect = egui::Rect::from_min_max(bar_rect.min, egui::pos2((right_x - 4.0).max(bar_rect.left() + 40.0), bar_rect.bottom()));
-            let title_resp = ui.interact(drag_rect, self.id.with("title_drag"), egui::Sense::click_and_drag());
-            if title_resp.dragged() && !state.maximized {
-                drag_delta = title_resp.drag_delta();
-            }
-            if title_resp.double_clicked() {
+            if ui.rect_contains_pointer(drag_rect)
+                && ui.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary))
+            {
                 if state.minimized {
                     toggle_min = true;
                 } else if self.allow_maximize {
@@ -1158,13 +1157,6 @@ impl<'a> PopupWindow<'a> {
                     }
                 }
                 state.minimized = true;
-            }
-        } else if drag_delta != egui::Vec2::ZERO {
-            if let Some(r) = cur_rect {
-                let mut pos = r.min + drag_delta;
-                pos.x = pos.x.clamp(screen.left() - r.width() + 80.0, screen.right() - 80.0);
-                pos.y = pos.y.clamp(screen.top() + 24.0, screen.bottom() - TITLE_H);
-                state.pending_pos = Some(pos);
             }
         }
 

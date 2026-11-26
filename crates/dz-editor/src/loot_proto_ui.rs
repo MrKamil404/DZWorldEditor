@@ -263,9 +263,9 @@ fn proxy_instance_matrix(p: &ProxyPlace) -> [f32; 16] {
 }
 
 /// Builds a GPU instance matrix for a `<dispatch><proxy>` positioned at `world_pos` with `rpy`
-/// degrees (`[pitch, yaw, roll]` directly in P3D model space).
+/// degrees (`[pitch, yaw, roll]` in P3D model space, with counter-clockwise yaw).
 fn dispatch_instance_matrix(world_pos: [f32; 3], rpy: [f32; 3]) -> [f32; 16] {
-    let m = dz_core::objects::rotation(rpy[1], rpy[0], rpy[2], 1.0);
+    let m = dz_core::objects::rotation(-rpy[1], rpy[0], rpy[2], 1.0);
     [
         m[0][0], m[1][0], m[2][0], world_pos[0],
         m[0][1], m[1][1], m[2][1], world_pos[1],
