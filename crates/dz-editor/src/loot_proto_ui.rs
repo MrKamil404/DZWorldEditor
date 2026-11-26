@@ -42,10 +42,18 @@ const IDENTITY_INSTANCE: [f32; 16] = [
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+enum GizmoMode {
+    Move,
+    Rotate,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum GizmoHandle {
     Axis(usize),
     Range,
     Height,
+    /// Rotation ring for `<dispatch><proxy>`: `0` = Pitch (`rpy[0]`), `1` = Yaw (`rpy[1]`), `2` = Roll (`rpy[2]`).
+    Rotate(usize),
 }
 
 #[derive(Clone, Copy)]
@@ -54,6 +62,14 @@ struct GizmoDrag {
     origin_world: [f32; 3],
     start_t: f32,
     start_val: f32,
+    /// Virtual cursor `(seen, last_real)` scaled by 0.2 while `Hold::Precise` (Alt) is held.
+    virt: (Pos2, Pos2),
+    /// Rotation ring plane frame `(normal, basis_a, basis_b)` captured at drag start.
+    rot_frame: ([f32; 3], [f32; 3], [f32; 3]),
+    /// Previous angle in radians for continuous unwrapping across `±pi`.
+    last_angle: Option<f32>,
+    /// Accumulated rotation delta in degrees.
+    accum_deg: f32,
 }
 
 pub struct LootProtoUi {
@@ -71,6 +87,7 @@ pub struct LootProtoUi {
     selected_container: usize,
     selected_point: Option<usize>,
     selected_dispatch: Option<usize>,
+    gizmo_mode: GizmoMode,
     camera: Camera,
     clip_enabled: bool,
     clip_y: f32,
@@ -101,6 +118,7 @@ impl Default for LootProtoUi {
             selected_container: 0,
             selected_point: None,
             selected_dispatch: None,
+            gizmo_mode: GizmoMode::Move,
             camera: Camera { pos: [8.0, 6.0, 8.0], yaw: 0.0, pitch: -0.4, fov: 65f32.to_radians(), speed: 6.0 },
             clip_enabled: false,
             clip_y: 2.5,
@@ -510,12 +528,14 @@ fn gizmo_length(eye: [f32; 3], origin: [f32; 3]) -> f32 {
     (dot(d, d).sqrt() * 0.14).clamp(0.25, 2.0)
 }
 
-fn gizmo_hit(v: &View, origin: [f32; 3], range: f32, height: f32, ptr: Pos2) -> Option<GizmoHandle> {
+fn gizmo_hit(v: &View, origin: [f32; 3], range: f32, height: f32, has_height: bool, ptr: Pos2) -> Option<GizmoHandle> {
     // Check top height grip first so it never conflicts with the Y translation arrow below it.
-    let top = [origin[0], origin[1] + height, origin[2]];
-    if let Some(tp) = v.project(top) {
-        if tp.distance(ptr) <= 10.0 {
-            return Some(GizmoHandle::Height);
+    if has_height {
+        let top = [origin[0], origin[1] + height, origin[2]];
+        if let Some(tp) = v.project(top) {
+            if tp.distance(ptr) <= 10.0 {
+                return Some(GizmoHandle::Height);
+            }
         }
     }
     let len = gizmo_length(v.eye, origin);
@@ -555,7 +575,7 @@ fn gizmo_hit(v: &View, origin: [f32; 3], range: f32, height: f32, ptr: Pos2) -> 
     None
 }
 
-fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], range: f32, height: f32, active: Option<GizmoHandle>) {
+fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], range: f32, height: f32, has_height: bool, active: Option<GizmoHandle>) {
     let len = gizmo_length(v.eye, origin);
     let axes = [
         ([1.0, 0.0, 0.0], Color32::from_rgb(235, 75, 75), "X"),
@@ -604,32 +624,120 @@ fn draw_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], range: f32, h
         }
     }
 
-    // Height resize handle at the top of the spawn cylinder stalk.
-    let top = [origin[0], origin[1] + height, origin[2]];
-    let h_lit = active == Some(GizmoHandle::Height);
-    let h_col = if h_lit { Color32::from_rgb(120, 245, 255) } else { Color32::from_rgb(255, 210, 80) };
-    if h_lit && range > 0.01 {
-        // Show top cap ring while resizing height so ceiling clearance is immediately visible.
-        let mut prev = [top[0] + range, top[1], top[2]];
-        for k in 1..=24 {
-            let a = k as f32 * std::f32::consts::TAU / 24.0;
-            let cur = [top[0] + range * a.cos(), top[1], top[2] + range * a.sin()];
+    // Height resize handle at the top of the spawn cylinder stalk (loot points only).
+    if has_height {
+        let top = [origin[0], origin[1] + height, origin[2]];
+        let h_lit = active == Some(GizmoHandle::Height);
+        let h_col = if h_lit { Color32::from_rgb(120, 245, 255) } else { Color32::from_rgb(255, 210, 80) };
+        if h_lit && range > 0.01 {
+            // Show top cap ring while resizing height so ceiling clearance is immediately visible.
+            let mut prev = [top[0] + range, top[1], top[2]];
+            for k in 1..=24 {
+                let a = k as f32 * std::f32::consts::TAU / 24.0;
+                let cur = [top[0] + range * a.cos(), top[1], top[2] + range * a.sin()];
+                if let Some((p0, p1)) = v.segment(prev, cur) {
+                    painter.line_segment([p0, p1], Stroke::new(2.0_f32, h_col));
+                }
+                prev = cur;
+            }
+        }
+        if let Some(tp) = v.project(top) {
+            let d = if h_lit { 6.5_f32 } else { 5.0_f32 };
+            let diamond = vec![
+                Pos2::new(tp.x, tp.y - d),
+                Pos2::new(tp.x + d, tp.y),
+                Pos2::new(tp.x, tp.y + d),
+                Pos2::new(tp.x - d, tp.y),
+            ];
+            painter.add(egui::Shape::convex_polygon(diamond, h_col, Stroke::new(1.2_f32, Color32::BLACK)));
+            painter.text(tp + Vec2::new(10.0, 0.0), egui::Align2::LEFT_CENTER, "H", egui::FontId::proportional(11.0), h_col);
+        }
+    }
+}
+
+/// Returns `(normal, basis_a, basis_b, color, label)` for dispatch rotation ring `axis`
+/// (`0` = Pitch / `rpy[0]`, `1` = Yaw / `rpy[1]`, `2` = Roll / `rpy[2]`), oriented so that
+/// increasing the angle in the `(basis_a, basis_b)` plane matches increasing `rpy[axis]`.
+fn dispatch_rot_ring(rpy: [f32; 3], axis: usize) -> ([f32; 3], [f32; 3], [f32; 3], Color32, &'static str) {
+    let (sy, cy) = (rpy[1] + 180.0).to_radians().sin_cos();
+    match axis {
+        0 => {
+            // Pitch (`rpy[0]`): rotates around yaw-aligned X axis; +rpy[0] tilts +Y towards -Z_yaw.
+            let n = [cy, 0.0, -sy];
+            let a = [0.0, 1.0, 0.0];
+            let b = [-sy, 0.0, -cy];
+            (n, a, b, Color32::from_rgb(235, 75, 75), "P")
+        }
+        1 => {
+            // Yaw (`rpy[1]`): rotates around world +Y; +rpy[1] turns +Z towards +X.
+            let n = [0.0, 1.0, 0.0];
+            let a = [0.0, 0.0, 1.0];
+            let b = [1.0, 0.0, 0.0];
+            (n, a, b, Color32::from_rgb(80, 220, 95), "Y")
+        }
+        _ => {
+            // Roll (`rpy[2]`): rotates around local +Z (after yaw and pitch); +rpy[2] turns +X towards +Y.
+            let m = dz_core::objects::rotation(rpy[1] + 180.0, -rpy[0], 0.0, 1.0);
+            (m[2], m[0], m[1], Color32::from_rgb(80, 145, 245), "R")
+        }
+    }
+}
+
+fn rot_ring_angle(origin: [f32; 3], frame: ([f32; 3], [f32; 3], [f32; 3]), ro: [f32; 3], rd: [f32; 3]) -> Option<f32> {
+    let (n, a, b) = frame;
+    let denom = dot(rd, n);
+    if denom.abs() < 0.08 {
+        return None;
+    }
+    let t = dot(sub(origin, ro), n) / denom;
+    if t <= 0.01 {
+        return None;
+    }
+    let p = sub(add(ro, mul(rd, t)), origin);
+    Some(dot(p, b).atan2(dot(p, a)))
+}
+
+fn rot_gizmo_hit(v: &View, origin: [f32; 3], rpy: [f32; 3], ptr: Pos2) -> Option<GizmoHandle> {
+    let r = gizmo_length(v.eye, origin) * 0.95;
+    let mut best: Option<(f32, GizmoHandle)> = None;
+    for axis in 0..3 {
+        let (_, a, b, _, _) = dispatch_rot_ring(rpy, axis);
+        let mut prev = add(origin, mul(a, r));
+        for k in 1..=32 {
+            let ang = k as f32 * std::f32::consts::TAU / 32.0;
+            let cur = add(origin, add(mul(a, r * ang.cos()), mul(b, r * ang.sin())));
             if let Some((p0, p1)) = v.segment(prev, cur) {
-                painter.line_segment([p0, p1], Stroke::new(2.0_f32, h_col));
+                let d = dist_to_segment(ptr, p0, p1);
+                if d <= 10.0 && best.is_none_or(|c| d < c.0) {
+                    best = Some((d, GizmoHandle::Rotate(axis)));
+                }
             }
             prev = cur;
         }
     }
-    if let Some(tp) = v.project(top) {
-        let d = if h_lit { 6.5_f32 } else { 5.0_f32 };
-        let diamond = vec![
-            Pos2::new(tp.x, tp.y - d),
-            Pos2::new(tp.x + d, tp.y),
-            Pos2::new(tp.x, tp.y + d),
-            Pos2::new(tp.x - d, tp.y),
-        ];
-        painter.add(egui::Shape::convex_polygon(diamond, h_col, Stroke::new(1.2_f32, Color32::BLACK)));
-        painter.text(tp + Vec2::new(10.0, 0.0), egui::Align2::LEFT_CENTER, "H", egui::FontId::proportional(11.0), h_col);
+    best.map(|(_, h)| h)
+}
+
+fn draw_rot_gizmo(painter: &egui::Painter, v: &View, origin: [f32; 3], rpy: [f32; 3], active: Option<GizmoHandle>) {
+    let r = gizmo_length(v.eye, origin) * 0.95;
+    for axis in 0..3 {
+        let (_, a, b, base_col, label) = dispatch_rot_ring(rpy, axis);
+        let lit = active == Some(GizmoHandle::Rotate(axis));
+        let col = if lit { Color32::from_rgb(255, 240, 80) } else { base_col };
+        let width = if lit { 3.2_f32 } else { 2.0_f32 };
+        let mut prev = add(origin, mul(a, r));
+        for k in 1..=36 {
+            let ang = k as f32 * std::f32::consts::TAU / 36.0;
+            let cur = add(origin, add(mul(a, r * ang.cos()), mul(b, r * ang.sin())));
+            if let Some((p0, p1)) = v.segment(prev, cur) {
+                painter.line_segment([p0, p1], Stroke::new(width, col));
+            }
+            prev = cur;
+        }
+        let tip = add(origin, mul(a, r * 1.12));
+        if let Some(tp) = v.project(tip) {
+            painter.text(tp, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(11.0), col);
+        }
     }
 }
 
@@ -673,6 +781,15 @@ fn draw_preview_panel(
                 st.clip_enabled,
                 ValueField::new(&mut st.clip_y, lo..=hi).suffix(" m").step_by(0.05),
             );
+            if st.selected_dispatch.is_some() {
+                ui.separator();
+                if tool_button(ui, st.gizmo_mode == GizmoMode::Move, &icons::with(icons::ARROWS_OUT_CARDINAL, &t("Move"))).clicked() {
+                    st.gizmo_mode = GizmoMode::Move;
+                }
+                if tool_button(ui, st.gizmo_mode == GizmoMode::Rotate, &icons::with(icons::ARROWS_CLOCKWISE, &t("Rotate"))).clicked() {
+                    st.gizmo_mode = GizmoMode::Rotate;
+                }
+            }
         });
     });
 
@@ -728,10 +845,17 @@ fn draw_preview_panel(
                     if keys.down(i, Action::CameraLeft) || i.key_down(Key::ArrowLeft) { mv = add(mv, mul(r, -1.0)); }
                     if keys.down(i, Action::CameraUp) { mv = add(mv, [0.0, 1.0, 0.0]); }
                     if keys.down(i, Action::CameraDown) { mv = add(mv, [0.0, -1.0, 0.0]); }
+                    if i.key_pressed(Key::R) && st.selected_dispatch.is_some() {
+                        st.gizmo_mode = match st.gizmo_mode {
+                            GizmoMode::Move => GizmoMode::Rotate,
+                            GizmoMode::Rotate => GizmoMode::Move,
+                        };
+                    }
                     if i.key_pressed(Key::F) {
                         let target = st.selected_point
                             .and_then(|pi| st.group.containers.get(st.selected_container)?.points.get(pi))
                             .map(|pt| st.proto_to_world(pt.pos))
+                            .or_else(|| st.selected_dispatch.and_then(|di| st.group.dispatch.get(di)).map(|pr| st.proto_to_world(pr.pos)))
                             .unwrap_or_else(|| st.box_center());
                         let f = st.camera.forward();
                         st.camera.pos = sub(target, mul(f, 3.0));
@@ -746,52 +870,121 @@ fn draw_preview_panel(
 
             let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
 
-            // ---------------- Gizmo interaction (LPM drag on X/Y/Z axis, Range ring, or Height handle) ----------------
-            let selected_info: Option<([f32; 3], f32, f32, bool)> = if let Some(pi) = st.selected_point {
+            // ---------------- Gizmo interaction (Move X/Y/Z, Range, Height, or Dispatch Rotate P/Y/R) ----------------
+            let selected_info: Option<([f32; 3], f32, f32, Option<[f32; 3]>)> = if let Some(pi) = st.selected_point {
                 st.group.containers.get(st.selected_container)
                     .and_then(|c| c.points.get(pi))
-                    .map(|pt| (st.proto_to_world(pt.pos), pt.range, pt.height, false))
+                    .map(|pt| (st.proto_to_world(pt.pos), pt.range, pt.height, None))
             } else if let Some(di) = st.selected_dispatch {
-                st.group.dispatch.get(di).map(|pr| (st.proto_to_world(pr.pos), 0.0, 0.0, true))
+                st.group.dispatch.get(di).map(|pr| (st.proto_to_world(pr.pos), 0.0, 0.0, Some(pr.rpy)))
             } else {
                 None
+            };
+
+            let hit_for = |info: ([f32; 3], f32, f32, Option<[f32; 3]>), ptr: Pos2| -> Option<GizmoHandle> {
+                let (origin, range, height, dispatch_rpy) = info;
+                if let Some(rpy) = dispatch_rpy {
+                    if st.gizmo_mode == GizmoMode::Rotate {
+                        rot_gizmo_hit(&v, origin, rpy, ptr)
+                    } else {
+                        gizmo_hit(&v, origin, 0.0, 0.0, false, ptr)
+                    }
+                } else {
+                    gizmo_hit(&v, origin, range, height, true, ptr)
+                }
             };
 
             let hover_pos = resp.hover_pos();
             let hover_handle = match (&st.gizmo_drag, selected_info, hover_pos) {
                 (Some(drag), _, _) => Some(drag.handle),
-                (None, Some((origin, range, height, _)), Some(ptr)) => gizmo_hit(&v, origin, range, height, ptr),
+                (None, Some(info), Some(ptr)) => hit_for(info, ptr),
                 _ => None,
             };
 
+            let mods_now = ctx.input(|i| i.modifiers);
+            let precise_now = keys.held(Hold::Precise, mods_now) || mods_now.alt;
+            let angle_snap_now = keys.held(Hold::AngleSnap, mods_now);
+
             if resp.drag_started_by(PointerButton::Primary) {
-                if let (Some((origin, range, height, _)), Some(ptr)) = (selected_info, resp.interact_pointer_pos()) {
-                    if let Some(handle) = gizmo_hit(&v, origin, range, height, ptr) {
+                if let (Some(info), Some(ptr)) = (selected_info, resp.interact_pointer_pos()) {
+                    let (origin, range, height, dispatch_rpy) = info;
+                    if let Some(handle) = hit_for(info, ptr) {
+                        let empty_frame = ([0.0; 3], [0.0; 3], [0.0; 3]);
                         match handle {
                             GizmoHandle::Axis(axis) => {
                                 let mut dir = [0.0f32; 3];
                                 dir[axis] = 1.0;
                                 let (ro, rd) = v.ray(ptr);
                                 if let Some(t) = axis_param(origin, dir, ro, rd) {
-                                    st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: t, start_val: 0.0 });
+                                    st.gizmo_drag = Some(GizmoDrag {
+                                        handle,
+                                        origin_world: origin,
+                                        start_t: t,
+                                        start_val: 0.0,
+                                        virt: (ptr, ptr),
+                                        rot_frame: empty_frame,
+                                        last_angle: None,
+                                        accum_deg: 0.0,
+                                    });
                                 }
                             }
                             GizmoHandle::Range => {
-                                st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: 0.0, start_val: range });
+                                st.gizmo_drag = Some(GizmoDrag {
+                                    handle,
+                                    origin_world: origin,
+                                    start_t: 0.0,
+                                    start_val: range,
+                                    virt: (ptr, ptr),
+                                    rot_frame: empty_frame,
+                                    last_angle: None,
+                                    accum_deg: 0.0,
+                                });
                             }
                             GizmoHandle::Height => {
                                 let (ro, rd) = v.ray(ptr);
                                 if let Some(t) = axis_param(origin, [0.0, 1.0, 0.0], ro, rd) {
-                                    st.gizmo_drag = Some(GizmoDrag { handle, origin_world: origin, start_t: t, start_val: height });
+                                    st.gizmo_drag = Some(GizmoDrag {
+                                        handle,
+                                        origin_world: origin,
+                                        start_t: t,
+                                        start_val: height,
+                                        virt: (ptr, ptr),
+                                        rot_frame: empty_frame,
+                                        last_angle: None,
+                                        accum_deg: 0.0,
+                                    });
+                                }
+                            }
+                            GizmoHandle::Rotate(axis) => {
+                                if let Some(rpy) = dispatch_rpy {
+                                    let (n, a, b, _, _) = dispatch_rot_ring(rpy, axis);
+                                    let frame = (n, a, b);
+                                    let (ro, rd) = v.ray(ptr);
+                                    let start_ang = rot_ring_angle(origin, frame, ro, rd);
+                                    st.gizmo_drag = Some(GizmoDrag {
+                                        handle,
+                                        origin_world: origin,
+                                        start_t: ptr.x,
+                                        start_val: rpy[axis],
+                                        virt: (ptr, ptr),
+                                        rot_frame: frame,
+                                        last_angle: start_ang,
+                                        accum_deg: 0.0,
+                                    });
                                 }
                             }
                         }
                     }
                 }
             }
-            if let Some(drag) = st.gizmo_drag {
+            if let Some(mut drag) = st.gizmo_drag {
                 if resp.dragged_by(PointerButton::Primary) {
-                    if let Some(ptr) = resp.interact_pointer_pos() {
+                    if let Some(real_ptr) = resp.interact_pointer_pos() {
+                        // Holding Alt (Hold::Precise) slows all gizmo drags 5x, matching the map viewport.
+                        let (seen, last_real) = drag.virt;
+                        let ptr = seen + (real_ptr - last_real) * if precise_now { 0.2 } else { 1.0 };
+                        drag.virt = (ptr, real_ptr);
+
                         let (ro, rd) = v.ray(ptr);
                         match drag.handle {
                             GizmoHandle::Axis(axis) => {
@@ -840,8 +1033,33 @@ fn draw_preview_panel(
                                     }
                                 }
                             }
+                            GizmoHandle::Rotate(axis) => {
+                                if let Some(cur_ang) = rot_ring_angle(drag.origin_world, drag.rot_frame, ro, rd) {
+                                    if let Some(prev) = drag.last_angle {
+                                        let mut d = cur_ang - prev;
+                                        if d > std::f32::consts::PI { d -= std::f32::consts::TAU; }
+                                        if d < -std::f32::consts::PI { d += std::f32::consts::TAU; }
+                                        drag.accum_deg += d.to_degrees();
+                                    }
+                                    drag.last_angle = Some(cur_ang);
+                                } else {
+                                    // Edge-on fallback: horizontal virtual cursor delta.
+                                    drag.accum_deg = (ptr.x - drag.start_t) * 0.6;
+                                }
+                                let mut deg = drag.start_val + drag.accum_deg;
+                                if angle_snap_now {
+                                    deg = (deg / 5.0).round() * 5.0;
+                                }
+                                if let Some(di) = st.selected_dispatch {
+                                    if let Some(pr) = st.group.dispatch.get_mut(di) {
+                                        pr.rpy[axis] = deg;
+                                        st.dirty = true;
+                                    }
+                                }
+                            }
                         }
                     }
+                    st.gizmo_drag = Some(drag);
                     ctx.request_repaint();
                 } else {
                     st.gizmo_drag = None;
@@ -914,12 +1132,12 @@ fn draw_preview_panel(
             // Draw 3D XYZ translation + range + height gizmo on the currently selected point
             if let Some(pi) = st.selected_point {
                 if let Some(pt) = st.group.containers.get(st.selected_container).and_then(|c| c.points.get(pi)) {
-                    draw_gizmo(&painter, &v, st.proto_to_world(pt.pos), pt.range, pt.height, hover_handle);
+                    draw_gizmo(&painter, &v, st.proto_to_world(pt.pos), pt.range, pt.height, true, hover_handle);
                     if let (Some(drag), Some(ptr)) = (st.gizmo_drag, hover_pos) {
                         let live = match drag.handle {
                             GizmoHandle::Range => Some(format!("r = {:.2} m", pt.range)),
                             GizmoHandle::Height => Some(format!("h = {:.2} m", pt.height)),
-                            GizmoHandle::Axis(_) => None,
+                            GizmoHandle::Axis(_) | GizmoHandle::Rotate(_) => None,
                         };
                         if let Some(text) = live {
                             painter.text(
@@ -956,7 +1174,25 @@ fn draw_preview_panel(
                 }
                 if let Some(di) = st.selected_dispatch {
                     if let Some(pr) = st.group.dispatch.get(di) {
-                        draw_gizmo(&painter, &v, st.proto_to_world(pr.pos), 0.0, 0.0, hover_handle);
+                        let wpos = st.proto_to_world(pr.pos);
+                        if st.gizmo_mode == GizmoMode::Rotate {
+                            draw_rot_gizmo(&painter, &v, wpos, pr.rpy, hover_handle);
+                        } else {
+                            draw_gizmo(&painter, &v, wpos, 0.0, 0.0, false, hover_handle);
+                        }
+                        if let (Some(drag), Some(ptr)) = (st.gizmo_drag, hover_pos) {
+                            if let GizmoHandle::Rotate(axis) = drag.handle {
+                                let name = ["Pitch", "Yaw", "Roll"][axis];
+                                let suffix = if precise_now { "  (Alt)" } else { "" };
+                                painter.text(
+                                    ptr + Vec2::new(14.0, -14.0),
+                                    egui::Align2::LEFT_BOTTOM,
+                                    format!("{name} = {:.1}°{suffix}", pr.rpy[axis]),
+                                    egui::FontId::proportional(12.0),
+                                    Color32::from_rgb(255, 240, 100),
+                                );
+                            }
+                        }
                     }
                 }
             }
