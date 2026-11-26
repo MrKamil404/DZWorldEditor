@@ -555,8 +555,11 @@ fn apply_relief(root: &Path, texture: &str, rgba: &mut [u8]) {
     let alpha_spread = (alpha.iter().map(|v| (v - alpha_mean).powi(2)).sum::<f32>() / alpha.len() as f32).sqrt();
     let red_mean: u64 = (0..N).map(|i| t.rgba[at_pixel(i, i)] as u64).sum::<u64>() / N as u64;
     if red_mean <= 240 && alpha_spread > 4.0 {
+        // Keep the raw height values from `_nopx` without re-centring the mean to 128, so
+        // height-based blending matches the game (where taller surfaces like grass naturally
+        // creep slightly over lower ones like concrete).
         for (pixel, v) in rgba.chunks_exact_mut(4).zip(&alpha) {
-            pixel[3] = (((v - alpha_mean) / (2.5 * alpha_spread)).clamp(-1.0, 1.0) * 127.0 + 128.0) as u8;
+            pixel[3] = (*v).clamp(0.0, 255.0) as u8;
         }
         return;
     }

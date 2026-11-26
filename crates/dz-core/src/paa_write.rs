@@ -278,20 +278,28 @@ pub fn lzo1x_compress(input: &[u8]) -> Vec<u8> {
 }
 
 /// Writes a complete PAA file for an RGBA image.
+///
+/// Pixels are written at full scale without dynamic-range normalisation (`dynRange = 0` in
+/// DayZ Tools' `TexConvert.cfg` for `*_lco`, `*_lca`, and `*_nopx`), so `CXAM` (`MAXC`) is
+/// always `255` on every channel; otherwise the game multiplies decoded pixels by `CXAM / 255`
+/// and darkens tiles inconsistently. DXT5 images with any pixel having `alpha < 255` carry the
+/// `GALF` (`AlphaInterpolated = 1`) tag, and mipmaps go down to `4x4`, matching `ImageToPAA`.
 pub fn encode(rgba: &[u8], width: usize, height: usize, fmt: Format) -> Vec<u8> {
     assert_eq!(rgba.len(), width * height * 4);
     let mut levels: Vec<(Vec<u8>, usize, usize)> = vec![(rgba.to_vec(), width, height)];
-    while levels.last().unwrap().1 > 8 && levels.last().unwrap().2 > 8 && levels.len() < 16 {
+    while levels.last().unwrap().1 > 4 && levels.last().unwrap().2 > 4 && levels.len() < 16 {
         let (d, w, h) = levels.last().unwrap();
         let next = half(d, *w, *h);
         levels.push(next);
     }
     let mut avg = [0u64; 4];
-    let mut max = [0u8; 4];
+    let mut has_alpha = false;
     for p in rgba.chunks_exact(4) {
         for c in 0..4 {
             avg[c] += p[c] as u64;
-            max[c] = max[c].max(p[c]);
+        }
+        if p[3] < 255 {
+            has_alpha = true;
         }
     }
     let n = (width * height).max(1) as u64;
@@ -302,7 +310,12 @@ pub fn encode(rgba: &[u8], width: usize, height: usize, fmt: Format) -> Vec<u8> 
     out.extend_from_slice(&[(avg[2] / n) as u8, (avg[1] / n) as u8, (avg[0] / n) as u8, (avg[3] / n) as u8]);
     out.extend_from_slice(b"GGATCXAM");
     out.extend_from_slice(&4u32.to_le_bytes());
-    out.extend_from_slice(&[max[2], max[1], max[0], max[3]]);
+    out.extend_from_slice(&[255, 255, 255, 255]);
+    if fmt == Format::Dxt5 && has_alpha {
+        out.extend_from_slice(b"GGATGALF");
+        out.extend_from_slice(&4u32.to_le_bytes());
+        out.extend_from_slice(&1u32.to_le_bytes());
+    }
     out.extend_from_slice(b"GGATSFFO");
     out.extend_from_slice(&64u32.to_le_bytes());
     let table = out.len();
@@ -410,5 +423,43 @@ mod tests {
         }
         let paa = encode(&img, w, h, Format::Dxt5);
         assert!(forest_core::paa::decode(&paa, 4096).is_ok());
+    }
+
+    fn read_tags(paa: &[u8]) -> std::collections::HashMap<[u8; 4], Vec<u8>> {
+        let mut out = std::collections::HashMap::new();
+        let mut p = 2usize;
+        while paa.get(p..p + 4) == Some(b"GGAT") {
+            let name: [u8; 4] = paa[p + 4..p + 8].try_into().unwrap();
+            let len = u32::from_le_bytes(paa[p + 8..p + 12].try_into().unwrap()) as usize;
+            out.insert(name, paa[p + 12..p + 12 + len].to_vec());
+            p += 12 + len;
+        }
+        out
+    }
+
+    #[test]
+    fn cxam_is_full_scale_and_mips_reach_4x4() {
+        let dark = [40u8, 60, 80, 255].repeat(64 * 64);
+        let paa = encode(&dark, 64, 64, Format::Dxt1);
+        let tags = read_tags(&paa);
+        assert_eq!(tags.get(b"CXAM").map(Vec::as_slice), Some(&[255, 255, 255, 255][..]));
+        assert!(!tags.contains_key(b"GALF"));
+        let raw = forest_core::paa::read_raw(&paa, 4096).unwrap();
+        let dims: Vec<(u32, u32)> = raw.mips.iter().map(|(w, h, _)| (*w, *h)).collect();
+        assert_eq!(dims, vec![(64, 64), (32, 32), (16, 16), (8, 8), (4, 4)]);
+    }
+
+    #[test]
+    fn dxt5_with_alpha_writes_galf_tag_and_opaque_omits_it() {
+        let opaque = [255u8, 0, 0, 255].repeat(16 * 16);
+        assert!(!read_tags(&encode(&opaque, 16, 16, Format::Dxt5)).contains_key(b"GALF"));
+
+        let mut with_alpha = opaque.clone();
+        with_alpha[3] = 128;
+        let tags = read_tags(&encode(&with_alpha, 16, 16, Format::Dxt5));
+        assert_eq!(tags.get(b"GALF").map(Vec::as_slice), Some(&1u32.to_le_bytes()[..]));
+        assert_eq!(tags.get(b"CXAM").map(Vec::as_slice), Some(&[255, 255, 255, 255][..]));
+        // DXT1 never emits GALF even if input RGBA had alpha < 255.
+        assert!(!read_tags(&encode(&with_alpha, 16, 16, Format::Dxt1)).contains_key(b"GALF"));
     }
 }
