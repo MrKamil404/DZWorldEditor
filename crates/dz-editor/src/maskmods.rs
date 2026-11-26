@@ -271,38 +271,64 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
-/// Rows of the mask modifiers in the outliner.
+fn kind_label(kind: MaskKind) -> String {
+    match kind {
+        MaskKind::Strokes => t("Brush"),
+        MaskKind::UnderObjects => t("Under objects"),
+        MaskKind::Forest => t("Forest"),
+        MaskKind::Paint => t("Paint"),
+        MaskKind::Satellite => t("Satellite"),
+    }
+}
+
+/// Rows of the mask modifiers in the outliner (top of the list = top of the layer stack).
 pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<bool>) {
     // In team work: only whose the outliner shows, with who made each.
     let team = crate::team_ui::active(app);
-    let rows: Vec<(u32, String, bool, bool)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter()
-        .filter(|m| crate::team_ui::shown(app, d.world.mask_mod_author(m.id)))
-        .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.mask_mod_author(m.id)), m.enabled, m.kind == MaskKind::Strokes)).collect()).unwrap_or_default();
-    let (mut toggle, mut delete, mut merge) = (None, None, None);
+    let total = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.len()).unwrap_or(0);
+    let rows: Vec<(u32, usize, String, bool, MaskKind)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter().enumerate()
+        .filter(|(_, m)| crate::team_ui::shown(app, d.world.mask_mod_author(m.id)))
+        .map(|(idx, m)| (m.id, idx, crate::team_ui::with_author(team, &m.name, d.world.mask_mod_author(m.id)), m.enabled, m.kind)).collect()).unwrap_or_default();
+    let (mut toggle, mut delete, mut merge, mut reorder) = (None, None, None, None::<(u32, usize)>);
     let can_merge: std::collections::HashSet<u32> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter().filter(|m| d.world.mask_merge_target(m.id).is_some()).map(|m| m.id).collect()).unwrap_or_default();
     crate::panels::outliner_section(fold, "Mask modifiers", crate::icons::with(crate::icons::STACK, &tf("Mask modifiers ({0})", &[&rows.len().to_string()])), rows.len() == 0).show(ui, |ui| {
-        for (id, name, enabled, strokes) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
-            ui.horizontal(|ui| {
+        for (id, vec_idx, name, enabled, kind) in rows.iter().rev().filter(|r| r.2.to_lowercase().contains(filter)) {
+            let strokes = *kind == MaskKind::Strokes;
+            let disp_idx = total.saturating_sub(1).saturating_sub(*vec_idx);
+            let row_resp = ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
+                if filter.is_empty() && total > 1 {
+                    crate::theme::drag_grip(ui, crate::theme::OutlinerDrag::MaskMod(*id), &t("Drag to reorder"));
+                }
                 if crate::theme::row_switch(ui, *enabled, crate::icons::EYE, crate::icons::EYE_SLASH, t("Visible")).clicked() {
                     toggle = Some((*id, !*enabled));
                 }
-                if crate::theme::row_switch(ui, true, crate::icons::TRASH, "", t("Delete the modifier; what it covered comes back")).clicked() {
-                    delete = Some(*id);
+                let icon = if strokes { crate::icons::PAINT_BRUSH } else { crate::icons::STACK };
+                let tint = if *enabled { crate::theme::KIND_LAYER } else { crate::theme::TEXT_DIM };
+                let label = if *enabled { egui::RichText::new(name.as_str()) } else { egui::RichText::new(name.as_str()).weak() };
+                let badge = kind_label(*kind);
+                let mut row = crate::theme::list_row(ui, strokes && app.paint.target == Some(*id), icon, tint, label, &badge);
+                if strokes {
+                    row = row.on_hover_text(t("Click to paint into this modifier"));
                 }
-                // A modifier of brush strokes can be chosen for the next strokes to go into.
-                let row = if *strokes { crate::theme::list_row(ui, app.paint.target == Some(*id), crate::icons::PAINT_BRUSH, crate::theme::KIND_LAYER, name.as_str(), "").on_hover_text(t("Click to paint into this modifier")) } else { crate::theme::list_row(ui, false, crate::icons::STACK, crate::theme::KIND_LAYER, name.as_str(), "") };
-                if *strokes && row.clicked() {
+                if strokes && row.clicked() {
                     app.paint.target = Some(*id);
                     app.paint.into_modifier = true;
                 }
                 row.context_menu(|ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    if ui.button(t("Delete")).clicked() {
-                        delete = Some(*id);
-                        ui.close_menu();
+                    if total > 1 {
+                        if ui.add_enabled(*vec_idx + 1 < total, egui::Button::new(crate::icons::with(crate::icons::ARROW_UP, &t("Move up")))).clicked() {
+                            reorder = Some((*id, *vec_idx + 1));
+                            ui.close_menu();
+                        }
+                        if ui.add_enabled(*vec_idx > 0, egui::Button::new(crate::icons::with(crate::icons::ARROW_DOWN, &t("Move down")))).clicked() {
+                            reorder = Some((*id, *vec_idx - 1));
+                            ui.close_menu();
+                        }
+                        ui.separator();
                     }
-                    if *strokes {
+                    if strokes {
                         if ui.add_enabled(can_merge.contains(id), egui::Button::new(t("Merge down"))).on_hover_text(t("Merges the modifier into the one under it, if that one is of brush strokes too and both are shown.")).on_disabled_hover_text(t("Only into a shown modifier of brush strokes right under it, and in team work only your own.")).clicked() {
                             merge = Some(Some(*id));
                             ui.close_menu();
@@ -311,13 +337,39 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                             merge = Some(None);
                             ui.close_menu();
                         }
+                        ui.separator();
+                    }
+                    if ui.button(crate::icons::with(crate::icons::TRASH, &t("Delete"))).clicked() {
+                        delete = Some(*id);
+                        ui.close_menu();
                     }
                     crate::team_ui::author_menu(app, ui, dz_core::world::MASK_MOD_AUTHOR | *id as u64);
                 });
-            });
+            }).response;
+            if filter.is_empty() && total > 1 {
+                if let Some((crate::theme::OutlinerDrag::MaskMod(drag_id), after)) = crate::theme::dnd_reorder_slot(ui, row_resp.rect, |p| matches!(p, crate::theme::OutlinerDrag::MaskMod(_))) {
+                    if drag_id != *id {
+                        if let Some(from_vec) = app.doc.as_ref().and_then(|d| d.world.mask_mods.position(drag_id)) {
+                            let from_disp = total.saturating_sub(1).saturating_sub(from_vec);
+                            let to_vec = crate::theme::reorder_target(from_disp, disp_idx, after, total, true);
+                            reorder = Some((drag_id, to_vec));
+                        }
+                    }
+                }
+            }
         }
     });
-    if let Some(which) = merge {
+    if let Some((id, to_idx)) = reorder {
+        let Some(d) = app.doc.as_mut() else { return };
+        let before = d.world.mask_mods.modifiers.clone();
+        let touched = d.world.mask_move(id, to_idx);
+        if d.world.mask_mods.modifiers != before {
+            d.history.push(t("Reorder mask modifiers"), Change::MaskMods(before));
+            if let Some(r) = touched {
+                app.mask_recomposed(r);
+            }
+        }
+    } else if let Some(which) = merge {
         let Some(d) = app.doc.as_mut() else { return };
         let before = d.world.mask_mods.modifiers.clone();
         let (n, touched) = match which {

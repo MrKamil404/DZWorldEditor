@@ -1463,17 +1463,49 @@ fn instance_buttons(app: &mut App, ui: &mut egui::Ui, id: u64) {
 pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'static str, usize)], filter: &str) {
     let mut action: Option<(u64, u8)> = None;
     let mut fly = None;
+    let mut reorder: Option<(u64, usize)> = None;
+    let total = app.doc.as_ref().map(|d| d.world.generators.len()).unwrap_or(0);
     for (id, name, kind, count) in rows.iter().filter(|r| r.1.to_ascii_lowercase().contains(filter)) {
-        let row = crate::theme::list_row(ui, app.selected_generator == Some(*id), crate::icons::MAGIC_WAND, crate::theme::KIND_GENERATOR, format!("{name}  ·  {}", t(kind)), &count.to_string());
-        if row.clicked() { action = Some((*id, 0)); }
-        row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-            let spot = app.doc.as_ref().and_then(|d| dz_core::goto::generator_spot(&d.world, d.world.generators.iter().find(|g| g.id == *id)?));
-            if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
-            for (code, label) in [(1u8, "Generate"), (2, "Select objects"), (3, "Duplicate"), (4, "Save as preset"), (5, "Delete generator...")] {
-                if ui.button(t(label)).clicked() { action = Some((*id, code)); ui.close_menu(); }
+        let vec_idx = app.doc.as_ref().and_then(|d| d.world.generators.iter().position(|g| g.id == *id)).unwrap_or(0);
+        let row_resp = ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            if filter.is_empty() && total > 1 {
+                crate::theme::drag_grip(ui, crate::theme::OutlinerDrag::Generator(*id), &t("Drag to reorder"));
             }
-            crate::team_ui::author_menu(app, ui, *id);
-        });
+            let row = crate::theme::list_row(ui, app.selected_generator == Some(*id), crate::icons::MAGIC_WAND, crate::theme::KIND_GENERATOR, format!("{name}  ·  {}", t(kind)), &count.to_string());
+            if row.clicked() { action = Some((*id, 0)); }
+            row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                let spot = app.doc.as_ref().and_then(|d| dz_core::goto::generator_spot(&d.world, d.world.generators.iter().find(|g| g.id == *id)?));
+                if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                if total > 1 {
+                    if ui.add_enabled(vec_idx > 0, egui::Button::new(crate::icons::with(crate::icons::ARROW_UP, &t("Move up")))).clicked() { reorder = Some((*id, vec_idx - 1)); ui.close_menu(); }
+                    if ui.add_enabled(vec_idx + 1 < total, egui::Button::new(crate::icons::with(crate::icons::ARROW_DOWN, &t("Move down")))).clicked() { reorder = Some((*id, vec_idx + 1)); ui.close_menu(); }
+                    ui.separator();
+                }
+                for (code, label) in [(1u8, "Generate"), (2, "Select objects"), (3, "Duplicate"), (4, "Save as preset"), (5, "Delete generator...")] {
+                    if ui.button(t(label)).clicked() { action = Some((*id, code)); ui.close_menu(); }
+                }
+                crate::team_ui::author_menu(app, ui, *id);
+            });
+        }).response;
+        if filter.is_empty() && total > 1 {
+            if let Some((crate::theme::OutlinerDrag::Generator(drag_id), after)) = crate::theme::dnd_reorder_slot(ui, row_resp.rect, |p| matches!(p, crate::theme::OutlinerDrag::Generator(_))) {
+                if drag_id != *id {
+                    if let Some(from_vec) = app.doc.as_ref().and_then(|d| d.world.generators.iter().position(|g| g.id == drag_id)) {
+                        let to_vec = crate::theme::reorder_target(from_vec, vec_idx, after, total, false);
+                        reorder = Some((drag_id, to_vec));
+                    }
+                }
+            }
+        }
+    }
+    if let Some((id, to_idx)) = reorder {
+        if let Some(d) = app.doc.as_mut() {
+            let before = d.world.generators.clone();
+            if d.world.move_generator(id, to_idx) {
+                d.history.push(t("Reorder generators"), dz_core::edit::Change::Generators(before));
+            }
+        }
     }
     if let Some(s) = fly { crate::goto::fly_to(app, s); }
     if let Some((id, code)) = action {

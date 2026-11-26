@@ -10782,5 +10782,49 @@
  "Murky": {
   "de": "Trüb",
   "pl": "Mętny"
+ },
+ "Drag to reorder": {
+  "de": "Zum Sortieren ziehen",
+  "pl": "Przeciągnij, aby zmienić kolejność"
+ },
+ "Move up": {
+  "de": "Nach oben",
+  "pl": "Przesuń w górę"
+ },
+ "Move down": {
+  "de": "Nach unten",
+  "pl": "Przesuń w dół"
+ },
+ "Under objects": {
+  "de": "Unter Objekten",
+  "pl": "Pod obiektami"
+ },
+ "Generated": {
+  "de": "Erzeugt",
+  "pl": "Wygenerowane"
+ },
+ "Correct": {
+  "de": "Korrektur",
+  "pl": "Korekcja"
+ },
+ "Reorder terrain modifiers": {
+  "de": "Geländemodifikatoren sortieren",
+  "pl": "Zmiana kolejności modyfikatorów terenu"
+ },
+ "Reorder mask modifiers": {
+  "de": "Maskenmodifikatoren sortieren",
+  "pl": "Zmiana kolejności modyfikatorów maski"
+ },
+ "Reorder satellite modifiers": {
+  "de": "Satellitenmodifikatoren sortieren",
+  "pl": "Zmiana kolejności modyfikatorów satelity"
+ },
+ "Reorder shape layers": {
+  "de": "Formebenen sortieren",
+  "pl": "Zmiana kolejności warstw kształtów"
+ },
+ "Reorder generators": {
+  "de": "Generatoren sortieren",
+  "pl": "Zmiana kolejności generatorów"
  }
 }

@@ -226,6 +226,79 @@ pub fn row_switch(ui: &mut egui::Ui, on: bool, icon_on: &str, icon_off: &str, ti
     resp.on_hover_text(tip)
 }
 
+/// Drag-and-drop payload for reordering layers and modifiers inside the Outliner.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OutlinerDrag {
+    TerrainMod(u64),
+    MaskMod(u32),
+    SatMod(u32),
+    ShapeLayer(usize),
+    Generator(u64),
+}
+
+/// Compact 6-dot drag grip handle placed on the left of a reorderable Outliner row.
+pub fn drag_grip(ui: &mut egui::Ui, payload: OutlinerDrag, tip: &str) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(14.0, 22.0), egui::Sense::drag());
+    let color = if resp.dragged() {
+        ACCENT
+    } else if resp.hovered() {
+        TEXT_BRIGHT
+    } else {
+        Color32::from_gray(95)
+    };
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, crate::icons::DOTS_SIX_VERTICAL, FontId::proportional(13.0), color);
+    if resp.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    } else if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+    }
+    resp.dnd_set_drag_payload(payload);
+    resp.on_hover_text(tip)
+}
+
+/// Draws a crisp drop insertion line over `row_rect` while a matching [`OutlinerDrag`] is dragged,
+/// and returns `Some((payload, after))` when dropped (`after == true` means bottom half of the row).
+pub fn dnd_reorder_slot(ui: &egui::Ui, row_rect: egui::Rect, accepts: impl Fn(OutlinerDrag) -> bool) -> Option<(OutlinerDrag, bool)> {
+    let payload = egui::DragAndDrop::payload::<OutlinerDrag>(ui.ctx())?;
+    if !accepts(*payload) {
+        return None;
+    }
+    let ptr = ui.ctx().pointer_latest_pos()?;
+    if !row_rect.contains(ptr) {
+        return None;
+    }
+    let after = ptr.y >= row_rect.center().y;
+    let y = if after { row_rect.bottom() } else { row_rect.top() };
+    let p = ui.painter();
+    p.line_segment([egui::pos2(row_rect.left() + 2.0, y), egui::pos2(row_rect.right() - 2.0, y)], Stroke::new(2.0_f32, ACCENT));
+    p.circle_filled(egui::pos2(row_rect.left() + 4.0, y), 3.0, ACCENT);
+    p.circle_filled(egui::pos2(row_rect.right() - 4.0, y), 3.0, ACCENT);
+    if ui.input(|i| i.pointer.any_released()) {
+        if let Some(taken) = egui::DragAndDrop::take_payload::<OutlinerDrag>(ui.ctx()) {
+            return Some((*taken, after));
+        }
+    }
+    None
+}
+
+/// Computes the target `Vec` index when moving display row `from_disp` to before/after `target_disp`.
+/// When `reversed` is true (top-of-list = top-of-stack = `len - 1`), converts back to `Vec` index.
+pub fn reorder_target(from_disp: usize, target_disp: usize, after: bool, len: usize, reversed: bool) -> usize {
+    if len < 2 {
+        return 0;
+    }
+    let mut ins = target_disp + usize::from(after);
+    if from_disp < ins {
+        ins = ins.saturating_sub(1);
+    }
+    let ins = ins.min(len - 1);
+    if reversed {
+        (len - 1) - ins
+    } else {
+        ins
+    }
+}
+
 /// A row of numbers side by side under one label, as Location and Rotation in the Unreal
 /// details: each number is marked at its left with the colour of its axis. True once an edit
 /// is over (a drag let go or typing left), for the undo step.
