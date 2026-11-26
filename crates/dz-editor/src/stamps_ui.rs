@@ -77,63 +77,164 @@ fn thumb(ctx: &egui::Context, cache: &mut std::collections::HashMap<String, egui
     tex
 }
 
+/// Paints a single stamp tile matching the Surface layers tile style.
+fn stamp_tile(ui: &mut egui::Ui, tex: &egui::TextureHandle, name: &str, tip: String, side: f32, active: bool) -> bool {
+    use crate::theme;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(side + 8.0, side + 22.0), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        let bg = if active {
+            theme::ACCENT_SOFT
+        } else if resp.hovered() {
+            theme::HOVER
+        } else {
+            egui::Color32::from_rgb(42, 42, 44)
+        };
+        p.rect_filled(rect, 3.0, bg);
+        if active {
+            p.rect_stroke(rect, 3.0, egui::Stroke::new(1.0_f32, theme::ACCENT), egui::StrokeKind::Inside);
+        }
+        let art = egui::Rect::from_min_size(rect.min + egui::vec2(4.0, 4.0), egui::vec2(side, side));
+        p.image(tex.id(), art, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+        p.rect_stroke(art, 2.0, egui::Stroke::new(1.0_f32, egui::Color32::from_black_alpha(110)), egui::StrokeKind::Inside);
+        let mut job = egui::text::LayoutJob::simple_singleline(
+            name.to_string(),
+            egui::FontId::proportional(11.0),
+            if active { theme::TEXT_BRIGHT } else { theme::TEXT },
+        );
+        job.wrap = egui::text::TextWrapping::truncate_at_width((rect.width() - 6.0).max(16.0));
+        let galley = p.layout_job(job);
+        p.galley(egui::pos2(rect.center().x - galley.size().x * 0.5, rect.bottom() - 9.0 - galley.size().y * 0.5), galley, theme::TEXT);
+    }
+    resp.on_hover_text(tip).clicked()
+}
+
+/// Computes a responsive square thumbnail side so tiles fill the available width without overflowing.
+fn responsive_tile_side(avail_width: f32) -> f32 {
+    const GAP: f32 = 4.0;
+    const PAD: f32 = 8.0;
+    let w = avail_width.max(64.0);
+    let per_row = ((w + GAP) / 68.0).floor().max(1.0);
+    let tile_w = ((w + GAP) / per_row - GAP).floor();
+    (tile_w - PAD).clamp(44.0, 74.0)
+}
+
 /// The stamps section of the Sculpt tab.
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
+    use crate::theme;
     if !app.stamps.loaded {
         app.stamps.own = load_all();
         app.stamps.loaded = true;
     }
     section(ui, &icons::with(icons::STAMP, &t("Terrain stamps")), true, |ui| {
-        // As many tiles a row as the panel holds (the tools panel is at most 460 wide).
-        let columns = ((ui.available_width().min(440.0) / 66.0).floor() as usize).max(1);
         crate::panels::about(ui, &t("Click a stamp, then on the map, to lay a form of the ground there. It is a terrain modifier: move, turn and scale it, change its height, or take it away again."));
         let ctx = ui.ctx().clone();
         let mut chosen = None;
-        let tile = |ui: &mut egui::Ui, tex: &egui::TextureHandle, name: &str, on: bool| -> bool {
-            let r = ui.vertical(|ui| {
-                ui.set_width(62.0);
-                let img = ui.add(egui::ImageButton::new((tex.id(), egui::vec2(56.0, 56.0))).selected(on));
-                ui.add(egui::Label::new(egui::RichText::new(name).small()).truncate());
-                img.clicked()
-            });
-            r.inner
-        };
-        ui.label(egui::RichText::new(t("Forms")).strong());
-        egui::Grid::new("stamp_forms").spacing(egui::vec2(4.0, 4.0)).show(ui, |ui| {
-            for (k, form) in StampForm::ALL.into_iter().enumerate() {
+        let side = responsive_tile_side(ui.available_width());
+
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new(t("Forms")).font(icons::strong(12.5)).color(theme::TEXT_BRIGHT));
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+            for form in StampForm::ALL {
                 let tex = thumb(&ctx, &mut app.stamps.thumbs, form.name(), terrain_stamps::builtin(form));
-                if tile(ui, &tex, &t(form.name()), app.stamps.armed == Some(StampPick::Form(form))) { chosen = Some(StampPick::Form(form)); }
-                if (k + 1) % columns == 0 { ui.end_row(); }
+                let (sz, h) = form.defaults();
+                let label = t(form.name());
+                let tip = format!("{label}\n{sz:.0} m · {h:+.0} m");
+                if stamp_tile(ui, &tex, &label, tip, side, app.stamps.armed == Some(StampPick::Form(form))) {
+                    chosen = Some(StampPick::Form(form));
+                }
             }
         });
-        ui.label(egui::RichText::new(t("Your stamps")).strong());
-        if app.stamps.own.is_empty() {
-            ui.add(egui::Label::new(egui::RichText::new(t("None yet: add grey pictures (white high, black low), or keep a piece of the terrain.")).weak()).wrap());
+
+        ui.add_space(6.0);
+        let own_count = app.stamps.own.len();
+        let search_id = ui.make_persistent_id("stamps_search");
+        let mut query: String = ui.data(|d| d.get_temp(search_id)).unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(t("Your stamps")).font(icons::strong(12.5)).color(theme::TEXT_BRIGHT));
+            if own_count > 0 {
+                ui.label(egui::RichText::new(format!("({own_count})")).small().color(theme::TEXT_DIM));
+            }
+        });
+        if own_count > 8 {
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if !query.is_empty() && ui.add(egui::Button::new(icons::X).min_size(egui::vec2(22.0, 22.0))).clicked() {
+                        query.clear();
+                    }
+                    ui.add(
+                        egui::TextEdit::singleline(&mut query)
+                            .hint_text(format!("{} {}", icons::MAGNIFYING_GLASS, t("Search...")))
+                            .desired_width(f32::INFINITY),
+                    );
+                });
+            });
+            ui.data_mut(|d| d.insert_temp(search_id, query.clone()));
+        } else if !query.is_empty() {
+            query.clear();
+            ui.data_mut(|d| d.insert_temp(search_id, query.clone()));
         }
-        egui::Grid::new("stamp_own").spacing(egui::vec2(4.0, 4.0)).show(ui, |ui| {
-            for k in 0..app.stamps.own.len() {
-                let (key, name) = (format!("own_{}", app.stamps.own[k].path.display()), app.stamps.own[k].name.clone());
-                let tex = thumb(&ctx, &mut app.stamps.thumbs, &key, &app.stamps.own[k].stamp);
-                if tile(ui, &tex, &name, app.stamps.armed == Some(StampPick::Own(k))) { chosen = Some(StampPick::Own(k)); }
-                if (k + 1) % columns == 0 { ui.end_row(); }
-            }
-        });
+
+        if own_count == 0 {
+            theme::card(ui, theme::BORDER, |ui| {
+                ui.add(egui::Label::new(egui::RichText::new(t("None yet: add grey pictures (white high, black low), or keep a piece of the terrain.")).small().color(theme::TEXT_DIM)).wrap());
+            });
+        } else {
+            let needle = query.trim().to_ascii_lowercase();
+            let own_side = responsive_tile_side((ui.available_width() - 12.0).max(64.0));
+            egui::ScrollArea::vertical().id_salt("user_stamps").max_height(240.0).auto_shrink([false, true]).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+                    for k in 0..app.stamps.own.len() {
+                        let name = app.stamps.own[k].name.clone();
+                        if !needle.is_empty() && !name.to_ascii_lowercase().contains(&needle) {
+                            continue;
+                        }
+                        let key = format!("own_{}", app.stamps.own[k].path.display());
+                        let (sz, h) = (app.stamps.own[k].info.size, app.stamps.own[k].info.height);
+                        let tex = thumb(&ctx, &mut app.stamps.thumbs, &key, &app.stamps.own[k].stamp);
+                        let tip = format!("{name}\n{sz:.0} m · {h:+.0} m");
+                        if stamp_tile(ui, &tex, &name, tip, own_side, app.stamps.armed == Some(StampPick::Own(k))) {
+                            chosen = Some(StampPick::Own(k));
+                        }
+                    }
+                });
+            });
+        }
+
         if let Some(c) = chosen {
             app.stamps.armed = if app.stamps.armed == Some(c) { None } else { Some(c) };
         }
         if app.stamps.armed.is_some() {
-            ui.colored_label(crate::theme::WARN, t("Click on the map to lay the stamp; Esc cancels."));
+            ui.add_space(4.0);
+            theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+                ui.horizontal(|ui| {
+                    ui.colored_label(theme::WARN, icons::STAMP);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(icons::X).min_size(egui::vec2(22.0, 22.0))).on_hover_text(t("Cancel")).clicked() {
+                            app.stamps.armed = None;
+                        }
+                        ui.add(egui::Label::new(egui::RichText::new(t("Click on the map to lay the stamp; Esc cancels.")).small().color(theme::WARN)).wrap());
+                    });
+                });
+            });
         }
-        ui.horizontal(|ui| {
-            if ui.button(icons::with(icons::PLUS, &t("Add pictures…"))).clicked() {
+
+        ui.add_space(6.0);
+        theme::button_columns(ui, 2, |c| {
+            let w0 = c[0].available_width();
+            if c[0].add(egui::Button::new(icons::with(icons::PLUS, &t("Add pictures…"))).min_size(egui::vec2(w0, 24.0))).clicked() {
                 add_pictures(app);
             }
-            if ui.button(icons::with(icons::FOLDER_OPEN, &t("Open folder"))).clicked() {
+            let w1 = c[1].available_width();
+            if c[1].add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Open folder"))).min_size(egui::vec2(w1, 24.0))).clicked() {
                 let _ = std::fs::create_dir_all(folder());
                 app.open_folder(&folder());
             }
         });
-        if ui.button(icons::with(icons::FLOPPY_DISK, &t("Keep the terrain of the selected polygon"))).on_hover_text(t("Saves the ground inside the square round the selected polygon as a stamp of your own.")).clicked() {
+        let w = ui.available_width();
+        if ui.add(egui::Button::new(icons::with(icons::FLOPPY_DISK, &t("Keep the terrain of the selected polygon"))).min_size(egui::vec2(w, 24.0))).on_hover_text(t("Saves the ground inside the square round the selected polygon as a stamp of your own.")).clicked() {
             keep_terrain(app);
         }
     });

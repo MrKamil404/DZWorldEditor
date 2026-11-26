@@ -548,6 +548,36 @@ pub fn segmented<T: PartialEq + Clone>(ui: &mut egui::Ui, value: &mut T, choices
     changed
 }
 
+/// Icon choices side by side on one dark plate, matching `segmented`.
+pub fn icon_segmented<T: PartialEq + Clone>(ui: &mut egui::Ui, value: &mut T, choices: &[(T, &str, String)]) -> bool {
+    let mut changed = false;
+    egui::Frame::new().fill(Color32::from_rgb(18, 18, 18)).stroke(Stroke::new(1.0_f32, Color32::from_rgb(44, 44, 44))).corner_radius(4).inner_margin(Margin::same(2)).show(ui, |ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        ui.horizontal(|ui| {
+            for (v, icon, tip) in choices {
+                let on = *value == *v;
+                let b = egui::Button::new(egui::RichText::new(*icon).size(14.0).color(if on { Color32::WHITE } else { TEXT })).fill(if on { ACCENT } else { Color32::TRANSPARENT }).stroke(Stroke::NONE).min_size(egui::vec2(26.0, 22.0));
+                let r = ui.add(b);
+                let r = if tip.is_empty() { r } else { r.on_hover_text(tip) };
+                if r.clicked() && !on { *value = v.clone(); changed = true; }
+            }
+        });
+    });
+    changed
+}
+
+/// A full-width dark card frame with a subtle border that does not trigger window resize loops.
+pub fn card(ui: &mut egui::Ui, stroke_color: Color32, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::new()
+        .fill(DARK)
+        .stroke(Stroke::new(1.0_f32, stroke_color))
+        .corner_radius(4)
+        .inner_margin(Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), add);
+        });
+}
+
 /// Buttons in equal columns across the panel.
 pub fn button_columns(ui: &mut egui::Ui, n: usize, add: impl FnOnce(&mut [egui::Ui])) {
     ui.columns(n, |cols| {

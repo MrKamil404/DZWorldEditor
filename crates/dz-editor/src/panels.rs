@@ -433,14 +433,6 @@ fn coffee_button(ui: &mut egui::Ui) {
     }
 }
 
-/// An icon button of the toolbar, lit when `active`, with the action's name and key as tip.
-pub(crate) fn icon_tool(ui: &mut egui::Ui, active: bool, icon: &str, label: Option<&str>, tip: String) -> egui::Response {
-    let text = match label { Some(l) => format!("{icon} {l}"), None => icon.to_string() };
-    let (fill, color) = if active { (theme::TOGGLE_ON, theme::TOGGLE_ON_TEXT) } else { (theme::SECTION, theme::TEXT) };
-    let r = ui.add(egui::Button::new(RichText::new(text).size(14.0).color(color)).fill(fill).min_size(vec2(26.0, 24.0)));
-    r.on_hover_text(tip)
-}
-
 /// A flat icon button for the plates of the toolbar: no frame until the pointer is over it,
 /// blue-tinted while on.
 fn flat_tool(ui: &mut egui::Ui, active: bool, icon: &str, label: Option<&str>, tip: String) -> egui::Response {
@@ -671,7 +663,7 @@ fn angle_snap_ui(app: &mut App, ui: &mut egui::Ui) {
     let key = app.settings.keys.hold(Hold::AngleSnap).name().to_string();
     let before = app.settings.angle_step;
     row(ui, &tf("Angle step with {0}", &[&key]), |ui| {
-        ui.add(egui::DragValue::new(&mut app.settings.angle_step).range(1.0..=90.0).speed(0.5).suffix("°"));
+        ui.add(crate::theme::ValueField::new(&mut app.settings.angle_step, 1.0..=90.0).suffix("°").step_by(1.0));
     });
     if app.settings.angle_step != before { app.settings.save(); }
 }
@@ -811,8 +803,21 @@ pub(crate) fn shortcuts(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
 fn select_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::CURSOR_CLICK, &t("Selection")), true, |ui| {
         let n = app.selection.len();
-        status(ui, &if n == 0 { t("Nothing selected") } else { selected_text(n) }, n > 0);
+        let (badge_icon, badge_col, badge_stroke) = if n > 0 {
+            (icons::CHECK_CIRCLE, theme::TEXT_BRIGHT, theme::ACCENT.gamma_multiply(0.75))
+        } else {
+            (icons::CURSOR_CLICK, theme::TEXT_DIM, theme::BORDER)
+        };
+        theme::card(ui, badge_stroke, |ui| {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(badge_icon, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: if n > 0 { theme::ACCENT } else { theme::TEXT_DIM }, ..Default::default() });
+            let text = if n == 0 { t("Nothing selected") } else { selected_text(n) };
+            job.append(&text, 6.0, egui::TextFormat { font_id: icons::strong(13.0), color: badge_col, ..Default::default() });
+            ui.add(egui::Label::new(job).truncate());
+        });
+        ui.add_space(2.0);
         about(ui, &t("Click selects, a drag selects all inside. Shift+click adds, Shift+Alt+drag adds all inside, Ctrl+drag takes it out."));
+        ui.add_space(2.0);
         theme::button_columns(ui, 3, |c| {
             let w = c[0].available_width();
             let wide = |b: egui::Button<'static>| b.min_size(vec2(w, 24.0));
@@ -831,12 +836,14 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
             let w = c[1].available_width();
             if c[1].add_enabled(objects, egui::Button::new(icons::with(icons::ARROWS_IN, &t("Reset scale"))).min_size(vec2(w, 24.0))).on_hover_text(t("Sets the selected objects back to their own size.")).clicked() { app.reset_selection_scale(); }
         });
+        ui.add_space(2.0);
         row(ui, &t("Drag selects"), |ui| {
-            let mut changed = false;
-            if icon_tool(ui, !app.settings.lasso, icons::SELECTION, None, t("Box")).clicked() { app.settings.lasso = false; changed = true; }
-            if icon_tool(ui, app.settings.lasso, icons::LASSO, None, format!("{}
-{}", t("Lasso"), t("Draw an outline round what to select."))).clicked() { app.settings.lasso = true; changed = true; }
-            if changed { app.settings.save(); }
+            if theme::icon_segmented(ui, &mut app.settings.lasso, &[
+                (false, icons::SELECTION, t("Box")),
+                (true, icons::LASSO, format!("{}\n{}", t("Lasso"), t("Draw an outline round what to select."))),
+            ]) {
+                app.settings.save();
+            }
         });
     });
     rows_section(app, ui);
@@ -844,29 +851,21 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
         theme::check_row(ui, &mut app.select_whole, t("Select whole roads and generators"));
         if theme::check_row(ui, &mut app.settings.drag_by_body, t("Move objects by dragging them")).on_hover_text(t("An object held by its shape slides over the ground, as with the dot of the gizmo.")).changed() { app.settings.save(); }
         if theme::check_row(ui, &mut app.settings.align_to_ground, t("Stick to the ground")).on_hover_text(t("Moved and turned objects tilt with the ground under them.")).changed() { app.settings.save(); }
-        if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("Align to the ground"))).on_hover_text(t("Tilts the selected objects to the ground under them now.")).clicked() { app.align_selection_to_ground(); }
+        if theme::check_row(ui, &mut app.settings.turn_about_press, t("Shift and drag turns about the press")).on_hover_text(t("The selection turns about the spot of the ground where the button went down, not about its own centre.")).changed() { app.settings.save(); }
         angle_snap_ui(app, ui);
-        // Icons only, with the name in the tip, so the panel can be made narrow.
         row(ui, &t("Gizmo and turn centre"), |ui| {
             use crate::settings::PivotMode;
-            for (m, icon, name, tip) in [
-                (PivotMode::Middle, icons::ARROWS_IN_CARDINAL, "Average", "The average of the positions of the selected objects."),
-                (PivotMode::Bounds, icons::BOUNDING_BOX, "Box centre", "The middle of the box that holds the positions of the selected objects."),
-                (PivotMode::First, icons::NUMBER_ONE, "First object", "The position of the first selected object."),
-            ] {
-                if icon_tool(ui, app.settings.pivot_mode == m, icon, None, format!("{}
-{}", t(name), t(tip))).clicked() { app.settings.pivot_mode = m; app.settings.save(); }
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            let on = app.settings.turn_about_press;
-            if icon_tool(ui, on, icons::CROSSHAIR_SIMPLE, None, format!("{}
-{}", t("Shift and drag turns about the press"), t("The selection turns about the spot of the ground where the button went down, not about its own centre."))).clicked() {
-                app.settings.turn_about_press = !on;
+            if theme::icon_segmented(ui, &mut app.settings.pivot_mode, &[
+                (PivotMode::Middle, icons::ARROWS_IN_CARDINAL, format!("{}\n{}", t("Average"), t("The average of the positions of the selected objects."))),
+                (PivotMode::Bounds, icons::BOUNDING_BOX, format!("{}\n{}", t("Box centre"), t("The middle of the box that holds the positions of the selected objects."))),
+                (PivotMode::First, icons::NUMBER_ONE, format!("{}\n{}", t("First object"), t("The position of the first selected object."))),
+            ]) {
                 app.settings.save();
             }
-            ui.add(egui::Label::new(RichText::new(t("Shift and drag turns about the press")).color(if on { theme::TEXT } else { theme::TEXT_DIM })).wrap());
         });
+        ui.add_space(4.0);
+        let w = ui.available_width();
+        if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(icons::with(icons::ARROW_LINE_DOWN, &t("Align to the ground"))).min_size(vec2(w, 24.0))).on_hover_text(t("Tilts the selected objects to the ground under them now.")).clicked() { app.align_selection_to_ground(); }
     });
     section(ui, &icons::with(icons::STACK, &t("Terrain under objects")), false, |ui| {
         about(ui, &t("A modifier levels the ground under the object and follows it. The sculpted terrain stays untouched."));
@@ -875,7 +874,9 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
             let (ids, on): (Vec<u32>, bool) = (app.selection.iter().copied().collect(), app.place.pad_follow);
             app.set_pad_follow(&ids, on);
         }
-        if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(t("Add modifier to selection"))).clicked() {
+        ui.add_space(4.0);
+        let w = ui.available_width();
+        if ui.add_enabled(!app.selection.is_empty(), egui::Button::new(icons::with(icons::PLUS, &t("Add modifier to selection"))).min_size(vec2(w, 24.0))).clicked() {
             let f = app.place.pad_falloff;
             app.add_pads_for_selection(f);
             changed = false;
@@ -911,17 +912,24 @@ fn select_mode(app: &mut App, ui: &mut egui::Ui) {
 fn rows_section(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::ARROW_FAT_LINES_RIGHT, &t("Rows of walls and fences")), true, |ui| {
         about(ui, &t("Copies of the selection laid end to end along its long side, as walls and fences are."));
+        ui.add_space(2.0);
         let objects = !app.selection.is_empty() && app.whole.is_none();
-        ui.horizontal_wrapped(|ui| {
-            let on = app.gizmo == Gizmo::Copy;
-            if icon_tool(ui, on, icons::ARROW_FAT_LINES_RIGHT, Some(&t("Copy in a row")), format!("{}\n{}", app.settings.keys.tip(Action::GizmoCopy), t("The gizmo shows arrows at the ends of the selection: drag one out to lay copies, aside to turn the row. The green ring turns the selection about where it joins its neighbour."))).clicked() {
-                app.gizmo = if on { Gizmo::Move } else { Gizmo::Copy };
-            }
-            let (back, ahead) = (app.settings.keys.tip(Action::CopyBehind), app.settings.keys.tip(Action::CopyAhead));
-            if ui.add_enabled(objects, egui::Button::new(icons::ARROW_LINE_LEFT)).on_hover_text(format!("{back}\n{}", t("A copy of the selection goes right behind it, along its long side, and is selected, so pressing again lays a row."))).clicked() { app.copy_selection_along(false); }
-            if ui.add_enabled(objects, egui::Button::new(icons::ARROW_LINE_RIGHT)).on_hover_text(format!("{ahead}\n{}", t("A copy of the selection goes right ahead of it, along its long side, and is selected, so pressing again lays a row."))).clicked() { app.copy_selection_along(true); }
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (back, ahead) = (app.settings.keys.tip(Action::CopyBehind), app.settings.keys.tip(Action::CopyAhead));
+                if ui.add_enabled(objects, egui::Button::new(icons::ARROW_LINE_RIGHT).min_size(vec2(28.0, 24.0))).on_hover_text(format!("{ahead}\n{}", t("A copy of the selection goes right ahead of it, along its long side, and is selected, so pressing again lays a row."))).clicked() { app.copy_selection_along(true); }
+                if ui.add_enabled(objects, egui::Button::new(icons::ARROW_LINE_LEFT).min_size(vec2(28.0, 24.0))).on_hover_text(format!("{back}\n{}", t("A copy of the selection goes right behind it, along its long side, and is selected, so pressing again lays a row."))).clicked() { app.copy_selection_along(false); }
+                let on = app.gizmo == Gizmo::Copy;
+                let (fill, col) = if on { (theme::ACCENT, Color32::WHITE) } else { (theme::SECTION, theme::TEXT) };
+                let w = ui.available_width();
+                if ui.add(egui::Button::new(RichText::new(icons::with(icons::ARROW_FAT_LINES_RIGHT, &t("Copy in a row"))).color(col)).fill(fill).min_size(vec2(w, 24.0))).on_hover_text(format!("{}\n{}", app.settings.keys.tip(Action::GizmoCopy), t("The gizmo shows arrows at the ends of the selection: drag one out to lay copies, aside to turn the row. The green ring turns the selection about where it joins its neighbour."))).clicked() {
+                    app.gizmo = if on { Gizmo::Move } else { Gizmo::Copy };
+                }
+            });
         });
-        if ui.add_enabled(objects, egui::Button::new(icons::with(icons::LINK_SIMPLE, &t("Join to the neighbour")))).on_hover_text(format!("{}\n{}", app.settings.keys.tip(Action::JoinNeighbour), t("Moves the selection so its end meets the end of the wall or fence next to it, as after turning it."))).clicked() { app.join_selection_to_neighbour(); }
+        let w = ui.available_width();
+        if ui.add_enabled(objects, egui::Button::new(icons::with(icons::LINK_SIMPLE, &t("Join to the neighbour"))).min_size(vec2(w, 24.0))).on_hover_text(format!("{}\n{}", app.settings.keys.tip(Action::JoinNeighbour), t("Moves the selection so its end meets the end of the wall or fence next to it, as after turning it."))).clicked() { app.join_selection_to_neighbour(); }
+        ui.add_space(2.0);
         let items = crate::library_ui::preset_items(app);
         let mut preset = app.settings.row_preset;
         let (thumbs, selected) = (app.thumbs.handle(), app.browser.presets().first().copied());
@@ -946,10 +954,25 @@ fn rows_section(app: &mut App, ui: &mut egui::Ui) {
         // The usual turns, under the value they set.
         theme::row_with(ui, |ui, w| {
             ui.add_space(w);
-            ui.spacing_mut().item_spacing.x = 3.0;
-            for a in [0.0f32, 90.0, 180.0, -90.0] {
-                if ui.small_button(format!("{a:.0}°")).clicked() { app.settings.row_angle = a; }
-            }
+            egui::Frame::new()
+                .fill(Color32::from_rgb(18, 18, 18))
+                .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(44, 44, 44)))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::same(2))
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    ui.horizontal(|ui| {
+                        for a in [0.0f32, 90.0, 180.0, -90.0] {
+                            let on = (app.settings.row_angle - a).abs() < 0.5
+                                || (a == 180.0 && (app.settings.row_angle + 180.0).abs() < 0.5);
+                            let b = egui::Button::new(RichText::new(format!("{a:.0}°")).small().color(if on { Color32::WHITE } else { theme::TEXT }))
+                                .fill(if on { theme::ACCENT } else { Color32::TRANSPARENT })
+                                .stroke(egui::Stroke::NONE)
+                                .min_size(vec2(0.0, 20.0));
+                            if ui.add(b).clicked() { app.settings.row_angle = a; }
+                        }
+                    });
+                });
         });
         theme::check_row(ui, &mut app.settings.row_flip, t("Turn copies by 180° at random")).on_hover_text(t("About half of the copies face the other way, so both sides of a wall or fence show along it."));
         slider(ui, &t("Random turn ±°"), &mut app.settings.row_turn, 0.0..=45.0, false);
@@ -1029,16 +1052,30 @@ fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
         };
         about(ui, &t(what));
         if !app.hole_tool && app.sculpt.tool == SculptTool::SetHeight {
+            ui.add_space(2.0);
             let mut height = app.sculpt.height.unwrap_or(0.0);
             row(ui, &t("Copied height"), |ui| {
-                if ui.add(egui::DragValue::new(&mut height).speed(0.1).suffix(" m")).changed() { app.sculpt.height = Some(height); }
+                if ui.add(crate::theme::ValueField::new(&mut height, -500.0..=5000.0).suffix(" m")).changed() { app.sculpt.height = Some(height); }
             });
-            if app.sculpt.height.is_none() { status(ui, &t("Nothing copied yet"), false); }
+            if app.sculpt.height.is_none() {
+                theme::card(ui, theme::BORDER, |ui| {
+                    ui.label(RichText::new(icons::with(icons::EYEDROPPER, &t("Nothing copied yet"))).small().color(theme::TEXT_DIM));
+                });
+            }
         }
     });
     if app.hole_tool {
         section(ui, &icons::with(icons::PAINT_BRUSH_BROAD, &t("Brush")), true, |ui| {
-            if let Some(d) = &app.doc { status(ui, &tf("{0} cells", &[&d.world.holes.len().to_string()]), !d.world.holes.is_empty()); }
+            if let Some(d) = &app.doc {
+                let any = !d.world.holes.is_empty();
+                theme::card(ui, if any { theme::ACCENT.gamma_multiply(0.7) } else { theme::BORDER }, |ui| {
+                    let mut job = egui::text::LayoutJob::default();
+                    job.append(icons::GRID_FOUR, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: if any { theme::ACCENT } else { theme::TEXT_DIM }, ..Default::default() });
+                    job.append(&tf("{0} cells", &[&d.world.holes.len().to_string()]), 6.0, egui::TextFormat { font_id: icons::strong(12.5), color: if any { theme::TEXT_BRIGHT } else { theme::TEXT_DIM }, ..Default::default() });
+                    ui.label(job);
+                });
+                ui.add_space(2.0);
+            }
             slider(ui, &t("Radius"), &mut app.hole_radius, 0.5..=100.0, true);
             about(ui, &t("Objects under the terrain need the underground flag, and holes cost performance."));
         });
@@ -1066,7 +1103,9 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
     let Some(doc) = &mut app.doc else { return };
     let id = doc.world.meta.map_id.clone();
     let layers = doc.world.layers.len();
-    let side = 64.0;
+    let avail = (ui.available_width() - 10.0).max(64.0);
+    let per_row = ((avail + 4.0) / 72.0).floor().max(1.0);
+    let side = (((avail + 4.0) / per_row - 4.0).floor() - 8.0).clamp(48.0, 74.0);
     let mut changed = false;
     let mut chosen = None;
     let mut recolour = None;
@@ -1163,7 +1202,8 @@ fn layer_list(app: &mut App, ui: &mut egui::Ui) {
 /// Menu of the surfaces of the game, with a search, that adds one as a layer.
 fn add_layer_menu(app: &mut App, ui: &mut egui::Ui) {
     let surfaces = app.surfaces.clone();
-    ui.menu_button(format!("+ {}", t("Add layer")), |ui| {
+    ui.spacing_mut().interact_size.y = 24.0;
+    ui.menu_button(icons::with(icons::PLUS, &t("Add layer")), |ui| {
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
         let id = ui.make_persistent_id("surface_search");
         let mut search: String = ui.data_mut(|d| d.get_temp(id).unwrap_or_default());
@@ -1246,28 +1286,30 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
         let before = colour;
         // Another layer with the same colour cannot be told apart on the mask of the map.
         let shared = colour.is_some_and(|c| app.doc.as_ref().is_some_and(|d| d.world.layers.iter().enumerate().any(|(i, l)| i != layer && l.color == c)));
-        ui.horizontal(|ui| {
-            // The colour of the layer on the mask: click it to change it.
-            match colour.as_mut() {
-                Some(c) => ui.scope(|ui| {
-                    ui.spacing_mut().interact_size = vec2(32.0, 32.0);
-                    ui.color_edit_button_srgb(c).on_hover_text(t("Mask colour"));
-                }).response,
-                None => ui.allocate_exact_size(vec2(32.0, 32.0), egui::Sense::hover()).1,
-            };
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 1.0;
-                match names.get(app.paint.layer) {
-                    Some(n) => {
-                        ui.add(egui::Label::new(RichText::new(n).font(icons::strong(14.0)).color(theme::TEXT_BRIGHT)).truncate());
-                        ui.label(RichText::new(tf("Surface layer L{0}", &[&format!("{:02}", app.paint.layer)])).small().color(theme::TEXT_DIM));
-                        if shared { ui.label(RichText::new(t("Another layer has this colour")).small().color(theme::WARN)).on_hover_text(t("The mask of the map tells the surfaces apart by their colours. Give each layer a colour of its own.")); }
+        theme::card(ui, if shared { theme::WARN.gamma_multiply(0.8) } else { theme::BORDER }, |ui| {
+            ui.horizontal(|ui| {
+                // The colour of the layer on the mask: click it to change it.
+                match colour.as_mut() {
+                    Some(c) => ui.scope(|ui| {
+                        ui.spacing_mut().interact_size = vec2(32.0, 32.0);
+                        ui.color_edit_button_srgb(c).on_hover_text(t("Mask colour"));
+                    }).response,
+                    None => ui.allocate_exact_size(vec2(32.0, 32.0), egui::Sense::hover()).1,
+                };
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    match names.get(app.paint.layer) {
+                        Some(n) => {
+                            ui.add(egui::Label::new(RichText::new(n).font(icons::strong(14.0)).color(theme::TEXT_BRIGHT)).truncate());
+                            ui.label(RichText::new(tf("Surface layer L{0}", &[&format!("{:02}", app.paint.layer)])).small().color(theme::TEXT_DIM));
+                            if shared { ui.label(RichText::new(t("Another layer has this colour")).small().color(theme::WARN)).on_hover_text(t("The mask of the map tells the surfaces apart by their colours. Give each layer a colour of its own.")); }
+                        }
+                        None => { ui.label(RichText::new(t("Choose a surface below")).color(theme::TEXT_DIM)); }
                     }
-                    None => { ui.label(RichText::new(t("Choose a surface below")).color(theme::TEXT_DIM)); }
-                }
-            });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if flat_tool(ui, app.paint.picking, icons::EYEDROPPER, None, format!("{}\n{}", t("Eyedropper"), t("Takes the surface under the cursor."))).clicked() { app.paint.picking = !app.paint.picking; }
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if flat_tool(ui, app.paint.picking, icons::EYEDROPPER, None, format!("{}\n{}", t("Eyedropper"), t("Takes the surface under the cursor."))).clicked() { app.paint.picking = !app.paint.picking; }
+                });
             });
         });
         if colour != before {
@@ -1291,12 +1333,17 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::STACK, &t("Surface layers")), true, |ui| {
         layer_list(app, ui);
         ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            add_layer_menu(app, ui);
-            if app.doc.as_ref().is_some_and(|d| app.paint.layer < d.world.layers.len()) && ui.button(icons::with(icons::PAINT_BRUSH, &t("Material..."))).on_hover_text(t("Its textures, relief, repeats and lighting (.rvmat)")).clicked() {
+        theme::button_columns(ui, 2, |c| {
+            c[0].with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                add_layer_menu(app, ui);
+            });
+            let w1 = c[1].available_width();
+            let has_layer = app.doc.as_ref().is_some_and(|d| app.paint.layer < d.world.layers.len());
+            if c[1].add_enabled(has_layer, egui::Button::new(icons::with(icons::PAINT_BRUSH, &t("Material..."))).min_size(vec2(w1, 24.0))).on_hover_text(t("Its textures, relief, repeats and lighting (.rvmat)")).clicked() {
                 crate::material_ui::open(app, app.paint.layer);
             }
         });
+        ui.add_space(2.0);
         about(ui, &t("The brush will not add a surface to a tile that already has as many as the project allows."));
     });
     crate::surfaces_ui::panel(app, ui);

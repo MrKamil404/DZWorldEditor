@@ -937,7 +937,7 @@ fn bc_slider(v: &mut f32, legacy: bool, scale: f64) -> crate::theme::ValueField<
 
 /// The switch to Photoshop's legacy brightness and contrast; true when it was changed.
 fn legacy_box(ui: &mut egui::Ui, legacy: &mut bool) -> bool {
-    ui.checkbox(legacy, t("Use legacy")).on_hover_text(t("Brightness and contrast as in Photoshop's legacy mode: brightness moves every colour by the same amount, and full contrast leaves each channel either off or full.")).changed()
+    crate::theme::check_row(ui, legacy, t("Use legacy")).on_hover_text(t("Brightness and contrast as in Photoshop's legacy mode: brightness moves every colour by the same amount, and full contrast leaves each channel either off or full.")).changed()
 }
 
 fn adjust_panel(app: &mut App, ui: &mut egui::Ui) {
@@ -1192,8 +1192,10 @@ pub fn fill_shapes(app: &mut App) {
 fn area_row(app: &mut App, ui: &mut egui::Ui, whole: bool, salt: &str) -> bool {
     let mut whole = whole;
     row(ui, &t("Over"), |ui| {
-        ui.selectable_value(&mut whole, true, t("Whole map"));
-        ui.selectable_value(&mut whole, false, t("Shapes"));
+        crate::theme::segmented(ui, &mut whole, &[
+            (true, t("Whole map"), String::new()),
+            (false, t("Shapes"), String::new()),
+        ]);
     });
     if !whole {
         shapes_row(app, ui, salt);
@@ -1377,7 +1379,7 @@ pub fn classify_fields(ui: &mut egui::Ui, c: &mut dz_core::satgen::SatClassify, 
             ClassifyMode::Picked => SatClassify::picked(small, view.find, layers),
         };
     }
-    ui.weak(match mode {
+    crate::panels::about(ui, &match mode {
         ClassifyMode::Colours => t("Brightness and contrast push the satellite image to a few strong colours, as Photoshop's legacy brightness and contrast does. Each colour that comes out can become a surface of the mask."),
         ClassifyMode::Natural => t("Each pixel gets the kind of ground its colour looks like. Lighter makes less forest and more grass and rock. Each kind can become a surface of the mask."),
         ClassifyMode::Picked => t("Each pixel takes the nearest of the colours below, so four colours make a mask of four surfaces. Click the picture to add the colour of that place."),
@@ -1393,12 +1395,12 @@ pub fn classify_fields(ui: &mut egui::Ui, c: &mut dz_core::satgen::SatClassify, 
     row(ui, &t("Smoothing"), |ui| { ui.add(crate::theme::ValueField::new(&mut c.smooth, 0..=6).suffix(" px")).on_hover_text(t("Takes away specks: each pixel of the mask takes the colour most pixels round it have.")); });
     if c.mode == ClassifyMode::Picked {
         ui.horizontal(|ui| {
-            if ui.button(crate::icons::with(crate::icons::MAGIC_WAND, &t("Find colours"))).on_hover_text(t("Finds this many colours that stand for the picture best, each with the surface of the nearest colour.")).clicked() {
+            if ui.add(egui::Button::new(crate::icons::with(crate::icons::MAGIC_WAND, &t("Find colours"))).min_size(egui::vec2(0.0, 24.0))).on_hover_text(t("Finds this many colours that stand for the picture best, each with the surface of the nearest colour.")).clicked() {
                 *c = SatClassify { smooth: c.smooth, ..SatClassify::picked(small, view.find, layers) };
             }
             ui.add(crate::theme::ValueField::new(&mut view.find, 2..=MAX_PICKED));
-            ui.checkbox(&mut view.picture, t("Show the picture")).on_hover_text(t("Shows the satellite instead of the colours, to pick from."));
         });
+        crate::theme::check_row(ui, &mut view.picture, t("Show the picture")).on_hover_text(t("Shows the satellite instead of the colours, to pick from."));
     }
     // The preview follows the settings.
     let (pw, ph) = (small.width.max(1), small.height.max(1));
@@ -1490,7 +1492,12 @@ pub fn classify_fields(ui: &mut egui::Ui, c: &mut dz_core::satgen::SatClassify, 
 pub fn classify_section(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &crate::icons::with(crate::icons::PALETTE, &t("Surfaces from the satellite")), false, |ui| {
         let Some(sat) = app.doc.as_ref().and_then(|d| d.world.satellite.as_ref()) else {
-            ui.colored_label(crate::theme::WARN, t("The project has no satellite image"));
+            crate::theme::card(ui, crate::theme::WARN.gamma_multiply(0.75), |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(crate::theme::WARN, crate::icons::WARNING);
+                    ui.colored_label(crate::theme::WARN, t("The project has no satellite image"));
+                });
+            });
             return;
         };
         // A small copy of the image, made again when the image changes.
@@ -1502,7 +1509,9 @@ pub fn classify_section(app: &mut App, ui: &mut egui::Ui) {
         let pics: Vec<_> = app.layer_thumbs.iter().map(|t| t.as_ref().map(|t| t.id())).collect();
         classify_fields(ui, &mut app.sat.classify, &small, app.sat.revision, &layers, &pics, &mut app.sat.class_view, "tool");
         app.sat.classify_whole = area_row(app, ui, app.sat.classify_whole, "classify_shapes");
-        if ui.button(crate::icons::with(crate::icons::PALETTE, &t("Paint the surfaces"))).clicked() {
+        ui.add_space(4.0);
+        let w = ui.available_width();
+        if ui.add(egui::Button::new(crate::icons::with(crate::icons::PALETTE, &t("Paint the surfaces"))).min_size(egui::vec2(w, 24.0))).clicked() {
             classify_to_mask(app);
         }
     });

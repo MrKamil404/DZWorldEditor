@@ -222,14 +222,15 @@ pub fn stamp_ui(ui: &mut egui::Ui, s: &mut StampSettings, salt: &str, geometry: 
         s.shape = StampShape::Blob;
     }
     row(ui, &t("Patch shape"), |ui| {
-        egui::ComboBox::from_id_salt(salt).selected_text(t(s.shape.name())).show_ui(ui, |ui| {
+        let w = ui.available_width();
+        egui::ComboBox::from_id_salt(salt).width(w).selected_text(t(s.shape.name())).show_ui(ui, |ui| {
             for k in StampShape::ALL.into_iter().filter(|k| geometry || *k != StampShape::Geometry) {
                 ui.selectable_value(&mut s.shape, k, t(k.name()));
             }
         });
     });
     if s.shape == StampShape::Geometry {
-        ui.weak(t("The patch then follows the outline of each model seen from above, and its size is the margin round it."));
+        crate::panels::about(ui, &t("The patch then follows the outline of each model seen from above, and its size is the margin round it."));
     }
     row(ui, &t("Patch size"), |ui| {
         ui.add(crate::theme::ValueField::new(&mut s.size_m, 0.5..=30.0).logarithmic(true).suffix(" m"));
@@ -237,14 +238,15 @@ pub fn stamp_ui(ui: &mut egui::Ui, s: &mut StampSettings, salt: &str, geometry: 
     row(ui, &t("Size variation"), |ui| {
         ui.add(crate::theme::ValueField::new(&mut s.randomize_size, 0.0..=0.9));
     });
-    ui.checkbox(&mut s.randomize_rotation, t("Random rotation of patches"));
-    ui.checkbox(&mut s.follow_scale, t("Patch grows with the object"));
+    crate::theme::check_row(ui, &mut s.randomize_rotation, t("Random rotation of patches"));
+    crate::theme::check_row(ui, &mut s.follow_scale, t("Patch grows with the object"));
 }
 
 /// The section of the paint panel that stamps a surface under objects.
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &crate::icons::with(crate::icons::STAMP, &t("Surface under objects")), false, |ui| {
-        ui.weak(t("Paints a surface under objects as a mask modifier, which can be hidden or deleted in the outliner."));
+        crate::panels::about(ui, &t("Paints a surface under objects as a mask modifier, which can be hidden or deleted in the outliner."));
+        ui.add_space(2.0);
         let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
         row(ui, &t("Surface"), |ui| {
             // With none, only the models with a surface of their own are painted under.
@@ -253,19 +255,21 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             crate::theme::surface_pick(ui, "under_surface", &mut app.mask_tool.surface, Some((usize::MAX, t("(none)"))), &names, &pics, |i, _| i, w);
         });
         let selected = app.selection.len();
-        ui.checkbox(&mut app.mask_tool.selection_only, tf("Only the selected objects ({0})", &[&selected.to_string()]));
-        ui.checkbox(&mut app.mask_tool.own_surfaces, t("Use the surface assigned to each model")).on_hover_text(t("Assigned in the asset browser, with the right mouse button on a model or a folder. The surface above is for the other models."));
-        ui.checkbox(&mut app.mask_tool.plants, t("Under trees and bushes"));
-        ui.checkbox(&mut app.mask_tool.buildings, t("Under buildings and other objects"));
-        ui.checkbox(&mut app.mask_tool.roads, t("Under road parts")).on_hover_text(t("The whole of each road part takes the surface; the patch size is the margin round it."));
+        crate::theme::check_row(ui, &mut app.mask_tool.selection_only, tf("Only the selected objects ({0})", &[&selected.to_string()]));
+        crate::theme::check_row(ui, &mut app.mask_tool.own_surfaces, t("Use the surface assigned to each model")).on_hover_text(t("Assigned in the asset browser, with the right mouse button on a model or a folder. The surface above is for the other models."));
+        crate::theme::check_row(ui, &mut app.mask_tool.plants, t("Under trees and bushes"));
+        crate::theme::check_row(ui, &mut app.mask_tool.buildings, t("Under buildings and other objects"));
+        crate::theme::check_row(ui, &mut app.mask_tool.roads, t("Under road parts")).on_hover_text(t("The whole of each road part takes the surface; the patch size is the margin round it."));
         ui.add_enabled_ui(app.mask_tool.buildings && app.mask_tool.stamp.shape != StampShape::Geometry, |ui| {
-            ui.checkbox(&mut app.mask_tool.footprint, t("Fill the footprint of buildings")).on_hover_text(t("The patch size is then the margin round the footprint."));
+            crate::theme::check_row(ui, &mut app.mask_tool.footprint, t("Fill the footprint of buildings")).on_hover_text(t("The patch size is then the margin round the footprint."));
         });
         stamp_ui(ui, &mut app.mask_tool.stamp, "under_shape", true);
         ui.add_enabled_ui(app.mask_tool.stamp.shape == StampShape::Geometry, |ui| {
-            ui.checkbox(&mut app.mask_tool.above_ground, t("Only what is above the ground")).on_hover_text(t("With the outline of the model: the parts of an object sunk into the terrain leave no surface, so a rock half in the ground paints only round what shows of it, as baking into the satellite does."));
+            crate::theme::check_row(ui, &mut app.mask_tool.above_ground, t("Only what is above the ground")).on_hover_text(t("With the outline of the model: the parts of an object sunk into the terrain leave no surface, so a rock half in the ground paints only round what shows of it, as baking into the satellite does."));
         });
-        if ui.button(t("Paint under objects")).clicked() {
+        ui.add_space(4.0);
+        let w = ui.available_width();
+        if ui.add(egui::Button::new(crate::icons::with(crate::icons::STAMP, &t("Paint under objects"))).min_size(egui::vec2(w, 24.0))).clicked() {
             stamp_under_objects(app);
         }
     });
