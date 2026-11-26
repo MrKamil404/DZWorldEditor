@@ -325,6 +325,12 @@ pub enum LayerAction {
     DeleteWithObjects(u16),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ConvertKind {
+    Mask,
+    Satellite,
+}
+
 pub enum Dialog {
     None,
     Import(Box<ImportDialog>),
@@ -340,6 +346,8 @@ pub enum Dialog {
     Confirm { text: String, action: fn(&mut App) },
     /// Removing a surface layer: which, and the layer its ground becomes.
     DeleteLayer { layer: usize, into: usize },
+    /// Confirming conversion of a generated/baked modifier into a hand-editable brush layer.
+    ConvertToBrush { kind: ConvertKind, id: u32, name: String },
 }
 
 pub struct LogLine {

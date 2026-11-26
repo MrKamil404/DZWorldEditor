@@ -289,7 +289,7 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
     let rows: Vec<(u32, usize, String, bool, MaskKind)> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter().enumerate()
         .filter(|(_, m)| crate::team_ui::shown(app, d.world.mask_mod_author(m.id)))
         .map(|(idx, m)| (m.id, idx, crate::team_ui::with_author(team, &m.name, d.world.mask_mod_author(m.id)), m.enabled, m.kind)).collect()).unwrap_or_default();
-    let (mut toggle, mut delete, mut merge, mut reorder) = (None, None, None, None::<(u32, usize)>);
+    let (mut toggle, mut delete, mut merge, mut reorder, mut convert) = (None, None, None, None::<(u32, usize)>, None::<(u32, String)>);
     let can_merge: std::collections::HashSet<u32> = app.doc.as_ref().map(|d| d.world.mask_mods.modifiers.iter().filter(|m| d.world.mask_merge_target(m.id).is_some()).map(|m| m.id).collect()).unwrap_or_default();
     crate::panels::outliner_section(fold, "Mask modifiers", crate::icons::with(crate::icons::STACK, &tf("Mask modifiers ({0})", &[&rows.len().to_string()])), rows.len() == 0).show(ui, |ui| {
         for (id, vec_idx, name, enabled, kind) in rows.iter().rev().filter(|r| r.2.to_lowercase().contains(filter)) {
@@ -338,6 +338,12 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                             ui.close_menu();
                         }
                         ui.separator();
+                    } else {
+                        if ui.button(crate::icons::with(crate::icons::PAINT_BRUSH, &t("Convert to brush..."))).on_hover_text(t("Turns this modifier into an editable brush layer. Its original settings will no longer apply.")).clicked() {
+                            convert = Some((*id, name.clone()));
+                            ui.close_menu();
+                        }
+                        ui.separator();
                     }
                     if ui.button(crate::icons::with(crate::icons::TRASH, &t("Delete"))).clicked() {
                         delete = Some(*id);
@@ -359,7 +365,9 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
             }
         }
     });
-    if let Some((id, to_idx)) = reorder {
+    if let Some((id, name)) = convert {
+        app.dialog = crate::app::Dialog::ConvertToBrush { kind: crate::app::ConvertKind::Mask, id, name };
+    } else if let Some((id, to_idx)) = reorder {
         let Some(d) = app.doc.as_mut() else { return };
         let before = d.world.mask_mods.modifiers.clone();
         let touched = d.world.mask_move(id, to_idx);

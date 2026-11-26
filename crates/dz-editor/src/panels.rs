@@ -3251,6 +3251,82 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
                 });
             });
         }
+        Dialog::ConvertToBrush { kind, id, name } => {
+            let (kind, id, name) = (*kind, *id, name.clone());
+            let mut confirmed = false;
+            egui::Window::new(icons::with(icons::PAINT_BRUSH, &t("Convert to brush")))
+                .collapsible(false)
+                .resizable(false)
+                .min_width(360.0)
+                .max_width(420.0)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.label(RichText::new(tf("Convert {0} to a brush modifier?", &[&name])).strong());
+                    ui.add_space(4.0);
+                    ui.label(t("You will be able to paint and erase it like a hand-painted brush layer, and merge it with neighbouring brush layers."));
+                    ui.add_space(6.0);
+                    egui::Frame::new()
+                        .fill(Color32::from_rgba_unmultiplied(230, 170, 50, 22))
+                        .stroke(egui::Stroke::new(1.0_f32, theme::WARN))
+                        .corner_radius(4.0)
+                        .inner_margin(egui::Margin::same(8))
+                        .show(ui, |ui| {
+                            ui.colored_label(theme::WARN, icons::with(icons::WARNING, &t("After converting, you will no longer be able to adjust it through its original settings (such as generator, stamp, or colour correction parameters).")));
+                        });
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let btn = egui::Button::new(RichText::new(icons::with(icons::PAINT_BRUSH, &t("Convert to brush"))).color(Color32::WHITE))
+                            .fill(theme::ACCENT);
+                        if ui.add(btn).clicked() {
+                            confirmed = true;
+                            close = true;
+                        }
+                        if ui.button(t("Cancel")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            if confirmed {
+                match kind {
+                    crate::app::ConvertKind::Mask => {
+                        if let Some(d) = app.doc.as_mut() {
+                            let before_mods = d.world.mask_mods.modifiers.clone();
+                            let detached_gen = d.world.generators.iter().any(|g| g.mask_modifier == Some(id));
+                            let before_gens = detached_gen.then(|| d.world.generators.clone());
+                            if d.world.mask_convert_to_brush(id) {
+                                if let Some(gens) = before_gens {
+                                    d.history.push(t("Convert to brush"), dz_core::edit::Change::Group(vec![
+                                        dz_core::edit::Change::MaskMods(before_mods),
+                                        dz_core::edit::Change::Generators(gens),
+                                    ]));
+                                } else {
+                                    d.history.push(t("Convert to brush"), dz_core::edit::Change::MaskMods(before_mods));
+                                }
+                                app.paint.target = Some(id);
+                                app.paint.into_modifier = true;
+                                app.info(tf("{0} converted to a brush modifier", &[&name]));
+                            }
+                        }
+                    }
+                    crate::app::ConvertKind::Satellite => {
+                        if let Some(d) = app.doc.as_mut() {
+                            let before = d.world.sat.modifiers.clone();
+                            let (ok, touched) = d.world.sat_convert_to_brush(id);
+                            if ok {
+                                d.history.push(t("Convert to brush"), dz_core::edit::Change::Satellite(before));
+                                d.dirty.satellite = true;
+                                app.sat.active = Some(id);
+                                if let Some(r) = touched {
+                                    app.satellite_changed(r);
+                                }
+                                app.info(tf("{0} converted to a brush modifier", &[&name]));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Dialog::DeleteLayer { layer, into } => {
             let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
             let (layer, mut into_now) = (*layer, *into);
