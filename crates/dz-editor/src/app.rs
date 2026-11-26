@@ -371,6 +371,33 @@ pub struct Measure {
     pub points: Vec<[f32; 2]>,
 }
 
+/// State of the tile surface-limit checker and fixer in Project settings.
+#[derive(Clone, Debug)]
+pub struct TileLimitState {
+    pub issues: Vec<dz_core::mask_limit::TileIssue>,
+    /// True after `max_tile_surfaces` or `tile_px` changed until the user runs Check tiles.
+    pub needs_check: bool,
+    /// Highlight excess-surface pixels in the viewport (2D and 3D).
+    pub show_pixels: bool,
+    /// Tile `(col, row)` selected for inspection or single-tile fixing.
+    pub selected: Option<(u32, u32)>,
+    pub options: dz_core::mask_limit::FixOptions,
+    pub last_report: Option<dz_core::mask_limit::FixReport>,
+}
+
+impl Default for TileLimitState {
+    fn default() -> Self {
+        Self {
+            issues: Vec::new(),
+            needs_check: false,
+            show_pixels: true,
+            selected: None,
+            options: dz_core::mask_limit::FixOptions::default(),
+            last_report: None,
+        }
+    }
+}
+
 pub struct App {
     pub ctx: egui::Context,
     pub settings: Settings,
@@ -576,8 +603,8 @@ pub struct App {
     pub layer_rename: Option<(u16, String)>,
     pub shape_rename: Option<(usize, String)>,
     pub outliner_rename: Option<(OutlinerRenameTarget, String)>,
-    /// Tiles found over the surface limit.
-    pub tile_issues: Vec<(u32, u32, u32)>,
+    /// Tile surface-limit check results and fix options.
+    pub tile_limit: TileLimitState,
     /// Triangles of loaded models, for picking what is actually under the cursor.
     pub pick_meshes: HashMap<u32, Arc<crate::viewport::PickMesh>>,
     pub shape: ShapePanel,
@@ -679,7 +706,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), hidden_objects: std::collections::HashSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
-            task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, outliner_rename: None, tile_issues: Vec::new(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
+            task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, outliner_rename: None, tile_limit: TileLimitState::default(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), loot_proto: Default::default(), team: Default::default(),
             settings,
         };
@@ -1681,6 +1708,7 @@ impl App {
         self.line.selected_point = None;
         self.line.point_drag = None;
         self.pick_meshes.clear();
+        self.tile_limit = TileLimitState::default();
         self.selected_generator = None;
         self.sampling = None;
         let road_project = world.road_project.clone().filter(|p| p.is_file());
@@ -2927,13 +2955,13 @@ impl App {
             translate_object_groups(&mut w);
             let missing = dz_core::import::layers_without_surface(&w, db.root());
             Ok(Box::new(move |app: &mut App| {
-                // Tiles over the surface limit are marked in the top view straight away.
-                let over = dz_core::mask_limit::scan(&w);
+                // Tiles over the surface limit are marked in the view straight away.
+                let over = dz_core::mask_limit::scan_detailed(&w, &dz_core::mask_limit::FixOptions::default());
                 app.open_world(w, None);
                 app.warn_layers_without_surface(&missing);
                 if !over.is_empty() {
                     app.warn(tf("{0} texture tiles use more than the surfaces allowed; they are marked in the 2D view and Project settings can fix them", &[&over.len().to_string()]));
-                    app.tile_issues = over;
+                    app.tile_limit.issues = over;
                 }
             }) as Finish)
         });

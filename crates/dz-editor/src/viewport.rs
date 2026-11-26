@@ -3670,13 +3670,135 @@ fn draw_overlays(app: &App, ui: &egui::Ui, v: &View, resp: &egui::Response) {
             }
         }
     }
-    if !app.tile_issues.is_empty() && v.ortho {
+    if !app.tile_limit.issues.is_empty() {
         let step = world.meta.tile_step();
         let size = world.meta.size_m();
-        for (col, row, _) in &app.tile_issues {
-            let (x, z) = (*col as f32 * step, size - (*row as f32 + 1.0) * step);
-            if let (Some(a), Some(b)) = (v.project([x, 0.0, z + step]), v.project([x + step, 0.0, z])) {
-                painter.rect(Rect::from_two_pos(a, b), 0.0, Color32::from_rgba_unmultiplied(230, 40, 40, 50), Stroke::new(1.5_f32, Color32::from_rgb(235, 60, 60)), egui::StrokeKind::Inside);
+        let limit = world.meta.max_tile_surfaces.max(1);
+        let mpp_x = size / world.mask.width.max(1) as f32;
+        let mpp_y = size / world.mask.height.max(1) as f32;
+        if v.ortho {
+            let mut drawn_runs = 0usize;
+            const MAX_RUNS_2D: usize = 6000;
+            for issue in &app.tile_limit.issues {
+                let selected = app.tile_limit.selected == Some((issue.col, issue.row));
+                let (x, z) = (issue.col as f32 * step, size - (issue.row as f32 + 1.0) * step);
+                if let (Some(a), Some(b)) = (v.project([x, 0.0, z + step]), v.project([x + step, 0.0, z])) {
+                    let rect = Rect::from_two_pos(a, b);
+                    if !rect.intersects(v.rect) {
+                        continue;
+                    }
+                    let fill = if selected {
+                        Color32::from_rgba_unmultiplied(255, 200, 40, 38)
+                    } else {
+                        Color32::from_rgba_unmultiplied(230, 40, 40, 42)
+                    };
+                    let stroke = if selected {
+                        Stroke::new(2.5_f32, Color32::from_rgb(255, 220, 60))
+                    } else {
+                        Stroke::new(1.5_f32, Color32::from_rgb(235, 60, 60))
+                    };
+                    painter.rect(rect, 0.0, fill, stroke, egui::StrokeKind::Inside);
+                    if rect.width() > 54.0 && rect.height() > 22.0 {
+                        let tag = format!("{:03}_{:03} ({}/{})", issue.col, issue.row, issue.surfaces.len(), limit);
+                        painter.text(
+                            rect.left_top() + egui::vec2(4.0, 3.0),
+                            egui::Align2::LEFT_TOP,
+                            tag,
+                            egui::FontId::proportional(11.0),
+                            if selected { Color32::from_rgb(255, 235, 110) } else { Color32::from_rgb(255, 190, 180) },
+                        );
+                    }
+                    if app.tile_limit.show_pixels && drawn_runs < MAX_RUNS_2D && !issue.runs.is_empty() {
+                        let budget = MAX_RUNS_2D - drawn_runs;
+                        let stride = (issue.runs.len() / budget.max(1)).max(1);
+                        let px_fill = if selected {
+                            Color32::from_rgba_unmultiplied(255, 230, 40, 210)
+                        } else {
+                            Color32::from_rgba_unmultiplied(255, 50, 220, 200)
+                        };
+                        let px_stroke = Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(20, 10, 20, 210));
+                        for run in issue.runs.iter().step_by(stride) {
+                            let wx0 = run.x0 as f32 * mpp_x;
+                            let wx1 = run.x1 as f32 * mpp_x;
+                            let wz1 = size - run.y as f32 * mpp_y;
+                            let wz0 = size - (run.y + 1) as f32 * mpp_y;
+                            if let (Some(p0), Some(p1)) = (v.project([wx0, 0.0, wz1]), v.project([wx1, 0.0, wz0])) {
+                                let mut r = Rect::from_two_pos(p0, p1);
+                                if !r.intersects(v.rect) {
+                                    continue;
+                                }
+                                // Keep single-pixel specks clearly visible when zoomed out.
+                                if r.width() < 4.0 || r.height() < 4.0 {
+                                    let c = r.center();
+                                    r = Rect::from_center_size(c, egui::vec2(r.width().max(4.0), r.height().max(4.0)));
+                                    painter.rect(r, 0.0, px_fill, px_stroke, egui::StrokeKind::Outside);
+                                } else {
+                                    painter.rect_filled(r, 0.0, px_fill);
+                                    if r.height() >= 8.0 {
+                                        painter.rect_stroke(r, 0.0, px_stroke, egui::StrokeKind::Inside);
+                                    }
+                                }
+                                drawn_runs += 1;
+                                if drawn_runs >= MAX_RUNS_2D {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if app.tile_limit.show_pixels {
+            // In 3D view, show excess pixels on nearby tiles right on the terrain surface.
+            let mut drawn_runs = 0usize;
+            const MAX_RUNS_3D: usize = 1500;
+            let cam = app.camera.pos;
+            for issue in &app.tile_limit.issues {
+                let selected = app.tile_limit.selected == Some((issue.col, issue.row));
+                let cx = (issue.col as f32 + 0.5) * step;
+                let cz = size - (issue.row as f32 + 0.5) * step;
+                let reach = if selected { step + 500.0 } else { step + 250.0 };
+                if (cam[0] - cx).abs() > reach || (cam[2] - cz).abs() > reach {
+                    continue;
+                }
+                let budget = MAX_RUNS_3D.saturating_sub(drawn_runs);
+                if budget == 0 {
+                    break;
+                }
+                let stride = (issue.runs.len() / budget.max(1)).max(1);
+                let col = if selected {
+                    Color32::from_rgb(255, 230, 50)
+                } else {
+                    Color32::from_rgb(255, 70, 225)
+                };
+                for run in issue.runs.iter().step_by(stride) {
+                    let wx0 = (run.x0 as f32 + 0.5) * mpp_x;
+                    let wx1 = (run.x1 as f32 - 0.5).max(run.x0 as f32 + 0.5) * mpp_x;
+                    let wz = size - (run.y as f32 + 0.5) * mpp_y;
+                    let dist2 = (cam[0] - wx0).powi(2) + (cam[2] - wz).powi(2);
+                    if dist2 > 400.0 * 400.0 {
+                        continue;
+                    }
+                    let y0 = world.height.sample(wx0, wz) + 0.15;
+                    if run.x1 - run.x0 <= 1 {
+                        if let Some(p) = v.project([wx0, y0, wz]) {
+                            if v.rect.contains(p) {
+                                painter.circle_filled(p, 3.5, col);
+                                drawn_runs += 1;
+                            }
+                        }
+                    } else {
+                        let y1 = world.height.sample(wx1, wz) + 0.15;
+                        if let (Some(p0), Some(p1)) = (v.project([wx0, y0, wz]), v.project([wx1, y1, wz])) {
+                            if v.rect.contains(p0) || v.rect.contains(p1) {
+                                painter.line_segment([p0, p1], Stroke::new(3.0_f32, col));
+                                drawn_runs += 1;
+                            }
+                        }
+                    }
+                    if drawn_runs >= MAX_RUNS_3D {
+                        break;
+                    }
+                }
             }
         }
     }

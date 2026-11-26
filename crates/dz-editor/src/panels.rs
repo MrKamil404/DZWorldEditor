@@ -4020,16 +4020,23 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
 }
 
 fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
+    use dz_core::mask_limit::{FixScope, ReplaceMode};
     let Some(doc) = &mut app.doc else { *open = false; return };
     let before = doc.world.meta.clone();
-    let issues = app.tile_issues.clone();
-    let (mut check, mut fix) = (false, false);
+    let layers: Vec<(String, [u8; 3])> = doc.world.layers.iter().map(|l| (l.name.clone(), l.color)).collect();
+    let mask_w = doc.world.mask.width.max(1) as f32;
+    let mask_h = doc.world.mask.height.max(1) as f32;
+    let size_m = doc.world.meta.size_m();
+    let mut tile_limit = app.tile_limit.clone();
+    let opts_before = tile_limit.options.clone();
+    let (mut check, mut clear_marks, mut fix) = (false, false, false);
+    let mut fly_target: Option<(u32, u32, [f32; 2])> = None;
     let mut open_config = false;
     let m = &mut doc.world.meta;
     let title = t("Project settings");
     crate::theme::PopupWindow::new(egui::Id::new("project_settings_window"), &title)
-        .default_size([460.0, 440.0])
-        .min_size([360.0, 300.0])
+        .default_size([520.0, 560.0])
+        .min_size([400.0, 340.0])
         .vscroll(true)
         .show(ctx, open, |ui| {
         row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut m.name); });
@@ -4044,37 +4051,290 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                 for v in [256u32, 512, 1024, 2048] { ui.selectable_value(&mut m.tile_px, v, v.to_string()); }
             });
         });
-        row(ui, &t("Surfaces per tile"), |ui| { ui.add(crate::theme::ValueField::new(&mut m.max_tile_surfaces, 1..=6)); });
+        row(ui, &t("Surfaces per tile"), |ui| {
+            ui.add(crate::theme::ValueField::new(&mut m.max_tile_surfaces, 1..=6))
+                .on_hover_text(t("Changing this does not modify the mask; run Check tiles afterwards."));
+        });
         ui.weak(t("When a tile really uses 6, the whole map is exported like Terrain Builder's 6-material mode (TerrainX), without satellite normal maps."));
         ui.horizontal(|ui| {
             check = ui.button(t("Check tiles")).clicked();
-            fix = ui.button(t("Fix tiles")).on_hover_text(t("Replaces the rarest surfaces of a tile with its main surface.")).clicked();
+            if !tile_limit.issues.is_empty() {
+                ui.checkbox(&mut tile_limit.show_pixels, t("Highlight excess pixels"));
+                if ui.button(t("Clear marks")).clicked() {
+                    clear_marks = true;
+                }
+            }
         });
-        if !issues.is_empty() { ui.colored_label(Color32::from_rgb(235, 110, 90), tf("{0} tiles over the limit, marked in the 2D view", &[&issues.len().to_string()])); }
+        if tile_limit.needs_check {
+            ui.colored_label(
+                crate::theme::WARN,
+                icons::with(icons::WARNING, &t("Surface limit changed. Run Check tiles to find tiles over the limit.")),
+            );
+        } else if !tile_limit.issues.is_empty() {
+            let total_px: u64 = tile_limit.issues.iter().map(|i| i.excess_pixels as u64).sum();
+            ui.colored_label(
+                Color32::from_rgb(235, 110, 90),
+                tf("{0} tiles over the limit ({1} excess pixels)", &[&tile_limit.issues.len().to_string(), &total_px.to_string()]),
+            );
+            let limit = m.max_tile_surfaces.max(1) as usize;
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("tile_issues_list").max_height(130.0).show(ui, |ui| {
+                    for issue in &tile_limit.issues {
+                        let is_sel = tile_limit.selected == Some((issue.col, issue.row));
+                        ui.horizontal(|ui| {
+                            if ui.small_button(icons::CROSSHAIR).on_hover_text(t("Go to the excess pixels on this tile")).clicked() {
+                                fly_target = Some((issue.col, issue.row, issue.focus_px));
+                            }
+                            let label = format!("{:03}_{:03}  ({}/{})  —  {} px", issue.col, issue.row, issue.surfaces.len(), limit, issue.excess_pixels);
+                            if ui.selectable_label(is_sel, label).clicked() {
+                                tile_limit.selected = Some((issue.col, issue.row));
+                            }
+                        });
+                    }
+                });
+            });
+            if let Some((sc, sr)) = tile_limit.selected {
+                if let Some(issue) = tile_limit.issues.iter().find(|i| i.col == sc && i.row == sr).cloned() {
+                    let tile_name = format!("{sc:03}_{sr:03}");
+                    ui.add_space(2.0);
+                    ui.strong(tf("Tile {0} surfaces", &[&tile_name]));
+                    for &(layer, count) in &issue.surfaces {
+                        let (lname, lcol) = layers.get(layer as usize).map(|(n, c)| (n.as_str(), *c)).unwrap_or(("?", [128, 128, 128]));
+                        let is_excess = issue.excess_layers.contains(&layer);
+                        let is_prot = tile_limit.options.protected.contains(&layer);
+                        let is_rem = tile_limit.options.remove_first.contains(&layer);
+                        ui.horizontal(|ui| {
+                            let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                            ui.painter().rect_filled(rect, 2.0, Color32::from_rgb(lcol[0], lcol[1], lcol[2]));
+                            ui.label(format!("{lname} ({count} px)"));
+                            if is_excess {
+                                ui.colored_label(crate::theme::ERROR, t("to remove"));
+                            } else if is_prot {
+                                ui.colored_label(crate::theme::OK, t("protected"));
+                            }
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.selectable_label(is_rem, t("Remove first")).clicked() {
+                                    tile_limit.options.protected.retain(|&x| x != layer);
+                                    if is_rem {
+                                        tile_limit.options.remove_first.retain(|&x| x != layer);
+                                    } else {
+                                        tile_limit.options.remove_first.push(layer);
+                                    }
+                                }
+                                if ui.selectable_label(is_prot, t("Protect")).clicked() {
+                                    tile_limit.options.remove_first.retain(|&x| x != layer);
+                                    if is_prot {
+                                        tile_limit.options.protected.retain(|&x| x != layer);
+                                    } else {
+                                        tile_limit.options.protected.push(layer);
+                                    }
+                                }
+                            });
+                        });
+                    }
+                }
+            }
+        } else if let Some(rep) = tile_limit.last_report {
+            if rep.remaining_over == 0 {
+                ui.colored_label(
+                    crate::theme::OK,
+                    tf("Fixed {0} tiles ({1} pixels changed).", &[&rep.tiles_fixed.to_string(), &rep.pixels_changed.to_string()]),
+                );
+            } else {
+                ui.colored_label(
+                    crate::theme::WARN,
+                    tf("Fixed {0} tiles ({1} pixels changed), {2} tiles still over the limit.", &[&rep.tiles_fixed.to_string(), &rep.pixels_changed.to_string(), &rep.remaining_over.to_string()]),
+                );
+            }
+        }
+
+        egui::CollapsingHeader::new(t("Fix options")).default_open(!tile_limit.issues.is_empty()).show(ui, |ui| {
+            let mode_label = match tile_limit.options.replace {
+                ReplaceMode::Nearest => t("Nearest kept surface"),
+                ReplaceMode::MostUsed => t("Most used surface on tile"),
+                ReplaceMode::Layer(_) => t("Chosen surface"),
+            };
+            row(ui, &t("Replace with"), |ui| {
+                egui::ComboBox::from_id_salt("fix_replace_mode").selected_text(mode_label).show_ui(ui, |ui| {
+                    if ui.selectable_label(matches!(tile_limit.options.replace, ReplaceMode::Nearest), t("Nearest kept surface")).clicked() {
+                        tile_limit.options.replace = ReplaceMode::Nearest;
+                    }
+                    if ui.selectable_label(matches!(tile_limit.options.replace, ReplaceMode::MostUsed), t("Most used surface on tile")).clicked() {
+                        tile_limit.options.replace = ReplaceMode::MostUsed;
+                    }
+                    if ui.selectable_label(matches!(tile_limit.options.replace, ReplaceMode::Layer(_)), t("Chosen surface")).clicked() {
+                        let default_l = match tile_limit.options.replace { ReplaceMode::Layer(l) => l, _ => 0 };
+                        tile_limit.options.replace = ReplaceMode::Layer(default_l);
+                    }
+                });
+            });
+            if let ReplaceMode::Layer(mut chosen) = tile_limit.options.replace {
+                let chosen_name = layers.get(chosen as usize).map(|(n, _)| n.clone()).unwrap_or_else(|| chosen.to_string());
+                row(ui, &t("Target surface"), |ui| {
+                    egui::ComboBox::from_id_salt("fix_target_layer").selected_text(chosen_name).show_ui(ui, |ui| {
+                        for (idx, (lname, lcol)) in layers.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                                ui.painter().rect_filled(rect, 2.0, Color32::from_rgb(lcol[0], lcol[1], lcol[2]));
+                                if ui.selectable_label(chosen as usize == idx, lname).clicked() {
+                                    chosen = idx as u8;
+                                }
+                            });
+                        }
+                    });
+                });
+                tile_limit.options.replace = ReplaceMode::Layer(chosen);
+            }
+            let is_single = matches!(tile_limit.options.scope, FixScope::SingleTile(_, _));
+            let scope_label = if is_single { t("Selected tile only") } else { t("All tiles over the limit") };
+            row(ui, &t("Fix scope"), |ui| {
+                egui::ComboBox::from_id_salt("fix_scope_mode").selected_text(scope_label).show_ui(ui, |ui| {
+                    if ui.selectable_label(!is_single, t("All tiles over the limit")).clicked() {
+                        tile_limit.options.scope = FixScope::AllOverLimit;
+                    }
+                    if ui.selectable_label(is_single, t("Selected tile only")).clicked() {
+                        let (c, r) = tile_limit.selected.unwrap_or((0, 0));
+                        tile_limit.options.scope = FixScope::SingleTile(c, r);
+                    }
+                });
+            });
+            if matches!(tile_limit.options.scope, FixScope::SingleTile(_, _)) {
+                if let Some((c, r)) = tile_limit.selected {
+                    tile_limit.options.scope = FixScope::SingleTile(c, r);
+                }
+            }
+            egui::CollapsingHeader::new(t("Surface priority")).default_open(false).show(ui, |ui| {
+                ui.weak(t("Protect surfaces you want to keep, or mark surfaces to remove first."));
+                egui::ScrollArea::vertical().id_salt("fix_surface_priority").max_height(140.0).show(ui, |ui| {
+                    for (idx, (lname, lcol)) in layers.iter().enumerate() {
+                        let id = idx as u8;
+                        let is_prot = tile_limit.options.protected.contains(&id);
+                        let is_rem = tile_limit.options.remove_first.contains(&id);
+                        ui.horizontal(|ui| {
+                            let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                            ui.painter().rect_filled(rect, 2.0, Color32::from_rgb(lcol[0], lcol[1], lcol[2]));
+                            ui.label(lname);
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.selectable_label(is_rem, t("Remove first")).clicked() {
+                                    tile_limit.options.protected.retain(|&x| x != id);
+                                    if !is_rem { tile_limit.options.remove_first.push(id); }
+                                }
+                                if ui.selectable_label(is_prot, t("Protect")).clicked() {
+                                    tile_limit.options.remove_first.retain(|&x| x != id);
+                                    if !is_prot { tile_limit.options.protected.push(id); }
+                                }
+                                if ui.selectable_label(!is_prot && !is_rem, t("Auto")).clicked() {
+                                    tile_limit.options.protected.retain(|&x| x != id);
+                                    tile_limit.options.remove_first.retain(|&x| x != id);
+                                }
+                            });
+                        });
+                    }
+                });
+            });
+            let single_ready = !matches!(tile_limit.options.scope, FixScope::SingleTile(_, _)) || tile_limit.selected.is_some();
+            let preview_px: u64 = match tile_limit.options.scope {
+                FixScope::AllOverLimit => tile_limit.issues.iter().map(|i| i.excess_pixels as u64).sum(),
+                FixScope::SingleTile(c, r) => tile_limit.issues.iter().find(|i| i.col == c && i.row == r).map_or(0, |i| i.excess_pixels as u64),
+            };
+            let fix_label = if tile_limit.issues.is_empty() {
+                t("Fix tiles")
+            } else if matches!(tile_limit.options.scope, FixScope::SingleTile(_, _)) {
+                tf("Fix selected tile ({0} px)", &[&preview_px.to_string()])
+            } else {
+                tf("Fix tiles ({0} px)", &[&preview_px.to_string()])
+            };
+            ui.horizontal(|ui| {
+                let btn = ui.add_enabled(single_ready, egui::Button::new(fix_label));
+                if !single_ready {
+                    btn.on_disabled_hover_text(t("Choose a tile from the list above first."));
+                } else if btn.clicked() {
+                    fix = true;
+                }
+            });
+        });
+
+        ui.separator();
         ui.checkbox(&mut m.write_underground_flag, t("Write the newer WRP format with underground flag"));
         if ui.button(t("Map config...")).on_hover_text(t("The world config (CfgWorlds) of the map, written to config.cpp on export.")).clicked() { open_config = true; }
         ui.separator();
         ui.label(tf("Terrain {0} × {0}, cell {1} m, map {2} m", &[&m.terrain_size.to_string(), &m.terrain_cell.to_string(), &m.size_m().to_string()]));
         ui.label(tf("Land grid {0}, cell {1} m, {2} tiles per side", &[&m.land_size().to_string(), &m.land_cell().to_string(), &m.tiles().to_string()]));
     });
+
+    let limit_changed = doc.world.meta.max_tile_surfaces != before.max_tile_surfaces || doc.world.meta.tile_px != before.tile_px;
     if doc.world.meta != before {
         doc.history.revision += 1;
+    }
+    if limit_changed {
+        // Changing the surface limit must NOT alter mask pixels; prompt the user to run Check tiles.
+        tile_limit.issues.clear();
+        tile_limit.selected = None;
+        tile_limit.last_report = None;
+        tile_limit.needs_check = true;
+    } else if clear_marks {
+        tile_limit.issues.clear();
+        tile_limit.selected = None;
+        tile_limit.last_report = None;
+    } else if !tile_limit.issues.is_empty() && tile_limit.options != opts_before {
+        // Live-update excess pixel highlights whenever the user changes fix options.
+        tile_limit.issues = dz_core::mask_limit::scan_detailed(&doc.world, &tile_limit.options);
+    }
+    app.tile_limit = tile_limit;
+    if limit_changed {
+        app.info(t("Surface limit changed. Run Check tiles to find tiles over the limit."));
     }
     if open_config {
         app.dialog = Dialog::MapConfig;
         return;
     }
+    if let Some((col, row, focus_px)) = fly_target {
+        app.tile_limit.selected = Some((col, row));
+        let wx = (focus_px[0] / mask_w * size_m).clamp(0.0, size_m);
+        let wz = ((1.0 - focus_px[1] / mask_h) * size_m).clamp(0.0, size_m);
+        crate::goto::fly_to(app, dz_core::goto::Spot { x: wx, z: wz, radius: 60.0 });
+    }
     if check {
-        app.tile_issues = dz_core::mask_limit::scan(&doc.world);
-        let n = app.tile_issues.len();
-        app.info(tf("{0} tiles over the limit, marked in the 2D view", &[&n.to_string()]));
+        let Some(doc) = &app.doc else { return };
+        app.tile_limit.needs_check = false;
+        app.tile_limit.last_report = None;
+        app.tile_limit.issues = dz_core::mask_limit::scan_detailed(&doc.world, &app.tile_limit.options);
+        if let Some(sel) = app.tile_limit.selected {
+            if !app.tile_limit.issues.iter().any(|i| (i.col, i.row) == sel) {
+                app.tile_limit.selected = None;
+            }
+        }
+        let n = app.tile_limit.issues.len();
+        if n == 0 {
+            app.info(t("All tiles are within the surface limit."));
+        } else {
+            let total_px: u64 = app.tile_limit.issues.iter().map(|i| i.excess_pixels as u64).sum();
+            app.info(tf("{0} tiles over the limit ({1} excess pixels)", &[&n.to_string(), &total_px.to_string()]));
+        }
     }
     if fix {
         let Some(doc) = &app.doc else { return };
+        let opts = app.tile_limit.options.clone();
         let mut w = doc.world.lite();
-        dz_core::mask_limit::enforce(&mut w);
+        let report = dz_core::mask_limit::enforce_with(&mut w, &opts);
         let data = w.mask.data;
-        app.tile_issues.clear();
-        app.apply_mask(&t("Fix tiles"), data);
+        if report.pixels_changed > 0 {
+            app.apply_mask(&t("Fix tiles"), data);
+        }
+        app.tile_limit.needs_check = false;
+        app.tile_limit.last_report = Some(report);
+        if let Some(doc) = &app.doc {
+            app.tile_limit.issues = dz_core::mask_limit::scan_detailed(&doc.world, &app.tile_limit.options);
+            if let Some(sel) = app.tile_limit.selected {
+                if !app.tile_limit.issues.iter().any(|i| (i.col, i.row) == sel) {
+                    app.tile_limit.selected = None;
+                }
+            }
+        }
+        if report.remaining_over == 0 {
+            app.info(tf("Fixed {0} tiles ({1} pixels changed).", &[&report.tiles_fixed.to_string(), &report.pixels_changed.to_string()]));
+        } else {
+            app.info(tf("Fixed {0} tiles ({1} pixels changed), {2} tiles still over the limit.", &[&report.tiles_fixed.to_string(), &report.pixels_changed.to_string(), &report.remaining_over.to_string()]));
+        }
     }
 }

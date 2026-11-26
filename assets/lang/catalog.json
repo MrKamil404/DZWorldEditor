@@ -551,6 +551,14 @@
   "de": "Alle fremden",
   "pl": "Wszystko cudze"
  },
+ "All tiles are within the surface limit.": {
+  "de": "Alle Kacheln liegen im Flächenlimit.",
+  "pl": "Wszystkie kafelki mieszczą się w limicie powierzchni."
+ },
+ "All tiles over the limit": {
+  "de": "Alle Kacheln über dem Limit",
+  "pl": "Wszystkie kafelki ponad limit"
+ },
  "Along the line": {
   "de": "Entlang der Linie",
   "pl": "Po linii"
@@ -754,6 +762,10 @@
  "Auto": {
   "de": "Automatisch",
   "pl": "Automatycznie"
+ },
+ "Auto": {
+  "de": "Auto",
+  "pl": "Auto"
  },
  "Automatic": {
   "de": "Automatisch",
@@ -1267,6 +1279,10 @@
   "de": "Ändert: {0}",
   "pl": "Zmienia: {0}"
  },
+ "Changing this does not modify the mask; run Check tiles afterwards.": {
+  "de": "Eine Änderung bearbeitet die Maske nicht; danach Kacheln prüfen ausführen.",
+  "pl": "Zmiana nie modyfikuje maski — uruchom potem Sprawdź kafelki."
+ },
  "Check": {
   "de": "Prüfung",
   "pl": "Sprawdzenie"
@@ -1375,6 +1391,10 @@
   "de": "Wähle für mindestens eine Farbe eine Oberfläche",
   "pl": "Wybierz powierzchnię dla co najmniej jednego koloru"
  },
+ "Choose a tile from the list above first.": {
+  "de": "Wähle zuerst eine Kachel aus der Liste oben.",
+  "pl": "Najpierw wybierz kafelek z listy powyżej."
+ },
  "Choose at least one model": {
   "de": "Wähle mindestens ein Modell",
   "pl": "Wybierz co najmniej jeden model"
@@ -1431,6 +1451,10 @@
   "de": "Auswählen...",
   "pl": "Wybierz..."
  },
+ "Chosen surface": {
+  "de": "Gewählte Oberfläche",
+  "pl": "Wybrana powierzchnia"
+ },
  "Circle": {
   "de": "Kreis",
   "pl": "Koło"
@@ -1450,6 +1474,10 @@
  "Clear": {
   "de": "Leeren",
   "pl": "Wyczyść"
+ },
+ "Clear marks": {
+  "de": "Markierungen löschen",
+  "pl": "Wyczyść zaznaczenia"
  },
  "Clear project areas": {
   "de": "Projektgebiete löschen",
@@ -3071,9 +3099,25 @@
   "de": "Flags an die Karte anpassen",
   "pl": "Dopasuj flagi do mapy"
  },
+ "Fix options": {
+  "de": "Korrekturoptionen",
+  "pl": "Opcje naprawy"
+ },
+ "Fix scope": {
+  "de": "Korrekturbereich",
+  "pl": "Zakres naprawy"
+ },
+ "Fix selected tile ({0} px)": {
+  "de": "Ausgewählte Kachel korrigieren ({0} px)",
+  "pl": "Napraw wybrany kafelek ({0} px)"
+ },
  "Fix tiles": {
   "de": "Kacheln korrigieren",
   "pl": "Napraw kafle"
+ },
+ "Fix tiles ({0} px)": {
+  "de": "Kacheln korrigieren ({0} px)",
+  "pl": "Napraw kafelki ({0} px)"
  },
  "Fixed": {
   "de": "Fest",
@@ -3090,6 +3134,14 @@
  "Fixed water level": {
   "de": "Fester Wasserstand",
   "pl": "Stały poziom wody"
+ },
+ "Fixed {0} tiles ({1} pixels changed), {2} tiles still over the limit.": {
+  "de": "{0} Kacheln korrigiert ({1} Pixel geändert), {2} Kacheln noch über dem Limit.",
+  "pl": "Naprawiono {0} kafelków (zmieniono {1} pikseli), {2} kafelków nadal ponad limit."
+ },
+ "Fixed {0} tiles ({1} pixels changed).": {
+  "de": "{0} Kacheln korrigiert ({1} Pixel geändert).",
+  "pl": "Naprawiono {0} kafelków (zmieniono {1} pikseli)."
  },
  "Flags": {
   "de": "Flags",
@@ -3451,6 +3503,10 @@
   "de": "Hingehen",
   "pl": "Przejdź"
  },
+ "Go to the excess pixels on this tile": {
+  "de": "Zu den überschüssigen Pixeln dieser Kachel gehen",
+  "pl": "Przejdź do nadmiarowych pikseli na tym kafelku"
+ },
  "Go to...": {
   "de": "Gehe zu...",
   "pl": "Idź do..."
@@ -3646,6 +3702,10 @@
  "Highlands": {
   "de": "Hochland",
   "pl": "Wyżyna"
+ },
+ "Highlight excess pixels": {
+  "de": "Überschüssige Pixel hervorheben",
+  "pl": "Podświetl nadmiarowe piksele"
  },
  "Hill": {
   "de": "Hügel",
@@ -4743,9 +4803,53 @@
   "de": "Führt alle bereiten Änderungen der Reihe nach zusammen. Änderungen ohne Konflikte werden automatisch übernommen; gefragt wird nur bei Konflikten.",
   "pl": "Scala wszystkie gotowe zmiany po kolei. Zmiany bez konfliktów wchodzą automatycznie; okno otworzy się tylko tam, gdzie wystąpi konflikt."
  },
+ "Most used surface on tile": {
+  "de": "Häufigste Oberfläche der Kachel",
+  "pl": "Najczęstsza powierzchnia kafelka"
+ },
+ "Nearest kept surface": {
+  "de": "Nächste behaltene Oberfläche",
+  "pl": "Najbliższa zachowana powierzchnia"
+ },
  "Needs earlier changes on the list to be merged first. Use Merge all.": {
   "de": "Erfordert zuerst das Zusammenführen früherer Änderungen aus der Liste. Nutze Alle zusammenführen.",
   "pl": "Wymaga najpierw scalenia wcześniejszych zmian z listy. Użyj Scal wszystkie."
+ },
+ "Protect": {
+  "de": "Schützen",
+  "pl": "Chroń"
+ },
+ "Protect surfaces you want to keep, or mark surfaces to remove first.": {
+  "de": "Schütze Oberflächen, die erhalten bleiben sollen, oder markiere Oberflächen zum vorrangigen Entfernen.",
+  "pl": "Chroń powierzchnie, które chcesz zachować, lub oznacz powierzchnie do usunięcia w pierwszej kolejności."
+ },
+ "Remove first": {
+  "de": "Zuerst entfernen",
+  "pl": "Usuń najpierw"
+ },
+ "Replace with": {
+  "de": "Ersetzen durch",
+  "pl": "Zastąp przez"
+ },
+ "Selected tile only": {
+  "de": "Nur ausgewählte Kachel",
+  "pl": "Tylko wybrany kafelek"
+ },
+ "Surface limit changed. Run Check tiles to find tiles over the limit.": {
+  "de": "Flächenlimit geändert. Kacheln prüfen ausführen, um Kacheln über dem Limit zu finden.",
+  "pl": "Zmieniono limit powierzchni. Uruchom Sprawdź kafelki, aby znaleźć kafelki ponad limit."
+ },
+ "Surface priority": {
+  "de": "Oberflächenpriorität",
+  "pl": "Priorytet powierzchni"
+ },
+ "Target surface": {
+  "de": "Zieloberfläche",
+  "pl": "Powierzchnia docelowa"
+ },
+ "Tile {0} surfaces": {
+  "de": "Oberflächen der Kachel {0}",
+  "pl": "Powierzchnie kafelka {0}"
  },
  "Waiting for an earlier version": {
   "de": "Wartet auf eine frühere Version",
@@ -6615,10 +6719,6 @@
   "de": "{0} Objekte durch {1} ersetzt",
   "pl": "Podmieniono obiekty ({0}) na {1}"
  },
- "Replaces the rarest surfaces of a tile with its main surface.": {
-  "de": "Ersetzt die seltensten Oberflächen einer Kachel durch ihre Hauptoberfläche.",
-  "pl": "Zastępuje najrzadsze powierzchnie kafla jego główną powierzchnią."
- },
  "Replaces what this generator made before.": {
   "de": "Ersetzt, was dieser Generator zuvor erzeugt hat.",
   "pl": "Zastępuje to, co ten generator stworzył wcześniej."
@@ -8174,6 +8274,14 @@
  "Slope: <20° cars · 20–42° foot · >42° steep": {
   "de": "Hang: <20° Autos · 20–42° zu Fuß · >42° steil",
   "pl": "Nachylenie: <20° auta · 20–42° pieszo · >42° stromo"
+ },
+ "protected": {
+  "de": "geschützt",
+  "pl": "chroniona"
+ },
+ "to remove": {
+  "de": "zu entfernen",
+  "pl": "do usunięcia"
  },
  "{0} objects in one 100 m square (may lower FPS)": {
   "de": "{0} Objekte in einem 100-m-Quadrat (kann FPS senken)",
@@ -10403,9 +10511,9 @@
   "de": "{0} Texturkacheln nutzen mehr Oberflächen als erlaubt; sie sind in der 2D-Ansicht markiert und die Projekteinstellungen können sie beheben",
   "pl": "{0} kafli tekstur ma więcej powierzchni niż wolno; są zaznaczone w widoku 2D, a ustawienia projektu mogą je poprawić"
  },
- "{0} tiles over the limit, marked in the 2D view": {
-  "de": "{0} Kacheln über dem Limit, in der 2D-Ansicht markiert",
-  "pl": "Kafle ponad limit: {0}, zaznaczone w widoku 2D"
+ "{0} tiles over the limit ({1} excess pixels)": {
+  "de": "{0} Kacheln über dem Limit ({1} überschüssige Pixel)",
+  "pl": "{0} kafelków ponad limit ({1} nadmiarowych pikseli)"
  },
  "{0} trees or buildings stand in the sea": {
   "de": "{0} Bäume oder Gebäude stehen im Meer",
