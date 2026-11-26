@@ -647,6 +647,10 @@
   "de": "Jeder kann daran arbeiten, ohne sie zu entsperren.",
   "pl": "Każdy może na niej pracować bez odblokowywania."
  },
+ "Application": {
+  "de": "Anwendung",
+  "pl": "Aplikacja"
+ },
  "Applies the type, settings and typed points.": {
   "de": "Übernimmt Typ, Einstellungen und eingegebene Punkte.",
   "pl": "Stosuje typ, ustawienia i wpisane punkty."
@@ -770,6 +774,10 @@
  "Automatic": {
   "de": "Automatisch",
   "pl": "Automatycznie"
+ },
+ "Automatic backups": {
+  "de": "Automatische Sicherungen",
+  "pl": "Automatyczne kopie zapasowe"
  },
  "Autosave every": {
   "de": "Automatisch speichern alle",
@@ -3935,6 +3943,10 @@
   "de": "Installiert. Die neue Version startet nach einem Neustart.",
   "pl": "Zainstalowano. Nowa wersja zadziała po ponownym uruchomieniu."
  },
+ "Interface": {
+  "de": "Oberfläche",
+  "pl": "Interfejs"
+ },
  "Interface scale": {
   "de": "Oberflächenskalierung",
   "pl": "Skala interfejsu"
@@ -4222,6 +4234,10 @@
  "Layers: {0}": {
   "de": "Ebenen: {0}",
   "pl": "Warstwy: {0}"
+ },
+ "Layout": {
+  "de": "Layout",
+  "pl": "Układ"
  },
  "Lays the brush over whole shapes at once: inside polygons, along lines as a band. Fields, clearings, field tracks.": {
   "de": "Trägt den Pinsel auf ganze Formen auf einmal auf: innerhalb von Polygonen, entlang von Linien als Band. Felder, Lichtungen, Feldwege.",
@@ -4823,6 +4839,10 @@
   "de": "Erfordert zuerst das Zusammenführen früherer Änderungen aus der Liste. Nutze Alle zusammenführen.",
   "pl": "Wymaga najpierw scalenia wcześniejszych zmian z listy. Użyj Scal wszystkie."
  },
+ "No matching shortcuts.": {
+  "de": "Keine passenden Tastenkürzel.",
+  "pl": "Brak pasujących skrótów."
+ },
  "Project": {
   "de": "Projekt",
   "pl": "Projekt"
@@ -4842,6 +4862,14 @@
  "Replace with": {
   "de": "Ersetzen durch",
   "pl": "Zastąp przez"
+ },
+ "Saving": {
+  "de": "Speichern",
+  "pl": "Zapisywanie"
+ },
+ "Search shortcuts...": {
+  "de": "Tastenkürzel suchen...",
+  "pl": "Szukaj skrótów..."
  },
  "Selected tile only": {
   "de": "Nur ausgewählte Kachel",
@@ -8310,6 +8338,10 @@
  "to remove": {
   "de": "zu entfernen",
   "pl": "do usunięcia"
+ },
+ "{0} custom": {
+  "de": "{0} angepasst",
+  "pl": "{0} zmienionych"
  },
  "{0} objects in one 100 m square (may lower FPS)": {
   "de": "{0} Objekte in einem 100-m-Quadrat (kann FPS senken)",

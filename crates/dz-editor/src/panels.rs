@@ -3456,10 +3456,18 @@ enum SettingsPage {
     Graphics,
     General,
     Backups,
+    Shortcuts,
 }
 
 impl SettingsPage {
-    const ALL: [SettingsPage; 5] = [SettingsPage::Paths, SettingsPage::Display, SettingsPage::Graphics, SettingsPage::General, SettingsPage::Backups];
+    const ALL: [SettingsPage; 6] = [
+        SettingsPage::Paths,
+        SettingsPage::Display,
+        SettingsPage::Graphics,
+        SettingsPage::General,
+        SettingsPage::Backups,
+        SettingsPage::Shortcuts,
+    ];
     fn title(self) -> (&'static str, &'static str) {
         match self {
             SettingsPage::Paths => (icons::FOLDER_OPEN, "Paths"),
@@ -3467,186 +3475,312 @@ impl SettingsPage {
             SettingsPage::Graphics => (icons::SUN, "Graphics"),
             SettingsPage::General => (icons::GEAR, "General"),
             SettingsPage::Backups => (icons::CLOCK, "Backups"),
+            SettingsPage::Shortcuts => (icons::KEYBOARD, "Shortcuts"),
         }
     }
 }
 
 /// Opens the settings at a page by its name, for scripted checks.
 pub(crate) fn open_settings(app: &mut App, ctx: &egui::Context, page: &str) {
-    let p = match page { "display" => SettingsPage::Display, "graphics" => SettingsPage::Graphics, "general" => SettingsPage::General, "backups" => SettingsPage::Backups, _ => SettingsPage::Paths };
+    let p = match page {
+        "display" => SettingsPage::Display,
+        "graphics" => SettingsPage::Graphics,
+        "general" => SettingsPage::General,
+        "backups" => SettingsPage::Backups,
+        "shortcuts" => SettingsPage::Shortcuts,
+        _ => SettingsPage::Paths,
+    };
     ctx.data_mut(|d| d.insert_persisted(egui::Id::new("settings_page"), p));
     app.dialog = Dialog::Settings;
 }
 
-/// A heading inside a settings page.
-fn settings_heading(ui: &mut egui::Ui, text: &str) {
-    ui.add_space(6.0);
-    ui.label(RichText::new(text).strong().color(Color32::WHITE));
-    ui.add_space(2.0);
+/// Draws a full-width frame without expanding the parent window (prevents egui resize feedback).
+fn fit_frame(ui: &mut egui::Ui, frame: egui::Frame, add: impl FnOnce(&mut egui::Ui)) {
+    frame.show(ui, |ui| {
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), add);
+    });
 }
 
 /// Settings as a window of pages: the pages on the left, the chosen one on the right.
 fn settings_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
-    egui::Window::new(t("Settings")).collapsible(false).resizable(false).fixed_size([700.0, 440.0]).open(open).show(ctx, |ui| {
-        let id = egui::Id::new("settings_page");
-        let mut page: SettingsPage = ui.ctx().data_mut(|d| d.get_persisted(id)).unwrap_or(SettingsPage::Paths);
+    let id = egui::Id::new("settings_page");
+    let mut page: SettingsPage = ctx.data_mut(|d| d.get_persisted(id)).unwrap_or(SettingsPage::Paths);
+    let title = icons::with(icons::GEAR, &t("Settings"));
+    theme::PopupWindow::new(egui::Id::new("settings_popup"), &title)
+        .default_size([760.0, 560.0])
+        .min_size([580.0, 400.0])
+        .show(ctx, open, |ui| {
+        let path_warn = !app.settings.tools.check().is_empty();
+        let key_warn = !app.settings.keys.clashes().is_empty();
         ui.horizontal_top(|ui| {
-            ui.allocate_ui_with_layout(vec2(150.0, 0.0), egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+            ui.allocate_ui_with_layout(vec2(160.0, 0.0), egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                 for p in SettingsPage::ALL {
                     let (icon, name) = p.title();
-                    let warn = p == SettingsPage::Paths && !app.settings.tools.check().is_empty();
+                    let warn = (p == SettingsPage::Paths && path_warn) || (p == SettingsPage::Shortcuts && key_warn);
                     let text = RichText::new(icons::with(icon, &t(name))).color(if warn { theme::WARN } else if page == p { Color32::WHITE } else { theme::TEXT });
-                    if ui.add(egui::SelectableLabel::new(page == p, text)).clicked() { page = p; }
+                    if ui.add(egui::SelectableLabel::new(page == p, text)).clicked() {
+                        if page == SettingsPage::Shortcuts && p != SettingsPage::Shortcuts {
+                            app.key_capture = None;
+                        }
+                        page = p;
+                    }
                     ui.add_space(2.0);
                 }
             });
             ui.separator();
             ui.vertical(|ui| {
-                egui::ScrollArea::vertical().id_salt("settings_page_body").auto_shrink([false, false]).show(ui, |ui| {
-                    ui.set_min_width(340.0);
-                    match page {
-                        SettingsPage::Paths => settings_paths(app, ui),
-                        SettingsPage::Display => settings_display(app, ui, ctx),
-                        SettingsPage::Graphics => settings_graphics(app, ui),
-                        SettingsPage::General => settings_general(app, ui),
-                        SettingsPage::Backups => settings_backups(app, ui),
-                    }
-                });
+                if page == SettingsPage::Shortcuts {
+                    crate::keys::panel(ctx, ui, &mut app.settings.keys, &mut app.key_capture);
+                } else {
+                    egui::ScrollArea::vertical().id_salt(("settings_page_body", page as u8)).auto_shrink([false, false]).show(ui, |ui| {
+                        match page {
+                            SettingsPage::Paths => settings_paths(app, ui),
+                            SettingsPage::Display => settings_display(app, ui, ctx),
+                            SettingsPage::Graphics => settings_graphics(app, ui),
+                            SettingsPage::General => settings_general(app, ui),
+                            SettingsPage::Backups => settings_backups(app, ui),
+                            SettingsPage::Shortcuts => {}
+                        }
+                    });
+                }
             });
         });
-        ui.ctx().data_mut(|d| d.insert_persisted(id, page));
     });
-    if !*open { app.settings.save(); }
+    ctx.data_mut(|d| d.insert_persisted(id, page));
+    if !*open {
+        app.key_capture = None;
+        app.settings.save();
+    }
 }
 
 fn settings_paths(app: &mut App, ui: &mut egui::Ui) {
-    about(ui, &t("Where the work drive, DayZ Tools and the game are; the editor reads models and builds the map with them."));
+    use egui::Stroke;
     let mut changed = false;
-    let mut path_row = |ui: &mut egui::Ui, label: String, p: &mut std::path::PathBuf| {
-        settings_heading(ui, &label);
-        ui.horizontal(|ui| {
-            let mut s = p.display().to_string();
-            if ui.add(egui::TextEdit::singleline(&mut s).desired_width((ui.available_width() - 34.0).max(80.0))).changed() { *p = s.into(); changed = true; }
-            if ui.button(icons::FOLDER_OPEN).on_hover_text(t("Choose...")).clicked() {
-                if let Some(d) = rfd::FileDialog::new().pick_folder() { *p = d; changed = true; }
-            }
-        });
-    };
-    path_row(ui, t("Work drive"), &mut app.settings.tools.work_drive);
-    path_row(ui, t("DayZ Tools"), &mut app.settings.tools.dayz_tools);
-    path_row(ui, t("DayZ"), &mut app.settings.tools.dayz);
-    ui.add_space(6.0);
-    if ui.button(icons::with(icons::MAGNIFYING_GLASS, &t("Detect automatically"))).clicked() { app.settings.tools = dz_core::build::detect(); changed = true; }
-    if changed { app.work_drive_changed(); }
-    let problems = app.settings.tools.check();
-    if problems.is_empty() {
-        ui.colored_label(Color32::from_rgb(110, 200, 120), t("All paths found."));
-    }
-    for p in problems { ui.colored_label(theme::WARN, p); }
+    section(ui, &icons::with(icons::FOLDER_OPEN, &t("Paths")), true, |ui| {
+        about(ui, &t("Where the work drive, DayZ Tools and the game are; the editor reads models and builds the map with them."));
+        ui.add_space(4.0);
+        let mut path_row = |ui: &mut egui::Ui, label: String, p: &mut std::path::PathBuf| {
+            row(ui, &label, |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(egui::Button::new(icons::FOLDER_OPEN).min_size(egui::vec2(26.0, 22.0))).on_hover_text(t("Choose...")).clicked() {
+                        if let Some(d) = rfd::FileDialog::new().pick_folder() {
+                            *p = d;
+                            changed = true;
+                        }
+                    }
+                    let mut s = p.display().to_string();
+                    if ui.add(egui::TextEdit::singleline(&mut s).desired_width(f32::INFINITY)).changed() {
+                        *p = s.into();
+                        changed = true;
+                    }
+                });
+            });
+        };
+        path_row(ui, t("Work drive"), &mut app.settings.tools.work_drive);
+        path_row(ui, t("DayZ Tools"), &mut app.settings.tools.dayz_tools);
+        path_row(ui, t("DayZ"), &mut app.settings.tools.dayz);
+        ui.add_space(6.0);
+        let problems = app.settings.tools.check();
+        let detect_btn = if !problems.is_empty() {
+            egui::Button::new(RichText::new(icons::with(icons::MAGNIFYING_GLASS, &t("Detect automatically"))).color(Color32::WHITE))
+                .fill(theme::ACCENT)
+                .stroke(Stroke::NONE)
+                .min_size(egui::vec2(0.0, 24.0))
+        } else {
+            egui::Button::new(icons::with(icons::MAGNIFYING_GLASS, &t("Detect automatically")))
+                .min_size(egui::vec2(0.0, 24.0))
+        };
+        if ui.add(detect_btn).clicked() {
+            app.settings.tools = dz_core::build::detect();
+            changed = true;
+        }
+        if changed {
+            app.work_drive_changed();
+        }
+        let problems = app.settings.tools.check();
+        ui.add_space(6.0);
+        let col = if problems.is_empty() { theme::OK } else { theme::WARN };
+        fit_frame(
+            ui,
+            egui::Frame::new()
+                .fill(theme::DARK)
+                .stroke(Stroke::new(1.0_f32, col.gamma_multiply(0.7)))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::symmetric(8, 6)),
+            |ui| {
+                if problems.is_empty() {
+                    ui.horizontal(|ui| {
+                        ui.colored_label(theme::OK, icons::CHECK_CIRCLE);
+                        ui.colored_label(theme::OK, t("All paths found."));
+                    });
+                } else {
+                    for p in problems {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.colored_label(theme::WARN, icons::WARNING);
+                            ui.colored_label(theme::WARN, p);
+                        });
+                    }
+                }
+            },
+        );
+    });
 }
 
 fn settings_display(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
-    row(ui, &t("Language"), |ui| {
-        let cur = crate::i18n::current();
-        let names = crate::i18n::languages();
-        let label = names.iter().find(|(c, _)| *c == cur).map(|(_, n)| n.clone()).unwrap_or_default();
-        let mut pick = None;
-        egui::ComboBox::from_id_salt("lang").selected_text(label).show_ui(ui, |ui| {
-            for (c, n) in names { if ui.selectable_label(c == cur, n).clicked() { pick = Some(c); } }
+    section(ui, &icons::with(icons::EYE, &t("Interface")), true, |ui| {
+        row(ui, &t("Language"), |ui| {
+            let cur = crate::i18n::current();
+            let names = crate::i18n::languages();
+            let label = names.iter().find(|(c, _)| *c == cur).map(|(_, n)| n.clone()).unwrap_or_default();
+            let mut pick = None;
+            egui::ComboBox::from_id_salt("lang").width(ui.available_width().min(220.0)).selected_text(label).show_ui(ui, |ui| {
+                for (c, n) in names { if ui.selectable_label(c == cur, n).clicked() { pick = Some(c); } }
+            });
+            if let Some(c) = pick { app.sync_language(&c); }
         });
-        if let Some(c) = pick { app.sync_language(&c); }
+        let before = app.settings.ui_scale;
+        row(ui, &t("Interface scale"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.settings.ui_scale, 0.75..=2.0)); });
+        if before != app.settings.ui_scale { theme::apply(ctx, app.settings.ui_scale); }
+        let hints = format!("{} ({})", t("Show key help"), app.settings.keys.text(crate::keys::Action::ToggleHints));
+        if theme::check_row(ui, &mut app.settings.own_title_bar, t("Own title bar"))
+            .on_hover_text(t("The menus sit in the title bar, which the editor draws itself. Off, Windows draws its usual title bar."))
+            .changed()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(!app.settings.own_title_bar));
+            app.settings.save();
+        }
+        if theme::check_row(ui, &mut app.settings.show_hints, hints)
+            .on_hover_text(t("The key tables and the lines telling what clicks and keys do, in all panels."))
+            .changed()
+        {
+            app.settings.save();
+        }
     });
-    let before = app.settings.ui_scale;
-    row(ui, &t("Interface scale"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.settings.ui_scale, 0.75..=2.0)); });
-    if before != app.settings.ui_scale { theme::apply(ctx, app.settings.ui_scale); }
-    let hints = format!("{} ({})", t("Show key help"), app.settings.keys.text(crate::keys::Action::ToggleHints));
-    if ui.checkbox(&mut app.settings.own_title_bar, t("Own title bar")).on_hover_text(t("The menus sit in the title bar, which the editor draws itself. Off, Windows draws its usual title bar.")).changed() {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(!app.settings.own_title_bar));
-        app.settings.save();
-    }
-    if ui.checkbox(&mut app.settings.show_hints, hints).on_hover_text(t("The key tables and the lines telling what clicks and keys do, in all panels.")).changed() { app.settings.save(); }
-    ui.add_space(6.0);
-    if ui.button(icons::with(icons::LAYOUT, &t("Default layout"))).on_hover_text(t("Puts every panel back where it was at first, at its first size.")).clicked() { crate::layout::reset(app); }
+    section(ui, &icons::with(icons::LAYOUT, &t("Layout")), true, |ui| {
+        about(ui, &t("Puts every panel back where it was at first, at its first size."));
+        ui.add_space(4.0);
+        if ui.add(egui::Button::new(icons::with(icons::LAYOUT, &t("Default layout"))).min_size(egui::vec2(0.0, 24.0))).clicked() {
+            crate::layout::reset(app);
+        }
+    });
 }
 
 fn settings_graphics(app: &mut App, ui: &mut egui::Ui) {
-    row(ui, &t("Quality"), |ui| {
-        let current = app.settings.graphics_preset();
-        let mut pick = None;
-        egui::ComboBox::from_id_salt("graphics_preset").selected_text(current.map_or(t("Custom"), |p| t(p.name()))).show_ui(ui, |ui| {
-            for p in crate::settings::GraphicsPreset::ALL { if ui.selectable_label(current == Some(p), t(p.name())).clicked() { pick = Some(p); } }
-        });
-        if let Some(p) = pick { app.settings.apply_graphics(p); }
-    });
-    about(ui, &t("A quality sets everything below; changing any of it makes it Custom."));
-    let choice = |ui: &mut egui::Ui, label: &str, id: &str, value: &mut u32, options: &[(u32, String)]| {
-        row(ui, label, |ui| {
-            let shown = options.iter().find(|o| o.0 == *value).map_or_else(|| value.to_string(), |o| o.1.clone());
-            egui::ComboBox::from_id_salt(id).selected_text(shown).show_ui(ui, |ui| {
-                for (v, name) in options { ui.selectable_value(value, *v, name.as_str()); }
+    section(ui, &icons::with(icons::SPARKLE, &t("Quality")), true, |ui| {
+        let mut current = app.settings.graphics_preset();
+        let choices: Vec<(Option<crate::settings::GraphicsPreset>, String, String)> = crate::settings::GraphicsPreset::ALL
+            .iter()
+            .map(|&p| (Some(p), t(p.name()), String::new()))
+            .collect();
+        row(ui, &t("Quality"), |ui| {
+            ui.horizontal(|ui| {
+                if theme::segmented(ui, &mut current, &choices) {
+                    if let Some(p) = current {
+                        app.settings.apply_graphics(p);
+                    }
+                }
+                if current.is_none() {
+                    ui.label(RichText::new(t("Custom")).small().color(theme::TEXT_DIM));
+                }
             });
         });
+        about(ui, &t("A quality sets everything below; changing any of it makes it Custom."));
+    });
+    let seg_u32 = |ui: &mut egui::Ui, label: &str, value: &mut u32, options: &[(u32, String)]| {
+        let items: Vec<(u32, String, String)> = options.iter().map(|(v, n)| (*v, n.clone(), String::new())).collect();
+        row(ui, label, |ui| { theme::segmented(ui, value, &items); });
     };
-    settings_heading(ui, &t("Distances"));
-    slider(ui, &t("Terrain detail"), &mut app.settings.terrain_quality, 0.6..=3.0, false);
-    slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
-    slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
-    slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
-    ui.checkbox(&mut app.settings.occlusion, t("Leave out objects hidden behind the terrain or buildings")).on_hover_text(t("Objects behind a hill, or behind the solid walls of a building or rock, are not drawn. Glass, fences and leaves never hide anything."));
-    settings_heading(ui, &t("Textures"));
-    choice(ui, &t("Texture detail"), "texture_size", &mut app.settings.texture_size, &[(512, "512".into()), (1024, "1024".into()), (2048, "2048".into()), (4096, t("Full"))]);
-    choice(ui, &t("Memory for models"), "model_memory", &mut app.settings.model_memory, &[(0, t("Auto")), (1024, "1 GB".into()), (2048, "2 GB".into()), (4096, "4 GB".into()), (8192, "8 GB".into())]);
-    about(ui, &t("Models and textures not seen for a while are let go past this, and load again when the camera comes back. Less keeps the editor's memory down; more reloads less often."));
-    choice(ui, &t("Texture filtering"), "anisotropy", &mut app.settings.anisotropy, &[(1, t("Off")), (2, "2x".into()), (4, "4x".into()), (8, "8x".into()), (16, "16x".into())]);
-    slider(ui, &t("Surface parallax cm"), &mut app.settings.surface_parallax, 0.0..=15.0, false);
-    slider(ui, &t("Surface blend by relief"), &mut app.settings.surface_blend, 0.0..=1.0, false);
-    ui.checkbox(&mut app.settings.game_surfaces, t("Surfaces as the game shows them")).on_hover_text(t("The ground shows the surfaces the built map will have: at most the surfaces a texture tile may hold, and two in each block of 4 metres, as the game's compressed masks keep them. Specks of a third surface at an edge go, as in the game. The Mask shading shows the same."));
-    ui.checkbox(&mut app.settings.surface_pixels, t("Hard mask pixels")).on_hover_text(t("The ground shows each pixel of the mask as one surface, with hard edges and no blending: to see exactly what is painted where."));
-    slider(ui, &t("Ground colour on grass"), &mut app.settings.grass_ground_color, 0.0..=1.0, false);
-    settings_heading(ui, &t("Shadows and effects"));
-    choice(ui, &t("Shadow detail"), "shadow_map", &mut app.settings.shadow_map, &[(2048, "2048".into()), (4096, "4096".into()), (8192, "8192".into())]);
-    slider(ui, &t("Shadow range"), &mut app.settings.lighting.shadow_range, 60.0..=2000.0, true);
-    choice(ui, &t("Antialiasing"), "edge_smoothing", &mut app.settings.edge_smoothing, &[(0, t("Off")), (1, "FXAA".into()), (2, "FXAA + 1.5x".into()), (3, "FXAA + 2x".into())]);
-    choice(ui, &t("Ambient occlusion"), "ambient_occlusion", &mut app.settings.ambient_occlusion, &[(0, t("Off")), (8, t("Low")), (12, t("Medium")), (20, t("High"))]);
+    section(ui, &icons::with(icons::RULER, &t("Distances")), true, |ui| {
+        slider(ui, &t("Terrain detail"), &mut app.settings.terrain_quality, 0.6..=3.0, false);
+        slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
+        slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
+        slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
+        theme::check_row(ui, &mut app.settings.occlusion, t("Leave out objects hidden behind the terrain or buildings"))
+            .on_hover_text(t("Objects behind a hill, or behind the solid walls of a building or rock, are not drawn. Glass, fences and leaves never hide anything."));
+    });
+    section(ui, &icons::with(icons::IMAGE, &t("Textures")), true, |ui| {
+        seg_u32(ui, &t("Texture detail"), &mut app.settings.texture_size, &[(512, "512".into()), (1024, "1024".into()), (2048, "2048".into()), (4096, t("Full"))]);
+        seg_u32(ui, &t("Memory for models"), &mut app.settings.model_memory, &[(0, t("Auto")), (1024, "1 GB".into()), (2048, "2 GB".into()), (4096, "4 GB".into()), (8192, "8 GB".into())]);
+        about(ui, &t("Models and textures not seen for a while are let go past this, and load again when the camera comes back. Less keeps the editor's memory down; more reloads less often."));
+        seg_u32(ui, &t("Texture filtering"), &mut app.settings.anisotropy, &[(1, t("Off")), (2, "2x".into()), (4, "4x".into()), (8, "8x".into()), (16, "16x".into())]);
+        slider(ui, &t("Surface parallax cm"), &mut app.settings.surface_parallax, 0.0..=15.0, false);
+        slider(ui, &t("Surface blend by relief"), &mut app.settings.surface_blend, 0.0..=1.0, false);
+        theme::check_row(ui, &mut app.settings.game_surfaces, t("Surfaces as the game shows them"))
+            .on_hover_text(t("The ground shows the surfaces the built map will have: at most the surfaces a texture tile may hold, and two in each block of 4 metres, as the game's compressed masks keep them. Specks of a third surface at an edge go, as in the game. The Mask shading shows the same."));
+        theme::check_row(ui, &mut app.settings.surface_pixels, t("Hard mask pixels"))
+            .on_hover_text(t("The ground shows each pixel of the mask as one surface, with hard edges and no blending: to see exactly what is painted where."));
+        slider(ui, &t("Ground colour on grass"), &mut app.settings.grass_ground_color, 0.0..=1.0, false);
+    });
+    section(ui, &icons::with(icons::SUN, &t("Shadows and effects")), true, |ui| {
+        seg_u32(ui, &t("Shadow detail"), &mut app.settings.shadow_map, &[(2048, "2048".into()), (4096, "4096".into()), (8192, "8192".into())]);
+        slider(ui, &t("Shadow range"), &mut app.settings.lighting.shadow_range, 60.0..=2000.0, true);
+        seg_u32(ui, &t("Antialiasing"), &mut app.settings.edge_smoothing, &[(0, t("Off")), (1, "FXAA".into()), (2, "FXAA + 1.5x".into()), (3, "FXAA + 2x".into())]);
+        seg_u32(ui, &t("Ambient occlusion"), &mut app.settings.ambient_occlusion, &[(0, t("Off")), (8, t("Low")), (12, t("Medium")), (20, t("High"))]);
+    });
 }
 
 fn settings_general(app: &mut App, ui: &mut egui::Ui) {
-    row(ui, &t("Autosave every"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
-    about(ui, &t("0 turns autosave off."));
-    ui.add_space(4.0);
-    ui.checkbox(&mut app.settings.check_updates, t("Check for updates at start"));
-    ui.checkbox(&mut app.settings.experimental, t("Show experimental features")).on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor."));
-    about(ui, &t("For now: the mission editor and team work."));
+    section(ui, &icons::with(icons::FLOPPY_DISK, &t("Saving")), true, |ui| {
+        row(ui, &t("Autosave every"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.settings.autosave_minutes, 0..=60).suffix(" min")); });
+        about(ui, &t("0 turns autosave off."));
+    });
+    section(ui, &icons::with(icons::GEAR, &t("Application")), true, |ui| {
+        theme::check_row(ui, &mut app.settings.check_updates, t("Check for updates at start"));
+        theme::check_row(ui, &mut app.settings.experimental, t("Show experimental features"))
+            .on_hover_text(t("Features still being worked on, which may change or not work fully yet. For now: the mission editor."));
+        about(ui, &t("For now: the mission editor and team work."));
+    });
 }
 
 fn settings_backups(app: &mut App, ui: &mut egui::Ui) {
-    ui.checkbox(&mut app.settings.backup_enabled, t("Make backups automatically"));
-    ui.add_enabled_ui(app.settings.backup_enabled, |ui| {
-        row(ui, &t("Back up every"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.settings.backup_minutes, 5..=240).suffix(" min")); });
-        row(ui, &t("Backups to keep"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.settings.backup_keep, 1..=100)); });
+    use egui::Stroke;
+    section(ui, &icons::with(icons::CLOCK_COUNTER_CLOCKWISE, &t("Automatic backups")), true, |ui| {
+        theme::check_row(ui, &mut app.settings.backup_enabled, t("Make backups automatically"));
+        ui.add_enabled_ui(app.settings.backup_enabled, |ui| {
+            row(ui, &t("Back up every"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.settings.backup_minutes, 5..=240).suffix(" min")); });
+            row(ui, &t("Backups to keep"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.settings.backup_keep, 1..=100)); });
+        });
+        about(ui, &t("A backup is only made when the project has changed. Files that did not change are shared between backups, so they take no extra space."));
     });
-    about(ui, &t("A backup is only made when the project has changed. Files that did not change are shared between backups, so they take no extra space."));
-    settings_heading(ui, &t("Folder"));
-    let shown = if app.settings.backup_folder.is_empty() { t("backups in the project folder") } else { app.settings.backup_folder.clone() };
-    ui.add(egui::Label::new(shown).truncate());
-    ui.horizontal_wrapped(|ui| {
-        if ui.button(t("Choose...")).clicked() {
-            if let Some(d) = rfd::FileDialog::new().pick_folder() { app.settings.backup_folder = d.display().to_string(); }
-        }
-        if ui.add_enabled(!app.settings.backup_folder.is_empty(), egui::Button::new(t("Use the project folder"))).clicked() { app.settings.backup_folder.clear(); }
-    });
-    settings_heading(ui, &t("Now"));
-    ui.horizontal_wrapped(|ui| {
-        let saved = app.doc.as_ref().is_some_and(|d| d.dir.is_some());
-        if ui.add_enabled(saved && app.backup_job.is_none(), egui::Button::new(t("Back up now"))).clicked() { app.start_backup(true); }
-        if ui.add_enabled(saved, egui::Button::new(t("Open backups folder"))).clicked() {
-            if let Some(root) = app.backup_root() {
-                let _ = std::fs::create_dir_all(&root);
-                app.open_folder(&root);
+    section(ui, &icons::with(icons::FOLDER, &t("Folder")), true, |ui| {
+        let shown = if app.settings.backup_folder.is_empty() { t("backups in the project folder") } else { app.settings.backup_folder.clone() };
+        fit_frame(
+            ui,
+            egui::Frame::new()
+                .fill(theme::DARK)
+                .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::symmetric(8, 6)),
+            |ui| {
+                ui.add(egui::Label::new(RichText::new(shown).monospace().color(theme::TEXT_BRIGHT)).truncate());
+            },
+        );
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            if ui.add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Choose..."))).min_size(egui::vec2(0.0, 24.0))).clicked() {
+                if let Some(d) = rfd::FileDialog::new().pick_folder() { app.settings.backup_folder = d.display().to_string(); }
             }
-        }
+            if ui.add_enabled(!app.settings.backup_folder.is_empty(), egui::Button::new(icons::with(icons::ARROW_COUNTER_CLOCKWISE, &t("Use the project folder"))).min_size(egui::vec2(0.0, 24.0))).clicked() {
+                app.settings.backup_folder.clear();
+            }
+        });
     });
-    about(ui, &t("To restore a backup, open the project.dzwe inside it and use Save as."));
+    section(ui, &icons::with(icons::ARCHIVE, &t("Now")), true, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            let saved = app.doc.as_ref().is_some_and(|d| d.dir.is_some());
+            if ui.add_enabled(saved && app.backup_job.is_none(), egui::Button::new(icons::with(icons::FLOPPY_DISK, &t("Back up now"))).min_size(egui::vec2(0.0, 24.0))).clicked() {
+                app.start_backup(true);
+            }
+            if ui.add_enabled(saved, egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Open backups folder"))).min_size(egui::vec2(0.0, 24.0))).clicked() {
+                if let Some(root) = app.backup_root() {
+                    let _ = std::fs::create_dir_all(&root);
+                    app.open_folder(&root);
+                }
+            }
+        });
+        ui.add_space(4.0);
+        about(ui, &t("To restore a backup, open the project.dzwe inside it and use Save as."));
+    });
 }
 
 /// The settings of the world config of the map, beside the config.cpp they make.
@@ -4082,10 +4216,9 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
         .default_size([740.0, 560.0])
         .min_size([560.0, 400.0])
         .show(ctx, open, |ui| {
-        let total_h = ui.available_height();
         ui.horizontal_top(|ui| {
             // Left navigation column, matching the editor Settings window.
-            ui.allocate_ui_with_layout(egui::vec2(165.0, total_h), egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+            ui.allocate_ui_with_layout(egui::vec2(160.0, 0.0), egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                 for p in ProjectPage::ALL {
                     let (icon, name) = p.title();
                     let label = if p == ProjectPage::TileSurfaces && !tile_limit.issues.is_empty() {
@@ -4111,7 +4244,6 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
             ui.separator();
             ui.vertical(|ui| {
                 egui::ScrollArea::vertical().id_salt(("project_page_body", page as u8)).auto_shrink([false, false]).show(ui, |ui| {
-                    ui.set_min_width(ui.available_width());
                     match page {
                         ProjectPage::General => {
                             section(ui, &icons::with(icons::FOLDER, &t("Project")), true, |ui| {
@@ -4133,16 +4265,18 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                 }
                             });
                             section(ui, &icons::with(icons::INFO, &t("Terrain summary")), true, |ui| {
-                                egui::Frame::new()
-                                    .fill(theme::DARK)
-                                    .stroke(Stroke::new(1.0_f32, theme::BORDER))
-                                    .corner_radius(4)
-                                    .inner_margin(egui::Margin::symmetric(10, 8))
-                                    .show(ui, |ui| {
-                                        ui.set_min_width(ui.available_width());
+                                fit_frame(
+                                    ui,
+                                    egui::Frame::new()
+                                        .fill(theme::DARK)
+                                        .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                                        .corner_radius(4)
+                                        .inner_margin(egui::Margin::symmetric(10, 8)),
+                                    |ui| {
                                         ui.label(RichText::new(tf("Terrain {0} × {0}, cell {1} m, map {2} m", &[&m.terrain_size.to_string(), &m.terrain_cell.to_string(), &m.size_m().to_string()])).color(theme::TEXT_BRIGHT));
                                         ui.label(RichText::new(tf("Land grid {0}, cell {1} m, {2} tiles per side", &[&m.land_size().to_string(), &m.land_cell().to_string(), &m.tiles().to_string()])).color(theme::TEXT_DIM));
-                                    });
+                                    },
+                                );
                             });
                         }
                         ProjectPage::TileSurfaces => {
@@ -4174,10 +4308,12 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                         egui::Button::new(RichText::new(icons::with(icons::MAGNIFYING_GLASS, &t("Check tiles"))).color(Color32::WHITE))
                                             .fill(theme::ACCENT)
                                             .stroke(Stroke::NONE)
+                                            .min_size(egui::vec2(0.0, 24.0))
                                     } else {
                                         egui::Button::new(icons::with(icons::MAGNIFYING_GLASS, &t("Check tiles")))
+                                            .min_size(egui::vec2(0.0, 24.0))
                                     };
-                                    if ui.add_sized([0.0, 24.0], check_btn).clicked() {
+                                    if ui.add(check_btn).clicked() {
                                         check = true;
                                     }
                                     if !tile_limit.issues.is_empty() {
@@ -4186,11 +4322,12 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                             RichText::new(icons::with(icons::EYE, &t("Highlight excess pixels")))
                                                 .color(if on { theme::TOGGLE_ON_TEXT } else { theme::TEXT }),
                                         )
-                                        .fill(if on { theme::TOGGLE_ON } else { theme::SECTION });
-                                        if ui.add_sized([0.0, 24.0], eye_btn).clicked() {
+                                        .fill(if on { theme::TOGGLE_ON } else { theme::SECTION })
+                                        .min_size(egui::vec2(0.0, 24.0));
+                                        if ui.add(eye_btn).clicked() {
                                             tile_limit.show_pixels = !tile_limit.show_pixels;
                                         }
-                                        if ui.add_sized([0.0, 24.0], egui::Button::new(icons::with(icons::X, &t("Clear marks")))).clicked() {
+                                        if ui.add(egui::Button::new(icons::with(icons::X, &t("Clear marks"))).min_size(egui::vec2(0.0, 24.0))).clicked() {
                                             clear_marks = true;
                                         }
                                     }
@@ -4212,18 +4349,20 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                 };
                                 if let Some((col, icon, msg)) = banner {
                                     ui.add_space(4.0);
-                                    egui::Frame::new()
-                                        .fill(theme::DARK)
-                                        .stroke(Stroke::new(1.0_f32, col.gamma_multiply(0.7)))
-                                        .corner_radius(4)
-                                        .inner_margin(egui::Margin::symmetric(8, 6))
-                                        .show(ui, |ui| {
-                                            ui.set_min_width(ui.available_width());
+                                    fit_frame(
+                                        ui,
+                                        egui::Frame::new()
+                                            .fill(theme::DARK)
+                                            .stroke(Stroke::new(1.0_f32, col.gamma_multiply(0.7)))
+                                            .corner_radius(4)
+                                            .inner_margin(egui::Margin::symmetric(8, 6)),
+                                        |ui| {
                                             ui.horizontal_wrapped(|ui| {
                                                 ui.colored_label(col, icon);
                                                 ui.colored_label(col, msg);
                                             });
-                                        });
+                                        },
+                                    );
                                 }
                             });
 
@@ -4247,8 +4386,7 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                                     for (idx, issue) in tile_limit.issues.iter().enumerate() {
                                                         let is_sel = tile_limit.selected == Some((issue.col, issue.row));
                                                         let bg = if is_sel { theme::ACCENT_SOFT } else if idx % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
-                                                        egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(4, 2)).show(ui, |ui| {
-                                                            ui.set_min_width(ui.available_width());
+                                                        fit_frame(ui, egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(4, 2)), |ui| {
                                                             ui.horizontal(|ui| {
                                                                 if ui.add(egui::Button::new(RichText::new(icons::CROSSHAIR).color(if is_sel { Color32::WHITE } else { theme::TEXT_DIM })).frame(false))
                                                                     .on_hover_text(t("Go to the excess pixels on this tile"))
@@ -4298,8 +4436,7 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                                             let is_prot = tile_limit.options.protected.contains(&layer);
                                                             let is_rem = tile_limit.options.remove_first.contains(&layer);
                                                             let bg = if idx % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
-                                                            egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(4, 3)).show(ui, |ui| {
-                                                                ui.set_min_width(ui.available_width());
+                                                            fit_frame(ui, egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(4, 3)), |ui| {
                                                                 ui.horizontal(|ui| {
                                                                     draw_surface_swatch(ui, 16.0, thumb, lcol);
                                                                     ui.add(egui::Label::new(RichText::new(lname).color(if is_excess { theme::TEXT_BRIGHT } else { theme::TEXT })).truncate());
@@ -4387,13 +4524,14 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                 theme::subsection(ui, &t("Surface priority"), false, |ui| {
                                     about(ui, &t("Protect surfaces you want to keep, or mark surfaces to remove first."));
                                     ui.add_space(2.0);
-                                    egui::Frame::new()
-                                        .fill(theme::DARK)
-                                        .stroke(Stroke::new(1.0_f32, theme::BORDER))
-                                        .corner_radius(4)
-                                        .inner_margin(egui::Margin::same(4))
-                                        .show(ui, |ui| {
-                                            ui.set_min_width(ui.available_width());
+                                    fit_frame(
+                                        ui,
+                                        egui::Frame::new()
+                                            .fill(theme::DARK)
+                                            .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                                            .corner_radius(4)
+                                            .inner_margin(egui::Margin::same(4)),
+                                        |ui| {
                                             egui::ScrollArea::vertical().id_salt("fix_surface_priority").max_height(160.0).auto_shrink([false, false]).show(ui, |ui| {
                                                 ui.spacing_mut().item_spacing.y = 1.0;
                                                 for (idx, (lname, lcol)) in layers.iter().enumerate() {
@@ -4407,8 +4545,7 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                                                         LayerRule::Auto
                                                     };
                                                     let bg = if idx % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
-                                                    egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(6, 2)).show(ui, |ui| {
-                                                        ui.set_min_width(ui.available_width());
+                                                    fit_frame(ui, egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(6, 2)), |ui| {
                                                         ui.horizontal(|ui| {
                                                             draw_surface_swatch(ui, 16.0, thumb, *lcol);
                                                             ui.add(egui::Label::new(lname).truncate());
