@@ -1,9 +1,9 @@
 //! Keyboard shortcuts in one place: every action the keyboard reaches, its default key, the
 //! keys the user chose instead and the window that changes them. The modifiers held while
 //! using a brush are kept here too, so that every brush reads them the same way.
-use crate::i18n::t;
+use crate::i18n::{t, tf};
 use crate::theme;
-use eframe::egui::{self, Key, Modifiers};
+use eframe::egui::{self, Color32, Key, Modifiers, RichText, Stroke};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -487,8 +487,27 @@ impl KeyMap {
     }
 }
 
-/// The window that changes the shortcuts. `capture` is the action waiting for its new key.
-pub fn window(ctx: &egui::Context, keys: &mut KeyMap, capture: &mut Option<Action>, open: &mut bool) {
+fn group_icon(group: &str) -> &'static str {
+    match group {
+        "General" => crate::icons::GEAR,
+        "Selection" => crate::icons::CURSOR,
+        "Tools" => crate::icons::WRENCH,
+        "View" => crate::icons::EYE,
+        "Roads piece by piece" => crate::icons::PATH,
+        "Brushes" => crate::icons::PAINT_BRUSH,
+        _ => crate::icons::CAMERA,
+    }
+}
+
+fn fit_frame(ui: &mut egui::Ui, frame: egui::Frame, add: impl FnOnce(&mut egui::Ui)) {
+    frame.show(ui, |ui| {
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), add);
+    });
+}
+
+/// Captures a pressed key when `capture` is active and renders the shortcuts editor inside `ui`.
+/// Used both in the standalone Keyboard shortcuts window (`F1`) and in the Settings tab.
+pub fn panel(ctx: &egui::Context, ui: &mut egui::Ui, keys: &mut KeyMap, capture: &mut Option<Action>) {
     // The next key pressed becomes the shortcut; Esc gives up, Backspace takes the key away.
     if let Some(a) = *capture {
         let got = ctx.input_mut(|i| {
@@ -504,63 +523,244 @@ pub fn window(ctx: &egui::Context, keys: &mut KeyMap, capture: &mut Option<Actio
             *capture = None;
         }
     }
+
     let clashes = keys.clashes();
     let clashing = |a: Action| clashes.iter().any(|c| c.0 == a || c.1 == a);
-    let title = format!("{} {}", crate::icons::KEYBOARD, t("Keyboard shortcuts"));
-    theme::PopupWindow::new(egui::Id::new("keyboard_shortcuts"), &title)
-        .default_size([520.0, 620.0])
-        .min_size([400.0, 320.0])
-        .show(ctx, open, |ui| {
-        ui.weak(t("Click a shortcut and press the new key with its modifiers. Esc cancels, Backspace leaves the action without a key."));
-        if !clashes.is_empty() {
-            ui.colored_label(theme::WARN, t("Some actions share a key; only the first of them will work."));
-        }
-        ui.horizontal(|ui| {
-            if ui.button(format!("{} {}", crate::icons::ARROW_COUNTER_CLOCKWISE, t("Reset all to defaults"))).clicked() {
+    let custom_count = Action::ALL.iter().filter(|&&a| keys.get(a) != a.default_key()).count()
+        + Hold::ALL.iter().filter(|&&h| keys.hold(h) != h.default_key()).count();
+
+    let search_id = ui.make_persistent_id("shortcuts_search");
+    let mut query: String = ui.data(|d| d.get_temp(search_id)).unwrap_or_default();
+
+    // Top toolbar: search bar, custom counter, and Reset all button.
+    ui.horizontal(|ui| {
+        let reset_label = crate::icons::with(crate::icons::ARROW_COUNTER_CLOCKWISE, &t("Reset all to defaults"));
+        egui::Frame::new()
+            .fill(theme::FIELD)
+            .stroke(Stroke::new(1.0_f32, theme::BORDER))
+            .corner_radius(3)
+            .inner_margin(egui::Margin::symmetric(6, 2))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(crate::icons::MAGNIFYING_GLASS).color(theme::TEXT_DIM));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut query)
+                            .hint_text(t("Search shortcuts..."))
+                            .frame(false)
+                            .desired_width(180.0),
+                    );
+                    if !query.is_empty() && ui.add(egui::Button::new(RichText::new(crate::icons::X).color(theme::TEXT_DIM)).frame(false)).clicked() {
+                        query.clear();
+                    }
+                });
+            });
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.add_enabled(custom_count > 0, egui::Button::new(reset_label).min_size(egui::vec2(0.0, 24.0))).clicked() {
                 *keys = KeyMap::default();
                 *capture = None;
             }
-        });
-        ui.separator();
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            let mut group = "";
-            for a in Action::ALL {
-                if a.group() != group {
-                    group = a.group();
-                    ui.add_space(6.0);
-                    ui.strong(t(group));
-                }
-                ui.horizontal(|ui| {
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(230.0, 20.0), egui::Sense::hover());
-                    ui.painter().text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, t(a.name()), egui::FontId::proportional(13.0), theme::TEXT);
-                    let waiting = *capture == Some(a);
-                    let text = if waiting { t("Press a key...") } else { keys.get(a).map(|s| s.text()).unwrap_or_else(|| "—".into()) };
-                    let mut b = egui::Button::new(egui::RichText::new(text).monospace().color(if clashing(a) { theme::WARN } else { theme::TEXT })).min_size(egui::vec2(140.0, 20.0));
-                    if waiting { b = b.fill(theme::ACCENT_SOFT); }
-                    if ui.add(b).clicked() { *capture = Some(a); }
-                    if keys.get(a) != a.default_key() && ui.small_button(crate::icons::ARROW_COUNTER_CLOCKWISE).on_hover_text(format!("{}: {}", t("Default"), a.default_key().map(|s| s.text()).unwrap_or_else(|| "—".into()))).clicked() {
-                        keys.set(a, a.default_key());
-                    }
-                });
-            }
-            ui.add_space(8.0);
-            ui.strong(t("Held while using a brush"));
-            ui.weak(t("The same for every brush: sculpting, painting, holes, placing and the clone brush."));
-            for h in Hold::ALL {
-                ui.horizontal(|ui| {
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(230.0, 20.0), egui::Sense::hover());
-                    ui.painter().text(egui::pos2(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, t(h.name()), egui::FontId::proportional(13.0), theme::TEXT);
-                    let mut k = keys.hold(h);
-                    egui::ComboBox::from_id_salt(("hold", h as u8)).width(140.0).selected_text(k.name()).show_ui(ui, |ui| {
-                        for m in ModKey::ALL { ui.selectable_value(&mut k, m, m.name()); }
-                    });
-                    if k != keys.hold(h) {
-                        if k == h.default_key() { keys.holds.remove(&h); } else { keys.holds.insert(h, k); }
-                    }
-                });
+            if custom_count > 0 {
+                ui.label(RichText::new(tf("{0} custom", &[&custom_count.to_string()])).small().color(theme::TOGGLE_ON_TEXT));
             }
         });
     });
+    ui.data_mut(|d| d.insert_temp(search_id, query.clone()));
+
+    ui.add_space(3.0);
+    crate::panels::about(ui, &t("Click a shortcut and press the new key with its modifiers. Esc cancels, Backspace leaves the action without a key."));
+    if !clashes.is_empty() {
+        ui.add_space(4.0);
+        fit_frame(
+            ui,
+            egui::Frame::new()
+                .fill(theme::DARK)
+                .stroke(Stroke::new(1.0_f32, theme::WARN.gamma_multiply(0.75)))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::symmetric(8, 6)),
+            |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme::WARN, crate::icons::WARNING);
+                    ui.colored_label(theme::WARN, t("Some actions share a key; only the first of them will work."));
+                });
+            },
+        );
+    }
+    ui.add_space(4.0);
+
+    let needle = query.trim().to_lowercase();
+    let matches_query = |name: &str, group: &str, key_text: &str| -> bool {
+        if needle.is_empty() {
+            return true;
+        }
+        name.to_lowercase().contains(&needle) || group.to_lowercase().contains(&needle) || key_text.to_lowercase().contains(&needle)
+    };
+
+    egui::ScrollArea::vertical().id_salt("shortcuts_scroll").auto_shrink([false, false]).show(ui, |ui| {
+        let mut shown_any = false;
+        let mut i = 0usize;
+        while i < Action::ALL.len() {
+            let group = Action::ALL[i].group();
+            let start = i;
+            while i < Action::ALL.len() && Action::ALL[i].group() == group {
+                i += 1;
+            }
+            let group_label = t(group);
+            let group_actions: Vec<Action> = Action::ALL[start..i]
+                .iter()
+                .copied()
+                .filter(|&a| {
+                    let ktxt = keys.get(a).map(|s| s.text()).unwrap_or_default();
+                    matches_query(&t(a.name()), &group_label, &ktxt)
+                })
+                .collect();
+            if group_actions.is_empty() {
+                continue;
+            }
+            shown_any = true;
+            theme::section(ui, &crate::icons::with(group_icon(group), &group_label), true, |ui| {
+                fit_frame(
+                    ui,
+                    egui::Frame::new()
+                        .fill(theme::DARK)
+                        .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                        .corner_radius(4)
+                        .inner_margin(egui::Margin::same(4)),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for (idx, a) in group_actions.iter().copied().enumerate() {
+                            let waiting = *capture == Some(a);
+                            let current = keys.get(a);
+                            let modified = current != a.default_key();
+                            let clash = clashing(a);
+                            let bg = if waiting {
+                                theme::ACCENT_SOFT
+                            } else if idx % 2 == 1 {
+                                theme::ROW_ALT
+                            } else {
+                                Color32::TRANSPARENT
+                            };
+                            fit_frame(ui, egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(8, 3)), |ui| {
+                                ui.horizontal(|ui| {
+                                    let name_color = if waiting || modified { theme::TEXT_BRIGHT } else { theme::TEXT };
+                                    ui.add(egui::Label::new(RichText::new(t(a.name())).color(name_color)).truncate());
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        // Fixed 24 px slot for the per-action reset button so all keycaps align.
+                                        if modified {
+                                            let tip = format!("{}: {}", t("Default"), a.default_key().map(|s| s.text()).unwrap_or_else(|| "—".into()));
+                                            let rbtn = egui::Button::new(RichText::new(crate::icons::ARROW_COUNTER_CLOCKWISE).color(theme::TEXT_DIM))
+                                                .frame(false)
+                                                .min_size(egui::vec2(22.0, 20.0));
+                                            if ui.add(rbtn).on_hover_text(tip).clicked() {
+                                                keys.set(a, a.default_key());
+                                            }
+                                        } else {
+                                            ui.allocate_exact_size(egui::vec2(22.0, 20.0), egui::Sense::hover());
+                                        }
+                                        let text = if waiting {
+                                            t("Press a key...")
+                                        } else {
+                                            current.map(|s| s.text()).unwrap_or_else(|| "—".into())
+                                        };
+                                        let (fill, stroke, txt_col) = if waiting {
+                                            (theme::ACCENT, Stroke::new(1.0_f32, theme::ACCENT), Color32::WHITE)
+                                        } else if clash {
+                                            (Color32::from_rgb(60, 44, 24), Stroke::new(1.0_f32, theme::WARN), theme::WARN)
+                                        } else if modified {
+                                            (theme::TOGGLE_ON, Stroke::new(1.0_f32, theme::ACCENT.gamma_multiply(0.7)), theme::TOGGLE_ON_TEXT)
+                                        } else {
+                                            (theme::FIELD, Stroke::new(1.0_f32, theme::BORDER), if current.is_some() { theme::TEXT_BRIGHT } else { theme::TEXT_DIM })
+                                        };
+                                        let b = egui::Button::new(RichText::new(text).monospace().color(txt_col))
+                                            .fill(fill)
+                                            .stroke(stroke)
+                                            .min_size(egui::vec2(142.0, 22.0));
+                                        if ui.add(b).clicked() {
+                                            *capture = if waiting { None } else { Some(a) };
+                                        }
+                                    });
+                                });
+                            });
+                        }
+                    },
+                );
+            });
+        }
+
+        let hold_group_label = t("Held while using a brush");
+        let holds: Vec<Hold> = Hold::ALL
+            .iter()
+            .copied()
+            .filter(|&h| matches_query(&t(h.name()), &hold_group_label, keys.hold(h).name()))
+            .collect();
+        if !holds.is_empty() {
+            shown_any = true;
+            theme::section(ui, &crate::icons::with(crate::icons::HAND, &hold_group_label), true, |ui| {
+                crate::panels::about(ui, &t("The same for every brush: sculpting, painting, holes, placing and the clone brush."));
+                ui.add_space(3.0);
+                fit_frame(
+                    ui,
+                    egui::Frame::new()
+                        .fill(theme::DARK)
+                        .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                        .corner_radius(4)
+                        .inner_margin(egui::Margin::same(4)),
+                    |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for (idx, h) in holds.iter().copied().enumerate() {
+                            let mut k = keys.hold(h);
+                            let modified = k != h.default_key();
+                            let bg = if idx % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
+                            fit_frame(ui, egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(8, 2)), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.add(egui::Label::new(RichText::new(t(h.name())).color(if modified { theme::TEXT_BRIGHT } else { theme::TEXT })).truncate());
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if modified {
+                                            let tip = format!("{}: {}", t("Default"), h.default_key().name());
+                                            let rbtn = egui::Button::new(RichText::new(crate::icons::ARROW_COUNTER_CLOCKWISE).color(theme::TEXT_DIM))
+                                                .frame(false)
+                                                .min_size(egui::vec2(22.0, 20.0));
+                                            if ui.add(rbtn).on_hover_text(tip).clicked() {
+                                                keys.holds.remove(&h);
+                                                k = h.default_key();
+                                            }
+                                        } else {
+                                            ui.allocate_exact_size(egui::vec2(22.0, 20.0), egui::Sense::hover());
+                                        }
+                                        let mod_choices: Vec<(ModKey, String, String)> = ModKey::ALL.iter().map(|&m| (m, m.name().to_string(), String::new())).collect();
+                                        if theme::segmented(ui, &mut k, &mod_choices) {
+                                            if k == h.default_key() {
+                                                keys.holds.remove(&h);
+                                            } else {
+                                                keys.holds.insert(h, k);
+                                            }
+                                        }
+                                    });
+                                });
+                            });
+                        }
+                    },
+                );
+            });
+        }
+
+        if !shown_any {
+            ui.add_space(12.0);
+            ui.centered_and_justified(|ui| {
+                ui.label(RichText::new(t("No matching shortcuts.")).color(theme::TEXT_DIM));
+            });
+        }
+    });
+}
+
+/// The window that changes the shortcuts. `capture` is the action waiting for its new key.
+pub fn window(ctx: &egui::Context, keys: &mut KeyMap, capture: &mut Option<Action>, open: &mut bool) {
+    let title = crate::icons::with(crate::icons::KEYBOARD, &t("Keyboard shortcuts"));
+    theme::PopupWindow::new(egui::Id::new("keyboard_shortcuts"), &title)
+        .default_size([600.0, 620.0])
+        .min_size([440.0, 360.0])
+        .show(ctx, open, |ui| {
+            panel(ctx, ui, keys, capture);
+        });
     if !*open {
         *capture = None;
     }
