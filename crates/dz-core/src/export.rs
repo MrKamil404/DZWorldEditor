@@ -175,30 +175,60 @@ pub(crate) fn two_colours_a_block(slots: &mut [u8], px: usize) {
     }
 }
 
-/// In six-material masks the blue channel holds three surfaces, told apart by alpha. Terrain
-/// Builder spreads a lowered alpha 8 pixels into the other surfaces around them, so that
-/// filtering at their border does not fall through to the wrong blue surface.
+/// In six-material masks the blue channel holds three surfaces, told apart by alpha (255, 128, 0).
+/// Terrain Builder spreads each blue pixel's alpha up to 8 pixels into neighbouring non-blue
+/// surfaces from the nearest blue pixel, so filtering across a border keeps the alpha of the
+/// blue surface that actually meets that border rather than letting a farther lower-alpha blue
+/// surface bleed into it.
 fn spread_blue_alpha(mask: &mut [u8], px: usize) {
-    const REACH: usize = 8;
+    const REACH: u8 = 8;
+    let total = px * px;
     let blue = |m: &[u8], i: usize| m[i * 4 + 2] == 255;
-    if !(0..px * px).any(|i| blue(mask, i) && mask[i * 4 + 3] < 255) {
+    if !(0..total).any(|i| blue(mask, i) && mask[i * 4 + 3] < 255) {
         return;
     }
-    let mut low: Vec<u8> = (0..px * px).map(|i| if blue(mask, i) { mask[i * 4 + 3] } else { 255 }).collect();
-    for _pass in 0..2 {
-        let horizontal = _pass == 0;
-        let source = low.clone();
-        for a in 0..px {
-            for b in 0..px {
-                let at = |k: usize| if horizontal { a * px + k } else { k * px + a };
-                let (from, to) = (b.saturating_sub(REACH), (b + REACH).min(px - 1));
-                low[at(b)] = (from..=to).map(|k| source[at(k)]).min().unwrap_or(255);
-            }
+    let mut dist = vec![u8::MAX; total];
+    let mut alpha = vec![255u8; total];
+    let mut frontier: Vec<usize> = Vec::new();
+    for i in 0..total {
+        if blue(mask, i) {
+            dist[i] = 0;
+            alpha[i] = mask[i * 4 + 3];
+            frontier.push(i);
         }
     }
-    for (i, v) in low.iter().enumerate() {
-        if !blue(mask, i) {
-            mask[i * 4 + 3] = *v;
+    let mut next: Vec<usize> = Vec::new();
+    for step in 1..=REACH {
+        next.clear();
+        for &i in &frontier {
+            let a = alpha[i];
+            let (x, y) = (i % px, i / px);
+            let y0 = y.saturating_sub(1);
+            let y1 = (y + 1).min(px - 1);
+            let x0 = x.saturating_sub(1);
+            let x1 = (x + 1).min(px - 1);
+            for ny in y0..=y1 {
+                for nx in x0..=x1 {
+                    let ni = ny * px + nx;
+                    if dist[ni] == u8::MAX {
+                        dist[ni] = step;
+                        alpha[ni] = a;
+                        next.push(ni);
+                    } else if dist[ni] == step && a < alpha[ni] {
+                        // Deterministic tie-breaker when equidistant blue pixels meet.
+                        alpha[ni] = a;
+                    }
+                }
+            }
+        }
+        if next.is_empty() {
+            break;
+        }
+        std::mem::swap(&mut frontier, &mut next);
+    }
+    for i in 0..total {
+        if !blue(mask, i) && dist[i] <= REACH {
+            mask[i * 4 + 3] = alpha[i];
         }
     }
 }
@@ -274,9 +304,16 @@ pub fn tile_slots(w: &World, layout: &TileLayout, col: u32, row: u32) -> (Vec<us
     }
     // The most used surfaces of the tile, as many as the material can take.
     let mut order: Vec<usize> = (0..256).filter(|l| count[*l] > 0).collect();
-    order.sort_by_key(|l| std::cmp::Reverse(count[*l]));
+    order.sort_by_key(|&l| (std::cmp::Reverse(count[l]), l));
     order.truncate(MAX_SLOTS.min(w.meta.max_tile_surfaces.max(1) as usize));
-    order.sort();
+    if order.len() <= 4 {
+        order.sort();
+    } else {
+        // Slots 0..3 (black, red, green) do not use alpha: keep the three most used surfaces
+        // there, matching Terrain Builder. The remaining surfaces share the blue channel
+        // (alpha 255, 128, 0), so the rarest ones go last to minimise lowered-alpha borders.
+        order[..3].sort();
+    }
     let mut slot_of = [0u8; 256];
     for l in 0..256usize {
         slot_of[l] = match order.iter().position(|o| *o == l) {
@@ -1129,5 +1166,61 @@ mod tests {
         assert!((o[0].matrix[9] - 50.0).abs() < 1e-3);
         assert!((o[0].matrix[10] - 12.0).abs() < 1e-3);
         assert!((o[0].matrix[11] - 49.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn spread_blue_alpha_follows_nearest_blue_pixel() {
+        // 32x32 mask: Red everywhere, with Blue A=0 at x=0..4 and Blue A=255 at x=8..12.
+        // Pixels at x=5..7: x=5 is closest to A=0 (gets 0), x=7 is closest to A=255 (keeps 255).
+        // Pixels at x=13..20 are closest to Blue A=255 (keep 255), and x=25 is beyond REACH=8 (keeps 255).
+        let px = 32usize;
+        let mut mask = vec![0u8; px * px * 4];
+        for y in 0..px {
+            for x in 0..px {
+                let p = (y * px + x) * 4;
+                let c = if x < 4 {
+                    [0, 0, 255, 0]
+                } else if (8..12).contains(&x) {
+                    [0, 0, 255, 255]
+                } else {
+                    [255, 0, 0, 255]
+                };
+                mask[p..p + 4].copy_from_slice(&c);
+            }
+        }
+        spread_blue_alpha(&mut mask, px);
+        let alpha = |x: usize| mask[(16 * px + x) * 4 + 3];
+        assert_eq!(alpha(4), 0, "1px from Blue A=0 inherits A=0");
+        assert_eq!(alpha(5), 0, "2px from Blue A=0, 3px from Blue A=255 -> inherits A=0");
+        assert_eq!(alpha(7), 255, "1px from Blue A=255 must not be overridden by Blue A=0 four pixels away");
+        assert_eq!(alpha(12), 255, "1px on the far side of Blue A=255 keeps A=255");
+        assert_eq!(alpha(25), 255, "far from all blue pixels stays opaque");
+    }
+
+    #[test]
+    fn six_surface_tile_keeps_dominant_surfaces_out_of_alpha_slots() {
+        let mut w = World::new(WorldMeta::new("Six", 512, 4.0), 0.0);
+        w.mask = crate::terrain::MaskMap::new(2048, 2048, 14);
+        // Tile (0, 0) covers roughly the top-left 256x256 m; paint 6 bands inside it with
+        // strictly decreasing pixel counts: L14 > L12 > L07 > L02 > L06 > L04.
+        for y in 0..256 {
+            for x in 0..256 {
+                let l = if y < 80 { 14 }
+                    else if y < 140 { 12 }
+                    else if y < 180 { 7 }
+                    else if y < 205 { 2 }
+                    else if y < 220 { 6 }
+                    else if y < 228 { 4 }
+                    else { 14 };
+                w.mask.data[y * 2048 + x] = l;
+            }
+        }
+        let layout = TileLayout::of(&w);
+        let (order, _) = tile_slots(&w, &layout, 0, 0);
+        assert_eq!(order.len(), 6);
+        assert_eq!(&order[..3], &[7, 12, 14], "three most used surfaces go to non-alpha slots 0..3");
+        assert_eq!(order[3], 2, "4th most used gets Blue A=255");
+        assert_eq!(order[4], 6, "5th most used gets Blue A=128");
+        assert_eq!(order[5], 4, "rarest surface gets Blue A=0");
     }
 }
