@@ -15,13 +15,15 @@ use crate::proxies::ProxyPlace;
 use crate::render::{self, ModelPreviewFrame};
 use crate::theme::{self, check_row, details_head, list_row, row, section, subsection, tool_button, vector_row, ValueField};
 use crate::viewport::{PickMesh, PROXY_BASE};
-use dz_core::mission::proto::{self, ContainerProto, GroupProto, LootPoint};
+use dz_core::mission::proto::{self, ContainerProto, DispatchProxy, GroupProto, LootPoint};
 use eframe::egui::{self, Color32, Key, PointerButton, Pos2, Stroke, Vec2};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Reserved model-id namespace for isolated 3D loot previews (never collides with map/mission/proxy ids).
 pub(crate) const PREVIEW_ID_BASE: u32 = 0x9000_0000;
+/// Reserved model-id namespace for `<dispatch><proxy>` 3D models shown in the loot editor.
+const DISPATCH_ID_BASE: u32 = 0x9400_0000;
 
 const CONTAINER_COLORS: [Color32; 6] = [
     Color32::from_rgb(76, 195, 247),  // cyan
@@ -68,12 +70,16 @@ pub struct LootProtoUi {
     group: GroupProto,
     selected_container: usize,
     selected_point: Option<usize>,
+    selected_dispatch: Option<usize>,
     camera: Camera,
     clip_enabled: bool,
     clip_y: f32,
     add_mode: bool,
     show_ranges: bool,
     show_proxies: bool,
+    show_dispatch: bool,
+    dispatch_model_ids: HashMap<String, u32>,
+    next_dispatch_id: u32,
     panel_width: f32,
     gizmo_drag: Option<GizmoDrag>,
     dirty: bool,
@@ -94,12 +100,16 @@ impl Default for LootProtoUi {
             group: GroupProto::default_for("Land_Building"),
             selected_container: 0,
             selected_point: None,
+            selected_dispatch: None,
             camera: Camera { pos: [8.0, 6.0, 8.0], yaw: 0.0, pitch: -0.4, fov: 65f32.to_radians(), speed: 6.0 },
             clip_enabled: false,
             clip_y: 2.5,
             add_mode: false,
             show_ranges: true,
             show_proxies: true,
+            show_dispatch: true,
+            dispatch_model_ids: HashMap::new(),
+            next_dispatch_id: DISPATCH_ID_BASE,
             panel_width: 360.0,
             gizmo_drag: None,
             dirty: false,
@@ -152,6 +162,7 @@ pub fn open(app: &mut App, model: String) {
     ui.exists_in_proto = exists;
     ui.selected_container = 0;
     ui.selected_point = group.containers.first().and_then(|c| (!c.points.is_empty()).then_some(0));
+    ui.selected_dispatch = None;
     ui.group = group;
     ui.gizmo_drag = None;
     ui.dirty = false;
@@ -251,6 +262,18 @@ fn proxy_instance_matrix(p: &ProxyPlace) -> [f32; 16] {
     ]
 }
 
+/// Builds a GPU instance matrix for a `<dispatch><proxy>` positioned at `world_pos` with `rpy`
+/// degrees (`[pitch, yaw, roll]` in DayZ CE frame, rotated +90° in yaw into P3D model space).
+fn dispatch_instance_matrix(world_pos: [f32; 3], rpy: [f32; 3]) -> [f32; 16] {
+    let m = dz_core::objects::rotation(rpy[1] + 90.0, rpy[0], rpy[2], 1.0);
+    [
+        m[0][0], m[1][0], m[2][0], world_pos[0],
+        m[0][1], m[1][1], m[2][1], world_pos[1],
+        m[0][2], m[1][2], m[2][2], world_pos[2],
+        1.0, 1.0, 1.0, 0.0,
+    ]
+}
+
 pub fn window(app: &mut App, ctx: &egui::Context) {
     if !app.loot_proto.open {
         return;
@@ -286,6 +309,39 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 instances.push((key, proxy_instance_matrix(p)));
             }
             proxy_list = Some(list);
+        }
+    }
+
+    // Resolve `<dispatch><proxy>` class names to P3D models via `ClassIndex` and queue GPU uploads.
+    let classes = crate::mission_ui::class_index(app);
+    let dispatch_resolved: Vec<Option<String>> = app.loot_proto.group.dispatch.iter().map(|pr| {
+        let name = pr.kind.trim();
+        if name.is_empty() {
+            return None;
+        }
+        classes.as_ref().and_then(|idx| idx.model_of(name))
+    }).collect();
+    if app.loot_proto.show_dispatch {
+        let renderer = app.renderer.lock().ok();
+        let center = app.loot_proto.center;
+        for (pr, resolved) in app.loot_proto.group.dispatch.iter().zip(&dispatch_resolved) {
+            let Some(path) = resolved else { continue };
+            let key_str = path.to_ascii_lowercase();
+            let mid = if let Some(&id) = app.loot_proto.dispatch_model_ids.get(&key_str) {
+                id
+            } else {
+                let id = app.loot_proto.next_dispatch_id;
+                app.loot_proto.next_dispatch_id = app.loot_proto.next_dispatch_id.wrapping_add(1);
+                app.loot_proto.dispatch_model_ids.insert(key_str, id);
+                id
+            };
+            let key = (mid, 0u8);
+            let has = renderer.as_ref().is_some_and(|r| r.has_model(key));
+            if !has {
+                app.loader.request(key, path);
+            }
+            let world_pos = proto::proto_to_model(pr.pos, center);
+            instances.push((key, dispatch_instance_matrix(world_pos, pr.rpy)));
         }
     }
 
@@ -352,6 +408,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 &mut left_ui,
                 total_h,
                 &limits,
+                &dispatch_resolved,
                 &mut save_requested,
                 &mut remove_requested,
             );
@@ -606,6 +663,7 @@ fn draw_preview_panel(
             ui.separator();
             ui.checkbox(&mut st.show_ranges, t("Show ranges"));
             ui.checkbox(&mut st.show_proxies, t("Proxies"));
+            ui.checkbox(&mut st.show_dispatch, t("Dispatch"));
             ui.separator();
             ui.toggle_value(&mut st.add_mode, icons::with(icons::PLUS, &t("Click 3D to add")))
                 .on_hover_text(t("Click a surface in the 3D preview to place a new loot point there."));
@@ -693,19 +751,25 @@ fn draw_preview_panel(
             let v = View::perspective_near(&st.camera, rect, 0.08, 2000.0);
 
             // ---------------- Gizmo interaction (LPM drag on X/Y/Z axis, Range ring, or Height handle) ----------------
-            let selected_info = st.selected_point
-                .and_then(|pi| st.group.containers.get(st.selected_container)?.points.get(pi))
-                .map(|pt| (st.proto_to_world(pt.pos), pt.range, pt.height));
+            let selected_info: Option<([f32; 3], f32, f32, bool)> = if let Some(pi) = st.selected_point {
+                st.group.containers.get(st.selected_container)
+                    .and_then(|c| c.points.get(pi))
+                    .map(|pt| (st.proto_to_world(pt.pos), pt.range, pt.height, false))
+            } else if let Some(di) = st.selected_dispatch {
+                st.group.dispatch.get(di).map(|pr| (st.proto_to_world(pr.pos), 0.0, 0.0, true))
+            } else {
+                None
+            };
 
             let hover_pos = resp.hover_pos();
             let hover_handle = match (&st.gizmo_drag, selected_info, hover_pos) {
                 (Some(drag), _, _) => Some(drag.handle),
-                (None, Some((origin, range, height)), Some(ptr)) => gizmo_hit(&v, origin, range, height, ptr),
+                (None, Some((origin, range, height, _)), Some(ptr)) => gizmo_hit(&v, origin, range, height, ptr),
                 _ => None,
             };
 
             if resp.drag_started_by(PointerButton::Primary) {
-                if let (Some((origin, range, height)), Some(ptr)) = (selected_info, resp.interact_pointer_pos()) {
+                if let (Some((origin, range, height, _)), Some(ptr)) = (selected_info, resp.interact_pointer_pos()) {
                     if let Some(handle) = gizmo_hit(&v, origin, range, height, ptr) {
                         match handle {
                             GizmoHandle::Axis(axis) => {
@@ -744,6 +808,11 @@ fn draw_preview_panel(
                                     if let Some(pi) = st.selected_point {
                                         if let Some(pt) = st.group.containers.get_mut(st.selected_container).and_then(|c| c.points.get_mut(pi)) {
                                             pt.pos = new_proto;
+                                            st.dirty = true;
+                                        }
+                                    } else if let Some(di) = st.selected_dispatch {
+                                        if let Some(pr) = st.group.dispatch.get_mut(di) {
+                                            pr.pos = new_proto;
                                             st.dirty = true;
                                         }
                                     }
@@ -869,6 +938,33 @@ fn draw_preview_panel(
                 }
             }
 
+            // Draw `<dispatch><proxy>` 3D markers and gizmo when selected
+            if st.show_dispatch {
+                for (di, pr) in st.group.dispatch.iter().enumerate() {
+                    let selected = st.selected_dispatch == Some(di);
+                    let wpos = st.proto_to_world(pr.pos);
+                    if let Some(sp) = v.project(wpos) {
+                        let d = if selected { 6.5_f32 } else { 4.5_f32 };
+                        let col = if selected { Color32::from_rgb(255, 225, 90) } else { Color32::from_rgb(235, 130, 60) };
+                        let diamond = vec![
+                            Pos2::new(sp.x, sp.y - d),
+                            Pos2::new(sp.x + d, sp.y),
+                            Pos2::new(sp.x, sp.y + d),
+                            Pos2::new(sp.x - d, sp.y),
+                        ];
+                        painter.add(egui::Shape::convex_polygon(diamond, col, Stroke::new(1.2_f32, Color32::BLACK)));
+                        if selected && !pr.kind.is_empty() {
+                            painter.text(sp + Vec2::new(10.0, -10.0), egui::Align2::LEFT_BOTTOM, &pr.kind, egui::FontId::proportional(11.0), col);
+                        }
+                    }
+                }
+                if let Some(di) = st.selected_dispatch {
+                    if let Some(pr) = st.group.dispatch.get(di) {
+                        draw_gizmo(&painter, &v, st.proto_to_world(pr.pos), 0.0, 0.0, hover_handle);
+                    }
+                }
+            }
+
             // Live 3D surface placement preview cursor when `Click 3D to add` is on
             let mut hover_hit: Option<[f32; 3]> = None;
             if st.add_mode && st.gizmo_drag.is_none() && hover_handle.is_none() {
@@ -918,20 +1014,44 @@ fn draw_preview_panel(
                             st.dirty = true;
                         }
                     } else {
-                        let mut best: Option<(f32, usize, usize)> = None;
+                        let mut best_pt: Option<(f32, usize, usize)> = None;
                         for (ci, container) in st.group.containers.iter().enumerate() {
                             for (pi, pt) in container.points.iter().enumerate() {
                                 if let Some(s) = v.project(st.proto_to_world(pt.pos)) {
                                     let d = s.distance(ptr);
-                                    if d <= 14.0 && best.is_none_or(|b| d < b.0) {
-                                        best = Some((d, ci, pi));
+                                    if d <= 14.0 && best_pt.is_none_or(|b| d < b.0) {
+                                        best_pt = Some((d, ci, pi));
                                     }
                                 }
                             }
                         }
-                        if let Some((_, ci, pi)) = best {
-                            st.selected_container = ci;
-                            st.selected_point = Some(pi);
+                        let mut best_disp: Option<(f32, usize)> = None;
+                        if st.show_dispatch {
+                            for (di, pr) in st.group.dispatch.iter().enumerate() {
+                                if let Some(s) = v.project(st.proto_to_world(pr.pos)) {
+                                    let d = s.distance(ptr);
+                                    if d <= 14.0 && best_disp.is_none_or(|b| d < b.0) {
+                                        best_disp = Some((d, di));
+                                    }
+                                }
+                            }
+                        }
+                        match (best_pt, best_disp) {
+                            (Some((dp, ci, pi)), Some((dd, _))) if dp <= dd => {
+                                st.selected_container = ci;
+                                st.selected_point = Some(pi);
+                                st.selected_dispatch = None;
+                            }
+                            (_, Some((_, di))) => {
+                                st.selected_dispatch = Some(di);
+                                st.selected_point = None;
+                            }
+                            (Some((_, ci, pi)), None) => {
+                                st.selected_container = ci;
+                                st.selected_point = Some(pi);
+                                st.selected_dispatch = None;
+                            }
+                            (None, None) => {}
                         }
                     }
                 }
@@ -949,11 +1069,13 @@ fn draw_preview_panel(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_editor_panel(
     st: &mut LootProtoUi,
     ui: &mut egui::Ui,
     total_h: f32,
     limits: &proto::LimitsLists,
+    dispatch_resolved: &[Option<String>],
     save_requested: &mut bool,
     remove_requested: &mut bool,
 ) {
@@ -1152,6 +1274,7 @@ fn draw_editor_panel(
                                             let right = format!("r {:.2} · h {:.2}", pt.range, pt.height);
                                             if list_row(ui, sel, icons::MAP_PIN, container_col, left, &right).clicked() {
                                                 st.selected_point = Some(i);
+                                                st.selected_dispatch = None;
                                             }
                                         }
                                     });
@@ -1196,6 +1319,152 @@ fn draw_editor_panel(
                                     }
                                 });
                             }
+                        }
+                    }
+
+                    // ---- Dispatch proxies section (<dispatch><proxy ... /></dispatch>) ----
+                    let disp_title = format!("{} ({})", icons::with(icons::WRENCH, &t("Dispatch")), st.group.dispatch.len());
+                    section(ui, &disp_title, !st.group.dispatch.is_empty(), |ui| {
+                        row(ui, &t("DE chance"), |ui| {
+                            ui.horizontal(|ui| {
+                                let mut has_dc = st.group.dispatch_dechance.is_some();
+                                if ui.checkbox(&mut has_dc, "").changed() {
+                                    st.group.dispatch_dechance = has_dc.then_some(0.0);
+                                    st.dirty = true;
+                                }
+                                if let Some(dc) = &mut st.group.dispatch_dechance {
+                                    if ui.add(ValueField::new(dc, 0.0..=1.0).step_by(0.05)).changed() {
+                                        st.dirty = true;
+                                    }
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+                        let mut add_disp = false;
+                        let mut dup_disp = false;
+                        let mut del_disp = false;
+                        let has_disp_sel = st.selected_dispatch.is_some_and(|i| i < st.group.dispatch.len());
+                        theme::button_columns(ui, 3, |cols| {
+                            if cols[0].add_sized([cols[0].available_width(), 22.0], egui::Button::new(icons::with(icons::PLUS, &t("Add proxy")))).clicked() {
+                                add_disp = true;
+                            }
+                            if cols[1].add_enabled(has_disp_sel, egui::Button::new(icons::with(icons::COPY, &t("Duplicate"))).min_size(Vec2::new(cols[1].available_width(), 22.0))).clicked() {
+                                dup_disp = true;
+                            }
+                            if cols[2].add_enabled(has_disp_sel, egui::Button::new(icons::with(icons::TRASH, &t("Delete"))).min_size(Vec2::new(cols[2].available_width(), 22.0))).clicked() {
+                                del_disp = true;
+                            }
+                        });
+                        if add_disp {
+                            st.group.dispatch.push(DispatchProxy::default());
+                            st.selected_dispatch = Some(st.group.dispatch.len() - 1);
+                            st.selected_point = None;
+                            st.dirty = true;
+                        }
+                        if dup_disp {
+                            if let Some(i) = st.selected_dispatch {
+                                if let Some(mut copy) = st.group.dispatch.get(i).cloned() {
+                                    copy.pos[0] += 0.25;
+                                    st.group.dispatch.push(copy);
+                                    st.selected_dispatch = Some(st.group.dispatch.len() - 1);
+                                    st.selected_point = None;
+                                    st.dirty = true;
+                                }
+                            }
+                        }
+                        if del_disp {
+                            if let Some(i) = st.selected_dispatch {
+                                if i < st.group.dispatch.len() {
+                                    st.group.dispatch.remove(i);
+                                    st.selected_dispatch = if st.group.dispatch.is_empty() { None } else { Some(i.min(st.group.dispatch.len() - 1)) };
+                                    st.dirty = true;
+                                }
+                            }
+                        }
+                        if !st.group.dispatch.is_empty() {
+                            ui.add_space(4.0);
+                            egui::Frame::new()
+                                .fill(theme::PANEL)
+                                .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                                .corner_radius(3.0)
+                                .inner_margin(egui::Margin::same(2))
+                                .show(ui, |ui| {
+                                    egui::ScrollArea::vertical().id_salt("loot_proto_dispatch_list").max_height(130.0).show(ui, |ui| {
+                                        for (i, pr) in st.group.dispatch.iter().enumerate() {
+                                            let sel = st.selected_dispatch == Some(i);
+                                            let label = if pr.kind.trim().is_empty() {
+                                                format!("#{} ({})", i + 1, t("None"))
+                                            } else {
+                                                format!("#{} {}", i + 1, pr.kind)
+                                            };
+                                            let right = format!("{:.2}, {:.2}, {:.2}", pr.pos[0], pr.pos[1], pr.pos[2]);
+                                            if list_row(ui, sel, icons::WRENCH, Color32::from_rgb(235, 130, 60), label, &right).clicked() {
+                                                st.selected_dispatch = Some(i);
+                                                st.selected_point = None;
+                                            }
+                                        }
+                                    });
+                                });
+                        }
+                    });
+
+                    // ---- Selected dispatch proxy inspector ----
+                    if let Some(di) = st.selected_dispatch {
+                        if let Some(pr) = st.group.dispatch.get_mut(di) {
+                            let title = icons::with(icons::WRENCH, &tf("Dispatch proxy #{0}", &[&(di + 1).to_string()]));
+                            section(ui, &title, true, |ui| {
+                                row(ui, &t("Class (type)"), |ui| {
+                                    if ui.add_sized([ui.available_width(), 22.0], egui::TextEdit::singleline(&mut pr.kind)).changed() {
+                                        st.dirty = true;
+                                    }
+                                });
+                                match dispatch_resolved.get(di).and_then(|o| o.as_deref()) {
+                                    Some(p) => {
+                                        let file = p.rsplit('\\').next().unwrap_or(p);
+                                        ui.colored_label(Color32::from_rgb(120, 215, 145), format!("{}  {file}", icons::CHECK));
+                                    }
+                                    None if !pr.kind.trim().is_empty() => {
+                                        ui.colored_label(theme::WARN, t("Model not found in CfgVehicles"));
+                                    }
+                                    None => {}
+                                }
+                                let before_pos = pr.pos;
+                                let (mut x, mut y, mut z) = (pr.pos[0], pr.pos[1], pr.pos[2]);
+                                vector_row(ui, &t("Position (X, Y, Z)"), &mut [
+                                    (&mut x, 0.02, theme::AXIS[0], "X".into()),
+                                    (&mut y, 0.02, theme::AXIS[1], "Y".into()),
+                                    (&mut z, 0.02, theme::AXIS[2], "Z".into()),
+                                ]);
+                                pr.pos = [x, y, z];
+                                if pr.pos != before_pos {
+                                    st.dirty = true;
+                                }
+                                let before_rpy = pr.rpy;
+                                let (mut r, mut p, mut yw) = (pr.rpy[0], pr.rpy[1], pr.rpy[2]);
+                                vector_row(ui, &t("Rotation (R, P, Y)"), &mut [
+                                    (&mut r, 0.5, theme::AXIS[0], "R".into()),
+                                    (&mut p, 0.5, theme::AXIS[1], "P".into()),
+                                    (&mut yw, 0.5, theme::AXIS[2], "Y".into()),
+                                ]);
+                                pr.rpy = [r, p, yw];
+                                if pr.rpy != before_rpy {
+                                    st.dirty = true;
+                                }
+                                row(ui, &t("DE chance"), |ui| {
+                                    ui.horizontal(|ui| {
+                                        let mut has_dc = pr.dechance.is_some();
+                                        if ui.checkbox(&mut has_dc, "").changed() {
+                                            pr.dechance = has_dc.then_some(0.0);
+                                            st.dirty = true;
+                                        }
+                                        if let Some(dc) = &mut pr.dechance {
+                                            if ui.add(ValueField::new(dc, 0.0..=1.0).step_by(0.05)).changed() {
+                                                st.dirty = true;
+                                            }
+                                        }
+                                    });
+                                });
+                            });
                         }
                     }
                 });

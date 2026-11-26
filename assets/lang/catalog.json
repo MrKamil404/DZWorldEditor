@@ -10854,5 +10854,33 @@
  "{0} converted to a brush modifier": {
   "de": "{0} in einen Pinsel-Modifikator umgewandelt",
   "pl": "Zamieniono {0} na modyfikator pędzla"
+ },
+ "Dispatch": {
+  "de": "Dispatch",
+  "pl": "Dispatch"
+ },
+ "DE chance": {
+  "de": "DE-Chance",
+  "pl": "Szansa DE"
+ },
+ "Add proxy": {
+  "de": "Proxy hinzufügen",
+  "pl": "Dodaj proxy"
+ },
+ "Dispatch proxy #{0}": {
+  "de": "Dispatch-Proxy #{0}",
+  "pl": "Proxy dispatch #{0}"
+ },
+ "Class (type)": {
+  "de": "Klasse (type)",
+  "pl": "Klasa (type)"
+ },
+ "Model not found in CfgVehicles": {
+  "de": "Modell nicht in CfgVehicles gefunden",
+  "pl": "Nie znaleziono modelu w CfgVehicles"
+ },
+ "Rotation (R, P, Y)": {
+  "de": "Drehung (R, P, Y)",
+  "pl": "Obrót (R, P, Y)"
  }
 }
