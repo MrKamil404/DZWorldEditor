@@ -4803,9 +4803,17 @@
   "de": "Führt alle bereiten Änderungen der Reihe nach zusammen. Änderungen ohne Konflikte werden automatisch übernommen; gefragt wird nur bei Konflikten.",
   "pl": "Scala wszystkie gotowe zmiany po kolei. Zmiany bez konfliktów wchodzą automatycznie; okno otworzy się tylko tam, gdzie wystąpi konflikt."
  },
+ "Most used": {
+  "de": "Häufigste",
+  "pl": "Najczęstsza"
+ },
  "Most used surface on tile": {
   "de": "Häufigste Oberfläche der Kachel",
   "pl": "Najczęstsza powierzchnia kafelka"
+ },
+ "Nearest": {
+  "de": "Nächste",
+  "pl": "Najbliższa"
  },
  "Nearest kept surface": {
   "de": "Nächste behaltene Oberfläche",
@@ -4814,6 +4822,10 @@
  "Needs earlier changes on the list to be merged first. Use Merge all.": {
   "de": "Erfordert zuerst das Zusammenführen früherer Änderungen aus der Liste. Nutze Alle zusammenführen.",
   "pl": "Wymaga najpierw scalenia wcześniejszych zmian z listy. Użyj Scal wszystkie."
+ },
+ "Project": {
+  "de": "Projekt",
+  "pl": "Projekt"
  },
  "Protect": {
   "de": "Schützen",
@@ -4847,9 +4859,25 @@
   "de": "Zieloberfläche",
   "pl": "Powierzchnia docelowa"
  },
+ "Terrain summary": {
+  "de": "Geländeübersicht",
+  "pl": "Podsumowanie terenu"
+ },
+ "Tile grid": {
+  "de": "Kachelraster",
+  "pl": "Siatka kafelków"
+ },
+ "Tile surfaces": {
+  "de": "Kacheloberflächen",
+  "pl": "Powierzchnie kafelków"
+ },
  "Tile {0} surfaces": {
   "de": "Oberflächen der Kachel {0}",
   "pl": "Powierzchnie kafelka {0}"
+ },
+ "Tiles over the limit": {
+  "de": "Kacheln über dem Limit",
+  "pl": "Kafelki ponad limit"
  },
  "Waiting for an earlier version": {
   "de": "Wartet auf eine frühere Version",
