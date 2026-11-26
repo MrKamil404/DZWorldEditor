@@ -1464,6 +1464,9 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
     let mut action: Option<(u64, u8)> = None;
     let mut fly = None;
     let mut reorder: Option<(u64, usize)> = None;
+    let mut rename: Option<(u64, String)> = None;
+    let mut start_rename: Option<(u64, String)> = None;
+    let mut cancel_rename = false;
     let total = app.doc.as_ref().map(|d| d.world.generators.len()).unwrap_or(0);
     for (id, name, kind, count) in rows.iter().filter(|r| r.1.to_ascii_lowercase().contains(filter)) {
         let vec_idx = app.doc.as_ref().and_then(|d| d.world.generators.iter().position(|g| g.id == *id)).unwrap_or(0);
@@ -1472,11 +1475,26 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
             if filter.is_empty() && total > 1 {
                 crate::theme::drag_grip(ui, crate::theme::OutlinerDrag::Generator(*id), &t("Drag to reorder"));
             }
+            if let Some((_, text)) = app.outliner_rename.as_mut().filter(|(t, _)| *t == crate::app::OutlinerRenameTarget::Generator(*id)) {
+                let edit = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+                edit.request_focus();
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    cancel_rename = true;
+                } else if edit.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    rename = Some((*id, text.clone()));
+                }
+                return;
+            }
             let row = crate::theme::list_row(ui, app.selected_generator == Some(*id), crate::icons::MAGIC_WAND, crate::theme::KIND_GENERATOR, format!("{name}  ·  {}", t(kind)), &count.to_string());
             if row.clicked() { action = Some((*id, 0)); }
             row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 let spot = app.doc.as_ref().and_then(|d| dz_core::goto::generator_spot(&d.world, d.world.generators.iter().find(|g| g.id == *id)?));
                 if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                if ui.button(crate::icons::with(crate::icons::PENCIL_SIMPLE, &t("Rename"))).clicked() {
+                    let raw = app.doc.as_ref().and_then(|d| d.world.generators.iter().find(|g| g.id == *id)).map(|g| g.name.clone()).unwrap_or_default();
+                    start_rename = Some((*id, raw));
+                    ui.close_menu();
+                }
                 if total > 1 {
                     if ui.add_enabled(vec_idx > 0, egui::Button::new(crate::icons::with(crate::icons::ARROW_UP, &t("Move up")))).clicked() { reorder = Some((*id, vec_idx - 1)); ui.close_menu(); }
                     if ui.add_enabled(vec_idx + 1 < total, egui::Button::new(crate::icons::with(crate::icons::ARROW_DOWN, &t("Move down")))).clicked() { reorder = Some((*id, vec_idx + 1)); ui.close_menu(); }
@@ -1498,6 +1516,25 @@ pub fn outliner_rows(app: &mut App, ui: &mut egui::Ui, rows: &[(u64, String, &'s
                 }
             }
         }
+    }
+    if cancel_rename {
+        app.outliner_rename = None;
+    } else if let Some((id, new_name)) = rename {
+        app.outliner_rename = None;
+        let trimmed = new_name.trim();
+        if !trimmed.is_empty() {
+            if let Some(d) = app.doc.as_mut() {
+                let before = d.world.generators.clone();
+                if let Some(g) = d.world.generators.iter_mut().find(|g| g.id == id) {
+                    if g.name != trimmed {
+                        g.name = trimmed.to_string();
+                        d.history.push(t("Rename"), dz_core::edit::Change::Generators(before));
+                    }
+                }
+            }
+        }
+    } else if let Some((id, raw)) = start_rename {
+        app.outliner_rename = Some((crate::app::OutlinerRenameTarget::Generator(id), raw));
     }
     if let Some((id, to_idx)) = reorder {
         if let Some(d) = app.doc.as_mut() {

@@ -2223,6 +2223,10 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut select_modifier = None;
     let mut toggle_modifier: Option<(u64, bool)> = None;
     let mut move_modifier: Option<(u64, usize)> = None;
+    let mut rename_modifier: Option<(u64, String)> = None;
+    let mut rename_route: Option<(usize, String)> = None;
+    let mut start_outliner_rename: Option<(crate::app::OutlinerRenameTarget, String)> = None;
+    let mut cancel_outliner_rename = false;
     let mut move_shape_layer: Option<(usize, usize)> = None;
     let mut fly: Option<dz_core::goto::Spot> = None;
     let mut select_keypoint = None;
@@ -2245,6 +2249,16 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                     if theme::row_switch(ui, *enabled, icons::EYE, icons::EYE_SLASH, t("Visible")).clicked() {
                         toggle_modifier = Some((*id, !*enabled));
                     }
+                    if let Some((_, text)) = app.outliner_rename.as_mut().filter(|(t, _)| *t == crate::app::OutlinerRenameTarget::TerrainMod(*id)) {
+                        let edit = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+                        edit.request_focus();
+                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            cancel_outliner_rename = true;
+                        } else if edit.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            rename_modifier = Some((*id, text.clone()));
+                        }
+                        return;
+                    }
                     let label = if *enabled { RichText::new(name.as_str()) } else { RichText::new(name.as_str()).weak() };
                     let row = theme::list_row(ui, app.selected_modifier == Some(*id), icons::MOUNTAINS, if *enabled { theme::KIND_TERRAIN } else { theme::TEXT_DIM }, label, "");
                     if row.clicked() { select_modifier = Some(*id); }
@@ -2252,6 +2266,11 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                         let spot = app.doc.as_ref().and_then(|d| d.world.modifiers.iter().find(|m| m.id == *id)).map(dz_core::goto::modifier_spot);
                         if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                        if ui.button(icons::with(icons::PENCIL_SIMPLE, &t("Rename"))).clicked() {
+                            let raw = app.doc.as_ref().and_then(|d| d.world.modifiers.iter().find(|m| m.id == *id)).map(|m| m.name.clone()).unwrap_or_default();
+                            start_outliner_rename = Some((crate::app::OutlinerRenameTarget::TerrainMod(*id), raw));
+                            ui.close_menu();
+                        }
                         if total_mods > 1 {
                             if ui.add_enabled(vec_idx + 1 < total_mods, egui::Button::new(icons::with(icons::ARROW_UP, &t("Move up")))).clicked() {
                                 move_modifier = Some((*id, vec_idx + 1));
@@ -2285,12 +2304,26 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
         });
         outliner_section(fold, "Routes", icons::with(icons::ROAD_HORIZON, &tf("Routes ({0})", &[&routes.len().to_string()])), routes.len() == 0).show(ui, |ui| {
             for (i, name, family) in routes.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
+                if let Some((_, text)) = app.outliner_rename.as_mut().filter(|(t, _)| *t == crate::app::OutlinerRenameTarget::Route(*i)) {
+                    let edit = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+                    edit.request_focus();
+                    if ui.input(|k| k.key_pressed(egui::Key::Escape)) {
+                        cancel_outliner_rename = true;
+                    } else if edit.lost_focus() || ui.input(|k| k.key_pressed(egui::Key::Enter)) {
+                        rename_route = Some((*i, text.clone()));
+                    }
+                    continue;
+                }
                 let row = theme::list_row(ui, app.line.selected_route == Some(*i), icons::ROAD_HORIZON, theme::KIND_ROAD, name.as_str(), family);
                 if row.clicked() { select_route = Some(*i); }
                 row.context_menu(|ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                     let spot = app.doc.as_ref().and_then(|d| d.world.routes.get(*i)).and_then(dz_core::goto::route_spot);
                     if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                    if ui.button(icons::with(icons::PENCIL_SIMPLE, &t("Rename"))).clicked() {
+                        start_outliner_rename = Some((crate::app::OutlinerRenameTarget::Route(*i), name.clone()));
+                        ui.close_menu();
+                    }
                     if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); }
                     crate::team_ui::author_menu(app, ui, route_ids[*i]);
                 });
@@ -2555,6 +2588,42 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                 app.shape_open = app.shape_open.iter().map(|&l| dz_core::world::remap_moved_index(l, from, to)).collect();
             }
         }
+    }
+    if cancel_outliner_rename {
+        app.outliner_rename = None;
+    }
+    if let Some((id, new_name)) = rename_modifier {
+        app.outliner_rename = None;
+        let trimmed = new_name.trim();
+        if !trimmed.is_empty() {
+            if let Some(d) = &mut app.doc {
+                let before = d.world.modifiers.clone();
+                if let Some(m) = d.world.modifiers.iter_mut().find(|m| m.id == id) {
+                    if m.name != trimmed {
+                        m.name = trimmed.to_string();
+                        d.history.push(t("Rename"), dz_core::edit::Change::Modifiers(before));
+                    }
+                }
+            }
+        }
+    }
+    if let Some((idx, new_name)) = rename_route {
+        app.outliner_rename = None;
+        let trimmed = new_name.trim();
+        if !trimmed.is_empty() {
+            if let Some(d) = &mut app.doc {
+                let before = d.world.routes.clone();
+                if let Some(r) = d.world.routes.get_mut(idx) {
+                    if r.name != trimmed {
+                        r.name = trimmed.to_string();
+                        d.history.push(t("Rename"), dz_core::edit::Change::Routes(before));
+                    }
+                }
+            }
+        }
+    }
+    if start_outliner_rename.is_some() {
+        app.outliner_rename = start_outliner_rename;
     }
 }
 

@@ -612,7 +612,7 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
     let rows: Vec<(u32, usize, String, bool, SatKind, u8)> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter().enumerate()
         .filter(|(_, m)| crate::team_ui::shown(app, d.world.sat_mod_author(m.id)))
         .map(|(idx, m)| (m.id, idx, crate::team_ui::with_author(team, &m.name, d.world.sat_mod_author(m.id)), m.enabled, m.kind, m.opacity)).collect()).unwrap_or_default();
-    let (mut toggle, mut delete, mut merge, mut reorder, mut convert) = (None, None, None, None::<(u32, usize)>, None::<(u32, String)>);
+    let (mut toggle, mut delete, mut merge, mut reorder, mut convert, mut rename, mut start_rename, mut cancel_rename) = (None, None, None, None::<(u32, usize)>, None::<(u32, String)>, None::<(u32, String)>, None::<(u32, String)>, false);
     let can_merge: std::collections::HashSet<u32> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter().filter(|m| d.world.sat_merge_target(m.id).is_some()).map(|m| m.id).collect()).unwrap_or_default();
     crate::panels::outliner_section(fold, "Satellite modifiers", crate::icons::with(crate::icons::IMAGE, &tf("Satellite modifiers ({0})", &[&rows.len().to_string()])), rows.len() == 0).show(ui, |ui| {
         for (id, vec_idx, name, enabled, kind, opacity) in rows.iter().rev().filter(|r| r.2.to_lowercase().contains(filter)) {
@@ -625,6 +625,16 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                 if crate::theme::row_switch(ui, *enabled, crate::icons::EYE, crate::icons::EYE_SLASH, t("Visible")).clicked() {
                     toggle = Some((*id, !*enabled));
                 }
+                if let Some((_, text)) = app.outliner_rename.as_mut().filter(|(t, _)| *t == crate::app::OutlinerRenameTarget::SatMod(*id)) {
+                    let edit = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+                    edit.request_focus();
+                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        cancel_rename = true;
+                    } else if edit.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        rename = Some((*id, text.clone()));
+                    }
+                    return;
+                }
                 let icon = if kind.is_brush() { crate::icons::PAINT_BRUSH } else if *kind == SatKind::Correct { crate::icons::SLIDERS_HORIZONTAL } else { crate::icons::IMAGE };
                 let tint = if *enabled { crate::theme::KIND_IMAGE } else { crate::theme::TEXT_DIM };
                 let label = if *enabled { egui::RichText::new(name.as_str()) } else { egui::RichText::new(name.as_str()).weak() };
@@ -635,6 +645,11 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                 }
                 row.context_menu(|ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    if ui.button(crate::icons::with(crate::icons::PENCIL_SIMPLE, &t("Rename"))).clicked() {
+                        let raw = app.doc.as_ref().and_then(|d| d.world.sat.modifiers.iter().find(|m| m.id == *id)).map(|m| m.name.clone()).unwrap_or_default();
+                        start_rename = Some((*id, raw));
+                        ui.close_menu();
+                    }
                     if total > 1 {
                         if ui.add_enabled(*vec_idx + 1 < total, egui::Button::new(crate::icons::with(crate::icons::ARROW_UP, &t("Move up")))).clicked() {
                             reorder = Some((*id, *vec_idx + 1));
@@ -683,6 +698,31 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
             }
         }
     });
+    if cancel_rename {
+        app.outliner_rename = None;
+        return;
+    }
+    if let Some((id, new_name)) = rename {
+        app.outliner_rename = None;
+        let trimmed = new_name.trim();
+        if !trimmed.is_empty() {
+            if let Some(d) = app.doc.as_mut() {
+                let before = d.world.sat.modifiers.clone();
+                if let Some(m) = d.world.sat.modifiers.iter_mut().find(|m| m.id == id) {
+                    if m.name != trimmed {
+                        m.name = trimmed.to_string();
+                        d.history.push(t("Rename"), Change::Satellite(before));
+                        d.dirty.satellite = true;
+                    }
+                }
+            }
+        }
+        return;
+    }
+    if let Some((id, raw)) = start_rename {
+        app.outliner_rename = Some((crate::app::OutlinerRenameTarget::SatMod(id), raw));
+        return;
+    }
     if let Some((id, name)) = convert {
         app.dialog = crate::app::Dialog::ConvertToBrush { kind: crate::app::ConvertKind::Satellite, id, name };
         return;
