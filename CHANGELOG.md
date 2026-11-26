@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.4.2
+
+### New
+
+- **Outliner layer & modifier management upgrades.**
+  - **Drag-and-drop reordering with real stacking order**: drag terrain, mask, and satellite
+    modifiers, object layers, routes, and generators up or down in the Outliner. Reordering
+    modifiers immediately changes how they stack on top of each other (higher in the list draws on
+    top) and supports Undo/Redo.
+  - **Inline renaming**: double-click or right-click (**Rename**) any terrain, mask, or satellite
+    modifier, generator, or route in the Outliner to give it a custom name. Renamed items are saved
+    in the project and shared in Team Work.
+  - **Convert mask & satellite modifiers to editable brush**: right-click a generated modifier
+    (such as surface under objects, baked objects, or painted water) or click **Convert to brush**
+    in its details panel to bake it into a hand-editable brush layer, with a clear confirmation
+    warning that its generator settings will no longer be editable afterward.
+  - **Cleaner Outliner rows**: quick eye visibility toggles, type badges, and consistent hover and
+    selection styling across all Outliner sections.
+- **3D `<dispatch>` proxy editor in Loot points (`mapgroupproto.xml`).**
+  - Edit `<dispatch>` groups (`DE chance`) and `<proxy>` items (car wheels, doors, hoods, trunks,
+    etc.) directly inside the 3D Loot points window, with live 3D GPU preview of each proxy model
+    resolved from `CfgVehicles` (toggleable via **Dispatch** in the toolbar).
+  - **3D Move & Rotate gizmos**: click a proxy in 3D or in the list to move it along **X / Y / Z**
+    or switch to **Rotate** (`R` or toolbar button) to turn it with **Pitch / Yaw / Roll** rings
+    (with **Shift** 5° angle snapping and live degree readout).
+  - **Alt precision mode**: hold **Alt** while dragging any gizmo handle (move, rotate, range, or
+    height) to slow movement 5× for fine placement, matching the main 3D map viewport.
+- **Minimize, Maximize, and Pop-out buttons on popup windows.**
+  - Floating editor windows (**Loot points**, **Mission editor**, **Map config**, **Project
+    settings**, **Map check**, **Road catalog**, **Material**, **Surface**, **Team work**, **Merge**,
+    and **Keyboard shortcuts**) now have **Pop-out** (detach into an independent OS window for
+    multi-monitor setups), **Minimize** (collapse to title bar), and **Maximize / Restore** buttons
+    right next to Close (`X`), plus double-click on the title bar to maximize or restore.
+
+### Fixed
+
+- **Team Work visual diff legend placement.** Moved the Team Work change-summary pill to the
+  top-center of the 3D viewport so it no longer hides behind the bottom-left minimap.
+
+### Good to know
+
+- Projects from 0.4.1 and earlier open in 0.4.2, and projects saved in 0.4.2 open in 0.4.1 as well.
+  Custom modifier names and converted brush layers are stored in the standard project fields and
+  sync across Team Work.
+
 ## 0.4.1
 
 ### New
