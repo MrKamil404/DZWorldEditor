@@ -1329,7 +1329,7 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
         layer_list(app, ui);
         ui.add_space(4.0);
         theme::button_columns(ui, 2, |c| {
-            c[0].with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+            c[0].with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                 add_layer_menu(app, ui);
             });
             let w1 = c[1].available_width();
