@@ -7,6 +7,7 @@ on:
       - 'docs/**'
       - 'site/**'
       - 'CHANGELOG.md'
+      - 'Cargo.toml'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 

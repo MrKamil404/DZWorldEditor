@@ -1,5 +1,9 @@
 import { defineConfig } from 'vitepress'
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
+
+const cargoToml = readFileSync(new URL('../../Cargo.toml', import.meta.url), 'utf8')
+const appVersion = cargoToml.match(/^\s*version\s*=\s*"([^"]+)"/m)?.[1] ?? '0.4.2'
 
 export default defineConfig({
   title: 'DZ World Editor',
@@ -13,6 +17,9 @@ export default defineConfig({
   ignoreDeadLinks: [/README$/, /^\.\/docs\//],
 
   vite: {
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+    },
     resolve: {
       alias: {
         vue: fileURLToPath(new URL('../node_modules/vue', import.meta.url)),

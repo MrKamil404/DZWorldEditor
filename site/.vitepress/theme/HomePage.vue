@@ -2,6 +2,9 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { withBase } from 'vitepress'
 
+declare const __APP_VERSION__: string
+const appVersion = __APP_VERSION__.replace('+', '.')
+
 import townImg from '../../../docs/screenshots/town.jpg'
 import splitImg from '../../../docs/screenshots/split.jpg'
 import map2dImg from '../../../docs/screenshots/map2d.jpg'
@@ -295,7 +298,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
       <div class="dz-container">
         <div class="dz-hero-top">
           <div class="dz-badges">
-            <span class="dz-badge dz-badge-accent">v0.4.1</span>
+            <span class="dz-badge dz-badge-accent">v{{ appVersion }}</span>
             <span class="dz-badge">Windows 10 / 11</span>
             <span class="dz-badge">OpenGL 3.3</span>
             <span class="dz-badge">Written in Rust</span>
