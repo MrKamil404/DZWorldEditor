@@ -1010,9 +1010,10 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
         let close_top = v.ortho && app.settings.top_models && v.mpp < 1.5;
         if !v.ortho || close_top {
             let half = (v.rect.width().max(v.rect.height()) * v.mpp * 0.75).max(10.0);
+            let max_d = app.settings.mission_draw_distance;
             for gh in &g.list {
                 let d = ((gh.x - v.eye[0]).powi(2) + (gh.z - v.eye[2]).powi(2)).sqrt();
-                if if v.ortho { (gh.x - v.eye[0]).abs() > half || (gh.z - v.eye[2]).abs() > half } else { d > 2500.0 } {
+                if if v.ortho { (gh.x - v.eye[0]).abs() > half || (gh.z - v.eye[2]).abs() > half } else { d > max_d } {
                     continue;
                 }
                 let info = &g.infos[gh.model as usize];

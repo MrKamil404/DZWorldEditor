@@ -4,7 +4,7 @@
 use crate::app::{App, Mode};
 use crate::i18n::{t, tf};
 use crate::icons;
-use crate::theme::{self, row, section, tool_button};
+use crate::theme::{self, row, section};
 use dz_core::edit::Change;
 use dz_core::mission::places::{self, Place, PlaceKind, PlaceRef};
 use dz_core::mission::xml::{Element, Node};
@@ -34,7 +34,6 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 16] = [Tab::Overview, Tab::Types, Tab::Events, Tab::Spawnable, Tab::Players, Tab::Territories, Tab::Areas, Tab::Weather, Tab::Economy, Tab::Gameplay, Tab::Messages, Tab::MapGroups, Tab::Flags, Tab::Init, Tab::Files, Tab::Check];
     pub fn title(self) -> String {
         match self {
             Tab::Overview => t("Overview"),
@@ -123,6 +122,31 @@ impl MapTool {
             MapTool::Trigger => t("Underground trigger"),
             MapTool::Flags => t("Paint area flags"),
         }
+    }
+    fn icon_and_tint(self) -> (&'static str, Color32) {
+        match self {
+            MapTool::Select => (icons::CURSOR_CLICK, theme::TEXT_BRIGHT),
+            MapTool::EventSpawn => (icons::LIGHTNING, kind_color(PlaceKind::EventSpawn)),
+            MapTool::PlayerSpawn => (icons::PERSON_SIMPLE_WALK, kind_color(PlaceKind::PlayerSpawn)),
+            MapTool::Zone => (icons::PAW_PRINT, kind_color(PlaceKind::Territory)),
+            MapTool::Area => (icons::RADIOACTIVE, kind_color(PlaceKind::EffectArea)),
+            MapTool::SafePosition => (icons::SHIELD_CHECK, kind_color(PlaceKind::SafePosition)),
+            MapTool::Trigger => (icons::CUBE, kind_color(PlaceKind::Trigger)),
+            MapTool::Flags => (icons::PAINT_BRUSH, theme::KIND_LAYER),
+        }
+    }
+}
+
+fn kind_icon(k: PlaceKind) -> &'static str {
+    match k {
+        PlaceKind::EventSpawn => icons::LIGHTNING,
+        PlaceKind::PlayerSpawn => icons::PERSON_SIMPLE_WALK,
+        PlaceKind::Territory => icons::PAW_PRINT,
+        PlaceKind::EffectArea => icons::RADIOACTIVE,
+        PlaceKind::SafePosition => icons::SHIELD_CHECK,
+        PlaceKind::Trigger => icons::CUBE,
+        PlaceKind::Breadcrumb => icons::DOTS_THREE,
+        PlaceKind::MapGroup => icons::BUILDINGS,
     }
 }
 
@@ -391,19 +415,32 @@ pub fn new_mission_from_game(app: &mut App, world: &str) {
 }
 
 /// Buttons that make a new mission: an empty one, or one with the economy of a game world.
-fn new_mission_buttons(app: &mut App, ui: &mut egui::Ui) {
-    if ui.button(icons::with(icons::FILE_PLUS, &t("New mission for this map"))).on_hover_text(t("Every file a server reads, with an empty economy.")).clicked() { new_mission(app); }
+fn new_mission_buttons(app: &mut App, ui: &mut egui::Ui, full_width: bool) {
+    let w = if full_width { ui.available_width() } else { 0.0 };
+    let primary = egui::Button::new(RichText::new(icons::with(icons::FILE_PLUS, &t("New mission for this map"))).color(Color32::WHITE))
+        .fill(theme::ACCENT)
+        .stroke(Stroke::NONE)
+        .min_size(vec2(w, 24.0));
+    if ui.add(primary).on_hover_text(t("Every file a server reads, with an empty economy.")).clicked() { new_mission(app); }
     let worlds = mission::templates::game_economies(&app.settings.tools.work_drive);
     if !worlds.is_empty() {
-        ui.menu_button(icons::with(icons::FILE_PLUS, &t("New mission with the economy of the game")), |ui| {
-            ui.weak(t("Its loot, events and settings; loot in the buildings of this map and infected at its villages and towns."));
-            for w in worlds {
-                if ui.button(&w).clicked() {
-                    ui.close_menu();
-                    new_mission_from_game(app, &w);
+        let mut show_menu = |ui: &mut egui::Ui| {
+            ui.spacing_mut().interact_size.y = 24.0;
+            ui.menu_button(icons::with(icons::FILE_PLUS, &t("New mission with the economy of the game")), |ui| {
+                ui.weak(t("Its loot, events and settings; loot in the buildings of this map and infected at its villages and towns."));
+                for w in &worlds {
+                    if ui.button(w).clicked() {
+                        ui.close_menu();
+                        new_mission_from_game(app, w);
+                    }
                 }
-            }
-        });
+            });
+        };
+        if full_width {
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), show_menu);
+        } else {
+            show_menu(ui);
+        }
     }
 }
 
@@ -472,57 +509,116 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     }
     if mission(app).is_none() {
         section(ui, &icons::with(icons::FLAG_BANNER, &t("Mission")), true, |ui| {
-            ui.label(t("The project has no server mission yet."));
-            ui.weak(t("A mission holds the economy, spawns, territories and settings the server reads from mpmissions."));
-            ui.add_space(4.0);
-            new_mission_buttons(app, ui);
-            if ui.button(icons::with(icons::FOLDER_OPEN, &t("Import a mission..."))).on_hover_text(t("Reads a mission folder as it is, for this map or another.")).clicked() { import(app, false); }
-            if ui.button(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Adapt a mission of another map..."))).on_hover_text(t("Keeps the economy of the mission and drops what was placed on the other map: spawns, zones, areas, map groups and area flags.")).clicked() { import(app, true); }
+            theme::card(ui, theme::BORDER, |ui| {
+                let mut job = egui::text::LayoutJob::default();
+                job.append(icons::FLAG_BANNER, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(14.0), color: theme::TEXT_DIM, ..Default::default() });
+                job.append(&t("The project has no server mission yet."), 6.0, egui::TextFormat { font_id: icons::strong(13.0), color: theme::TEXT_BRIGHT, ..Default::default() });
+                ui.add(egui::Label::new(job).wrap());
+                ui.add(egui::Label::new(RichText::new(t("A mission holds the economy, spawns, territories and settings the server reads from mpmissions.")).small().color(theme::TEXT_DIM)).wrap());
+            });
+            ui.add_space(6.0);
+            new_mission_buttons(app, ui, true);
+            let w = ui.available_width();
+            if ui.add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Import a mission..."))).min_size(vec2(w, 24.0))).on_hover_text(t("Reads a mission folder as it is, for this map or another.")).clicked() { import(app, false); }
+            if ui.add(egui::Button::new(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Adapt a mission of another map..."))).min_size(vec2(w, 24.0))).on_hover_text(t("Keeps the economy of the mission and drops what was placed on the other map: spawns, zones, areas, map groups and area flags.")).clicked() { import(app, true); }
         });
         return;
     }
     let (name, files, dirty) = mission(app).map(|m| (m.name.clone(), m.files.len(), m.files.values().filter(|f| f.dirty).count())).unwrap();
     section(ui, &icons::with(icons::FLAG_BANNER, &t("Mission")), true, |ui| {
-        ui.label(RichText::new(&name).strong());
-        ui.weak(tf("{0} files, {1} changed since saved", &[&files.to_string(), &dirty.to_string()]));
-        ui.horizontal_wrapped(|ui| {
-            if ui.button(icons::with(icons::APP_WINDOW, &t("Mission editor"))).clicked() { app.mission.open = true; }
-            if ui.button(icons::with(icons::EXPORT, &t("Export..."))).clicked() { export(app); }
+        theme::card(ui, if dirty > 0 { theme::ACCENT.gamma_multiply(0.7) } else { theme::BORDER }, |ui| {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(icons::FLAG_BANNER, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(14.0), color: theme::ACCENT, ..Default::default() });
+            job.append(&name, 6.0, egui::TextFormat { font_id: icons::strong(13.5), color: theme::TEXT_BRIGHT, ..Default::default() });
+            ui.add(egui::Label::new(job).truncate());
+            ui.label(RichText::new(tf("{0} files, {1} changed since saved", &[&files.to_string(), &dirty.to_string()])).small().color(if dirty > 0 { theme::WARN } else { theme::TEXT_DIM }));
+        });
+        ui.add_space(4.0);
+        theme::button_columns(ui, 2, |c| {
+            let w0 = c[0].available_width();
+            let open_btn = egui::Button::new(RichText::new(icons::with(icons::APP_WINDOW, &t("Mission editor"))).color(Color32::WHITE))
+                .fill(theme::ACCENT)
+                .stroke(Stroke::NONE)
+                .min_size(vec2(w0, 24.0));
+            if c[0].add(open_btn).clicked() { app.mission.open = true; }
+            let w1 = c[1].available_width();
+            if c[1].add(egui::Button::new(icons::with(icons::EXPORT, &t("Export..."))).min_size(vec2(w1, 24.0))).clicked() { export(app); }
         });
     });
     section(ui, &icons::with(icons::STACK, &t("Show on the map")), true, |ui| {
-        for k in PlaceKind::ALL {
-            let mut on = app.mission.shown.contains(&k);
-            ui.horizontal(|ui| {
-                let (r, _) = ui.allocate_exact_size(vec2(10.0, 10.0), egui::Sense::hover());
-                ui.painter().circle_filled(r.center(), 4.5, kind_color(k));
-                if ui.checkbox(&mut on, t(k.label())).changed() {
-                    if on { app.mission.shown.insert(k); } else { app.mission.shown.remove(&k); }
+        egui::Frame::new()
+            .fill(theme::DARK)
+            .stroke(Stroke::new(1.0_f32, theme::BORDER))
+            .corner_radius(4)
+            .inner_margin(egui::Margin::same(4))
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                for (i, k) in PlaceKind::ALL.into_iter().enumerate() {
+                    let mut on = app.mission.shown.contains(&k);
+                    let bg = if i % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
+                    egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(5, 2)).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let (r, _) = ui.allocate_exact_size(vec2(10.0, 18.0), egui::Sense::hover());
+                            ui.painter().circle_filled(r.center(), 4.5, if on { kind_color(k) } else { kind_color(k).gamma_multiply(0.4) });
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.checkbox(&mut on, "").changed() {
+                                    if on { app.mission.shown.insert(k); } else { app.mission.shown.remove(&k); }
+                                }
+                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                    let lbl = ui.add(egui::Label::new(RichText::new(t(k.label())).color(if on { theme::TEXT } else { theme::TEXT_DIM })).truncate().sense(egui::Sense::click()));
+                                    if lbl.clicked() {
+                                        if on { app.mission.shown.remove(&k); } else { app.mission.shown.insert(k); }
+                                    }
+                                });
+                            });
+                        });
+                    });
                 }
             });
+        ui.add_space(4.0);
+        theme::check_row(ui, &mut app.mission.show_flags, t("Area flags (2D view)"));
+        theme::check_row(ui, &mut app.mission.show_models, t("Objects of event groups as models")).on_hover_text(t("Every object a static event places is drawn as its model at each spawn; the class gives the model through the configs of the work drive."));
+        let before_dist = app.settings.mission_draw_distance;
+        row(ui, &t("3D view distance"), |ui| {
+            ui.add(theme::ValueField::new(&mut app.settings.mission_draw_distance, 50.0..=15000.0).logarithmic(true).suffix(" m"))
+                .on_hover_text(t("How far from the camera mission points are drawn in the 3D view. Lower values keep the view smooth when a mission has hundreds of points."));
+        });
+        if app.settings.mission_draw_distance != before_dist {
+            app.settings.save();
         }
-        ui.checkbox(&mut app.mission.show_flags, t("Area flags (2D view)"));
-        ui.checkbox(&mut app.mission.show_models, t("Objects of event groups as models")).on_hover_text(t("Every object a static event places is drawn as its model at each spawn; the class gives the model through the configs of the work drive."));
         if app.mission.show_models {
             if app.mission.classes_job.is_some() {
-                ui.weak(t("Reading the classes of the configs..."));
+                ui.add_space(2.0);
+                crate::panels::about(ui, &t("Reading the classes of the configs..."));
             }
             let unknown: Vec<String> = app.mission.ghosts.unknown.iter().cloned().collect();
             if !unknown.is_empty() {
-                egui::CollapsingHeader::new(RichText::new(tf("No model found for {0} classes", &[&unknown.len().to_string()])).color(theme::WARN)).id_salt("ghost_unknown").show(ui, |ui| {
-                    for u in unknown.iter().take(100) { ui.label(RichText::new(u).monospace().small()); }
+                ui.add_space(4.0);
+                theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+                    theme::subsection(ui, &tf("No model found for {0} classes", &[&unknown.len().to_string()]), false, |ui| {
+                        for u in unknown.iter().take(100) { ui.label(RichText::new(u).monospace().small().color(theme::WARN)); }
+                    });
                 });
             }
         }
     });
     section(ui, &icons::with(icons::CURSOR_CLICK, &t("Tool")), true, |ui| {
-        for tool in MapTool::ALL {
-            if ui.selectable_label(app.mission.tool == tool, tool.title()).clicked() {
-                app.mission.tool = tool;
-                if tool == MapTool::Flags { app.mission.show_flags = true; }
-            }
-        }
-        ui.separator();
+        egui::Frame::new()
+            .fill(theme::DARK)
+            .stroke(Stroke::new(1.0_f32, theme::BORDER))
+            .corner_radius(4)
+            .inner_margin(egui::Margin::same(3))
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                for tool in MapTool::ALL {
+                    let (icon, tint) = tool.icon_and_tint();
+                    if theme::list_row(ui, app.mission.tool == tool, icon, tint, tool.title(), "").clicked() {
+                        app.mission.tool = tool;
+                        if tool == MapTool::Flags { app.mission.show_flags = true; }
+                    }
+                }
+            });
+        ui.add_space(6.0);
         tool_settings(app, ui);
     });
     section(ui, &icons::with(icons::MAP_PIN, &t("Selected")), true, |ui| selected_ui(app, ui));
@@ -532,33 +628,43 @@ fn tool_settings(app: &mut App, ui: &mut egui::Ui) {
     let Some(m) = app.doc.as_ref().and_then(|d| d.world.mission.as_deref()) else { return };
     match app.mission.tool {
         MapTool::Select => {
-            crate::panels::hint(ui, &t("Click picks a place, drag moves it, Delete removes it."));
+            crate::panels::about(ui, &t("Click picks a place, drag moves it, Delete removes it."));
         }
         MapTool::EventSpawn => {
             let events = mission::ce::event_names(m);
             row(ui, &t("Event"), |ui| {
-                egui::ComboBox::from_id_salt("ms_event").selected_text(app.mission.event.clone()).height(400.0).show_ui(ui, |ui| {
+                let w = ui.available_width();
+                egui::ComboBox::from_id_salt("ms_event").width(w).selected_text(app.mission.event.clone()).height(400.0).show_ui(ui, |ui| {
                     for e in &events { ui.selectable_value(&mut app.mission.event, e.clone(), e); }
                 });
             });
-            ui.text_edit_singleline(&mut app.mission.event);
+            row(ui, &t("Name"), |ui| {
+                ui.add(egui::TextEdit::singleline(&mut app.mission.event).desired_width(f32::INFINITY));
+            });
             let groups = mission::ce::event_group_names(m);
             row(ui, &t("Group"), |ui| {
                 let shown = if app.mission.event_group.is_empty() { t("(none)") } else { app.mission.event_group.clone() };
-                egui::ComboBox::from_id_salt("ms_event_group").selected_text(shown).height(400.0).show_ui(ui, |ui| {
+                let w = ui.available_width();
+                egui::ComboBox::from_id_salt("ms_event_group").width(w).selected_text(shown).height(400.0).show_ui(ui, |ui| {
                     ui.selectable_value(&mut app.mission.event_group, String::new(), t("(none)"));
                     for g in &groups { ui.selectable_value(&mut app.mission.event_group, g.clone(), g); }
                 });
             });
-            crate::panels::hint(ui, &t("Click on the map adds a spawn of the event."));
-            ui.weak(t("Static events (convoys, trains, police) have no children; each spawn places a group of cfgeventgroups.xml around it, at the height of the ground."));
+            ui.add_space(2.0);
+            crate::panels::about(ui, &t("Click on the map adds a spawn of the event."));
+            crate::panels::about(ui, &t("Static events (convoys, trains, police) have no children; each spawn places a group of cfgeventgroups.xml around it, at the height of the ground."));
         }
         MapTool::PlayerSpawn => {
             row(ui, &t("Section"), |ui| {
-                for s in ["fresh", "hop", "travel"] { ui.selectable_value(&mut app.mission.spawn_section, s.to_string(), s); }
+                theme::segmented(ui, &mut app.mission.spawn_section, &[
+                    ("fresh".to_string(), "fresh".into(), String::new()),
+                    ("hop".to_string(), "hop".into(), String::new()),
+                    ("travel".to_string(), "travel".into(), String::new()),
+                ]);
             });
-            row(ui, &t("Group"), |ui| { ui.text_edit_singleline(&mut app.mission.spawn_group); });
-            crate::panels::hint(ui, &t("Click on the map adds a spawn position to the group."));
+            row(ui, &t("Group"), |ui| { ui.add(egui::TextEdit::singleline(&mut app.mission.spawn_group).desired_width(f32::INFINITY)); });
+            ui.add_space(2.0);
+            crate::panels::about(ui, &t("Click on the map adds a spawn position to the group."));
         }
         MapTool::Zone => {
             let files = m.territory_files();
@@ -567,7 +673,8 @@ fn tool_settings(app: &mut App, ui: &mut egui::Ui) {
             }
             let territories = m.xml(&app.mission.zone_file).map(|d| d.root.children_named("territory").count()).unwrap_or(0);
             row(ui, &t("File"), |ui| {
-                egui::ComboBox::from_id_salt("ms_zone_file").selected_text(app.mission.zone_file.clone()).show_ui(ui, |ui| {
+                let w = ui.available_width();
+                egui::ComboBox::from_id_salt("ms_zone_file").width(w).selected_text(app.mission.zone_file.clone()).truncate().show_ui(ui, |ui| {
                     for f in &files { ui.selectable_value(&mut app.mission.zone_file, f.clone(), f); }
                 });
             });
@@ -575,25 +682,32 @@ fn tool_settings(app: &mut App, ui: &mut egui::Ui) {
                 ui.add(egui::DragValue::new(&mut app.mission.zone_territory).range(0..=territories.max(1) - 1).prefix("#"));
                 ui.weak(tf("of {0}", &[&territories.to_string()]));
             });
-            row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut app.mission.zone_name); });
-            row(ui, &t("Radius"), |ui| { ui.add(egui::DragValue::new(&mut app.mission.zone_radius).range(1.0..=5000.0).suffix(" m")); });
+            row(ui, &t("Name"), |ui| { ui.add(egui::TextEdit::singleline(&mut app.mission.zone_name).desired_width(f32::INFINITY)); });
+            row(ui, &t("Radius"), |ui| { ui.add(theme::ValueField::new(&mut app.mission.zone_radius, 1.0..=5000.0).logarithmic(true).suffix(" m")); });
             row(ui, "smin / smax", |ui| { ui.add(egui::DragValue::new(&mut app.mission.zone_static[0])); ui.add(egui::DragValue::new(&mut app.mission.zone_static[1])); });
             row(ui, "dmin / dmax", |ui| { ui.add(egui::DragValue::new(&mut app.mission.zone_dynamic[0])); ui.add(egui::DragValue::new(&mut app.mission.zone_dynamic[1])); });
-            crate::panels::hint(ui, &t("Click on the map adds a zone."));
+            ui.add_space(2.0);
+            crate::panels::about(ui, &t("Click on the map adds a zone."));
         }
         MapTool::Area => {
-            row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut app.mission.area_name); });
-            row(ui, &t("Radius"), |ui| { ui.add(egui::DragValue::new(&mut app.mission.area_radius).range(1.0..=5000.0).suffix(" m")); });
-            crate::panels::hint(ui, &t("Click on the map adds a contaminated area."));
+            row(ui, &t("Name"), |ui| { ui.add(egui::TextEdit::singleline(&mut app.mission.area_name).desired_width(f32::INFINITY)); });
+            row(ui, &t("Radius"), |ui| { ui.add(theme::ValueField::new(&mut app.mission.area_radius, 1.0..=5000.0).logarithmic(true).suffix(" m")); });
+            ui.add_space(2.0);
+            crate::panels::about(ui, &t("Click on the map adds a contaminated area."));
         }
         MapTool::SafePosition => {
-            crate::panels::hint(ui, &t("Click on the map adds a position players are moved to out of an area."));
+            crate::panels::about(ui, &t("Click on the map adds a position players are moved to out of an area."));
         }
         MapTool::Trigger => {
-            row(ui, &t("Size"), |ui| {
-                for v in &mut app.mission.trigger_size { ui.add(egui::DragValue::new(v).range(0.1..=500.0).speed(0.1)); }
-            });
-            crate::panels::hint(ui, &t("Click on the map adds a trigger box on the ground."));
+            let [ref mut sx, ref mut sy, ref mut sz] = app.mission.trigger_size;
+            theme::vector_row(ui, &t("Size"), &mut [
+                (sx, 0.1, theme::AXIS[0], "X".into()),
+                (sy, 0.1, theme::AXIS[1], "Y".into()),
+                (sz, 0.1, theme::AXIS[2], "Z".into()),
+            ]);
+            for v in &mut app.mission.trigger_size { *v = v.clamp(0.1, 500.0); }
+            ui.add_space(2.0);
+            crate::panels::about(ui, &t("Click on the map adds a trigger box on the ground."));
         }
         MapTool::Flags => flag_tool_ui(app, ui),
     }
@@ -606,60 +720,90 @@ fn flag_names(m: &Mission, l: FlagLayer) -> Vec<String> {
 fn flag_tool_ui(app: &mut App, ui: &mut egui::Ui) {
     let Some(m) = app.doc.as_ref().and_then(|d| d.world.mission.as_deref()) else { return };
     if m.areaflags().is_none() {
-        ui.label(t("The mission has no areaflags.map."));
-        if ui.button(t("Make one for the map")).clicked() { make_areaflags(app); }
+        theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+            ui.label(RichText::new(t("The mission has no areaflags.map.")).small().color(theme::WARN));
+            ui.add_space(4.0);
+            if ui.add(egui::Button::new(icons::with(icons::PLUS, &t("Make one for the map"))).min_size(vec2(0.0, 24.0))).clicked() { make_areaflags(app); }
+        });
         return;
     }
     row(ui, &t("Layer"), |ui| {
-        ui.selectable_value(&mut app.mission.flag_layer, FlagLayer::Usage, t("Usage"));
-        ui.selectable_value(&mut app.mission.flag_layer, FlagLayer::Value, t("Value"));
+        theme::segmented(ui, &mut app.mission.flag_layer, &[
+            (FlagLayer::Usage, t("Usage"), String::new()),
+            (FlagLayer::Value, t("Value"), String::new()),
+        ]);
     });
     let names = flag_names(m, app.mission.flag_layer);
     let bits = m.areaflags().map(|a| a.bits(app.mission.flag_layer)).unwrap_or(0);
-    for b in 0..bits.min(32) {
-        let name = names.get(b as usize).cloned().unwrap_or_else(|| tf("bit {0}", &[&b.to_string()]));
-        if (b as usize) >= names.len() && b > 0 && (b as usize) > names.len() + 1 { continue; }
-        ui.horizontal(|ui| {
-            let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), egui::Sense::hover());
-            ui.painter().rect_filled(r, 2.0, flag_color(b));
-            if ui.selectable_label(app.mission.flag_bit == b, name).clicked() { app.mission.flag_bit = b; }
+    ui.add_space(2.0);
+    egui::Frame::new()
+        .fill(theme::DARK)
+        .stroke(Stroke::new(1.0_f32, theme::BORDER))
+        .corner_radius(4)
+        .inner_margin(egui::Margin::same(3))
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical().id_salt("flag_tool_bits").max_height(180.0).auto_shrink([false, true]).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                for b in 0..bits.min(32) {
+                    let name = names.get(b as usize).cloned().unwrap_or_else(|| tf("bit {0}", &[&b.to_string()]));
+                    if (b as usize) >= names.len() && b > 0 && (b as usize) > names.len() + 1 { continue; }
+                    let active = app.mission.flag_bit == b;
+                    let bg = if active { theme::ACCENT_SOFT } else if b % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
+                    egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(5, 2)).show(ui, |ui| {
+                        let resp = ui.horizontal(|ui| {
+                            let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), egui::Sense::hover());
+                            ui.painter().rect_filled(r, 2.0, flag_color(b));
+                            ui.add(egui::Label::new(RichText::new(name).color(if active { Color32::WHITE } else { theme::TEXT })).truncate().sense(egui::Sense::click()))
+                        });
+                        if resp.response.clicked() || resp.inner.clicked() { app.mission.flag_bit = b; }
+                    });
+                }
+            });
         });
-    }
-    row(ui, &t("Radius"), |ui| { ui.add(egui::DragValue::new(&mut app.mission.flag_radius).range(1.0..=2000.0).suffix(" m")); });
-    ui.checkbox(&mut app.mission.flag_erase, t("Erase"));
-    ui.weak(t("The map shows every flag of the layer; the chosen one is the one painted and stands out."));
-    crate::panels::hint(ui, &t("Drag on the map paints the flag; with Shift it erases."));
+    ui.add_space(4.0);
+    row(ui, &t("Radius"), |ui| { ui.add(theme::ValueField::new(&mut app.mission.flag_radius, 1.0..=2000.0).logarithmic(true).suffix(" m")); });
+    theme::check_row(ui, &mut app.mission.flag_erase, t("Erase"));
+    ui.add_space(2.0);
+    crate::panels::about(ui, &t("The map shows every flag of the layer; the chosen one is the one painted and stands out."));
+    crate::panels::about(ui, &t("Drag on the map paints the flag; with Shift it erases."));
 }
 
 fn selected_ui(app: &mut App, ui: &mut egui::Ui) {
     let Some(at) = app.mission.selected.clone() else {
-        ui.weak(t("Nothing selected"));
+        theme::card(ui, theme::BORDER, |ui| {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(icons::MAP_PIN, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: theme::TEXT_DIM, ..Default::default() });
+            job.append(&t("Nothing selected"), 6.0, egui::TextFormat { font_id: icons::strong(13.0), color: theme::TEXT_DIM, ..Default::default() });
+            ui.label(job);
+        });
         return;
     };
     let Some(p) = places_now(app).iter().find(|p| p.at == at).cloned() else {
         app.mission.selected = None;
         return;
     };
-    ui.label(RichText::new(t(p.kind.label())).strong());
-    if !p.label.is_empty() { ui.label(&p.label); }
+    theme::details_head(ui, kind_icon(p.kind), kind_color(p.kind), &t(p.kind.label()), &p.label);
+    ui.add_space(4.0);
     if p.kind == PlaceKind::EventSpawn {
         let groups = mission(app).map(mission::ce::event_group_names).unwrap_or_default();
         let n = p.sub.as_ref().and_then(|g| app.mission.cache.groups.get(&g.to_ascii_lowercase())).map(|g| g.2.len());
         let mut pick = p.sub.clone();
         row(ui, &t("Group"), |ui| {
-            egui::ComboBox::from_id_salt("sel_group").selected_text(pick.clone().unwrap_or_else(|| t("(none)"))).height(400.0).show_ui(ui, |ui| {
+            let w = ui.available_width();
+            egui::ComboBox::from_id_salt("sel_group").width(w).selected_text(pick.clone().unwrap_or_else(|| t("(none)"))).height(400.0).show_ui(ui, |ui| {
                 ui.selectable_value(&mut pick, None, t("(none)"));
                 for g in &groups { ui.selectable_value(&mut pick, Some(g.clone()), g); }
             });
         });
-        if let Some(n) = n { ui.weak(tf("{0} objects in the group", &[&n.to_string()])); }
+        if let Some(n) = n { crate::panels::about(ui, &tf("{0} objects in the group", &[&n.to_string()])); }
         if pick != p.sub {
             let y = app.doc.as_ref().map(|d| d.world.height.sample(p.x, p.z) - d.world.meta.sea_level).unwrap_or(0.0);
             let e = mission_mut(app).and_then(|m| places::set_spawn_group(m, &at, pick.as_deref(), y));
             push(app, &t("Event group"), e.into_iter().collect());
         }
         if let Some(g) = &p.sub {
-            if ui.button(icons::with(icons::PENCIL_SIMPLE, &t("Edit the group"))).clicked() {
+            let w = ui.available_width();
+            if ui.add(egui::Button::new(icons::with(icons::PENCIL_SIMPLE, &t("Edit the group"))).min_size(vec2(w, 24.0))).clicked() {
                 app.mission.group_sel = Some(g.clone());
                 app.mission.event_filter = p.group.clone();
                 let ev = mission(app).and_then(|m| m.ce_files("events").into_iter().find_map(|f| {
@@ -673,16 +817,18 @@ fn selected_ui(app: &mut App, ui: &mut egui::Ui) {
         }
     }
     let (mut x, mut z, mut r) = (p.x, p.z, p.radius);
-    let mut changed = false;
-    row(ui, "X", |ui| { changed |= ui.add(egui::DragValue::new(&mut x).speed(0.5).max_decimals(3)).changed(); });
-    row(ui, "Z", |ui| { changed |= ui.add(egui::DragValue::new(&mut z).speed(0.5).max_decimals(3)).changed(); });
-    if changed {
+    let (ox, oz) = (x, z);
+    theme::vector_row(ui, &t("Position"), &mut [
+        (&mut x, 0.5, theme::AXIS[0], "X".into()),
+        (&mut z, 0.5, theme::AXIS[2], "Z".into()),
+    ]);
+    if x != ox || z != oz {
         if let Some(e) = mission_mut(app).and_then(|m| places::move_to(m, &at, x, z, None)) { pend(app, &t("Move"), e); }
     }
     if matches!(p.kind, PlaceKind::Territory | PlaceKind::EffectArea | PlaceKind::Breadcrumb) || (p.kind == PlaceKind::EventSpawn && p.radius > 0.0) {
         if p.kind != PlaceKind::EventSpawn {
             let mut rc = false;
-            row(ui, &t("Radius"), |ui| { rc = ui.add(egui::DragValue::new(&mut r).range(0.0..=10000.0).suffix(" m")).changed(); });
+            row(ui, &t("Radius"), |ui| { rc = ui.add(theme::ValueField::new(&mut r, 0.0..=10000.0).logarithmic(true).suffix(" m")).changed(); });
             if rc {
                 if let Some(e) = mission_mut(app).and_then(|m| places::set_radius(m, &at, r)) { pend(app, &t("Radius"), e); }
             }
@@ -710,14 +856,17 @@ fn selected_ui(app: &mut App, ui: &mut egui::Ui) {
             }
         }
     }
-    ui.horizontal(|ui| {
-        if ui.button(icons::with(icons::TRASH, &t("Delete"))).clicked() {
-            delete_selected(app);
-        }
-        if ui.button(icons::with(icons::CROSSHAIR, &t("Go to"))).clicked() {
+    ui.add_space(4.0);
+    theme::button_columns(ui, 2, |c| {
+        let w0 = c[0].available_width();
+        if c[0].add(egui::Button::new(icons::with(icons::CROSSHAIR, &t("Go to"))).min_size(vec2(w0, 24.0))).clicked() {
             app.top_center = [p.x, p.z];
             app.camera.pos[0] = p.x;
             app.camera.pos[2] = p.z - 60.0;
+        }
+        let w1 = c[1].available_width();
+        if c[1].add(egui::Button::new(RichText::new(icons::with(icons::TRASH, &t("Delete"))).color(Color32::from_rgb(235, 110, 100))).min_size(vec2(w1, 24.0))).clicked() {
+            delete_selected(app);
         }
     });
 }
@@ -1017,13 +1166,34 @@ pub fn draw_map(app: &App, painter: &egui::Painter, v: &crate::camera::View, res
     }
     let clip = v.rect.expand(40.0);
     let detail = !v.ortho || v.mpp < 4.0;
+    let max_dist = app.settings.mission_draw_distance;
+    let half_x = if v.ortho { (v.rect.width() * 0.5 + 40.0) * v.mpp } else { 0.0 };
+    let half_z = if v.ortho { (v.rect.height() * 0.5 + 40.0) * v.mpp } else { 0.0 };
+    let pos_of = |x: f32, z: f32| if v.ortho { [x, 0.0, z] } else { ground(world, x, z) };
     for p in &c.list {
-        if !app.mission.shown.contains(&p.kind) && app.mission.selected.as_ref() != Some(&p.at) {
+        let selected = app.mission.selected.as_ref() == Some(&p.at);
+        if !app.mission.shown.contains(&p.kind) && !selected {
             continue;
         }
-        let Some(s) = v.project(ground(world, p.x, p.z)) else { continue };
-        let selected = app.mission.selected.as_ref() == Some(&p.at);
-        let r_px = if p.radius > 0.0 { v.project(ground(world, p.x + p.radius, p.z)).map(|e| e.distance(s)).unwrap_or(0.0) } else { 0.0 };
+        if v.ortho {
+            let pad = p.radius.max(10.0);
+            if (p.x - v.eye[0]).abs() > half_x + pad || (p.z - v.eye[2]).abs() > half_z + pad {
+                continue;
+            }
+        } else if !selected {
+            let limit = max_dist + p.radius;
+            let dx = p.x - v.eye[0];
+            let dz = p.z - v.eye[2];
+            if dx * dx + dz * dz > limit * limit {
+                continue;
+            }
+        }
+        let Some(s) = v.project(pos_of(p.x, p.z)) else { continue };
+        let r_px = if p.radius > 0.0 {
+            if v.ortho { p.radius / v.mpp.max(1e-4) } else { v.project(pos_of(p.x + p.radius, p.z)).map(|e| e.distance(s)).unwrap_or(0.0) }
+        } else {
+            0.0
+        };
         if !clip.expand(r_px).contains(s) {
             continue;
         }
@@ -1033,14 +1203,19 @@ pub fn draw_map(app: &App, painter: &egui::Painter, v: &crate::camera::View, res
             continue;
         }
         if p.radius > 0.0 && r_px > 3.0 {
-            let pts = ring(world, v, p.x, p.z, p.radius);
-            painter.add(egui::Shape::line(pts, Stroke::new(if selected { 2.0_f32 } else { 1.2 }, col)));
+            let stroke = Stroke::new(if selected { 2.0_f32 } else { 1.2 }, col);
+            if v.ortho {
+                painter.circle_stroke(s, r_px, stroke);
+            } else {
+                let pts = ring(world, v, p.x, p.z, p.radius);
+                painter.add(egui::Shape::line(pts, stroke));
+            }
         }
         if let Some(size) = p.size {
             let (hx, hz) = (size[0] * 0.5, size[2] * 0.5);
             let a = p.angle.unwrap_or(0.0).to_radians();
             let (sn, cs) = a.sin_cos();
-            let corner = |dx: f32, dz: f32| v.project(ground(world, p.x + dx * cs + dz * sn, p.z - dx * sn + dz * cs));
+            let corner = |dx: f32, dz: f32| v.project(pos_of(p.x + dx * cs + dz * sn, p.z - dx * sn + dz * cs));
             let pts: Vec<Pos2> = [(-hx, -hz), (hx, -hz), (hx, hz), (-hx, hz), (-hx, -hz)].iter().filter_map(|(dx, dz)| corner(*dx, *dz)).collect();
             painter.add(egui::Shape::line(pts, Stroke::new(1.4_f32, col)));
         }
@@ -1054,7 +1229,7 @@ pub fn draw_map(app: &App, painter: &egui::Painter, v: &crate::camera::View, res
         painter.circle_stroke(s, if selected { 5.5 } else { 3.5 }, Stroke::new(1.0_f32, Color32::from_black_alpha(160)));
         if let Some(a) = p.angle.filter(|_| p.kind == PlaceKind::EventSpawn && detail) {
             let (sn, cs) = a.to_radians().sin_cos();
-            if let Some(e) = v.project(ground(world, p.x + sn * 8.0, p.z + cs * 8.0)) {
+            if let Some(e) = v.project(pos_of(p.x + sn * 8.0, p.z + cs * 8.0)) {
                 painter.line_segment([s, e], Stroke::new(1.2_f32, col));
             }
         }
@@ -1129,8 +1304,19 @@ fn select_input(app: &mut App, resp: &egui::Response, v: &crate::camera::View, h
     if pressed && resp.hovered() {
         let world = &app.doc.as_ref().unwrap().world;
         let shown = app.mission.shown.clone();
+        let max_dist = app.settings.mission_draw_distance;
+        let half_x = if v.ortho { (v.rect.width() * 0.5 + 20.0) * v.mpp } else { 0.0 };
+        let half_z = if v.ortho { (v.rect.height() * 0.5 + 20.0) * v.mpp } else { 0.0 };
         let picked = app.mission.cache.list.iter().filter(|p| shown.contains(&p.kind)).filter_map(|p| {
-            let s = v.project(ground(world, p.x, p.z))?;
+            if v.ortho {
+                if (p.x - v.eye[0]).abs() > half_x || (p.z - v.eye[2]).abs() > half_z { return None; }
+            } else {
+                let limit = max_dist + p.radius;
+                let (dx, dz) = (p.x - v.eye[0], p.z - v.eye[2]);
+                if dx * dx + dz * dz > limit * limit { return None; }
+            }
+            let pos = if v.ortho { [p.x, 0.0, p.z] } else { ground(world, p.x, p.z) };
+            let s = v.project(pos)?;
             let d = s.distance(mouse);
             (d < 10.0).then_some((p.at.clone(), d))
         }).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(at, _)| at);
@@ -1511,7 +1697,8 @@ fn element_list(app: &mut App, ui: &mut egui::Ui, file: &str, names: &[&str], he
         if let Some(Node::Element(e)) = mission(app).and_then(|m| m.xml(file)).and_then(|d| d.root.children.get(i)) {
             let mut copy = e.clone();
             let original = e.clone();
-            egui::ScrollArea::vertical().id_salt(("tree", file)).auto_shrink([false, false]).show(ui, |ui| {
+            let tree_h = (ui.available_height() - 4.0).max(60.0);
+            egui::ScrollArea::vertical().id_salt(("tree", file)).max_height(tree_h).auto_shrink([false, false]).show(ui, |ui| {
                 ui.label(RichText::new(element_title(&copy)).monospace().strong());
                 tree_ui(ui, &mut copy, &format!("{file}#{i}"));
             });
@@ -1542,7 +1729,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let mut open = app.mission.open;
     let mut own = app.mission.own_window;
     let title = icons::with(icons::FLAG_BANNER, &t("Mission editor"));
-    crate::theme::PopupWindow::new(egui::Id::new("mission_window"), &title)
+    crate::theme::PopupWindow::new(egui::Id::new("mission_editor_popup"), &title)
         .default_size([1040.0, 680.0])
         .min_size([520.0, 320.0])
         .show_with_own(ctx, &mut open, Some(&mut own), |ui| {
@@ -1554,38 +1741,80 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
 }
 
 fn window_body(app: &mut App, ui: &mut egui::Ui) {
-    {
-        ui.horizontal_wrapped(|ui| {
-            for tab in Tab::ALL {
-                if tool_button(ui, app.mission.tab == tab, &icons::with(tab.icon(), &tab.title())).clicked() {
-                    app.mission.tab = tab;
-                    app.mission.list_filter.clear();
+    let has_mission = mission(app).is_some();
+    if !has_mission && app.mission.tab != Tab::Overview {
+        app.mission.tab = Tab::Overview;
+    }
+    // Cached error/warning indicator for the Check nav item.
+    let (err_n, warn_n) = app.mission.issues.as_ref().map(|(_, list)| {
+        let e = list.iter().filter(|i| i.level == mission::validate::Level::Error).count();
+        let w = list.iter().filter(|i| i.level == mission::validate::Level::Warning).count();
+        (e, w)
+    }).unwrap_or((0, 0));
+
+    let nav_groups: [&[Tab]; 4] = [
+        &[Tab::Overview, Tab::Check],
+        &[Tab::Types, Tab::Events, Tab::Spawnable, Tab::Economy],
+        &[Tab::Players, Tab::Territories, Tab::Areas, Tab::MapGroups, Tab::Flags],
+        &[Tab::Weather, Tab::Gameplay, Tab::Messages, Tab::Init, Tab::Files],
+    ];
+
+    let nav_h = ui.available_height().max(240.0);
+    ui.horizontal_top(|ui| {
+        ui.allocate_ui_with_layout(vec2(172.0, nav_h), egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+            egui::ScrollArea::vertical().id_salt("mission_nav").auto_shrink([false, true]).show(ui, |ui| {
+                for (gi, group) in nav_groups.iter().enumerate() {
+                    if gi > 0 {
+                        ui.add_space(4.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                    }
+                    for &tab in *group {
+                        let enabled = has_mission || tab == Tab::Overview;
+                        let active = app.mission.tab == tab;
+                        let color = if !enabled {
+                            theme::TEXT_DIM
+                        } else if tab == Tab::Check && err_n > 0 {
+                            theme::ERROR
+                        } else if tab == Tab::Check && warn_n > 0 {
+                            theme::WARN
+                        } else if active {
+                            Color32::WHITE
+                        } else {
+                            theme::TEXT
+                        };
+                        let label = icons::with(tab.icon(), &tab.title());
+                        if ui.add_enabled(enabled, egui::SelectableLabel::new(active, RichText::new(label).color(color))).clicked() {
+                            app.mission.tab = tab;
+                            app.mission.list_filter.clear();
+                        }
+                        ui.add_space(1.0);
+                    }
                 }
-            }
+            });
         });
         ui.separator();
-        if mission(app).is_none() && app.mission.tab != Tab::Overview {
-            app.mission.tab = Tab::Overview;
-        }
-        match app.mission.tab {
-            Tab::Overview => overview_tab(app, ui),
-            Tab::Types => types_tab(app, ui),
-            Tab::Events => events_tab(app, ui),
-            Tab::Spawnable => spawnable_tab(app, ui),
-            Tab::Players => players_tab(app, ui),
-            Tab::Territories => territories_tab(app, ui),
-            Tab::Areas => areas_tab(app, ui),
-            Tab::Weather => weather_tab(app, ui),
-            Tab::Economy => economy_tab(app, ui),
-            Tab::Gameplay => json_file_ui(app, ui, "cfggameplay.json"),
-            Tab::Messages => messages_tab(app, ui),
-            Tab::MapGroups => map_groups_tab(app, ui),
-            Tab::Flags => flags_tab(app, ui),
-            Tab::Init => init_tab(app, ui),
-            Tab::Files => files_tab(app, ui),
-            Tab::Check => check_tab(app, ui),
-        }
-    }
+        ui.vertical(|ui| {
+            match app.mission.tab {
+                Tab::Overview => overview_tab(app, ui),
+                Tab::Types => types_tab(app, ui),
+                Tab::Events => events_tab(app, ui),
+                Tab::Spawnable => spawnable_tab(app, ui),
+                Tab::Players => players_tab(app, ui),
+                Tab::Territories => territories_tab(app, ui),
+                Tab::Areas => areas_tab(app, ui),
+                Tab::Weather => weather_tab(app, ui),
+                Tab::Economy => economy_tab(app, ui),
+                Tab::Gameplay => json_file_ui(app, ui, "cfggameplay.json"),
+                Tab::Messages => messages_tab(app, ui),
+                Tab::MapGroups => map_groups_tab(app, ui),
+                Tab::Flags => flags_tab(app, ui),
+                Tab::Init => init_tab(app, ui),
+                Tab::Files => files_tab(app, ui),
+                Tab::Check => check_tab(app, ui),
+            }
+        });
+    });
 }
 
 /// What each file of a mission is for.
@@ -1631,11 +1860,19 @@ fn file_help(rel: &str) -> Option<&'static str> {
 
 fn overview_tab(app: &mut App, ui: &mut egui::Ui) {
     if mission(app).is_none() {
-        ui.label(t("The project has no server mission yet."));
-        ui.horizontal(|ui| {
-            new_mission_buttons(app, ui);
-            if ui.button(icons::with(icons::FOLDER_OPEN, &t("Import a mission..."))).clicked() { import(app, false); }
-            if ui.button(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Adapt a mission of another map..."))).clicked() { import(app, true); }
+        theme::card(ui, theme::BORDER, |ui| {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(icons::FLAG_BANNER, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(16.0), color: theme::TEXT_DIM, ..Default::default() });
+            job.append(&t("The project has no server mission yet."), 8.0, egui::TextFormat { font_id: icons::strong(14.0), color: theme::TEXT_BRIGHT, ..Default::default() });
+            ui.label(job);
+            ui.add_space(2.0);
+            ui.add(egui::Label::new(RichText::new(t("A mission holds the economy, spawns, territories and settings the server reads from mpmissions.")).small().color(theme::TEXT_DIM)).wrap());
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                new_mission_buttons(app, ui, false);
+                if ui.add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Import a mission..."))).min_size(vec2(0.0, 24.0))).clicked() { import(app, false); }
+                if ui.add(egui::Button::new(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Adapt a mission of another map..."))).min_size(vec2(0.0, 24.0))).clicked() { import(app, true); }
+            });
         });
         return;
     }
@@ -1649,51 +1886,128 @@ fn overview_tab(app: &mut App, ui: &mut egui::Ui) {
     let (st_n, st_b) = m.storage_size();
     let mut files: Vec<(String, bool, &'static str)> = m.files.iter().filter(|(k, _)| !mission::is_storage(k)).map(|(k, f)| (k.clone(), f.dirty, file_help(k).unwrap_or(""))).collect();
     files.sort();
-    let mut rename = name.clone();
-    row(ui, &t("Folder name"), |ui| { ui.text_edit_singleline(&mut rename); });
-    if rename != name && !rename.trim().is_empty() {
-        if let Some(m) = mission_mut(app) { m.name = rename.trim().to_string(); m.rev += 1; }
-    }
-    ui.weak(t("The server finds the mission by this name in mpmissions: dayzOffline.<world>."));
-    egui::Grid::new("ms_counts").num_columns(2).show(ui, |ui| {
-        for (k, v) in [(t("Types"), types), (t("Events"), events), (t("Event spawns"), count(PlaceKind::EventSpawn)), (t("Player spawns"), count(PlaceKind::PlayerSpawn)), (t("Territory zones"), count(PlaceKind::Territory)), (t("Effect areas"), count(PlaceKind::EffectArea)), (t("Underground triggers"), count(PlaceKind::Trigger)), (t("Map groups"), groups)] {
-            ui.label(k);
-            ui.label(RichText::new(v.to_string()).strong());
-            ui.end_row();
+
+    // Header card: mission folder name & main actions.
+    let mut removed = false;
+    theme::card(ui, theme::BORDER, |ui| {
+        let mut rename = name.clone();
+        row(ui, &t("Folder name"), |ui| {
+            ui.add(egui::TextEdit::singleline(&mut rename).desired_width(f32::INFINITY));
+        });
+        if rename != name && !rename.trim().is_empty() {
+            if let Some(m) = mission_mut(app) { m.name = rename.trim().to_string(); m.rev += 1; }
         }
-        ui.label(t("Persistence"));
-        ui.label(tf("{0} files, {1} MB", &[&st_n.to_string(), &format!("{:.1}", st_b as f64 / 1048576.0)]));
-        ui.end_row();
-    });
-    ui.horizontal_wrapped(|ui| {
-        if ui.button(icons::with(icons::EXPORT, &t("Export..."))).clicked() { export(app); }
-        if ui.button(icons::with(icons::FOLDER_OPEN, &t("Import a mission..."))).clicked() { import(app, false); }
-        if ui.button(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Adapt a mission of another map..."))).clicked() { import(app, true); }
-        if st_n > 0 && ui.button(icons::with(icons::ERASER, &t("Wipe persistence"))).clicked() {
-            let e = mission_mut(app).map(|m| { let before = Box::new(m.clone()); m.wipe_storage(); MissionEdit::Whole(Some(before)) });
-            // Whole swaps with what is there; undo brings the files back.
-            if let Some(MissionEdit::Whole(Some(b))) = e { push_whole(app, &t("Wipe persistence"), *b); }
-        }
-        if ui.button(icons::with(icons::TRASH, &t("Remove the mission"))).on_hover_text(t("Undo brings it back; the files in the project folder stay until you delete them.")).clicked() {
-            set_mission(app, None, &t("Remove the mission"));
-            return;
-        }
-    });
-    ui.weak(t("Play starts the server with this mission. Export writes it into a folder of your choice."));
-    ui.separator();
-    ui.label(RichText::new(t("Files")).strong());
-    egui::ScrollArea::vertical().id_salt("ms_files_over").auto_shrink([false, false]).show(ui, |ui| {
-        egui::Grid::new("ms_inv").num_columns(2).striped(true).show(ui, |ui| {
-            for (k, dirty, help) in files {
-                let label = if dirty { format!("{k} *") } else { k.clone() };
-                if ui.link(RichText::new(label).monospace()).clicked() {
-                    app.mission.file_sel = Some(k.clone());
-                    app.mission.tab = Tab::Files;
-                }
-                ui.label(RichText::new(t(help)).small().color(theme::TEXT_DIM));
-                ui.end_row();
+        crate::panels::about(ui, &t("The server finds the mission by this name in mpmissions: dayzOffline.<world>."));
+        ui.add_space(6.0);
+        ui.horizontal_wrapped(|ui| {
+            let export_btn = egui::Button::new(RichText::new(icons::with(icons::EXPORT, &t("Export..."))).color(Color32::WHITE))
+                .fill(theme::ACCENT)
+                .stroke(Stroke::NONE)
+                .min_size(vec2(0.0, 24.0));
+            if ui.add(export_btn).clicked() { export(app); }
+            if ui.add(egui::Button::new(icons::with(icons::FOLDER_OPEN, &t("Import a mission..."))).min_size(vec2(0.0, 24.0))).clicked() { import(app, false); }
+            if ui.add(egui::Button::new(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Adapt a mission of another map..."))).min_size(vec2(0.0, 24.0))).clicked() { import(app, true); }
+            if ui.add(egui::Button::new(RichText::new(icons::with(icons::TRASH, &t("Remove the mission"))).color(Color32::from_rgb(235, 110, 100))).min_size(vec2(0.0, 24.0))).on_hover_text(t("Undo brings it back; the files in the project folder stay until you delete them.")).clicked() {
+                set_mission(app, None, &t("Remove the mission"));
+                removed = true;
             }
         });
+        ui.add_space(2.0);
+        crate::panels::about(ui, &t("Play starts the server with this mission. Export writes it into a folder of your choice."));
+    });
+    if removed { return; }
+
+    ui.add_space(6.0);
+    // 2x4 clickable summary cards.
+    let stats: [(&str, String, usize, Color32, Tab); 8] = [
+        (icons::PACKAGE, t("Types"), types, theme::KIND_MODEL, Tab::Types),
+        (icons::LIGHTNING, t("Events"), events, kind_color(PlaceKind::EventSpawn), Tab::Events),
+        (icons::MAP_PIN, t("Event spawns"), count(PlaceKind::EventSpawn), kind_color(PlaceKind::EventSpawn), Tab::Events),
+        (icons::PERSON_SIMPLE_WALK, t("Player spawns"), count(PlaceKind::PlayerSpawn), kind_color(PlaceKind::PlayerSpawn), Tab::Players),
+        (icons::PAW_PRINT, t("Territory zones"), count(PlaceKind::Territory), kind_color(PlaceKind::Territory), Tab::Territories),
+        (icons::RADIOACTIVE, t("Effect areas"), count(PlaceKind::EffectArea), kind_color(PlaceKind::EffectArea), Tab::Areas),
+        (icons::CUBE, t("Underground triggers"), count(PlaceKind::Trigger), kind_color(PlaceKind::Trigger), Tab::Areas),
+        (icons::BUILDINGS, t("Map groups"), groups, kind_color(PlaceKind::MapGroup), Tab::MapGroups),
+    ];
+    for chunk in stats.chunks(4) {
+        ui.columns(4, |cols| {
+            for (ci, (icon, label, val, tint, tab)) in chunk.iter().enumerate() {
+                let ui = &mut cols[ci];
+                let r = egui::Frame::new()
+                    .fill(theme::DARK)
+                    .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                    .corner_radius(4)
+                    .inner_margin(egui::Margin::symmetric(8, 6))
+                    .show(ui, |ui| {
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                            let mut job = egui::text::LayoutJob::default();
+                            job.append(icon, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(12.0), color: *tint, ..Default::default() });
+                            job.append(label, 5.0, egui::TextFormat { font_id: egui::FontId::proportional(11.5), color: theme::TEXT_DIM, ..Default::default() });
+                            ui.add(egui::Label::new(job).truncate());
+                            ui.label(RichText::new(val.to_string()).font(icons::strong(17.0)).color(if *val > 0 { theme::TEXT_BRIGHT } else { theme::TEXT_DIM }));
+                        });
+                    }).response.interact(egui::Sense::click());
+                if r.hovered() {
+                    ui.painter().rect_stroke(r.rect, 4.0, Stroke::new(1.0_f32, theme::ACCENT.gamma_multiply(0.8)), egui::StrokeKind::Inside);
+                }
+                if r.clicked() {
+                    app.mission.tab = *tab;
+                    app.mission.list_filter.clear();
+                }
+            }
+        });
+        ui.add_space(4.0);
+    }
+
+    // Persistence bar.
+    theme::card(ui, theme::BORDER, |ui| {
+        ui.horizontal(|ui| {
+            ui.colored_label(theme::TEXT_DIM, icons::HARD_DRIVES);
+            ui.label(RichText::new(t("Persistence")).strong());
+            ui.label(RichText::new(tf("{0} files, {1} MB", &[&st_n.to_string(), &format!("{:.1}", st_b as f64 / 1048576.0)])).color(theme::TEXT_DIM));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if st_n > 0 {
+                    if ui.add(egui::Button::new(icons::with(icons::ERASER, &t("Wipe persistence"))).min_size(vec2(0.0, 22.0))).clicked() {
+                        let e = mission_mut(app).map(|m| { let before = Box::new(m.clone()); m.wipe_storage(); MissionEdit::Whole(Some(before)) });
+                        if let Some(MissionEdit::Whole(Some(b))) = e { push_whole(app, &t("Wipe persistence"), *b); }
+                    }
+                } else {
+                    ui.allocate_space(vec2(ui.available_width().max(0.0), 0.0));
+                }
+            });
+        });
+    });
+
+    ui.add_space(6.0);
+    section(ui, &icons::with(icons::FOLDER_OPEN, &format!("{} ({})", t("Files"), files.len())), true, |ui| {
+        egui::Frame::new()
+            .fill(theme::DARK)
+            .stroke(Stroke::new(1.0_f32, theme::BORDER))
+            .corner_radius(4)
+            .inner_margin(egui::Margin::same(4))
+            .show(ui, |ui| {
+                let list_h = (ui.available_height() - 4.0).max(80.0);
+                egui::ScrollArea::vertical().id_salt("ms_files_over").max_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    for (idx, (k, dirty, help)) in files.into_iter().enumerate() {
+                        let bg = if idx % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
+                        egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let label = if dirty { format!("{k} *") } else { k.clone() };
+                                let col = if dirty { theme::WARN } else { theme::TOGGLE_ON_TEXT };
+                                ui.allocate_ui_with_layout(vec2(205.0, 18.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                    if ui.add(egui::Label::new(RichText::new(label).monospace().size(12.0).color(col)).truncate().sense(egui::Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                                        app.mission.file_sel = Some(k.clone());
+                                        app.mission.tab = Tab::Files;
+                                    }
+                                });
+                                ui.add(egui::Label::new(RichText::new(t(help)).small().color(theme::TEXT_DIM)).truncate());
+                                ui.allocate_space(vec2(ui.available_width().max(0.0), 0.0));
+                            });
+                        });
+                    }
+                });
+            });
     });
 }
 
@@ -2122,10 +2436,13 @@ fn spawnable_tab(app: &mut App, ui: &mut egui::Ui) {
     if m.xml("cfgeventgroups.xml").is_some() { files.push(m.key("cfgeventgroups.xml").unwrap()); }
     if m.xml("cfgignorelist.xml").is_some() { files.push(m.key("cfgignorelist.xml").unwrap()); }
     let mut sel = app.mission.file_sel.clone().filter(|f| files.contains(f)).unwrap_or_else(|| files.first().cloned().unwrap_or_default());
-    ui.horizontal_wrapped(|ui| {
-        for f in &files { ui.selectable_value(&mut sel, f.clone(), f); }
-    });
-    ui.weak(t(file_help(&sel).unwrap_or("")));
+    if !files.is_empty() {
+        let choices: Vec<(String, String, String)> = files.iter().map(|f| (f.clone(), f.clone(), String::new())).collect();
+        ui.horizontal_wrapped(|ui| {
+            theme::segmented(ui, &mut sel, &choices);
+        });
+    }
+    crate::panels::about(ui, &t(file_help(&sel).unwrap_or("")));
     app.mission.file_sel = Some(sel.clone());
     let names: &[&str] = match sel.to_ascii_lowercase().as_str() {
         s if s.contains("randompresets") => &[],
@@ -2152,9 +2469,11 @@ fn players_tab(app: &mut App, ui: &mut egui::Ui) {
     };
     let root = mission(app).unwrap().xml(&file).unwrap().root.clone();
     let sections: Vec<(usize, String)> = element_indexes(&root, |_| true).into_iter().map(|i| (i, if let Node::Element(e) = &root.children[i] { e.name.clone() } else { String::new() })).collect();
-    ui.horizontal(|ui| {
-        for (_, s) in &sections { ui.selectable_value(&mut app.mission.section, s.clone(), s); }
-    });
+    let sec_choices: Vec<(String, String, String)> = sections.iter().map(|(_, s)| (s.clone(), s.clone(), String::new())).collect();
+    if !sec_choices.is_empty() {
+        theme::segmented(ui, &mut app.mission.section, &sec_choices);
+    }
+    ui.add_space(4.0);
     let Some((si, _)) = sections.iter().find(|(_, s)| *s == app.mission.section).cloned() else { return };
     let Node::Element(sec) = &root.children[si] else { return };
     ui.columns(2, |cols| {
@@ -2375,7 +2694,8 @@ fn json_file_ui(app: &mut App, ui: &mut egui::Ui, file: &str) {
     ui.weak(t(file_help(file).unwrap_or("")));
     let original = doc.value.clone();
     let mut v = original.clone();
-    egui::ScrollArea::vertical().id_salt(("json", file)).auto_shrink([false, false]).show(ui, |ui| { json_ui(ui, &mut v, file); });
+    let json_h = (ui.available_height() - 4.0).max(80.0);
+    egui::ScrollArea::vertical().id_salt(("json", file)).max_height(json_h).auto_shrink([false, false]).show(ui, |ui| { json_ui(ui, &mut v, file); });
     if v != original {
         let key = mission(app).and_then(|m| m.key(file)).unwrap_or_else(|| file.to_string());
         edit_file(app, file, &key.clone(), |m| { if let Some(d) = m.json_mut(&key) { d.value = v; } });
@@ -2450,11 +2770,14 @@ fn economy_tab(app: &mut App, ui: &mut egui::Ui) {
     let groot = globals.as_ref().and_then(|g| m.xml(g)).map(|d| d.root.clone());
     let eroot = economy.as_ref().and_then(|g| m.xml(g)).map(|d| d.root.clone());
     let mut sub = app.mission.file_sel.clone().filter(|s| ["globals", "economy", "limits", "user", "core"].contains(&s.as_str())).unwrap_or_else(|| "globals".into());
-    ui.horizontal(|ui| {
-        for (k, l) in [("globals", "db/globals.xml"), ("economy", "db/economy.xml"), ("limits", "cfglimitsdefinition.xml"), ("user", "cfglimitsdefinitionuser.xml"), ("core", "cfgeconomycore.xml")] {
-            ui.selectable_value(&mut sub, k.to_string(), l);
-        }
-    });
+    theme::segmented(ui, &mut sub, &[
+        ("globals".into(), "db/globals.xml".into(), String::new()),
+        ("economy".into(), "db/economy.xml".into(), String::new()),
+        ("limits".into(), "cfglimitsdefinition.xml".into(), String::new()),
+        ("user".into(), "cfglimitsdefinitionuser.xml".into(), String::new()),
+        ("core".into(), "cfgeconomycore.xml".into(), String::new()),
+    ]);
+    ui.add_space(6.0);
     app.mission.file_sel = Some(sub.clone());
     match sub.as_str() {
         "globals" => {
@@ -2550,21 +2873,23 @@ fn messages_tab(app: &mut App, ui: &mut egui::Ui) {
     };
     let root = mission(app).unwrap().xml(&file).unwrap().root.clone();
     let mut copy = root.clone();
-    ui.weak(t("#name is the server name, #tmin the minutes left to the shutdown. Times are in minutes."));
+    crate::panels::about(ui, &t("#name is the server name, #tmin the minutes left to the shutdown. Times are in minutes."));
+    ui.add_space(4.0);
     let mut remove = None;
     egui::ScrollArea::vertical().id_salt("messages").auto_shrink([false, false]).show(ui, |ui| {
         for (i, n) in copy.children.iter_mut().enumerate() {
             let Node::Element(msg) = n else { continue };
             if msg.name != "message" { continue; }
-            egui::Frame::group(ui.style()).show(ui, |ui| {
+            theme::card(ui, theme::BORDER, |ui| {
                 let mut text = msg.child_text("text").unwrap_or_default();
                 if ui.add(egui::TextEdit::multiline(&mut text).desired_rows(1).desired_width(f32::INFINITY)).changed() {
                     msg.set_child_text("text", &text, &["delay", "repeat", "deadline", "onconnect", "shutdown", "text"]);
                 }
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     for k in ["delay", "repeat", "deadline"] {
                         let mut v = msg.child_i64(k).unwrap_or(0);
-                        ui.label(k);
+                        ui.label(RichText::new(k).small().color(theme::TEXT_DIM));
                         if ui.add(egui::DragValue::new(&mut v).range(0..=100000)).changed() {
                             if v == 0 { msg.remove_children(k); } else { msg.set_child_num(k, v as f64, &["delay", "repeat", "deadline", "onconnect", "shutdown", "text"]); }
                         }
@@ -2575,11 +2900,14 @@ fn messages_tab(app: &mut App, ui: &mut egui::Ui) {
                             if on { msg.set_child_num(k, 1.0, &["delay", "repeat", "deadline", "onconnect", "shutdown", "text"]); } else { msg.remove_children(k); }
                         }
                     }
-                    if ui.small_button(icons::TRASH).clicked() { remove = Some(i); }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(icons::TRASH).frame(false).min_size(vec2(22.0, 22.0))).on_hover_text(t("Delete")).clicked() { remove = Some(i); }
+                    });
                 });
             });
+            ui.add_space(4.0);
         }
-        if ui.button(icons::with(icons::PLUS, &t("New message"))).clicked() {
+        if ui.add(egui::Button::new(icons::with(icons::PLUS, &t("New message"))).min_size(vec2(0.0, 24.0))).clicked() {
             copy.push(Element::new("message").with_child(Element::new("repeat").with_text("15")).with_child(Element::new("text").with_text("Welcome to #name")));
         }
     });
@@ -2595,45 +2923,59 @@ fn map_groups_tab(app: &mut App, ui: &mut egui::Ui) {
     let groups = m.xml("mapgrouppos.xml").map(|d| d.root.children_named("group").count()).unwrap_or(0);
     let exports = mission::gen::cluster_exports(m).len();
     let objects = app.doc.as_ref().unwrap().world.objects.len();
-    ui.label(tf("{0} prototypes, {1} buildings in mapgrouppos.xml, {2} cluster models; {3} objects on the map.", &[&protos.to_string(), &groups.to_string(), &exports.to_string(), &objects.to_string()]));
-    ui.horizontal(|ui| {
-        ui.checkbox(&mut app.mission.with_clusters, t("Clusters too (mapgroupcluster.xml)"));
-        if ui.button(icons::with(icons::BUILDINGS, &t("Make map groups from the placed objects"))).on_hover_text(t("Every placed building whose class has a prototype goes into mapgrouppos.xml, with the position and angles the game would write.")).clicked() {
-            make_groups(app);
-        }
-        let mut show = app.mission.shown.contains(&PlaceKind::MapGroup);
-        if ui.checkbox(&mut show, t("Show on the map")).changed() { if show { app.mission.shown.insert(PlaceKind::MapGroup); } else { app.mission.shown.remove(&PlaceKind::MapGroup); } }
+    theme::card(ui, theme::BORDER, |ui| {
+        ui.label(tf("{0} prototypes, {1} buildings in mapgrouppos.xml, {2} cluster models; {3} objects on the map.", &[&protos.to_string(), &groups.to_string(), &exports.to_string(), &objects.to_string()]));
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            let make_btn = egui::Button::new(RichText::new(icons::with(icons::BUILDINGS, &t("Make map groups from the placed objects"))).color(Color32::WHITE))
+                .fill(theme::ACCENT)
+                .stroke(Stroke::NONE)
+                .min_size(vec2(0.0, 24.0));
+            if ui.add(make_btn).on_hover_text(t("Every placed building whose class has a prototype goes into mapgrouppos.xml, with the position and angles the game would write.")).clicked() {
+                make_groups(app);
+            }
+            ui.checkbox(&mut app.mission.with_clusters, t("Clusters too (mapgroupcluster.xml)"));
+            let mut show = app.mission.shown.contains(&PlaceKind::MapGroup);
+            if ui.checkbox(&mut show, t("Show on the map")).changed() { if show { app.mission.shown.insert(PlaceKind::MapGroup); } else { app.mission.shown.remove(&PlaceKind::MapGroup); } }
+        });
     });
     if let Some(r) = app.mission.last_report.clone() {
-        ui.label(tf("{0} buildings and {1} clusters written.", &[&r.groups.to_string(), &r.clusters.to_string()]));
-        if !r.without_proto.is_empty() {
-            egui::CollapsingHeader::new(tf("{0} placed classes have no prototype", &[&r.without_proto.len().to_string()])).show(ui, |ui| {
-                egui::ScrollArea::vertical().id_salt("noproto").max_height(140.0).show(ui, |ui| {
-                    for (c, n) in &r.without_proto { ui.label(format!("{c}  ×{n}")); }
+        ui.add_space(4.0);
+        theme::card(ui, if r.without_proto.is_empty() { theme::OK.gamma_multiply(0.7) } else { theme::WARN.gamma_multiply(0.7) }, |ui| {
+            ui.label(tf("{0} buildings and {1} clusters written.", &[&r.groups.to_string(), &r.clusters.to_string()]));
+            if !r.without_proto.is_empty() {
+                theme::subsection(ui, &tf("{0} placed classes have no prototype", &[&r.without_proto.len().to_string()]), false, |ui| {
+                    egui::ScrollArea::vertical().id_salt("noproto").max_height(140.0).show(ui, |ui| {
+                        for (c, n) in &r.without_proto { ui.label(RichText::new(format!("{c}  ×{n}")).monospace().small()); }
+                    });
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.add(egui::Button::new(t("Copy prototypes from another mapgroupproto.xml...")).min_size(vec2(0.0, 24.0))).on_hover_text(t("For example from a vanilla mission, for buildings of the game.")).clicked() {
+                            copy_protos(app, r.without_proto.iter().map(|(c, _)| c.to_ascii_lowercase()).collect());
+                        }
+                        if ui.add(egui::Button::new(t("Add empty prototypes")).min_size(vec2(0.0, 24.0))).on_hover_text(t("One container without loot points for each; ExportProxyProto in init.c makes the points in the game.")).clicked() {
+                            let file = mission(app).and_then(|m| m.key("mapgroupproto.xml")).unwrap_or_else(|| "mapgroupproto.xml".into());
+                            let classes: Vec<String> = r.without_proto.iter().map(|(c, _)| c.clone()).collect();
+                            edit_file(app, &t("Add empty prototypes"), &file.clone(), |m| {
+                                let d = m.ensure_xml(&file, "prototype");
+                                for c in classes { d.root.push(mission::gen::empty_prototype(&c)); }
+                            });
+                            flush(app);
+                        }
+                    });
                 });
-                ui.horizontal(|ui| {
-                    if ui.button(t("Copy prototypes from another mapgroupproto.xml...")).on_hover_text(t("For example from a vanilla mission, for buildings of the game.")).clicked() {
-                        copy_protos(app, r.without_proto.iter().map(|(c, _)| c.to_ascii_lowercase()).collect());
-                    }
-                    if ui.button(t("Add empty prototypes")).on_hover_text(t("One container without loot points for each; ExportProxyProto in init.c makes the points in the game.")).clicked() {
-                        let file = mission(app).and_then(|m| m.key("mapgroupproto.xml")).unwrap_or_else(|| "mapgroupproto.xml".into());
-                        let classes: Vec<String> = r.without_proto.iter().map(|(c, _)| c.clone()).collect();
-                        edit_file(app, &t("Add empty prototypes"), &file.clone(), |m| {
-                            let d = m.ensure_xml(&file, "prototype");
-                            for c in classes { d.root.push(mission::gen::empty_prototype(&c)); }
-                        });
-                        flush(app);
-                    }
-                });
-            });
-        }
+            }
+        });
     }
-    ui.separator();
+    ui.add_space(6.0);
     let mut sel = app.mission.file_sel.clone().filter(|s| ["mapgroupproto.xml", "mapclusterproto.xml", "mapgrouppos.xml"].contains(&s.as_str())).unwrap_or_else(|| "mapgroupproto.xml".into());
-    ui.horizontal(|ui| {
-        for f in ["mapgroupproto.xml", "mapclusterproto.xml", "mapgrouppos.xml"] { ui.selectable_value(&mut sel, f.to_string(), f); }
-    });
-    ui.weak(t(file_help(&sel).unwrap_or("")));
+    theme::segmented(ui, &mut sel, &[
+        ("mapgroupproto.xml".into(), "mapgroupproto.xml".into(), String::new()),
+        ("mapclusterproto.xml".into(), "mapclusterproto.xml".into(), String::new()),
+        ("mapgrouppos.xml".into(), "mapgrouppos.xml".into(), String::new()),
+    ]);
+    ui.add_space(2.0);
+    crate::panels::about(ui, &t(file_help(&sel).unwrap_or("")));
     app.mission.file_sel = Some(sel.clone());
     element_list(app, ui, &sel, &[], 200.0);
 }
@@ -2672,23 +3014,40 @@ fn flags_tab(app: &mut App, ui: &mut egui::Ui) {
         return;
     };
     let (w, h, ww, wh, ub, vb) = (a.width, a.height, a.world_width, a.world_height, a.usage_bits, a.value_bits);
-    ui.label(tf("{0} × {1} cells over {2} × {3} m; {4} bits of usage, {5} bits of value.", &[&w.to_string(), &h.to_string(), &ww.to_string(), &wh.to_string(), &ub.to_string(), &vb.to_string()]));
+    theme::card(ui, theme::BORDER, |ui| {
+        ui.label(tf("{0} × {1} cells over {2} × {3} m; {4} bits of usage, {5} bits of value.", &[&w.to_string(), &h.to_string(), &ww.to_string(), &wh.to_string(), &ub.to_string(), &vb.to_string()]));
+    });
     let size = meta.size_m().round() as u32;
     if ww != size || wh != size {
-        ui.colored_label(theme::WARN, tf("The map is {0} m; the flags cover {1} m.", &[&size.to_string(), &ww.to_string()]));
-        if ui.button(t("Fit the flags to the map")).clicked() {
+        ui.add_space(4.0);
+        let mut do_resize = false;
+        theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+            ui.horizontal(|ui| {
+                ui.colored_label(theme::WARN, icons::WARNING);
+                ui.colored_label(theme::WARN, tf("The map is {0} m; the flags cover {1} m.", &[&size.to_string(), &ww.to_string()]));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(egui::Button::new(t("Fit the flags to the map")).min_size(vec2(0.0, 22.0))).clicked() {
+                        do_resize = true;
+                    }
+                });
+            });
+        });
+        if do_resize {
             let a2 = a.resized(w, size);
             edit_file(app, &t("Area flags"), "areaflags.map", |m| { if let Some(x) = m.areaflags_mut() { *x = a2; } });
             flush(app);
             return;
         }
     }
+    ui.add_space(6.0);
     let r = rev(app);
     let layer = app.mission.flag_layer;
     ui.horizontal(|ui| {
-        ui.selectable_value(&mut app.mission.flag_layer, FlagLayer::Usage, t("Usage"));
-        ui.selectable_value(&mut app.mission.flag_layer, FlagLayer::Value, t("Value"));
-        if ui.button(t("Count cells")).clicked() {
+        theme::segmented(ui, &mut app.mission.flag_layer, &[
+            (FlagLayer::Usage, t("Usage"), String::new()),
+            (FlagLayer::Value, t("Value"), String::new()),
+        ]);
+        if ui.add(egui::Button::new(t("Count cells")).min_size(vec2(0.0, 24.0))).clicked() {
             let c = mission(app).and_then(|m| m.areaflags()).map(|a| a.counts(layer)).unwrap_or_default();
             app.mission.flag_counts = Some((r, layer, c));
         }
@@ -2828,22 +3187,77 @@ fn files_tab(app: &mut App, ui: &mut egui::Ui) {
         (k.clone(), kind, f.dirty, f.origin.as_ref().and_then(|o| o.metadata().ok()).map(|m| m.len()).unwrap_or(0))
     }).collect();
     let mut sel = app.mission.file_sel.clone().filter(|s| m.files.contains_key(s));
+    let mut add_file = false;
     ui.columns(2, |cols| {
         let ui = &mut cols[0];
-        egui::ScrollArea::vertical().id_salt("files_list").auto_shrink([false, false]).show(ui, |ui| {
-            egui::Grid::new("files_grid").num_columns(3).striped(true).show(ui, |ui| {
-                for (k, kind, dirty, size) in &files {
-                    if ui.selectable_label(sel.as_ref() == Some(k), RichText::new(if *dirty { format!("{k} *") } else { k.clone() }).monospace()).on_hover_text(t(file_help(k).unwrap_or(""))).clicked() { sel = Some(k.clone()); }
-                    ui.label(RichText::new(*kind).small());
-                    ui.label(RichText::new(if *size > 0 { format!("{:.0} kB", *size as f64 / 1024.0) } else { String::new() }).small());
-                    ui.end_row();
-                }
-            });
+        ui.horizontal(|ui| {
+            if ui.add(egui::Button::new(icons::with(icons::FILE_PLUS, &t("Add a file..."))).min_size(vec2(0.0, 24.0))).on_hover_text(t("Copies a file into the mission, e.g. a types file of a mod.")).clicked() {
+                add_file = true;
+            }
         });
+        ui.add_space(4.0);
+        egui::Frame::new()
+            .fill(theme::DARK)
+            .stroke(Stroke::new(1.0_f32, theme::BORDER))
+            .corner_radius(4)
+            .inner_margin(egui::Margin::same(4))
+            .show(ui, |ui| {
+                let list_h = (ui.available_height() - 4.0).max(80.0);
+                egui::ScrollArea::vertical().id_salt("files_list").max_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    for (idx, (k, kind, dirty, size)) in files.iter().enumerate() {
+                        let active = sel.as_ref() == Some(k);
+                        let bg = if active { theme::ACCENT_SOFT } else if idx % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
+                        egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(5, 2)).show(ui, |ui| {
+                            let r = ui.horizontal(|ui| {
+                                let label = if *dirty { format!("{k} *") } else { k.clone() };
+                                let col = if active { Color32::WHITE } else if *dirty { theme::WARN } else { theme::TEXT };
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    let right = if *size > 0 { format!("{kind} · {:.0} kB", *size as f64 / 1024.0) } else { (*kind).to_string() };
+                                    ui.label(RichText::new(right).monospace().size(10.5).color(theme::TEXT_DIM));
+                                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                        ui.add(egui::Label::new(RichText::new(label).monospace().size(12.0).color(col)).truncate().sense(egui::Sense::click()))
+                                    }).inner
+                                }).inner
+                            });
+                            let resp = r.inner.on_hover_text(t(file_help(k).unwrap_or("")));
+                            if resp.clicked() || r.response.clicked() { sel = Some(k.clone()); }
+                        });
+                    }
+                });
+            });
+
         let ui = &mut cols[1];
-        let Some(k) = sel.clone() else { ui.weak(t("Pick a file.")); return };
-        ui.label(RichText::new(&k).strong());
-        ui.weak(t(file_help(&k).unwrap_or("")));
+        let Some(k) = sel.clone() else {
+            theme::card(ui, theme::BORDER, |ui| {
+                ui.label(RichText::new(t("Pick a file.")).color(theme::TEXT_DIM));
+            });
+            return;
+        };
+        let mut removed = false;
+        theme::card(ui, theme::BORDER, |ui| {
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.add(egui::Button::new(RichText::new(icons::with(icons::TRASH, &t("Remove the file from the mission"))).color(Color32::from_rgb(235, 110, 100))).min_size(vec2(0.0, 22.0))).clicked() {
+                        removed = true;
+                    }
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.add(egui::Label::new(RichText::new(&k).font(icons::strong(13.0)).color(theme::TEXT_BRIGHT)).truncate());
+                    });
+                });
+            });
+            let help = t(file_help(&k).unwrap_or(""));
+            if !help.is_empty() {
+                crate::panels::about(ui, &help);
+            }
+        });
+        if removed {
+            let e = mission_mut(app).map(|m| mission::file_edit(m, &k.clone(), |m| { m.remove(&k); }));
+            push(app, &t("Remove file"), e.into_iter().collect());
+            sel = None;
+            return;
+        }
+        ui.add_space(4.0);
         let kind = mission(app).and_then(|m| m.files.get(&k)).map(|f| match f.data { mission::FileData::Xml(_) => 0, mission::FileData::Json(_) => 1, mission::FileData::Text(_) => 2, mission::FileData::AreaFlags(_) => 3, mission::FileData::Disk => 4 }).unwrap_or(4);
         match kind {
             0 => element_list(app, ui, &k, &[], 180.0),
@@ -2851,39 +3265,33 @@ fn files_tab(app: &mut App, ui: &mut egui::Ui) {
             2 => {
                 let original = mission(app).unwrap().text(&k).unwrap().text.clone();
                 let mut text = original.clone();
-                egui::ScrollArea::vertical().id_salt("file_text").auto_shrink([false, false]).show(ui, |ui| { ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_width(f32::INFINITY)); });
+                let text_h = (ui.available_height() - 4.0).max(80.0);
+                egui::ScrollArea::vertical().id_salt("file_text").max_height(text_h).auto_shrink([false, false]).show(ui, |ui| { ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_width(f32::INFINITY)); });
                 if text != original { edit_file(app, &k, &k.clone(), |m| { if let Some(d) = m.text_mut(&k) { d.text = text; } }); }
             }
-            3 => { if ui.button(t("Open the area flags")).clicked() { app.mission.tab = Tab::Flags; } }
-            _ => { ui.weak(t("This file is copied as it is.")); }
-        }
-        if ui.button(icons::with(icons::TRASH, &t("Remove the file from the mission"))).clicked() {
-            let e = mission_mut(app).map(|m| mission::file_edit(m, &k.clone(), |m| { m.remove(&k); }));
-            push(app, &t("Remove file"), e.into_iter().collect());
-            sel = None;
+            3 => { if ui.add(egui::Button::new(icons::with(icons::GRID_FOUR, &t("Open the area flags"))).min_size(vec2(0.0, 24.0))).clicked() { app.mission.tab = Tab::Flags; } }
+            _ => { crate::panels::about(ui, &t("This file is copied as it is.")); }
         }
     });
-    ui.horizontal(|ui| {
-        if ui.button(icons::with(icons::FILE_PLUS, &t("Add a file..."))).on_hover_text(t("Copies a file into the mission, e.g. a types file of a mod.")).clicked() {
-            if let Some(p) = rfd::FileDialog::new().set_title(t("Add a file...")).pick_file() {
-                match std::fs::read(&p) {
-                    Ok(b) => {
-                        let name = p.file_name().unwrap().to_string_lossy().to_string();
-                        let data = mission::read_file(&name, &b);
-                        let data = if matches!(data, mission::FileData::Disk) { None } else { Some(data) };
-                        if let Some(data) = data {
-                            let e = mission_mut(app).map(|m| mission::file_edit(m, &name.clone(), |m| m.put(&name, data)));
-                            push(app, &t("Add file"), e.into_iter().collect());
-                            sel = Some(name);
-                        } else {
-                            app.warn(t("Only XML, JSON and .c files can be added."));
-                        }
+    if add_file {
+        if let Some(p) = rfd::FileDialog::new().set_title(t("Add a file...")).pick_file() {
+            match std::fs::read(&p) {
+                Ok(b) => {
+                    let name = p.file_name().unwrap().to_string_lossy().to_string();
+                    let data = mission::read_file(&name, &b);
+                    let data = if matches!(data, mission::FileData::Disk) { None } else { Some(data) };
+                    if let Some(data) = data {
+                        let e = mission_mut(app).map(|m| mission::file_edit(m, &name.clone(), |m| m.put(&name, data)));
+                        push(app, &t("Add file"), e.into_iter().collect());
+                        sel = Some(name);
+                    } else {
+                        app.warn(t("Only XML, JSON and .c files can be added."));
                     }
-                    Err(e) => app.error(format!("{}: {e}", p.display())),
                 }
+                Err(e) => app.error(format!("{}: {e}", p.display())),
             }
         }
-    });
+    }
     app.mission.file_sel = sel;
 }
 
@@ -2899,14 +3307,25 @@ fn check_tab(app: &mut App, ui: &mut egui::Ui) {
     let issues = app.mission.issues.as_ref().unwrap().1.clone();
     use mission::validate::Level;
     let count = |l: Level| issues.iter().filter(|i| i.level == l).count();
-    ui.horizontal(|ui| {
-        let lv = &mut app.mission.issue_levels;
-        ui.checkbox(&mut lv[0], RichText::new(tf("{0} errors", &[&count(Level::Error).to_string()])).color(theme::ERROR));
-        ui.checkbox(&mut lv[1], RichText::new(tf("{0} warnings", &[&count(Level::Warning).to_string()])).color(theme::WARN));
-        ui.checkbox(&mut lv[2], tf("{0} notes", &[&count(Level::Info).to_string()]));
+    theme::card(ui, theme::BORDER, |ui| {
+        ui.horizontal(|ui| {
+            let lv = &mut app.mission.issue_levels;
+            ui.checkbox(&mut lv[0], RichText::new(tf("{0} errors", &[&count(Level::Error).to_string()])).color(theme::ERROR));
+            ui.add_space(6.0);
+            ui.checkbox(&mut lv[1], RichText::new(tf("{0} warnings", &[&count(Level::Warning).to_string()])).color(theme::WARN));
+            ui.add_space(6.0);
+            ui.checkbox(&mut lv[2], RichText::new(tf("{0} notes", &[&count(Level::Info).to_string()])).color(theme::TEXT_DIM));
+            ui.allocate_space(vec2(ui.available_width().max(0.0), 0.0));
+        });
     });
+    ui.add_space(6.0);
     if issues.is_empty() {
-        ui.label(RichText::new(icons::with(icons::CHECK_CIRCLE, &t("The files of the mission agree with each other."))).color(Color32::from_rgb(110, 210, 120)));
+        theme::card(ui, theme::OK.gamma_multiply(0.75), |ui| {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(icons::CHECK_CIRCLE, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(14.0), color: theme::OK, ..Default::default() });
+            job.append(&t("The files of the mission agree with each other."), 6.0, egui::TextFormat { font_id: egui::FontId::proportional(13.0), color: theme::OK, ..Default::default() });
+            ui.label(job);
+        });
         return;
     }
     // Issues of one kind and file go under one heading.
@@ -2920,21 +3339,38 @@ fn check_tab(app: &mut App, ui: &mut egui::Ui) {
             None => groups.push((key, vec![msg])),
         }
     }
-    egui::ScrollArea::vertical().id_salt("issues").auto_shrink([false, false]).show(ui, |ui| {
-        for ((level, file, _), msgs) in groups {
-            let color = match level { Level::Error => theme::ERROR, Level::Warning => theme::WARN, Level::Info => theme::TEXT_DIM };
-            if msgs.len() == 1 {
-                ui.horizontal(|ui| {
-                    if ui.link(RichText::new(&file).monospace()).clicked() { app.mission.file_sel = Some(file.clone()); app.mission.tab = Tab::Files; }
-                    ui.label(RichText::new(&msgs[0]).color(color));
-                });
-            } else {
-                egui::CollapsingHeader::new(RichText::new(format!("{file}: {} (×{})", msgs[0], msgs.len())).color(color)).id_salt((&file, &msgs[0])).show(ui, |ui| {
-                    for m in msgs.iter().take(500) { ui.label(RichText::new(m).small()); }
-                });
-            }
-        }
-    });
+    egui::Frame::new()
+        .fill(theme::DARK)
+        .stroke(Stroke::new(1.0_f32, theme::BORDER))
+        .corner_radius(4)
+        .inner_margin(egui::Margin::same(4))
+        .show(ui, |ui| {
+            let list_h = (ui.available_height() - 4.0).max(80.0);
+            egui::ScrollArea::vertical().id_salt("issues").max_height(list_h).auto_shrink([false, false]).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for (idx, ((level, file, _), msgs)) in groups.into_iter().enumerate() {
+                    let (icon, color) = match level {
+                        Level::Error => (icons::X_CIRCLE, theme::ERROR),
+                        Level::Warning => (icons::WARNING, theme::WARN),
+                        Level::Info => (icons::INFO, theme::TEXT_DIM),
+                    };
+                    let bg = if idx % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
+                    egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| {
+                        if msgs.len() == 1 {
+                            ui.horizontal(|ui| {
+                                ui.colored_label(color, icon);
+                                if ui.link(RichText::new(&file).monospace().color(theme::TOGGLE_ON_TEXT)).clicked() { app.mission.file_sel = Some(file.clone()); app.mission.tab = Tab::Files; }
+                                ui.label(RichText::new(&msgs[0]).color(color));
+                            });
+                        } else {
+                            egui::CollapsingHeader::new(RichText::new(format!("{icon}  {file}: {} (×{})", msgs[0], msgs.len())).color(color)).id_salt((&file, &msgs[0])).show(ui, |ui| {
+                                for m in msgs.iter().take(500) { ui.label(RichText::new(m).small()); }
+                            });
+                        }
+                    });
+                }
+            });
+        });
 }
 
 // ---------------------------------------------------------------- scripted checks

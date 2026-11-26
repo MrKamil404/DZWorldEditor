@@ -79,6 +79,10 @@
   "de": "3D-Ansicht",
   "pl": "Widok 3D"
  },
+ "3D view distance": {
+  "de": "3D-Sichtweite",
+  "pl": "Zasięg widoku 3D"
+ },
  "A PAA, or an image (PNG, TGA, JPG) that is converted, brought to sides of powers of two": {
   "de": "Ein PAA oder ein Bild (PNG, TGA, JPG), das umgewandelt und auf Zweierpotenzen gebracht wird",
   "pl": "PAA albo obraz (PNG, TGA, JPG), który zostanie przekonwertowany i przeskalowany do boków będących potęgą dwójki"
@@ -3762,6 +3766,10 @@
  "How far beyond a polygon, or to each side of a line.": {
   "de": "Wie weit über ein Polygon hinaus oder zu jeder Seite einer Linie.",
   "pl": "Jak daleko poza wielokątem albo po każdej stronie linii."
+ },
+ "How far from the camera mission points are drawn in the 3D view. Lower values keep the view smooth when a mission has hundreds of points.": {
+  "de": "Wie weit von der Kamera entfernt Missionspunkte in der 3D-Ansicht gezeichnet werden. Kleinere Werte halten die Ansicht flüssig, wenn eine Mission hunderte Punkte hat.",
+  "pl": "Jak daleko od kamery rysowane są punkty misji w widoku 3D. Mniejsze wartości utrzymują płynność, gdy misja ma setki punktów."
  },
  "How far the baked objects fade into the satellite image under them.": {
   "de": "Wie stark die eingebrannten Objekte in das Satellitenbild darunter übergehen.",

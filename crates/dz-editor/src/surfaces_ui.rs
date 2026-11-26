@@ -178,7 +178,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             open_editor = Some(own.len() - 1);
             changed = true;
         }
-        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
             ui.spacing_mut().interact_size.y = 24.0;
             ui.menu_button(icons::with(icons::SLIDERS_HORIZONTAL, &t("Change a surface of the game")), |ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
