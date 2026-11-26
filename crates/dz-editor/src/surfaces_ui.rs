@@ -69,74 +69,118 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     let mut read_cfg: Option<std::path::PathBuf> = None;
     section(ui, &icons::with(icons::FOOTPRINTS, &t("Surfaces in the game")), true, |ui| {
         if cat.surfaces.is_empty() {
-            ui.colored_label(theme::WARN, t("No surfaces of the game were found on the work drive"));
+            theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme::WARN, icons::WARNING);
+                    ui.colored_label(theme::WARN, t("No surfaces of the game were found on the work drive"));
+                });
+            });
+            ui.add_space(4.0);
         }
         let own = &mut doc.world.meta.config.surfaces;
         if let Some(l) = &layer {
             let (mine, game) = surface_of(&l.texture, own, &cat);
             let mine = mine.and_then(|m| own.iter().position(|o| std::ptr::eq(o, m)));
-            ui.label(RichText::new(tf("Layer {0}", &[&l.name])).strong());
-            match (mine, game) {
-                (Some(i), _) => {
-                    let s = &own[i];
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(if s.replaces { tf("{0} of the game, changed for this map", &[&s.base]) } else { tf("Surface of the map {0}, based on {1}", &[&s.name, &s.base]) });
-                        if ui.small_button(icons::with(icons::PENCIL_SIMPLE, &t("Edit"))).clicked() { open_editor = Some(i); }
-                    });
-                }
-                (None, Some(g)) => {
-                    ui.label(tf("Surface of the game {0}", &[&g.class]));
-                    ui.horizontal_wrapped(|ui| {
-                        if ui.small_button(t("Change it for this map")).on_hover_text(t("Writes the class of the game again in the map's config, with the changes: everywhere the mod is loaded.")).clicked() {
+            let stroke = match (mine, game) {
+                (Some(_), _) => theme::ACCENT.gamma_multiply(0.7),
+                (None, Some(_)) => theme::BORDER,
+                (None, None) => theme::WARN.gamma_multiply(0.75),
+            };
+            theme::card(ui, stroke, |ui| {
+                ui.label(RichText::new(tf("Layer {0}", &[&l.name])).font(icons::strong(13.0)).color(theme::TEXT_BRIGHT));
+                match (mine, game) {
+                    (Some(i), _) => {
+                        let s = &own[i];
+                        let desc = if s.replaces {
+                            tf("{0} of the game, changed for this map", &[&s.base])
+                        } else {
+                            tf("Surface of the map {0}, based on {1}", &[&s.name, &s.base])
+                        };
+                        ui.add(egui::Label::new(RichText::new(desc).small().color(theme::TOGGLE_ON_TEXT)).wrap());
+                        ui.add_space(4.0);
+                        if ui.add(egui::Button::new(icons::with(icons::PENCIL_SIMPLE, &t("Edit"))).min_size(egui::vec2(0.0, 24.0))).clicked() {
+                            open_editor = Some(i);
+                        }
+                    }
+                    (None, Some(g)) => {
+                        ui.add(egui::Label::new(RichText::new(tf("Surface of the game {0}", &[&g.class])).small().color(theme::TEXT_DIM)).wrap());
+                        ui.add_space(4.0);
+                        if ui.add(egui::Button::new(icons::with(icons::SLIDERS_HORIZONTAL, &t("Change it for this map"))).min_size(egui::vec2(0.0, 24.0))).on_hover_text(t("Writes the class of the game again in the map's config, with the changes: everywhere the mod is loaded.")).clicked() {
                             own.push(MapSurface { base: g.class.clone(), replaces: true, ..Default::default() });
                             open_editor = Some(own.len() - 1);
                             changed = true;
                         }
-                        if ui.small_button(t("A new surface for this texture")).clicked() {
+                        if ui.add(egui::Button::new(icons::with(icons::PLUS, &t("A new surface for this texture"))).min_size(egui::vec2(0.0, 24.0))).clicked() {
                             own.push(new_for(&l.texture, &g.class));
                             open_editor = Some(own.len() - 1);
                             changed = true;
                         }
-                    });
-                }
-                (None, None) => {
-                    ui.colored_label(theme::WARN, t("No surface of the game is named like this texture: in the game it has no grass, and the sounds and physics of the default ground."));
-                    if ui.button(icons::with(icons::PLUS, &t("Make a surface for this layer"))).clicked() {
-                        own.push(new_for(&l.texture, "en_grass1"));
-                        open_editor = Some(own.len() - 1);
-                        changed = true;
+                    }
+                    (None, None) => {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.colored_label(theme::WARN, icons::WARNING);
+                            ui.add(egui::Label::new(RichText::new(t("No surface of the game is named like this texture: in the game it has no grass, and the sounds and physics of the default ground.")).small().color(theme::WARN)).wrap());
+                        });
+                        ui.add_space(4.0);
+                        if ui.add(egui::Button::new(RichText::new(icons::with(icons::PLUS, &t("Make a surface for this layer"))).color(egui::Color32::WHITE)).fill(theme::ACCENT).stroke(egui::Stroke::NONE).min_size(egui::vec2(0.0, 24.0))).clicked() {
+                            own.push(new_for(&l.texture, "en_grass1"));
+                            open_editor = Some(own.len() - 1);
+                            changed = true;
+                        }
                     }
                 }
-            }
-            ui.separator();
-        }
-        if own.is_empty() {
-            ui.weak(t("The map has no surfaces of its own."));
+            });
+            ui.add_space(6.0);
         }
         let mut remove = None;
-        for (i, s) in own.iter().enumerate() {
-            ui.horizontal(|ui| {
-                let name = if s.replaces { format!("{} ({})", s.base, t("changed")) } else { s.name.clone() };
-                let selected = app.surface_edit == Some(i);
-                if ui.selectable_label(selected, name).on_hover_text(if s.replaces { String::new() } else { format!("{}*  ← {}", s.files, s.base) }).clicked() {
-                    open_editor = Some(i);
-                }
-                if ui.small_button(icons::TRASH).on_hover_text(t("Delete")).clicked() { remove = Some(i); }
+        if own.is_empty() {
+            theme::card(ui, theme::BORDER, |ui| {
+                ui.label(RichText::new(t("The map has no surfaces of its own.")).small().color(theme::TEXT_DIM));
             });
+        } else {
+            egui::Frame::new()
+                .fill(theme::DARK)
+                .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::same(4))
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    for (i, s) in own.iter().enumerate() {
+                        let name = if s.replaces { format!("{} ({})", s.base, t("changed")) } else { s.name.clone() };
+                        let selected = app.surface_edit == Some(i);
+                        let tip = if s.replaces { String::new() } else { format!("{}*  ← {}", s.files, s.base) };
+                        let row_bg = if selected { theme::ACCENT_SOFT } else if i % 2 == 1 { theme::ROW_ALT } else { egui::Color32::TRANSPARENT };
+                        egui::Frame::new().fill(row_bg).corner_radius(3).inner_margin(egui::Margin::symmetric(4, 2)).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.add(egui::Button::new(icons::TRASH).frame(false).min_size(egui::vec2(22.0, 20.0))).on_hover_text(t("Delete")).clicked() {
+                                        remove = Some(i);
+                                    }
+                                    let r = ui.add(egui::SelectableLabel::new(selected, icons::with(icons::FOOTPRINTS, &name)));
+                                    let r = if tip.is_empty() { r } else { r.on_hover_text(tip) };
+                                    if r.clicked() { open_editor = Some(i); }
+                                });
+                            });
+                        });
+                    }
+                });
         }
         if let Some(i) = remove {
             own.remove(i);
             changed = true;
             app.surface_edit = None;
         }
-        ui.horizontal_wrapped(|ui| {
-            if ui.button(icons::with(icons::PLUS, &t("New surface"))).clicked() {
-                let n = own.len() + 1;
-                own.push(MapSurface { name: format!("{}_surface{n}", doc.world.meta.map_id.to_ascii_lowercase()), files: String::new(), base: "en_grass1".into(), ..Default::default() });
-                open_editor = Some(own.len() - 1);
-                changed = true;
-            }
-            ui.menu_button(t("Change a surface of the game"), |ui| {
+        ui.add_space(6.0);
+        let w = ui.available_width();
+        if ui.add(egui::Button::new(icons::with(icons::PLUS, &t("New surface"))).min_size(egui::vec2(w, 24.0))).clicked() {
+            let n = own.len() + 1;
+            own.push(MapSurface { name: format!("{}_surface{n}", doc.world.meta.map_id.to_ascii_lowercase()), files: String::new(), base: "en_grass1".into(), ..Default::default() });
+            open_editor = Some(own.len() - 1);
+            changed = true;
+        }
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+            ui.spacing_mut().interact_size.y = 24.0;
+            ui.menu_button(icons::with(icons::SLIDERS_HORIZONTAL, &t("Change a surface of the game")), |ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 let sid = ui.make_persistent_id("replace_search");
                 let mut search: String = ui.data_mut(|d| d.get_temp(sid).unwrap_or_default());
@@ -161,12 +205,13 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
         });
-        if ui.button(icons::with(icons::FILE_ARROW_DOWN, &t("Read the map's CfgSurfaces..."))).on_hover_text(t("Takes the surfaces a config of the map defines (CfgSurfaces) into the project; they are written again on export.")).clicked() {
+        if ui.add(egui::Button::new(icons::with(icons::FILE_ARROW_DOWN, &t("Read the map's CfgSurfaces..."))).min_size(egui::vec2(w, 24.0))).on_hover_text(t("Takes the surfaces a config of the map defines (CfgSurfaces) into the project; they are written again on export.")).clicked() {
             let root = app.settings.tools.work_drive.clone();
             if let Some(f) = rfd::FileDialog::new().add_filter("Config", &["cpp", "hpp"]).set_directory(&root).pick_file() {
                 read_cfg = Some(f);
             }
         }
+        ui.add_space(2.0);
         crate::panels::about(ui, &t("New surfaces are written to surfaces/config.cpp of the map on export, with the footsteps of the surface they sound like."));
     });
     if let Some(i) = open_editor {
