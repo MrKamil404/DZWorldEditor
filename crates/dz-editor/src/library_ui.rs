@@ -2338,7 +2338,11 @@ pub fn place_preset(app: &mut App, id: u64, x: f32, z: f32) {
 
 /// Editing which models a road type is built from; saved in the Terrain Builder project.
 pub fn road_catalog_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
-    egui::Window::new(t("Road catalog")).collapsible(false).resizable(true).default_width(520.0).open(open).show(ctx, |ui| {
+    let title = t("Road catalog");
+    crate::theme::PopupWindow::new(egui::Id::new("road_catalog"), &title)
+        .default_size([520.0, 480.0])
+        .min_size([380.0, 300.0])
+        .show(ctx, open, |ui| {
         let families = app.road_families.clone();
         row(ui, &t("Road type"), |ui| {
             egui::ComboBox::from_id_salt("cat_family").selected_text(app.line.family.clone()).show_ui(ui, |ui| {

@@ -263,9 +263,9 @@ fn proxy_instance_matrix(p: &ProxyPlace) -> [f32; 16] {
 }
 
 /// Builds a GPU instance matrix for a `<dispatch><proxy>` positioned at `world_pos` with `rpy`
-/// degrees (`[pitch, yaw, roll]` in DayZ CE frame, rotated +90° in yaw into P3D model space).
+/// degrees (`[pitch, yaw, roll]` directly in P3D model space).
 fn dispatch_instance_matrix(world_pos: [f32; 3], rpy: [f32; 3]) -> [f32; 16] {
-    let m = dz_core::objects::rotation(rpy[1] + 90.0, rpy[0], rpy[2], 1.0);
+    let m = dz_core::objects::rotation(rpy[1], rpy[0], rpy[2], 1.0);
     [
         m[0][0], m[1][0], m[2][0], world_pos[0],
         m[0][1], m[1][1], m[2][1], world_pos[1],
@@ -366,14 +366,10 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let mut save_requested = false;
     let mut remove_requested = false;
 
-    egui::Window::new(title)
-        .id(egui::Id::new("loot_proto_editor_window"))
-        .open(&mut open)
+    theme::PopupWindow::new(egui::Id::new("loot_proto_editor_window"), &title)
         .default_size([1120.0, 680.0])
         .min_size([760.0, 460.0])
-        .resizable(true)
-        .vscroll(false)
-        .show(ctx, |ui| {
+        .show(ctx, &mut open, |ui| {
             let avail = ui.available_rect_before_wrap();
             let total_w = avail.width().max(1.0);
             let total_h = avail.height().max(1.0);

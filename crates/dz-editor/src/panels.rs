@@ -3731,7 +3731,11 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     let before = doc.world.meta.clone();
     let size = doc.world.meta.size_m();
     let mut copied = false;
-    egui::Window::new(t("Map config")).collapsible(false).resizable(true).default_size([980.0, 620.0]).open(open).show(ctx, |ui| {
+    let title = t("Map config");
+    crate::theme::PopupWindow::new(egui::Id::new("map_config_window"), &title)
+        .default_size([980.0, 620.0])
+        .min_size([640.0, 420.0])
+        .show(ctx, open, |ui| {
         ui.columns(2, |cols| {
             let ui = &mut cols[0];
             egui::ScrollArea::vertical().id_salt("cfg_form").auto_shrink([false, false]).show(ui, |ui| {
@@ -4022,7 +4026,12 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     let (mut check, mut fix) = (false, false);
     let mut open_config = false;
     let m = &mut doc.world.meta;
-    egui::Window::new(t("Project settings")).collapsible(false).open(open).show(ctx, |ui| {
+    let title = t("Project settings");
+    crate::theme::PopupWindow::new(egui::Id::new("project_settings_window"), &title)
+        .default_size([460.0, 440.0])
+        .min_size([360.0, 300.0])
+        .vscroll(true)
+        .show(ctx, open, |ui| {
         row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut m.name); });
         row(ui, &t("Map ID"), |ui| { ui.text_edit_singleline(&mut m.map_id); });
         row(ui, &t("Author"), |ui| { ui.text_edit_singleline(&mut m.author); });

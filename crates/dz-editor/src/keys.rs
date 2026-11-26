@@ -506,7 +506,11 @@ pub fn window(ctx: &egui::Context, keys: &mut KeyMap, capture: &mut Option<Actio
     }
     let clashes = keys.clashes();
     let clashing = |a: Action| clashes.iter().any(|c| c.0 == a || c.1 == a);
-    egui::Window::new(format!("{} {}", crate::icons::KEYBOARD, t("Keyboard shortcuts"))).collapsible(false).resizable(true).default_size([520.0, 620.0]).open(open).show(ctx, |ui| {
+    let title = format!("{} {}", crate::icons::KEYBOARD, t("Keyboard shortcuts"));
+    theme::PopupWindow::new(egui::Id::new("keyboard_shortcuts"), &title)
+        .default_size([520.0, 620.0])
+        .min_size([400.0, 320.0])
+        .show(ctx, open, |ui| {
         ui.weak(t("Click a shortcut and press the new key with its modifiers. Esc cancels, Backspace leaves the action without a key."));
         if !clashes.is_empty() {
             ui.colored_label(theme::WARN, t("Some actions share a key; only the first of them will work."));

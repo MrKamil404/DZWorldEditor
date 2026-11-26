@@ -821,3 +821,356 @@ pub fn search_pick<K: PartialEq + Clone>(ui: &mut egui::Ui, id: impl std::hash::
     });
     changed
 }
+
+/// Persistent window chrome state stored in `egui::Context` memory for [`PopupWindow`].
+#[derive(Clone, Default)]
+struct PopupState {
+    minimized: bool,
+    maximized: bool,
+    own_window: bool,
+    /// Saved rect before maximizing, restored when leaving maximized mode.
+    restore_rect: Option<egui::Rect>,
+    /// Saved size before minimizing, restored when un-minimizing.
+    restore_size: Option<egui::Vec2>,
+    /// One-shot position/size applied on the next frame (after restore or title-bar drag).
+    pending_pos: Option<egui::Pos2>,
+    pending_size: Option<egui::Vec2>,
+}
+
+/// Strips a leading Phosphor icon glyph (Private Use Area) so OS window titles stay clean.
+fn strip_leading_icon(title: &str) -> &str {
+    let mut chars = title.chars();
+    if let Some(first) = chars.next() {
+        if ('\u{E000}'..='\u{F8FF}').contains(&first) {
+            return chars.as_str().trim_start();
+        }
+    }
+    title
+}
+
+/// Floating editor popup window with custom title-bar controls next to Close (`X`):
+/// pop-out to an independent OS window, minimize (collapse to title bar), and maximize/restore.
+pub struct PopupWindow<'a> {
+    id: egui::Id,
+    title: &'a str,
+    default_size: [f32; 2],
+    min_size: [f32; 2],
+    allow_popout: bool,
+    allow_maximize: bool,
+    vscroll: bool,
+}
+
+impl<'a> PopupWindow<'a> {
+    pub fn new(id: egui::Id, title: &'a str) -> Self {
+        Self {
+            id,
+            title,
+            default_size: [640.0, 480.0],
+            min_size: [320.0, 220.0],
+            allow_popout: true,
+            allow_maximize: true,
+            vscroll: false,
+        }
+    }
+
+    pub fn default_size(mut self, size: [f32; 2]) -> Self {
+        self.default_size = size;
+        self
+    }
+
+    pub fn min_size(mut self, size: [f32; 2]) -> Self {
+        self.min_size = size;
+        self
+    }
+
+    pub fn vscroll(mut self, vscroll: bool) -> Self {
+        self.vscroll = vscroll;
+        self
+    }
+
+    /// Shows the popup either inside the main window (with custom title-bar controls) or in its
+    /// own OS window when popped out. Updates `open` when closed.
+    pub fn show(self, ctx: &egui::Context, open: &mut bool, body: impl FnOnce(&mut egui::Ui)) {
+        self.show_with_own(ctx, open, None, body);
+    }
+
+    /// Like [`Self::show`], syncing the detached-window flag with `own_window` (for callers that
+    /// also toggle it externally, e.g. via automation commands).
+    pub fn show_with_own(
+        self,
+        ctx: &egui::Context,
+        open: &mut bool,
+        mut own_window: Option<&mut bool>,
+        body: impl FnOnce(&mut egui::Ui),
+    ) {
+        if !*open {
+            return;
+        }
+        let mut body = Some(body);
+        let state_id = self.id.with("dzwe_popup_state");
+        let mut state: PopupState = ctx.data_mut(|d| d.get_temp(state_id)).unwrap_or_default();
+        if let Some(flag) = own_window.as_deref() {
+            state.own_window = *flag;
+        }
+
+        if state.own_window && self.allow_popout {
+            let vp_id = egui::ViewportId::from_hash_of(("dzwe_popup_vp", self.id));
+            let clean_title = strip_leading_icon(self.title);
+            let builder = egui::ViewportBuilder::default()
+                .with_title(format!("DZ World Editor – {clean_title}"))
+                .with_inner_size(self.default_size)
+                .with_min_inner_size(self.min_size)
+                .with_icon(crate::icons::window_icon());
+
+            let mut dock_back = false;
+            let mut closed = false;
+            ctx.show_viewport_immediate(vp_id, builder, |vctx, _class| {
+                if vctx.input(|i| i.viewport().close_requested()) {
+                    closed = true;
+                    return;
+                }
+                egui::TopBottomPanel::top(self.id.with("popup_vp_bar"))
+                    .exact_height(26.0)
+                    .frame(egui::Frame::new().fill(STRIP).inner_margin(Margin::symmetric(8, 2)).stroke(Stroke::new(1.0_f32, BORDER)))
+                    .show(vctx, |ui| {
+                        ui.horizontal_centered(|ui| {
+                            ui.add(egui::Label::new(egui::RichText::new(self.title).font(crate::icons::strong(12.5)).color(TEXT_BRIGHT)).truncate());
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.add(egui::Button::new(crate::icons::ARROW_SQUARE_IN).frame(false))
+                                    .on_hover_text(crate::i18n::t("Back into the main window"))
+                                    .clicked()
+                                {
+                                    dock_back = true;
+                                }
+                            });
+                        });
+                    });
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::new().fill(BG).inner_margin(Margin::same(8)))
+                    .show(vctx, |ui| {
+                        if let Some(f) = body.take() {
+                            if self.vscroll {
+                                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, f);
+                            } else {
+                                f(ui);
+                            }
+                        }
+                    });
+            });
+
+            if closed {
+                *open = false;
+                state.own_window = false;
+            } else if dock_back {
+                state.own_window = false;
+            }
+            if let Some(flag) = own_window.as_deref_mut() {
+                *flag = state.own_window;
+            }
+            ctx.data_mut(|d| d.insert_temp(state_id, state));
+            return;
+        }
+
+        const TITLE_H: f32 = 28.0;
+        let screen = ctx.screen_rect();
+        let max_rect = egui::Rect::from_min_max(
+            egui::pos2(screen.left() + 4.0, screen.top() + 26.0),
+            egui::pos2((screen.right() - 4.0).max(screen.left() + 200.0), (screen.bottom() - 24.0).max(screen.top() + 120.0)),
+        );
+
+        let cur_rect = ctx.memory(|m| m.area_rect(self.id));
+        let frame = egui::Frame::window(&ctx.style()).inner_margin(Margin::ZERO);
+
+        let mut win = egui::Window::new("")
+            .id(self.id)
+            .title_bar(false)
+            .frame(frame)
+            .vscroll(false)
+            .movable(false);
+
+        if state.minimized {
+            let w = state.restore_size.map(|s| s.x).unwrap_or(self.default_size[0]).clamp(280.0, 460.0);
+            win = win.resizable(false).fixed_size([w, TITLE_H]);
+            if let Some(pos) = state.pending_pos.take() {
+                win = win.current_pos(pos);
+            }
+        } else if state.maximized && self.allow_maximize {
+            win = win
+                .resizable(false)
+                .fixed_pos(max_rect.min)
+                .fixed_size(max_rect.size());
+        } else {
+            win = win
+                .resizable(true)
+                .default_size(self.default_size)
+                .min_size(self.min_size);
+            if let Some(pos) = state.pending_pos.take() {
+                win = win.current_pos(pos);
+            }
+            if let Some(size) = state.pending_size.take() {
+                win = win.fixed_size(size);
+            }
+        }
+
+        let mut toggle_min = false;
+        let mut toggle_max = false;
+        let mut pop_out = false;
+        let mut close_clicked = false;
+        let mut drag_delta = egui::Vec2::ZERO;
+
+        win.show(ctx, |ui| {
+            // Custom title bar spanning the full width of the window.
+            let bar_w = ui.available_width().max(220.0);
+            let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, TITLE_H), egui::Sense::hover());
+            let rounding = if state.minimized {
+                CornerRadius::same(4)
+            } else {
+                CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }
+            };
+            ui.painter().rect_filled(bar_rect, rounding, STRIP);
+            if !state.minimized {
+                ui.painter().line_segment(
+                    [egui::pos2(bar_rect.left(), bar_rect.bottom()), egui::pos2(bar_rect.right(), bar_rect.bottom())],
+                    Stroke::new(1.0_f32, BORDER),
+                );
+            }
+
+            let btn_w = 28.0;
+            let btn_h = 22.0;
+            let btn_y = bar_rect.center().y - btn_h * 0.5;
+            let mut right_x = bar_rect.right() - 4.0;
+
+            let mut title_btn = |ui: &mut egui::Ui, id_salt: &str, glyph: &str, tip: String, danger: bool| -> bool {
+                right_x -= btn_w;
+                let r = egui::Rect::from_min_size(egui::pos2(right_x, btn_y), egui::vec2(btn_w, btn_h));
+                let resp = ui.interact(r, self.id.with(id_salt), egui::Sense::click());
+                if resp.hovered() {
+                    let fill = if danger { Color32::from_rgb(196, 43, 28) } else { HOVER };
+                    ui.painter().rect_filled(r, CornerRadius::same(3), fill);
+                }
+                let col = if resp.hovered() && danger { Color32::WHITE } else if resp.hovered() { TEXT_BRIGHT } else { TEXT };
+                ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, glyph, FontId::proportional(13.0), col);
+                resp.on_hover_text(tip).clicked()
+            };
+
+            // Buttons from right to left: Close, Maximize/Restore, Minimize, Pop-out.
+            if title_btn(ui, "btn_close", crate::icons::X, crate::i18n::t("Close"), true) {
+                close_clicked = true;
+            }
+            if self.allow_maximize {
+                let (glyph, tip) = if state.maximized {
+                    (crate::icons::CORNERS_IN, crate::i18n::t("Restore"))
+                } else {
+                    (crate::icons::CORNERS_OUT, crate::i18n::t("Maximize"))
+                };
+                if title_btn(ui, "btn_max", glyph, tip, false) {
+                    toggle_max = true;
+                }
+            }
+            let min_tip = if state.minimized { crate::i18n::t("Restore") } else { crate::i18n::t("Minimize") };
+            if title_btn(ui, "btn_min", crate::icons::MINUS, min_tip, false) {
+                toggle_min = true;
+            }
+            if self.allow_popout {
+                if title_btn(
+                    ui,
+                    "btn_popout",
+                    crate::icons::ARROW_SQUARE_OUT,
+                    crate::i18n::t("A window of its own, which can go outside the program and onto another screen"),
+                    false,
+                ) {
+                    pop_out = true;
+                }
+            }
+
+            // Draggable title area on the left of the buttons.
+            let drag_rect = egui::Rect::from_min_max(bar_rect.min, egui::pos2((right_x - 4.0).max(bar_rect.left() + 40.0), bar_rect.bottom()));
+            let title_resp = ui.interact(drag_rect, self.id.with("title_drag"), egui::Sense::click_and_drag());
+            if title_resp.dragged() && !state.maximized {
+                drag_delta = title_resp.drag_delta();
+            }
+            if title_resp.double_clicked() {
+                if state.minimized {
+                    toggle_min = true;
+                } else if self.allow_maximize {
+                    toggle_max = true;
+                }
+            }
+            let text_rect = egui::Rect::from_min_max(
+                egui::pos2(drag_rect.left() + 10.0, drag_rect.top()),
+                egui::pos2(drag_rect.right() - 4.0, drag_rect.bottom()),
+            );
+            ui.painter().with_clip_rect(text_rect).text(
+                egui::pos2(text_rect.left(), text_rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                self.title,
+                crate::icons::strong(13.0),
+                TEXT_BRIGHT,
+            );
+
+            if !state.minimized {
+                egui::Frame::new().inner_margin(Margin::same(8)).show(ui, |ui| {
+                    if let Some(f) = body.take() {
+                        if self.vscroll {
+                            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, f);
+                        } else {
+                            f(ui);
+                        }
+                    }
+                });
+            }
+        });
+
+        if close_clicked {
+            *open = false;
+        } else if pop_out {
+            state.own_window = true;
+            state.minimized = false;
+        } else if toggle_max {
+            if state.maximized {
+                state.maximized = false;
+                state.minimized = false;
+                if let Some(r) = state.restore_rect.take() {
+                    state.pending_pos = Some(r.min);
+                    state.pending_size = Some(r.size());
+                }
+            } else {
+                if !state.minimized {
+                    state.restore_rect = cur_rect;
+                } else if let (Some(r), Some(sz)) = (cur_rect, state.restore_size) {
+                    state.restore_rect = Some(egui::Rect::from_min_size(r.min, sz));
+                }
+                state.maximized = true;
+                state.minimized = false;
+            }
+        } else if toggle_min {
+            if state.minimized {
+                state.minimized = false;
+                if !state.maximized {
+                    if let Some(sz) = state.restore_size.take() {
+                        state.pending_size = Some(sz);
+                    }
+                }
+            } else {
+                if !state.maximized {
+                    if let Some(r) = cur_rect {
+                        state.restore_size = Some(r.size());
+                    }
+                }
+                state.minimized = true;
+            }
+        } else if drag_delta != egui::Vec2::ZERO {
+            if let Some(r) = cur_rect {
+                let mut pos = r.min + drag_delta;
+                pos.x = pos.x.clamp(screen.left() - r.width() + 80.0, screen.right() - 80.0);
+                pos.y = pos.y.clamp(screen.top() + 24.0, screen.bottom() - TITLE_H);
+                state.pending_pos = Some(pos);
+            }
+        }
+
+        if let Some(flag) = own_window.as_deref_mut() {
+            *flag = state.own_window;
+        }
+        ctx.data_mut(|d| d.insert_temp(state_id, state));
+    }
+}
