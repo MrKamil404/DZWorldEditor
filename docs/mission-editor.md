@@ -9,8 +9,11 @@ feature: turn it on with *Edit > Settings > General > Show experimental features
 
 The left panel of the Mission mode chooses what the map shows (event spawns, player spawns,
 territories, effect areas, safe positions, underground triggers, breadcrumbs, map groups, area flags)
-and the tool the map uses: select and move, or place one of these. **Mission editor** opens the
-window with the tabs below.
+and the tool the map uses: select and move, or place one of these. **3D view distance** (default
+`800 m`, `50–15000 m`, saved in editor settings) limits how far from the camera mission markers and
+event-group model previews are drawn in the 3D view, keeping large missions smooth. **Mission
+editor** opens the window with a grouped left sidebar and an **Overview** dashboard showing clickable
+counts and the mission files.
 
 * **New mission for this map** makes every file a server needs, with the game's defaults,
   a blank `areaflags.map` over the map and one player spawn at the map's spawn point.
@@ -139,4 +142,4 @@ of every group as its model at each spawn. In the asset browser the context menu
 makes a new event group laid out as the prefab (its middle stands at the spawn) or adds it to a
 group; the class of each object is the one the configs give
 the model (the `_DE` variant when asked for). The mission editor can be a window of its own
-(the button left of the tabs), outside the program and on another screen.
+(the pop-out button in the title bar), outside the program and on another screen.

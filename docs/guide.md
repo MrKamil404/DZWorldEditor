@@ -137,7 +137,8 @@ Generators for forests, water, fields, settlements, fences and more, and the Con
   objects, DayZ Editor `.dze` and Object Spawner JSON, a 2D player map PNG up to full map resolution
   with contours, roads, buildings, tree/bush canopy, grid and key points in a chosen font and size,
   shapes, server mission).
-* **Project settings**: name, size and the other settings of the map.
+* **Project settings**: name, size, tile surface limit (**Surfaces per tile**, with **Check tiles**,
+  excess-pixel highlighting and configurable **Fix options**) and the other settings of the map.
 * **Map config**: the `CfgWorlds` entry written to `config.cpp`: the name the game shows, the world
   the map is built on, the sea and waves, atmosphere and sky, ambient sound map, navmesh settings,
   terrain blending and clutter, the map centre, latitude and longitude, the grid of the in-game map,
@@ -146,8 +147,9 @@ Generators for forests, water, fields, settlements, fences and more, and the Con
 ### Edit
 
 Undo and Redo name what they undo. **Settings** (Ctrl+,) has the paths of DayZ and DayZ Tools, the
-display and graphics, backups and the experimental features. **Keyboard shortcuts** (F1) changes
-every key, and which modifier keys the brushes use.
+display and graphics, backups, experimental features and **Shortcuts**. **Keyboard shortcuts** (F1)
+opens the shortcuts window directly; both let you search, spot conflicts, change every key and set
+which modifier keys the brushes use.
 
 ### Build
 

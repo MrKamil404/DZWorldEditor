@@ -13,7 +13,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Getting around**: go to a key point, a map grid square or a position, saved camera views, a ruler for lengths, climbs and areas, and the sun at any time of day
 - **Maps of real places**: choose a place on the Earth and a DayZ map size, and the editor downloads its satellite picture (worldwide, or open orthophotos of Poland, Czechia, Austria and the USA), heights and OpenStreetMap shapes, paints the surface mask from the picture and the shapes, places the game's buildings in the outlines of the real ones, builds the roads from the game's road pieces and adds forest, field, river and stream generators. No account or API key is needed, see [docs/real-places.md](docs/real-places.md)
 - **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces, terrain stamps (craters, hills, quarries, your own pictures or pieces of terrain) and non-destructive modifiers
-- **Surface painting** with per-tile limits that match what the game can render, up to six surfaces per tile, and a view that shows the surfaces as the built map will
+- **Surface painting** with per-tile limits that match what the game can render (up to six surfaces per tile, with excess-pixel highlighting and configurable tile fixes in Project settings) and a view that shows the surfaces as the built map will
 - **Map surfaces** (`CfgSurfaces`): new surfaces for your own textures and changes to the game's, with grass, sounds and physics, and a material window for each layer
 - **Satellite image** editing: bake objects, roads, water and decals into it, paint realistic ocean, river and pond water (with depth shading, ripples, shoreline foam, and above-water object awareness), a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite (by colour groups, by the natural colours of a real photo, or by colours you pick), all as modifiers that can be hidden, deleted or, for brush strokes, merged
 - **Object placement** from a searchable library of your `P:\` drive, with gizmos, angle snapping, surface snapping ("place on top of objects" and Drop onto surface), hide/isolate selection, painting objects with a brush, prefabs, replacing models and undo
@@ -81,7 +81,7 @@ You need Windows 10 or 11 and a graphics card with OpenGL 3.3. The model library
 **2D view:** the wheel zooms, and the middle or right button pans.
 **Views:** Ctrl+1 is the 3D view, Ctrl+2 the 2D view and Ctrl+3 both side by side; F11 is full screen.
 
-Every shortcut can be changed in `Edit > Keyboard shortcuts` (F1). F2 shows the keys of the current tool in the view.
+Every shortcut can be changed in `Edit > Keyboard shortcuts` (F1) or `Edit > Settings > Shortcuts`. F2 shows the keys of the current tool in the view.
 
 Generators are in the Content Browser at the bottom of the window. Drop one on a shape or a road, or select the shape first and double-click the generator.
 

@@ -14,6 +14,14 @@ The game can draw only a limited number of surfaces on one texture tile. The bru
 surface to a tile that already has as many as the project allows (up to six), so what you paint is
 what the game shows. The *Mask* shading of the view shows the mask in its colours, as above.
 
+To check or lower the limit on an existing map, open `File > Project settings` and set **Surfaces
+per tile** (changing the limit does not alter the mask on its own). Click **Check tiles** to find
+tiles over the limit and turn on **Highlight excess pixels** to mark the exact over-limit pixels in
+both the 2D and 3D views alongside the tile outlines. Under **Fix options**, choose how excess
+pixels are replaced (**Nearest kept surface**, **Most used surface on the tile**, or a specific
+**Layer**), mark surfaces as **Protect** or **Remove first** globally or for a single tile, and fix
+either **All tiles over the limit** or only the selected tile.
+
 **Surfaces as the game shows them** (on by default, in `Edit > Settings` under the surface blending, and in the Camera menu of the 3D view)
 draws the ground with the surfaces the built map will have. The game keeps the mask of each
 texture tile in blocks of 4 by 4 metres with at most two surfaces each, so specks of a third surface

@@ -23,8 +23,8 @@ effect. Stamps shape the ground itself: roads, rivers, ponds and pads are laid o
 graded roads over a stamp follow it again when it changes.
 *Offset* adds the form to the ground as it is, *Flatten* lays it on a fixed level, *Fill* and *Cut*
 only raise or only lower. Your own stamps are grey pictures (white high, black low) added with
-**Add pictures…**, or a piece of the map kept with **Keep the terrain of the selected polygon**.
-They are kept in `%LOCALAPPDATA%\DZWorldEditor\stamps`.
+**Add pictures…**, or a piece of the map kept with **Keep the terrain of the selected polygon**,
+with a search box to filter them. They are kept in `%LOCALAPPDATA%\DZWorldEditor\stamps`.
 
 When a terrain modifier is deleted (also the levelling of a road or the terrain change of a
 generator), **Keep the terrain as it is for good** writes the shape it gave the ground into the

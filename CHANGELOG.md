@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.4.3
+
+### New
+
+- **Tile surface limit controls in Project settings.**
+  - Changing **Surfaces per tile** no longer alters your mask automatically; instead, the editor
+    prompts you to run **Check tiles**.
+  - **Highlight excess pixels**: checking tiles can now mark the exact over-limit pixels directly in
+    the 2D and 3D views alongside the tile outlines, making stray pixels easy to find.
+  - **Configurable Fix options**: choose how excess pixels are replaced (**Nearest kept surface**,
+    **Most used surface on the tile**, or a specific **Layer**), set per-surface priority
+    (**Auto**, **Protect**, or **Remove first**) globally or per tile, and fix either **All tiles
+    over the limit** or only the selected tile.
+- **3D view distance for mission points and faster 2D/3D mission view.**
+  - Added a **3D view distance** slider (`50 m – 15000 m`, default `800 m`, saved in settings) in
+    **Mission > Show on the map** to control how far from the camera mission markers and event-group
+    model previews are drawn in the 3D view.
+  - Distant points beyond the chosen distance are skipped before sampling terrain or projecting
+    rings, and the 2D view now culls off-screen markers and draws zone rings directly, keeping large
+    missions with hundreds of points smooth.
+- **Unified editor UI across windows and left-panel tool tabs.**
+  - **Project settings**, **Settings**, and **Keyboard shortcuts**: redesigned with native sections,
+    dark cards, segmented controls, and `PopupWindow` chrome (pop-out, minimize, maximize).
+    **Shortcuts** is now also accessible as a tab inside **Settings**, with live search, a custom
+    shortcut counter, a conflict banner, keycap buttons, per-row reset, and segmented brush
+    modifiers.
+  - **Mission editor & Mission panel**: switched **Mission editor** from two top rows of tabs to a
+    grouped left navigation sidebar (like **Settings**), added an **Overview** dashboard with 8
+    clickable metric cards and a file inventory table, and unified the **Mission** side panel with
+    aligned map visibility toggles, colored tool icons, and a **Selected** inspector.
+  - **Select, Sculpt, Paint, Place, Roads, and Shapes tabs**: unified status cards, segmented icon
+    and glyph switches, `ValueField` sliders (including `Angle step`, `Scale`, `Copied height`,
+    `Diameter`, and `Deck at m`), full-width dropdowns, responsive **Surface layers** and **Terrain
+    stamps** tile grids (with search and bounded scrolling for **Your stamps**), and consistent
+    icon buttons across **Surfaces in the game**, **Surfaces from the satellite**, **Surface under
+    objects**, **Selected shape**, and **Piece by piece** roads.
+
+### Fixed
+
+- **Exported terrain layer masks and satellite tiles match Terrain Builder.**
+  - Fixed exported `M_*_lca.paa` / `S_*_lco.paa` tiles to include proper PAA `CXAM` and `GALF`
+    metadata and mipmaps, keep full satellite brightness, follow Terrain Builder's 5/6-surface slot
+    order, and spread blue/alpha mask channels smoothly across surface edges so terrain transitions
+    in the game match the editor.
+  - Matched relief-based surface blending in the editor viewport to how the game reads `_nopx`
+    height data.
+- **Sculpt slider clipping and window auto-resize loops.**
+  - Fixed right-edge clipping of brush slider values (`Radius`, `Strength`, `Falloff`, `Edge noise`)
+    in the **Sculpt** tab caused by an oversized **Terrain stamps** grid.
+  - Fixed vertical auto-growth in **Mission editor > Files** and horizontal auto-growth in
+    **Settings**, plus consistent left text alignment on full-width menu buttons.
+
+### Good to know
+
+- Projects from 0.4.2 and earlier open in 0.4.3, and projects saved in 0.4.3 open in 0.4.2 as well.
+  The new **3D view distance** setting is stored in your editor settings (`settings.json`) and
+  defaults to `800 m`.
+
 ## 0.4.2
 
 ### New
