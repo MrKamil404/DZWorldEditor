@@ -102,7 +102,11 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let mut action: Option<(Issue, bool)> = None;
     let mut again = false;
     let mut build_anyway = None;
-    egui::Window::new(icons::with(icons::LIST_CHECKS, &t("Map check"))).id(egui::Id::new("map_check")).open(&mut open).default_width(520.0).default_height(420.0).show(ctx, |ui| {
+    let title = icons::with(icons::LIST_CHECKS, &t("Map check"));
+    crate::theme::PopupWindow::new(egui::Id::new("map_check"), &title)
+        .default_size([520.0, 420.0])
+        .min_size([380.0, 260.0])
+        .show(ctx, &mut open, |ui| {
         let Some(issues) = &app.check.issues else {
             ui.label(t("Checking the map"));
             return;

@@ -601,7 +601,12 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     }
     if app.team.open {
         let mut open = true;
-        egui::Window::new(icons::with(icons::USERS, &t("Team work"))).open(&mut open).default_width(460.0).show(ctx, |ui| team_window(app, ui));
+        let title = icons::with(icons::USERS, &t("Team work"));
+        crate::theme::PopupWindow::new(egui::Id::new("team_work_window"), &title)
+            .default_size([480.0, 420.0])
+            .min_size([380.0, 260.0])
+            .vscroll(true)
+            .show(ctx, &mut open, |ui| team_window(app, ui));
         app.team.open = open;
     }
     if app.team.merge.is_some() {
@@ -809,7 +814,12 @@ fn merge_window(app: &mut App, ctx: &egui::Context) {
                 (title, label)
             }
         };
-        egui::Window::new(icons::with(icons::GIT_MERGE, &title)).open(&mut open).default_width(520.0).show(ctx, |ui| {
+        let win_title = icons::with(icons::GIT_MERGE, &title);
+        crate::theme::PopupWindow::new(egui::Id::new("team_merge_window"), &win_title)
+            .default_size([540.0, 460.0])
+            .min_size([400.0, 300.0])
+            .vscroll(true)
+            .show(ctx, &mut open, |ui| {
             ui.horizontal(|ui| {
                 ui.label(format!("{} · {}", h.author, h.time.replace('_', " ")));
                 let lbl = if diff_active { icons::with(icons::EYE_SLASH, &t("Hide changes on the map")) } else { icons::with(icons::EYE, &t("Show changes on the map")) };
@@ -1029,7 +1039,9 @@ pub fn draw_diff_overlay(app: &App, painter: &egui::Painter, v: &crate::camera::
         total_w += 18.0 + g.size().x;
         galleys.push((col, g));
     }
-    let pill = Rect::from_min_size(Pos2::new(v.rect.left() + 10.0, v.rect.bottom() - 34.0), Vec2::new(total_w, 24.0));
+    // Compact visual diff legend pill centered below the viewport top bar (clear of minimap and compass).
+    let pill_x = (v.rect.center().x - total_w * 0.5).max(v.rect.left() + 10.0);
+    let pill = Rect::from_min_size(Pos2::new(pill_x, v.rect.top() + 38.0), Vec2::new(total_w, 24.0));
     painter.rect(pill, 4.0, Color32::from_rgba_unmultiplied(18, 20, 24, 215), Stroke::new(1.0_f32, Color32::from_gray(75)), egui::StrokeKind::Inside);
     let mut x = pill.left() + 8.0;
     let cy = pill.center().y;

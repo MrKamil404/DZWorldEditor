@@ -181,7 +181,11 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         let thumbs = &mut app.thumbs;
         if let Some(s) = doc.world.meta.config.surfaces.get_mut(i) {
             let before = s.clone();
-            egui::Window::new(t("Surface")).id(egui::Id::new("surface_editor")).collapsible(false).resizable(true).default_width(430.0).open(&mut open).show(&ctx, |ui| {
+            let title = t("Surface");
+            crate::theme::PopupWindow::new(egui::Id::new("surface_editor"), &title)
+                .default_size([440.0, 600.0])
+                .min_size([360.0, 320.0])
+                .show(&ctx, &mut open, |ui| {
                 if egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| editor(ui, s, &cat, sounds, &layers, thumbs)).inner {
                     add_layer = Some(i);
                 }

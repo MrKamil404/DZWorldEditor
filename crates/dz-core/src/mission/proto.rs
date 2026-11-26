@@ -79,6 +79,30 @@ impl Default for ContainerProto {
     }
 }
 
+/// One `<proxy>` inside `<dispatch>` of `mapgroupproto.xml` (e.g. car wheels, doors, trunks).
+#[derive(Clone, Debug, PartialEq)]
+pub struct DispatchProxy {
+    /// `CfgVehicles` class name (e.g. `HatchbackWheel`, `HatchbackDoors_Driver_BlueRust`).
+    pub kind: String,
+    /// Offset from the model bounding-box centre in DayZ CE prototype coordinates.
+    pub pos: [f32; 3],
+    /// Rotation angles in degrees (`rpy` attribute: `[pitch, yaw, roll]` in CE frame).
+    pub rpy: [f32; 3],
+    /// Optional `dechance` attribute on the proxy.
+    pub dechance: Option<f32>,
+}
+
+impl Default for DispatchProxy {
+    fn default() -> Self {
+        Self {
+            kind: String::new(),
+            pos: [0.0, 0.0, 0.0],
+            rpy: [0.0, 0.0, 0.0],
+            dechance: None,
+        }
+    }
+}
+
 /// One `<group>` of `mapgroupproto.xml`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GroupProto {
@@ -88,6 +112,10 @@ pub struct GroupProto {
     pub usages: Vec<String>,
     pub values: Vec<String>,
     pub containers: Vec<ContainerProto>,
+    /// Optional `dechance` attribute on `<dispatch>`.
+    pub dispatch_dechance: Option<f32>,
+    /// `<proxy>` entries inside `<dispatch>`.
+    pub dispatch: Vec<DispatchProxy>,
 }
 
 impl GroupProto {
@@ -99,6 +127,8 @@ impl GroupProto {
             usages: vec!["Town".into()],
             values: Vec::new(),
             containers: vec![ContainerProto::default()],
+            dispatch_dechance: None,
+            dispatch: Vec::new(),
         }
     }
 
@@ -182,7 +212,26 @@ pub fn parse_group_element(g: &Element) -> GroupProto {
             }
         })
         .collect();
-    GroupProto { name, lootmax, deloot, usages, values, containers }
+    let mut dispatch_dechance = None;
+    let mut dispatch = Vec::new();
+    for d in g.children_named("dispatch") {
+        if dispatch_dechance.is_none() {
+            dispatch_dechance = d.attr_f32("dechance");
+        }
+        for pr in d.children_named("proxy") {
+            let kind = pr.attr("type").unwrap_or("").to_string();
+            let pos = parse_vec3(pr.attr("pos")).unwrap_or([0.0; 3]);
+            let rpy = parse_vec3(pr.attr("rpy")).unwrap_or([0.0; 3]);
+            let dechance = pr.attr_f32("dechance");
+            dispatch.push(DispatchProxy { kind, pos, rpy, dechance });
+        }
+    }
+    GroupProto { name, lootmax, deloot, usages, values, containers, dispatch_dechance, dispatch }
+}
+
+fn parse_vec3(s: Option<&str>) -> Option<[f32; 3]> {
+    let nums: Vec<f32> = s?.split_whitespace().filter_map(|v| v.parse().ok()).collect();
+    (nums.len() >= 3).then(|| [nums[0], nums[1], nums[2]])
 }
 
 fn fmt6(v: f32) -> String {
@@ -227,6 +276,23 @@ pub fn to_group_element(group: &GroupProto) -> Element {
             ce.push(pe);
         }
         e.push(ce);
+    }
+    if !group.dispatch.is_empty() || group.dispatch_dechance.is_some() {
+        let mut de = Element::new("dispatch");
+        if let Some(dc) = group.dispatch_dechance {
+            de = de.with_attr("dechance", fmt6(dc));
+        }
+        for pr in &group.dispatch {
+            let mut pe = Element::new("proxy")
+                .with_attr("type", &pr.kind)
+                .with_attr("pos", format!("{} {} {}", fmt6(pr.pos[0]), fmt6(pr.pos[1]), fmt6(pr.pos[2])))
+                .with_attr("rpy", format!("{} {} {}", fmt6(pr.rpy[0]), fmt6(pr.rpy[1]), fmt6(pr.rpy[2])));
+            if let Some(dc) = pr.dechance {
+                pe = pe.with_attr("dechance", fmt6(dc));
+            }
+            de.push(pe);
+        }
+        e.push(de);
     }
     e
 }
@@ -308,5 +374,32 @@ mod tests {
         for i in 0..3 {
             assert!((back[i] - pt[i]).abs() < 1e-5, "{back:?} vs {pt:?}");
         }
+    }
+
+    #[test]
+    fn round_trip_dispatch_proxies_and_dechance() {
+        let mut m = Mission::default();
+        let mut g = GroupProto::default_for("Land_Wreck_hb01_aban1_blue");
+        g.dispatch_dechance = Some(0.5);
+        g.dispatch.push(DispatchProxy {
+            kind: "HatchbackWheel".into(),
+            pos: [1.071, -0.736, -0.852],
+            rpy: [90.0, 0.0, 0.0],
+            dechance: None,
+        });
+        g.dispatch.push(DispatchProxy {
+            kind: "HatchbackDoors_Driver_BlueRust".into(),
+            pos: [-0.273, -0.182, -1.374],
+            rpy: [0.0, 240.0, 0.0],
+            dechance: Some(0.25),
+        });
+        write_group(&mut m, None, &g);
+        let back = read_group(&m, "Land_Wreck_hb01_aban1_blue").unwrap();
+        assert_eq!(back, g);
+        let xml = m.xml("mapgroupproto.xml").unwrap().to_string();
+        assert!(xml.contains("<dispatch"), "{xml}");
+        assert!(xml.contains(r#"type="HatchbackWheel""#), "{xml}");
+        assert!(xml.contains(r#"rpy="0.000000 240.000000 0.000000""#), "{xml}");
+        assert!(xml.contains(r#"dechance="0.250000""#), "{xml}");
     }
 }

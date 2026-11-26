@@ -589,35 +589,77 @@ fn bake_skip_ui(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
-/// Rows of the satellite modifiers in the outliner.
+fn sat_kind_badge(kind: SatKind, opacity: u8) -> String {
+    let base = match kind {
+        SatKind::Bake => t("Bake"),
+        SatKind::Clone | SatKind::Adjust | SatKind::Paint => t("Brush"),
+        SatKind::Correct => t("Correct"),
+        SatKind::Generated => t("Generated"),
+    };
+    if opacity < 255 {
+        let pct = (opacity as f32 / 255.0 * 100.0).round() as u32;
+        format!("{base} · {pct}%")
+    } else {
+        base
+    }
+}
+
+/// Rows of the satellite modifiers in the outliner (top of the list = top of the layer stack).
 pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<bool>) {
     // In team work: only whose the outliner shows, with who made each.
     let team = crate::team_ui::active(app);
-    let rows: Vec<(u32, String, bool, SatKind)> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter()
-        .filter(|m| crate::team_ui::shown(app, d.world.sat_mod_author(m.id)))
-        .map(|m| (m.id, crate::team_ui::with_author(team, &m.name, d.world.sat_mod_author(m.id)), m.enabled, m.kind)).collect()).unwrap_or_default();
-    let (mut toggle, mut delete, mut merge) = (None, None, None);
+    let total = app.doc.as_ref().map(|d| d.world.sat.modifiers.len()).unwrap_or(0);
+    let rows: Vec<(u32, usize, String, bool, SatKind, u8)> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter().enumerate()
+        .filter(|(_, m)| crate::team_ui::shown(app, d.world.sat_mod_author(m.id)))
+        .map(|(idx, m)| (m.id, idx, crate::team_ui::with_author(team, &m.name, d.world.sat_mod_author(m.id)), m.enabled, m.kind, m.opacity)).collect()).unwrap_or_default();
+    let (mut toggle, mut delete, mut merge, mut reorder, mut convert, mut rename, mut start_rename, mut cancel_rename) = (None, None, None, None::<(u32, usize)>, None::<(u32, String)>, None::<(u32, String)>, None::<(u32, String)>, false);
     let can_merge: std::collections::HashSet<u32> = app.doc.as_ref().map(|d| d.world.sat.modifiers.iter().filter(|m| d.world.sat_merge_target(m.id).is_some()).map(|m| m.id).collect()).unwrap_or_default();
     crate::panels::outliner_section(fold, "Satellite modifiers", crate::icons::with(crate::icons::IMAGE, &tf("Satellite modifiers ({0})", &[&rows.len().to_string()])), rows.len() == 0).show(ui, |ui| {
-        for (id, name, enabled, kind) in rows.iter().filter(|r| r.1.to_lowercase().contains(filter)) {
-            ui.horizontal(|ui| {
+        for (id, vec_idx, name, enabled, kind, opacity) in rows.iter().rev().filter(|r| r.2.to_lowercase().contains(filter)) {
+            let disp_idx = total.saturating_sub(1).saturating_sub(*vec_idx);
+            let row_resp = ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
+                if filter.is_empty() && total > 1 {
+                    crate::theme::drag_grip(ui, crate::theme::OutlinerDrag::SatMod(*id), &t("Drag to reorder"));
+                }
                 if crate::theme::row_switch(ui, *enabled, crate::icons::EYE, crate::icons::EYE_SLASH, t("Visible")).clicked() {
                     toggle = Some((*id, !*enabled));
                 }
-                if crate::theme::row_switch(ui, true, crate::icons::TRASH, "", t("Delete the modifier; what it covered comes back")).clicked() {
-                    delete = Some(*id);
+                if let Some((_, text)) = app.outliner_rename.as_mut().filter(|(t, _)| *t == crate::app::OutlinerRenameTarget::SatMod(*id)) {
+                    let edit = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+                    edit.request_focus();
+                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        cancel_rename = true;
+                    } else if edit.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        rename = Some((*id, text.clone()));
+                    }
+                    return;
                 }
-                let row = crate::theme::list_row(ui, app.sat.active == Some(*id), crate::icons::IMAGE, crate::theme::KIND_IMAGE, name.as_str(), "");
+                let icon = if kind.is_brush() { crate::icons::PAINT_BRUSH } else if *kind == SatKind::Correct { crate::icons::SLIDERS_HORIZONTAL } else { crate::icons::IMAGE };
+                let tint = if *enabled { crate::theme::KIND_IMAGE } else { crate::theme::TEXT_DIM };
+                let label = if *enabled { egui::RichText::new(name.as_str()) } else { egui::RichText::new(name.as_str()).weak() };
+                let badge = sat_kind_badge(*kind, *opacity);
+                let row = crate::theme::list_row(ui, app.sat.active == Some(*id), icon, tint, label, &badge);
                 if row.clicked() {
                     app.sat.active = Some(*id);
-                    let _ = kind;
                 }
                 row.context_menu(|ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    if ui.button(t("Delete")).clicked() {
-                        delete = Some(*id);
+                    if ui.button(crate::icons::with(crate::icons::PENCIL_SIMPLE, &t("Rename"))).clicked() {
+                        let raw = app.doc.as_ref().and_then(|d| d.world.sat.modifiers.iter().find(|m| m.id == *id)).map(|m| m.name.clone()).unwrap_or_default();
+                        start_rename = Some((*id, raw));
                         ui.close_menu();
+                    }
+                    if total > 1 {
+                        if ui.add_enabled(*vec_idx + 1 < total, egui::Button::new(crate::icons::with(crate::icons::ARROW_UP, &t("Move up")))).clicked() {
+                            reorder = Some((*id, *vec_idx + 1));
+                            ui.close_menu();
+                        }
+                        if ui.add_enabled(*vec_idx > 0, egui::Button::new(crate::icons::with(crate::icons::ARROW_DOWN, &t("Move down")))).clicked() {
+                            reorder = Some((*id, *vec_idx - 1));
+                            ui.close_menu();
+                        }
+                        ui.separator();
                     }
                     if kind.is_brush() {
                         if ui.add_enabled(can_merge.contains(id), egui::Button::new(t("Merge down"))).on_hover_text(t("Merges the modifier into the one under it, if that one is of the same brush and both are shown.")).on_disabled_hover_text(t("Only into a shown modifier of the same brush right under it, and in team work only your own.")).clicked() {
@@ -628,14 +670,76 @@ pub fn outliner(app: &mut App, ui: &mut egui::Ui, filter: &str, fold: Option<boo
                             merge = Some(None);
                             ui.close_menu();
                         }
+                        ui.separator();
+                    } else {
+                        if ui.button(crate::icons::with(crate::icons::PAINT_BRUSH, &t("Convert to brush..."))).on_hover_text(t("Turns this modifier into an editable brush layer. Its original settings will no longer apply.")).clicked() {
+                            convert = Some((*id, name.clone()));
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                    }
+                    if ui.button(crate::icons::with(crate::icons::TRASH, &t("Delete"))).clicked() {
+                        delete = Some(*id);
+                        ui.close_menu();
                     }
                     crate::team_ui::author_menu(app, ui, dz_core::world::SAT_MOD_AUTHOR | *id as u64);
                 });
-            });
+            }).response;
+            if filter.is_empty() && total > 1 {
+                if let Some((crate::theme::OutlinerDrag::SatMod(drag_id), after)) = crate::theme::dnd_reorder_slot(ui, row_resp.rect, |p| matches!(p, crate::theme::OutlinerDrag::SatMod(_))) {
+                    if drag_id != *id {
+                        if let Some(from_vec) = app.doc.as_ref().and_then(|d| d.world.sat.position(drag_id)) {
+                            let from_disp = total.saturating_sub(1).saturating_sub(from_vec);
+                            let to_vec = crate::theme::reorder_target(from_disp, disp_idx, after, total, true);
+                            reorder = Some((drag_id, to_vec));
+                        }
+                    }
+                }
+            }
         }
     });
+    if cancel_rename {
+        app.outliner_rename = None;
+        return;
+    }
+    if let Some((id, new_name)) = rename {
+        app.outliner_rename = None;
+        let trimmed = new_name.trim();
+        if !trimmed.is_empty() {
+            if let Some(d) = app.doc.as_mut() {
+                let before = d.world.sat.modifiers.clone();
+                if let Some(m) = d.world.sat.modifiers.iter_mut().find(|m| m.id == id) {
+                    if m.name != trimmed {
+                        m.name = trimmed.to_string();
+                        d.history.push(t("Rename"), Change::Satellite(before));
+                        d.dirty.satellite = true;
+                    }
+                }
+            }
+        }
+        return;
+    }
+    if let Some((id, raw)) = start_rename {
+        app.outliner_rename = Some((crate::app::OutlinerRenameTarget::SatMod(id), raw));
+        return;
+    }
+    if let Some((id, name)) = convert {
+        app.dialog = crate::app::Dialog::ConvertToBrush { kind: crate::app::ConvertKind::Satellite, id, name };
+        return;
+    }
     let Some(d) = app.doc.as_mut() else { return };
     let before = d.world.sat.modifiers.clone();
+    if let Some((id, to_idx)) = reorder {
+        let touched = d.world.sat_move(id, to_idx);
+        if d.world.sat.modifiers != before {
+            d.history.push(t("Reorder satellite modifiers"), Change::Satellite(before));
+            d.dirty.satellite = true;
+            if let Some(r) = touched {
+                app.satellite_changed(r);
+            }
+        }
+        return;
+    }
     if let Some(which) = merge {
         let (n, touched) = match which {
             Some(id) => {

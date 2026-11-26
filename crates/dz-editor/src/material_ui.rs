@@ -54,7 +54,12 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let (mut save, mut copy_in, mut revert) = (false, false, false);
     let mut error = None;
     let before = ed.draft.clone();
-    egui::Window::new(tf("Material of {0}", &[&layer.name])).id(egui::Id::new("layer_material")).collapsible(false).resizable(true).default_width(520.0).open(&mut open).show(ctx, |ui| {
+    let title = tf("Material of {0}", &[&layer.name]);
+    theme::PopupWindow::new(egui::Id::new("layer_material"), &title)
+        .default_size([520.0, 540.0])
+        .min_size([380.0, 320.0])
+        .vscroll(true)
+        .show(ctx, &mut open, |ui| {
         ui.label(RichText::new(&layer.material).small().color(theme::TEXT_DIM));
         if !editable {
             ui.colored_label(theme::WARN, t("This material is not in the map's folder: the game's and other mods' files are not changed here."));

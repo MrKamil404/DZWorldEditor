@@ -2195,7 +2195,7 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     // In team work: whose things are shown, and who made each.
     let team = crate::team_ui::active(app);
     let by = |who: &str| if team && !who.is_empty() { format!("  · {who}") } else { String::new() };
-    let mods: Vec<(u64, String)> = doc.world.modifiers.iter().filter(|m| crate::team_ui::shown(app, doc.world.author(m.id))).map(|m| (m.id, format!("{}{}", m.name, by(doc.world.author(m.id))))).collect();
+    let mods: Vec<(u64, String, bool)> = doc.world.modifiers.iter().filter(|m| crate::team_ui::shown(app, doc.world.author(m.id))).map(|m| (m.id, format!("{}{}", m.name, by(doc.world.author(m.id))), m.enabled)).collect();
     let foreign: Vec<bool> = (0..doc.world.object_layers.len()).map(|i| doc.world.layer_foreign(i as u16)).collect();
     let unlocked: Vec<bool> = doc.world.object_layers.iter().map(|l| doc.world.team_unlocked.contains(&l.name)).collect();
     let layer_open: Vec<bool> = (0..doc.world.object_layers.len()).map(|i| doc.world.layer_interactive(i as u16)).collect();
@@ -2221,22 +2221,80 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     let mut select_model = None;
     let mut start_rename = None;
     let mut select_modifier = None;
+    let mut toggle_modifier: Option<(u64, bool)> = None;
+    let mut move_modifier: Option<(u64, usize)> = None;
+    let mut rename_modifier: Option<(u64, String)> = None;
+    let mut rename_route: Option<(usize, String)> = None;
+    let mut start_outliner_rename: Option<(crate::app::OutlinerRenameTarget, String)> = None;
+    let mut cancel_outliner_rename = false;
+    let mut move_shape_layer: Option<(usize, usize)> = None;
     let mut fly: Option<dz_core::goto::Spot> = None;
     let mut select_keypoint = None;
     let keypoints: Vec<(usize, String)> = doc.world.keypoints.iter().enumerate().map(|(i, k)| (i, k.name.clone())).collect();
+    let total_mods = doc.world.modifiers.len();
+    let total_shapes = doc.world.shape_layers.len();
     egui::ScrollArea::vertical().id_salt("outl").auto_shrink([false, false]).show(ui, |ui| {
         // Rows start close to their section's arrow, so names get the width of the panel.
         ui.spacing_mut().indent = 8.0;
         outliner_section(fold, "Terrain modifiers", icons::with(icons::MOUNTAINS, &tf("Terrain modifiers ({0})", &[&mods.len().to_string()])), mods.len() == 0).show(ui, |ui| {
-            for (id, name) in mods.iter().filter(|(_, n)| n.to_ascii_lowercase().contains(&filter)) {
-                let row = theme::list_row(ui, app.selected_modifier == Some(*id), icons::MOUNTAINS, theme::KIND_TERRAIN, name.as_str(), "");
-                if row.clicked() { select_modifier = Some(*id); }
-                row.context_menu(|ui| {
-                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                    let spot = app.doc.as_ref().and_then(|d| d.world.modifiers.iter().find(|m| m.id == *id)).map(dz_core::goto::modifier_spot);
-                    if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
-                    if team { crate::team_ui::author_menu(app, ui, *id); }
-                });
+            // Top of the list is the top of the stack (applied last, on top of modifiers below).
+            for (id, name, enabled) in mods.iter().rev().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
+                let vec_idx = app.doc.as_ref().and_then(|d| d.world.modifiers.iter().position(|m| m.id == *id)).unwrap_or(0);
+                let disp_idx = total_mods.saturating_sub(1).saturating_sub(vec_idx);
+                let row_resp = ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    if filter.is_empty() && total_mods > 1 {
+                        theme::drag_grip(ui, theme::OutlinerDrag::TerrainMod(*id), &t("Drag to reorder"));
+                    }
+                    if theme::row_switch(ui, *enabled, icons::EYE, icons::EYE_SLASH, t("Visible")).clicked() {
+                        toggle_modifier = Some((*id, !*enabled));
+                    }
+                    if let Some((_, text)) = app.outliner_rename.as_mut().filter(|(t, _)| *t == crate::app::OutlinerRenameTarget::TerrainMod(*id)) {
+                        let edit = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+                        edit.request_focus();
+                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            cancel_outliner_rename = true;
+                        } else if edit.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            rename_modifier = Some((*id, text.clone()));
+                        }
+                        return;
+                    }
+                    let label = if *enabled { RichText::new(name.as_str()) } else { RichText::new(name.as_str()).weak() };
+                    let row = theme::list_row(ui, app.selected_modifier == Some(*id), icons::MOUNTAINS, if *enabled { theme::KIND_TERRAIN } else { theme::TEXT_DIM }, label, "");
+                    if row.clicked() { select_modifier = Some(*id); }
+                    row.context_menu(|ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        let spot = app.doc.as_ref().and_then(|d| d.world.modifiers.iter().find(|m| m.id == *id)).map(dz_core::goto::modifier_spot);
+                        if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                        if ui.button(icons::with(icons::PENCIL_SIMPLE, &t("Rename"))).clicked() {
+                            let raw = app.doc.as_ref().and_then(|d| d.world.modifiers.iter().find(|m| m.id == *id)).map(|m| m.name.clone()).unwrap_or_default();
+                            start_outliner_rename = Some((crate::app::OutlinerRenameTarget::TerrainMod(*id), raw));
+                            ui.close_menu();
+                        }
+                        if total_mods > 1 {
+                            if ui.add_enabled(vec_idx + 1 < total_mods, egui::Button::new(icons::with(icons::ARROW_UP, &t("Move up")))).clicked() {
+                                move_modifier = Some((*id, vec_idx + 1));
+                                ui.close_menu();
+                            }
+                            if ui.add_enabled(vec_idx > 0, egui::Button::new(icons::with(icons::ARROW_DOWN, &t("Move down")))).clicked() {
+                                move_modifier = Some((*id, vec_idx - 1));
+                                ui.close_menu();
+                            }
+                        }
+                        if team { crate::team_ui::author_menu(app, ui, *id); }
+                    });
+                }).response;
+                if filter.is_empty() && total_mods > 1 {
+                    if let Some((theme::OutlinerDrag::TerrainMod(drag_id), after)) = theme::dnd_reorder_slot(ui, row_resp.rect, |p| matches!(p, theme::OutlinerDrag::TerrainMod(_))) {
+                        if drag_id != *id {
+                            if let Some(from_vec) = app.doc.as_ref().and_then(|d| d.world.modifiers.iter().position(|m| m.id == drag_id)) {
+                                let from_disp = total_mods.saturating_sub(1).saturating_sub(from_vec);
+                                let to_vec = theme::reorder_target(from_disp, disp_idx, after, total_mods, true);
+                                move_modifier = Some((drag_id, to_vec));
+                            }
+                        }
+                    }
+                }
             }
         });
         crate::maskmods::outliner(app, ui, &filter, fold);
@@ -2246,12 +2304,26 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
         });
         outliner_section(fold, "Routes", icons::with(icons::ROAD_HORIZON, &tf("Routes ({0})", &[&routes.len().to_string()])), routes.len() == 0).show(ui, |ui| {
             for (i, name, family) in routes.iter().filter(|(_, n, _)| n.to_ascii_lowercase().contains(&filter)) {
+                if let Some((_, text)) = app.outliner_rename.as_mut().filter(|(t, _)| *t == crate::app::OutlinerRenameTarget::Route(*i)) {
+                    let edit = ui.add(egui::TextEdit::singleline(text).desired_width(f32::INFINITY));
+                    edit.request_focus();
+                    if ui.input(|k| k.key_pressed(egui::Key::Escape)) {
+                        cancel_outliner_rename = true;
+                    } else if edit.lost_focus() || ui.input(|k| k.key_pressed(egui::Key::Enter)) {
+                        rename_route = Some((*i, text.clone()));
+                    }
+                    continue;
+                }
                 let row = theme::list_row(ui, app.line.selected_route == Some(*i), icons::ROAD_HORIZON, theme::KIND_ROAD, name.as_str(), family);
                 if row.clicked() { select_route = Some(*i); }
                 row.context_menu(|ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                     let spot = app.doc.as_ref().and_then(|d| d.world.routes.get(*i)).and_then(dz_core::goto::route_spot);
                     if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                    if ui.button(icons::with(icons::PENCIL_SIMPLE, &t("Rename"))).clicked() {
+                        start_outliner_rename = Some((crate::app::OutlinerRenameTarget::Route(*i), name.clone()));
+                        ui.close_menu();
+                    }
                     if ui.button(t("Delete route")).clicked() { delete_route = Some(*i); ui.close_menu(); }
                     crate::team_ui::author_menu(app, ui, route_ids[*i]);
                 });
@@ -2271,8 +2343,11 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
         outliner_section(fold, "Shape layers", icons::with(icons::POLYGON, &tf("Shape layers ({0})", &[&shape_rows.len().to_string()])), false).show(ui, |ui| {
             if ui.small_button(format!("+ {}", t("New layer"))).clicked() { shape_action = Some(ShapeAction::New); }
             for (i, name, visible, count) in shape_rows.iter().filter(|(_, n, _, _)| n.to_ascii_lowercase().contains(&filter)) {
-                ui.horizontal(|ui| {
+                let row_resp = ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
+                    if filter.is_empty() && total_shapes > 1 {
+                        theme::drag_grip(ui, theme::OutlinerDrag::ShapeLayer(*i), &t("Drag to reorder"));
+                    }
                     let opened = open_shapes.iter().any(|(l, _)| l == i);
                     if theme::row_switch(ui, true, if opened { icons::CARET_DOWN } else { icons::CARET_RIGHT }, "", String::new()).clicked() { toggle_open = Some(*i); }
                     if theme::row_switch(ui, *visible, icons::EYE, icons::EYE_SLASH, t("Visible")).clicked() { shape_action = Some(ShapeAction::Visible(*i)); }
@@ -2290,10 +2365,22 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
                     row.context_menu(|ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                         let spot = app.doc.as_ref().and_then(|d| d.world.shape_layers.get(*i)).and_then(dz_core::goto::layer_spot);
                         if let Some(s) = crate::goto::menu(ui, spot) { fly = Some(s); }
+                        if total_shapes > 1 {
+                            if ui.add_enabled(*i > 0, egui::Button::new(icons::with(icons::ARROW_UP, &t("Move up")))).clicked() { move_shape_layer = Some((*i, *i - 1)); ui.close_menu(); }
+                            if ui.add_enabled(*i + 1 < total_shapes, egui::Button::new(icons::with(icons::ARROW_DOWN, &t("Move down")))).clicked() { move_shape_layer = Some((*i, *i + 1)); ui.close_menu(); }
+                        }
                         if ui.button(t("Rename")).clicked() { start_shape_rename = Some((*i, name.clone())); ui.close_menu(); }
                         if ui.button(t("Delete layer")).clicked() { shape_action = Some(ShapeAction::Delete(*i)); ui.close_menu(); }
                     });
-                });
+                }).response;
+                if filter.is_empty() && total_shapes > 1 {
+                    if let Some((theme::OutlinerDrag::ShapeLayer(from), after)) = theme::dnd_reorder_slot(ui, row_resp.rect, |p| matches!(p, theme::OutlinerDrag::ShapeLayer(_))) {
+                        if from != *i {
+                            let to = theme::reorder_target(from, *i, after, total_shapes, false);
+                            move_shape_layer = Some((from, to));
+                        }
+                    }
+                }
                 if let Some((_, list)) = open_shapes.iter().find(|(l, _)| l == i) {
                     ui.indent(("shapes", *i), |ui| {
                         egui::ScrollArea::vertical().id_salt(("shape_list", *i)).max_height(180.0).auto_shrink([false, true]).show(ui, |ui| {
@@ -2464,6 +2551,80 @@ fn outliner(app: &mut App, ui: &mut egui::Ui) {
     }
     if start_shape_rename.is_some() { app.shape_rename = start_shape_rename; }
     if select_modifier.is_some() { app.selected_modifier = select_modifier; }
+    if let Some((id, on)) = toggle_modifier {
+        if let Some(d) = &mut app.doc {
+            let before = d.world.modifiers.clone();
+            if let Some(at) = d.world.modifiers.iter().position(|m| m.id == id) {
+                d.world.modifiers[at].enabled = on;
+                let area = d.world.modifier_rect(&d.world.modifiers[at].clone());
+                if let Some(r) = area {
+                    d.world.recompose(Some(r));
+                    d.history.push(t("Terrain modifier"), dz_core::edit::Change::Modifiers(before));
+                    app.height_changed(r);
+                } else {
+                    d.history.push(t("Terrain modifier"), dz_core::edit::Change::Modifiers(before));
+                }
+            }
+        }
+    }
+    if let Some((id, to_idx)) = move_modifier {
+        if let Some(d) = &mut app.doc {
+            let before = d.world.modifiers.clone();
+            let area = d.world.move_modifier(id, to_idx);
+            if d.world.modifiers != before {
+                d.history.push(t("Reorder terrain modifiers"), dz_core::edit::Change::Modifiers(before));
+                if let Some(r) = area {
+                    app.height_changed(r);
+                }
+            }
+        }
+    }
+    if let Some((from, to)) = move_shape_layer {
+        if let Some(d) = &mut app.doc {
+            let before = d.world.shape_layers.clone();
+            if d.world.move_shape_layer(from, to) {
+                d.history.push(t("Reorder shape layers"), dz_core::edit::Change::Shapes(before));
+                app.shape.selection = app.shape.selection.iter().map(|&(l, s)| (dz_core::world::remap_moved_index(l, from, to), s)).collect();
+                app.shape_open = app.shape_open.iter().map(|&l| dz_core::world::remap_moved_index(l, from, to)).collect();
+            }
+        }
+    }
+    if cancel_outliner_rename {
+        app.outliner_rename = None;
+    }
+    if let Some((id, new_name)) = rename_modifier {
+        app.outliner_rename = None;
+        let trimmed = new_name.trim();
+        if !trimmed.is_empty() {
+            if let Some(d) = &mut app.doc {
+                let before = d.world.modifiers.clone();
+                if let Some(m) = d.world.modifiers.iter_mut().find(|m| m.id == id) {
+                    if m.name != trimmed {
+                        m.name = trimmed.to_string();
+                        d.history.push(t("Rename"), dz_core::edit::Change::Modifiers(before));
+                    }
+                }
+            }
+        }
+    }
+    if let Some((idx, new_name)) = rename_route {
+        app.outliner_rename = None;
+        let trimmed = new_name.trim();
+        if !trimmed.is_empty() {
+            if let Some(d) = &mut app.doc {
+                let before = d.world.routes.clone();
+                if let Some(r) = d.world.routes.get_mut(idx) {
+                    if r.name != trimmed {
+                        r.name = trimmed.to_string();
+                        d.history.push(t("Rename"), dz_core::edit::Change::Routes(before));
+                    }
+                }
+            }
+        }
+    }
+    if start_outliner_rename.is_some() {
+        app.outliner_rename = start_outliner_rename;
+    }
 }
 
 fn details(app: &mut App, ui: &mut egui::Ui) {
@@ -3159,6 +3320,82 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
                 });
             });
         }
+        Dialog::ConvertToBrush { kind, id, name } => {
+            let (kind, id, name) = (*kind, *id, name.clone());
+            let mut confirmed = false;
+            egui::Window::new(icons::with(icons::PAINT_BRUSH, &t("Convert to brush")))
+                .collapsible(false)
+                .resizable(false)
+                .min_width(360.0)
+                .max_width(420.0)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    ui.label(RichText::new(tf("Convert {0} to a brush modifier?", &[&name])).strong());
+                    ui.add_space(4.0);
+                    ui.label(t("You will be able to paint and erase it like a hand-painted brush layer, and merge it with neighbouring brush layers."));
+                    ui.add_space(6.0);
+                    egui::Frame::new()
+                        .fill(Color32::from_rgba_unmultiplied(230, 170, 50, 22))
+                        .stroke(egui::Stroke::new(1.0_f32, theme::WARN))
+                        .corner_radius(4.0)
+                        .inner_margin(egui::Margin::same(8))
+                        .show(ui, |ui| {
+                            ui.colored_label(theme::WARN, icons::with(icons::WARNING, &t("After converting, you will no longer be able to adjust it through its original settings (such as generator, stamp, or colour correction parameters).")));
+                        });
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let btn = egui::Button::new(RichText::new(icons::with(icons::PAINT_BRUSH, &t("Convert to brush"))).color(Color32::WHITE))
+                            .fill(theme::ACCENT);
+                        if ui.add(btn).clicked() {
+                            confirmed = true;
+                            close = true;
+                        }
+                        if ui.button(t("Cancel")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            if confirmed {
+                match kind {
+                    crate::app::ConvertKind::Mask => {
+                        if let Some(d) = app.doc.as_mut() {
+                            let before_mods = d.world.mask_mods.modifiers.clone();
+                            let detached_gen = d.world.generators.iter().any(|g| g.mask_modifier == Some(id));
+                            let before_gens = detached_gen.then(|| d.world.generators.clone());
+                            if d.world.mask_convert_to_brush(id) {
+                                if let Some(gens) = before_gens {
+                                    d.history.push(t("Convert to brush"), dz_core::edit::Change::Group(vec![
+                                        dz_core::edit::Change::MaskMods(before_mods),
+                                        dz_core::edit::Change::Generators(gens),
+                                    ]));
+                                } else {
+                                    d.history.push(t("Convert to brush"), dz_core::edit::Change::MaskMods(before_mods));
+                                }
+                                app.paint.target = Some(id);
+                                app.paint.into_modifier = true;
+                                app.info(tf("{0} converted to a brush modifier", &[&name]));
+                            }
+                        }
+                    }
+                    crate::app::ConvertKind::Satellite => {
+                        if let Some(d) = app.doc.as_mut() {
+                            let before = d.world.sat.modifiers.clone();
+                            let (ok, touched) = d.world.sat_convert_to_brush(id);
+                            if ok {
+                                d.history.push(t("Convert to brush"), dz_core::edit::Change::Satellite(before));
+                                d.dirty.satellite = true;
+                                app.sat.active = Some(id);
+                                if let Some(r) = touched {
+                                    app.satellite_changed(r);
+                                }
+                                app.info(tf("{0} converted to a brush modifier", &[&name]));
+                            }
+                        }
+                    }
+                }
+            }
+        }
         Dialog::DeleteLayer { layer, into } => {
             let names: Vec<String> = app.doc.as_ref().map(|d| d.world.layers.iter().map(|l| l.name.clone()).collect()).unwrap_or_default();
             let (layer, mut into_now) = (*layer, *into);
@@ -3494,7 +3731,11 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     let before = doc.world.meta.clone();
     let size = doc.world.meta.size_m();
     let mut copied = false;
-    egui::Window::new(t("Map config")).collapsible(false).resizable(true).default_size([980.0, 620.0]).open(open).show(ctx, |ui| {
+    let title = t("Map config");
+    crate::theme::PopupWindow::new(egui::Id::new("map_config_window"), &title)
+        .default_size([980.0, 620.0])
+        .min_size([640.0, 420.0])
+        .show(ctx, open, |ui| {
         ui.columns(2, |cols| {
             let ui = &mut cols[0];
             egui::ScrollArea::vertical().id_salt("cfg_form").auto_shrink([false, false]).show(ui, |ui| {
@@ -3785,7 +4026,12 @@ fn project_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     let (mut check, mut fix) = (false, false);
     let mut open_config = false;
     let m = &mut doc.world.meta;
-    egui::Window::new(t("Project settings")).collapsible(false).open(open).show(ctx, |ui| {
+    let title = t("Project settings");
+    crate::theme::PopupWindow::new(egui::Id::new("project_settings_window"), &title)
+        .default_size([460.0, 440.0])
+        .min_size([360.0, 300.0])
+        .vscroll(true)
+        .show(ctx, open, |ui| {
         row(ui, &t("Name"), |ui| { ui.text_edit_singleline(&mut m.name); });
         row(ui, &t("Map ID"), |ui| { ui.text_edit_singleline(&mut m.map_id); });
         row(ui, &t("Author"), |ui| { ui.text_edit_singleline(&mut m.author); });

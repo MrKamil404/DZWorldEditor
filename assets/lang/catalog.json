@@ -10782,5 +10782,113 @@
  "Murky": {
   "de": "Trüb",
   "pl": "Mętny"
+ },
+ "Drag to reorder": {
+  "de": "Zum Sortieren ziehen",
+  "pl": "Przeciągnij, aby zmienić kolejność"
+ },
+ "Move up": {
+  "de": "Nach oben",
+  "pl": "Przesuń w górę"
+ },
+ "Move down": {
+  "de": "Nach unten",
+  "pl": "Przesuń w dół"
+ },
+ "Under objects": {
+  "de": "Unter Objekten",
+  "pl": "Pod obiektami"
+ },
+ "Generated": {
+  "de": "Erzeugt",
+  "pl": "Wygenerowane"
+ },
+ "Correct": {
+  "de": "Korrektur",
+  "pl": "Korekcja"
+ },
+ "Reorder terrain modifiers": {
+  "de": "Geländemodifikatoren sortieren",
+  "pl": "Zmiana kolejności modyfikatorów terenu"
+ },
+ "Reorder mask modifiers": {
+  "de": "Maskenmodifikatoren sortieren",
+  "pl": "Zmiana kolejności modyfikatorów maski"
+ },
+ "Reorder satellite modifiers": {
+  "de": "Satellitenmodifikatoren sortieren",
+  "pl": "Zmiana kolejności modyfikatorów satelity"
+ },
+ "Reorder shape layers": {
+  "de": "Formebenen sortieren",
+  "pl": "Zmiana kolejności warstw kształtów"
+ },
+ "Reorder generators": {
+  "de": "Generatoren sortieren",
+  "pl": "Zmiana kolejności generatorów"
+ },
+ "Convert to brush": {
+  "de": "In Pinsel umwandeln",
+  "pl": "Zamień na pędzel"
+ },
+ "Convert to brush...": {
+  "de": "In Pinsel umwandeln...",
+  "pl": "Zamień na pędzel..."
+ },
+ "Convert {0} to a brush modifier?": {
+  "de": "{0} in einen Pinsel-Modifikator umwandeln?",
+  "pl": "Zamienić {0} na modyfikator pędzla?"
+ },
+ "You will be able to paint and erase it like a hand-painted brush layer, and merge it with neighbouring brush layers.": {
+  "de": "Du kannst ihn wie eine handgemalte Pinselebene bemalen, radieren und mit benachbarten Pinselebenen zusammenführen.",
+  "pl": "Będziesz mógł po nim malować i wymazywać go jak zwykłą warstwę pędzla oraz scalać z sąsiednimi warstwami pędzla."
+ },
+ "After converting, you will no longer be able to adjust it through its original settings (such as generator, stamp, or colour correction parameters).": {
+  "de": "Nach der Umwandlung kannst du ihn nicht mehr über seine ursprünglichen Einstellungen (z. B. Generator-, Stempel- oder Farbkorrektur-Parameter) anpassen.",
+  "pl": "Po tej zmianie utracisz możliwość edytowania go przez jego pierwotne ustawienia (np. parametry generatora, stempla czy korekcji kolorów)."
+ },
+ "Turns this modifier into an editable brush layer. Its original settings will no longer apply.": {
+  "de": "Wandelt diesen Modifikator in eine bearbeitbare Pinselebene um. Seine ursprünglichen Einstellungen gelten danach nicht mehr.",
+  "pl": "Zamienia ten modyfikator w edytowalną warstwę pędzla. Jego pierwotne ustawienia przestaną działać."
+ },
+ "{0} converted to a brush modifier": {
+  "de": "{0} in einen Pinsel-Modifikator umgewandelt",
+  "pl": "Zamieniono {0} na modyfikator pędzla"
+ },
+ "Dispatch": {
+  "de": "Dispatch",
+  "pl": "Dispatch"
+ },
+ "DE chance": {
+  "de": "DE-Chance",
+  "pl": "Szansa DE"
+ },
+ "Add proxy": {
+  "de": "Proxy hinzufügen",
+  "pl": "Dodaj proxy"
+ },
+ "Dispatch proxy #{0}": {
+  "de": "Dispatch-Proxy #{0}",
+  "pl": "Proxy dispatch #{0}"
+ },
+ "Class (type)": {
+  "de": "Klasse (type)",
+  "pl": "Klasa (type)"
+ },
+ "Model not found in CfgVehicles": {
+  "de": "Modell nicht in CfgVehicles gefunden",
+  "pl": "Nie znaleziono modelu w CfgVehicles"
+ },
+ "Rotation (R, P, Y)": {
+  "de": "Drehung (R, P, Y)",
+  "pl": "Obrót (R, P, Y)"
+ },
+ "Minimize": {
+  "de": "Minimieren",
+  "pl": "Minimalizuj"
+ },
+ "Maximize": {
+  "de": "Maximieren",
+  "pl": "Maksymalizuj"
  }
 }
