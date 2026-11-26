@@ -425,6 +425,93 @@ impl World {
         self.sat_recompose(keys)
     }
 
+    /// Moves satellite modifier `id` to `to_index` in the stacking order (0 = bottom, len-1 = top)
+    /// and recomposes every affected tile.
+    pub fn sat_move(&mut self, id: u32, to_index: usize) -> Option<PixelRect> {
+        let from = self.sat.position(id)?;
+        let len = self.sat.modifiers.len();
+        if len < 2 {
+            return None;
+        }
+        let to = to_index.min(len - 1);
+        if from == to {
+            return None;
+        }
+        let (lo, hi) = (from.min(to), from.max(to));
+        let mut keys = BTreeSet::new();
+        for m in &self.sat.modifiers[lo..=hi] {
+            keys.extend(self.sat_mod_keys(m));
+        }
+        let item = self.sat.modifiers.remove(from);
+        self.sat.modifiers.insert(to, item);
+        self.sat_recompose(keys)
+    }
+
+    /// Converts a baked, generated, or colour-correction satellite modifier into a regular editable
+    /// brush modifier (`SatKind::Paint`), baking any live colour correction into RGBA tiles.
+    pub fn sat_convert_to_brush(&mut self, id: u32) -> (bool, Option<PixelRect>) {
+        let Some(at) = self.sat.position(id) else { return (false, None) };
+        let kind = self.sat.modifiers[at].kind;
+        if kind.is_brush() {
+            return (false, None);
+        }
+        if kind == SatKind::Correct {
+            let Some(corr) = self.sat.modifiers[at].correction.clone() else {
+                self.sat.modifiers[at].kind = SatKind::Paint;
+                return (true, None);
+            };
+            let keys = self.sat_mod_keys(&self.sat.modifiers[at]);
+            for &key in &keys {
+                self.sat_keep(key);
+            }
+            let Some(img) = &self.satellite else { return (false, None) };
+            let mut new_tiles: HashMap<Key, Tile> = HashMap::new();
+            for &key in &keys {
+                let Some(base) = self.sat.base.get(&key) else { continue };
+                let Some(r) = tile_rect(key, img) else { continue };
+                let mask_tile = if corr.whole { None } else { self.sat.modifiers[at].tiles.get(&key) };
+                // Compose every enabled layer strictly below `at` so the baked colour matches what is visible.
+                let below: Vec<Layer> = self.sat.modifiers[..at].iter().filter(|m| m.enabled).filter_map(|m| {
+                    if let Some(c) = &m.correction {
+                        let mask = (!c.whole).then(|| m.tiles.get(&key)).flatten();
+                        (c.whole || mask.is_some()).then_some(Layer::Correct(&c.adjust, mask, m.opacity as u32))
+                    } else {
+                        m.tiles.get(&key).map(|t| Layer::Paint(t, m.opacity as u32))
+                    }
+                }).collect();
+                let mut out = vec![0u8; TILE * TILE * 4];
+                let mut any = false;
+                for y in r.y0..=r.y1 {
+                    for x in r.x0..=r.x1 {
+                        let t = (y - r.y0) * TILE + (x - r.x0);
+                        let a = mask_tile.map_or(255u8, |m| m[t]);
+                        if a == 0 {
+                            continue;
+                        }
+                        let under = compose_pixel([base[t * 3], base[t * 3 + 1], base[t * 3 + 2]], &below, t);
+                        let adj = corr.adjust.apply(under);
+                        out[t * 4] = adj[0];
+                        out[t * 4 + 1] = adj[1];
+                        out[t * 4 + 2] = adj[2];
+                        out[t * 4 + 3] = a;
+                        any = true;
+                    }
+                }
+                if any {
+                    new_tiles.insert(key, Arc::new(out));
+                }
+            }
+            let m = &mut self.sat.modifiers[at];
+            m.kind = SatKind::Paint;
+            m.correction = None;
+            m.tiles = new_tiles;
+            return (true, self.sat_recompose(keys));
+        }
+        // `SatKind::Bake` and `SatKind::Generated` already hold RGBA tiles.
+        self.sat.modifiers[at].kind = SatKind::Paint;
+        (true, None)
+    }
+
     /// [`SatLayers::merge_target`], and in team work only when both are this person's own:
     /// merging takes the upper one away, which would take it from its maker's copy too.
     pub fn sat_merge_target(&self, id: u32) -> Option<u32> {
@@ -2102,5 +2189,33 @@ mod tests {
             let e_at = (0 * TILE + 100) * 4;
             assert_eq!(east_tile[e_at + 3], 0, "dry land must remain unpainted");
         }
+    }
+
+    #[test]
+    fn reordering_sat_modifiers_and_converting_to_brush_preserves_appearance() {
+        let mut w = world();
+        let red = RgbImage::new(256, 256, [200, 20, 20]);
+        let blue = RgbImage::new(256, 256, [20, 40, 220]);
+        let a = w.sat.add(SatKind::Bake, "a".into());
+        w.sat_clone_dab(a, [20.5, 20.5], &CloneBrush { radius: 4.0, hardness: 1.0, opacity: 1.0 }, Some(&red), [0, 0]);
+        let b = w.sat.add(SatKind::Bake, "b".into());
+        w.sat_clone_dab(b, [20.5, 20.5], &CloneBrush { radius: 4.0, hardness: 1.0, opacity: 1.0 }, Some(&blue), [0, 0]);
+        assert_eq!(pixel(&w, 20, 20), [20, 40, 220]);
+        // Move `a` above `b`.
+        assert!(w.sat_move(a, 1).is_some());
+        assert_eq!(pixel(&w, 20, 20), [200, 20, 20]);
+        // Convert Bake -> Paint (brush).
+        let (ok, _) = w.sat_convert_to_brush(a);
+        assert!(ok);
+        assert_eq!(w.sat.modifiers[1].kind, SatKind::Paint);
+        assert_eq!(pixel(&w, 20, 20), [200, 20, 20]);
+        // Add a whole-image brightness correction on top, then convert it to brush too.
+        let (c, _) = w.sat_add_correction("bright".into(), Adjust { brightness: 0.2, ..Default::default() }, None);
+        let before_px = pixel(&w, 20, 20);
+        let (ok_c, _) = w.sat_convert_to_brush(c);
+        assert!(ok_c);
+        assert_eq!(w.sat.modifiers[2].kind, SatKind::Paint);
+        assert!(w.sat.modifiers[2].correction.is_none());
+        assert_eq!(pixel(&w, 20, 20), before_px);
     }
 }

@@ -430,6 +430,44 @@ impl World {
     pub fn mask_covered(&self, id: u32, x: usize, y: usize) -> bool {
         self.mask_mods.position(id).and_then(|at| self.mask_mods.modifiers[at].tiles.get(&((x / TILE) as u16, (y / TILE) as u16))).is_some_and(|t| t[(y % TILE) * TILE + x % TILE] != NONE)
     }
+
+    /// Moves mask modifier `id` to `to_index` in the stacking order (0 = bottom, len-1 = top)
+    /// and recomposes every affected tile.
+    pub fn mask_move(&mut self, id: u32, to_index: usize) -> Option<Rect> {
+        let from = self.mask_mods.position(id)?;
+        let len = self.mask_mods.modifiers.len();
+        if len < 2 {
+            return None;
+        }
+        let to = to_index.min(len - 1);
+        if from == to {
+            return None;
+        }
+        let (lo, hi) = (from.min(to), from.max(to));
+        let mut keys = BTreeSet::new();
+        for m in &self.mask_mods.modifiers[lo..=hi] {
+            keys.extend(m.tiles.keys().copied());
+        }
+        let item = self.mask_mods.modifiers.remove(from);
+        self.mask_mods.modifiers.insert(to, item);
+        self.mask_recompose(keys)
+    }
+
+    /// Converts a generated/stamped mask modifier into a regular editable brush (`MaskKind::Strokes`)
+    /// modifier, keeping all of its painted tiles and detaching any generator that owned it.
+    pub fn mask_convert_to_brush(&mut self, id: u32) -> bool {
+        let Some(at) = self.mask_mods.position(id) else { return false };
+        if self.mask_mods.modifiers[at].kind == MaskKind::Strokes {
+            return false;
+        }
+        self.mask_mods.modifiers[at].kind = MaskKind::Strokes;
+        for g in &mut self.generators {
+            if g.mask_modifier == Some(id) {
+                g.mask_modifier = None;
+            }
+        }
+        true
+    }
 }
 
 /// Shape of the patch stamped under an object.
@@ -810,5 +848,28 @@ mod tests {
         assert_eq!(tiles[&(0, 0)][10 * TILE + 10], 4);
         assert_eq!(tiles[&(1, 1)][(200 % TILE) * TILE + 200 % TILE], 1);
         assert_eq!(tiles[&(0, 0)][0], NONE);
+    }
+
+    #[test]
+    fn reordering_mask_modifiers_changes_stacking_and_converting_keeps_tiles() {
+        let mut w = world();
+        let a = w.mask_mods.add(MaskKind::UnderObjects, "a".into());
+        let b = w.mask_mods.add(MaskKind::Forest, "b".into());
+        let mut ta = vec![NONE; TILE * TILE];
+        let mut tb = vec![NONE; TILE * TILE];
+        ta[10 * TILE + 10] = 1;
+        tb[10 * TILE + 10] = 2;
+        w.mask_replace_tiles(a, HashMap::from([((0, 0), Arc::new(ta))]));
+        w.mask_replace_tiles(b, HashMap::from([((0, 0), Arc::new(tb))]));
+        // `b` is on top of `a`.
+        assert_eq!(at(&w, 10, 10), 2);
+        // Move `a` above `b`: now `a` wins.
+        assert!(w.mask_move(a, 1).is_some());
+        assert_eq!(at(&w, 10, 10), 1);
+        // Convert `a` from UnderObjects to brush (Strokes) keeping its pixels.
+        assert!(w.mask_convert_to_brush(a));
+        assert_eq!(w.mask_mods.modifiers[1].kind, MaskKind::Strokes);
+        assert_eq!(at(&w, 10, 10), 1);
+        assert!(!w.mask_convert_to_brush(a));
     }
 }

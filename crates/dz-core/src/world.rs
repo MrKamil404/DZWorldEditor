@@ -1210,6 +1210,78 @@ impl World {
     pub fn layer_index(&self, name: &str) -> Option<usize> {
         self.layers.iter().position(|l| l.name.eq_ignore_ascii_case(name))
     }
+
+    /// Moves terrain modifier `id` to `to_index` in the stacking order (0 = bottom, len-1 = top)
+    /// and recomposes the affected terrain area.
+    pub fn move_modifier(&mut self, id: u64, to_index: usize) -> Option<Rect> {
+        let from = self.modifiers.iter().position(|m| m.id == id)?;
+        let len = self.modifiers.len();
+        if len < 2 {
+            return None;
+        }
+        let to = to_index.min(len - 1);
+        if from == to {
+            return None;
+        }
+        let (lo, hi) = (from.min(to), from.max(to));
+        let mut area: Option<Rect> = None;
+        for m in &self.modifiers[lo..=hi] {
+            if let Some(r) = self.modifier_rect(m) {
+                area = Some(area.map_or(r, |a| a.union(r)));
+            }
+        }
+        let item = self.modifiers.remove(from);
+        self.modifiers.insert(to, item);
+        if let Some(a) = area {
+            self.recompose(Some(a));
+        }
+        area
+    }
+
+    /// Moves shape layer `from` to `to` while keeping `active_shape_layer` pointing at the same layer.
+    pub fn move_shape_layer(&mut self, from: usize, to: usize) -> bool {
+        let len = self.shape_layers.len();
+        if len < 2 || from >= len {
+            return false;
+        }
+        let to = to.min(len - 1);
+        if from == to {
+            return false;
+        }
+        let item = self.shape_layers.remove(from);
+        self.shape_layers.insert(to, item);
+        self.active_shape_layer = remap_moved_index(self.active_shape_layer, from, to);
+        true
+    }
+
+    /// Moves generator `id` to `to_index`.
+    pub fn move_generator(&mut self, id: u64, to_index: usize) -> bool {
+        let Some(from) = self.generators.iter().position(|g| g.id == id) else { return false };
+        let len = self.generators.len();
+        if len < 2 {
+            return false;
+        }
+        let to = to_index.min(len - 1);
+        if from == to {
+            return false;
+        }
+        let item = self.generators.remove(from);
+        self.generators.insert(to, item);
+        true
+    }
+}
+
+/// Remaps an index after an element was removed from `from` and inserted at `to`.
+pub fn remap_moved_index(idx: usize, from: usize, to: usize) -> usize {
+    if idx == from {
+        to
+    } else if from < to && idx > from && idx <= to {
+        idx - 1
+    } else if to < from && idx >= to && idx < from {
+        idx + 1
+    } else {
+        idx
+    }
 }
 
 #[cfg(test)]
@@ -1362,6 +1434,22 @@ mod tests {
         assert_eq!(m.weight(400.0, 425.0, s, c), 1.0);
         assert_eq!(m.weight(425.0, 400.0, s, c), 0.0 + m.weight(425.0, 400.0, s, c));
         assert!(m.weight(490.0, 400.0, s, c) == 0.0);
+    }
+    #[test]
+    fn reordering_terrain_modifiers_changes_stacking() {
+        let mut w = world();
+        let mut a = modifier(ModMode::Flatten, Some(60.0), 0.0);
+        a.id = 1;
+        let mut b = modifier(ModMode::Flatten, Some(80.0), 0.0);
+        b.id = 2;
+        w.modifiers.push(a);
+        w.modifiers.push(b);
+        w.recompose(None);
+        // `b` is on top -> height is 80.
+        assert_eq!(w.height.at(50, 50), 80.0);
+        // Move `a` above `b` -> height becomes 60.
+        assert!(w.move_modifier(1, 1).is_some());
+        assert_eq!(w.height.at(50, 50), 60.0);
     }
 }
 
