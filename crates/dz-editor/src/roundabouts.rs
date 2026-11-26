@@ -61,12 +61,18 @@ pub fn draw(app: &App, painter: &egui::Painter, v: &View, world: &dz_core::world
 
 /// The tool's settings in the road panel.
 pub fn fields(app: &mut App, ui: &mut egui::Ui) {
-    crate::theme::row(ui, &t("Diameter"), |ui| {
-        ui.add(egui::DragValue::new(&mut app.line.roundabout_diameter).range(10.0..=600.0).speed(0.5).suffix(" m"));
+    use crate::{icons, theme};
+    theme::row(ui, &t("Diameter"), |ui| {
+        ui.add(theme::ValueField::new(&mut app.line.roundabout_diameter, 10.0..=600.0).suffix(" m").step_by(0.5));
     });
+    ui.add_space(4.0);
     let armed = app.line.roundabout_armed;
     let label = if armed { t("Placing: click the middle (Esc stops)") } else { t("Place roundabout") };
-    if crate::theme::tool_button(ui, armed, &label).on_hover_text(t("Click on the map where the middle of the roundabout goes (Esc stops). Its ring is laid round from the road type's own pieces, as near the diameter as they allow.")).clicked() {
+    let w = ui.available_width();
+    let btn = egui::Button::new(egui::RichText::new(icons::with(icons::CIRCLE_DASHED, &label)).color(if armed { Color32::WHITE } else { theme::TEXT }))
+        .fill(if armed { theme::ACCENT } else { theme::SECTION })
+        .min_size(egui::vec2(w, 24.0));
+    if ui.add(btn).on_hover_text(t("Click on the map where the middle of the roundabout goes (Esc stops). Its ring is laid round from the road type's own pieces, as near the diameter as they allow.")).clicked() {
         app.line.roundabout_armed = !armed;
         app.line.points.clear();
     }
@@ -74,8 +80,21 @@ pub fn fields(app: &mut App, ui: &mut egui::Ui) {
         let fam = app.line.family.clone();
         let _ = ring(app);
         match &app.line.roundabout {
-            Some((_, _, Ok(r))) => { ui.weak(tf("Ring Ø{0} m from {1} pieces, kinks of {2}° where they meet", &[&format!("{:.1}", r.radius * 2.0), &r.parts.len().to_string(), &format!("{:.1}", r.kink)])); }
-            Some((_, _, Err(e))) => { ui.colored_label(crate::theme::WARN, format!("{fam}: {e}")); }
+            Some((_, _, Ok(r))) => {
+                ui.add_space(4.0);
+                theme::card(ui, theme::BORDER, |ui| {
+                    ui.add(egui::Label::new(egui::RichText::new(tf("Ring Ø{0} m from {1} pieces, kinks of {2}° where they meet", &[&format!("{:.1}", r.radius * 2.0), &r.parts.len().to_string(), &format!("{:.1}", r.kink)])).small().color(theme::TEXT_DIM)).wrap());
+                });
+            }
+            Some((_, _, Err(e))) => {
+                ui.add_space(4.0);
+                theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme::WARN, icons::WARNING);
+                        ui.add(egui::Label::new(egui::RichText::new(format!("{fam}: {e}")).small().color(theme::WARN)).wrap());
+                    });
+                });
+            }
             None => {}
         }
     }
