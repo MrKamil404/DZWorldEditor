@@ -788,11 +788,6 @@ pub(crate) fn about(ui: &mut egui::Ui, text: &str) {
     }
 }
 
-/// The state of the tool in a line of its own: a count, the chosen surface or model.
-fn status(ui: &mut egui::Ui, text: &str, set: bool) {
-    ui.label(RichText::new(text).color(if set { Color32::WHITE } else { theme::TEXT }));
-}
-
 /// The keys of a tool, folded away at the bottom of its panel.
 pub(crate) fn shortcuts(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     if hints_on() {
@@ -1017,7 +1012,7 @@ pub(crate) fn grading_ui(ui: &mut egui::Ui, g: &mut dz_core::world::RoadGrading,
         slider(ui, &t("Blend"), blend, 0.0..=120.0, false);
     }
     if designed {
-        ui.weak(t("Heights along this route follow its grade, cut and fill limits. Change them in the route settings and fit again."));
+        about(ui, &t("Heights along this route follow its grade, cut and fill limits. Change them in the route settings and fit again."));
     } else {
         slider(ui, &t("Height smoothing"), &mut g.smooth, 0.0..=200.0, false);
         slider(ui, &t("Max. climb %"), &mut g.max_grade, 0.0..=30.0, false);
@@ -1361,26 +1356,42 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::TREE_EVERGREEN, &t("Place objects")), true, |ui| {
         let presets: Vec<(u64, String)> = app.library.objects.iter().map(|p| (p.id, p.name.clone())).collect();
         let preset = app.place.preset.and_then(|id| presets.iter().find(|p| p.0 == id)).map(|p| p.1.clone());
-        match (&preset, &app.place.model) {
-            (Some(p), _) => status(ui, &tf("Places the preset {0}", &[p]), true),
-            (None, Some(m)) => status(ui, &tf("Places {0}", &[m.rsplit('\\').next().unwrap_or(m)]), true),
-            (None, None) => status(ui, &t("Choose a model in the Content Browser"), false),
-        }
+        let (badge_icon, badge_text, active) = match (&preset, &app.place.model) {
+            (Some(p), _) => (icons::PACKAGE, tf("Places the preset {0}", &[p]), true),
+            (None, Some(m)) => (icons::CUBE, tf("Places {0}", &[m.rsplit('\\').next().unwrap_or(m)]), true),
+            (None, None) => (icons::TREE_EVERGREEN, t("Choose a model in the Content Browser"), false),
+        };
+        theme::card(ui, if active { theme::ACCENT.gamma_multiply(0.75) } else { theme::BORDER }, |ui| {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(badge_icon, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: if active { theme::ACCENT } else { theme::TEXT_DIM }, ..Default::default() });
+            job.append(&badge_text, 6.0, egui::TextFormat { font_id: icons::strong(13.0), color: if active { theme::TEXT_BRIGHT } else { theme::TEXT_DIM }, ..Default::default() });
+            ui.add(egui::Label::new(job).truncate());
+        });
+        ui.add_space(2.0);
         about(ui, &t("Click on the terrain to place it; models can also be dragged onto the map."));
+        ui.add_space(2.0);
         let items = crate::library_ui::preset_items(app);
         let (thumbs, selected) = (app.thumbs.handle(), app.browser.presets().first().copied());
         crate::library_ui::object_preset_slot(ui, &t("Object preset"), "place_preset", &mut app.place.preset, &items, &thumbs, selected);
         let pool = app.place.pool.len();
         if app.place.preset.is_none() && pool > 1 && app.place.model.as_ref().is_some_and(|m| app.place.pool.contains(m)) {
-            ui.horizontal_wrapped(|ui| {
-                about(ui, &tf("One of the {0} models selected in the Content Browser is placed at random.", &[&pool.to_string()]));
-                if ui.small_button(t("Only one")).clicked() { app.place.pool.clear(); }
+            ui.add_space(2.0);
+            theme::card(ui, theme::BORDER, |ui| {
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add(egui::Button::new(t("Only one")).min_size(vec2(0.0, 22.0))).clicked() { app.place.pool.clear(); }
+                        ui.add(egui::Label::new(RichText::new(tf("One of the {0} models selected in the Content Browser is placed at random.", &[&pool.to_string()])).small().color(theme::TEXT_DIM)).wrap());
+                    });
+                });
             });
+            ui.add_space(2.0);
         }
         row(ui, &t("A click"), |ui| {
-            use crate::tool_icons::{button, Glyph as G};
-            if button(ui, !app.place.brush, G::PlaceOne, t("Places one")).clicked() { app.place.brush = false; }
-            if button(ui, app.place.brush, G::PlacePaint, format!("{}\n{}", t("Paints"), t("Hold the button to paint objects."))).clicked() { app.place.brush = true; }
+            use crate::tool_icons::Glyph as G;
+            crate::tool_icons::segmented(ui, &mut app.place.brush, &[
+                (false, G::PlaceOne, t("Places one")),
+                (true, G::PlacePaint, format!("{}\n{}", t("Paints"), t("Hold the button to paint objects."))),
+            ]);
         });
         if !app.place.brush {
             let snap_key = app.settings.keys.text(Action::TogglePlaceOnSurface);
@@ -1401,7 +1412,14 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
             // Objects this close fit in 100 m² at most; a density above that cannot be reached.
             let room = 115.0 / (app.place.brush_spacing * app.place.brush_spacing).max(0.09);
             if app.place.brush_density > room {
-                ui.colored_label(theme::WARN, tf("The spacing leaves room for about {0} per 100 m²", &[&format!("{room:.1}")]));
+                ui.add_space(2.0);
+                theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme::WARN, icons::WARNING);
+                        ui.add(egui::Label::new(RichText::new(tf("The spacing leaves room for about {0} per 100 m²", &[&format!("{room:.1}")])).small().color(theme::WARN)).wrap());
+                    });
+                });
+                ui.add_space(2.0);
             }
             theme::check_row(ui, &mut app.place.brush_avoid, t("Skip spots taken by other objects")).on_hover_text(t("Leaves out the places where buildings and other larger objects stand, so nothing is put inside them."));
         }
@@ -1420,8 +1438,24 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
         theme::check_row(ui, &mut align, t("Align to slope"));
         row(ui, &t("Scale"), |ui| {
             let tip = t("Each placed object gets a random size in this range.");
-            ui.add(egui::DragValue::new(&mut lo).range(0.1..=4.0).speed(0.01).prefix(format!("{} ", t("from")))).on_hover_text(&tip);
-            ui.add(egui::DragValue::new(&mut hi).range(0.1..=4.0).speed(0.01).prefix(format!("{} ", t("to")))).on_hover_text(&tip);
+            let from_lbl = t("from");
+            let to_lbl = t("to");
+            ui.columns(2, |c| {
+                c[0].spacing_mut().slider_width = c[0].available_width();
+                let fl = from_lbl.clone();
+                let fl2 = from_lbl.clone();
+                c[0].add(theme::ValueField::new(&mut lo, 0.1..=4.0).step_by(0.01)
+                    .custom_formatter(move |v, _| format!("{fl} {v:.2}"))
+                    .custom_parser(move |s| s.trim().strip_prefix(&fl2).unwrap_or(s).trim().parse::<f64>().ok()))
+                    .on_hover_text(&tip);
+                c[1].spacing_mut().slider_width = c[1].available_width();
+                let tl = to_lbl.clone();
+                let tl2 = to_lbl.clone();
+                c[1].add(theme::ValueField::new(&mut hi, 0.1..=4.0).step_by(0.01)
+                    .custom_formatter(move |v, _| format!("{tl} {v:.2}"))
+                    .custom_parser(move |s| s.trim().strip_prefix(&tl2).unwrap_or(s).trim().parse::<f64>().ok()))
+                    .on_hover_text(&tip);
+            });
         });
         if hi < lo { hi = lo; }
         match preset {
@@ -1504,26 +1538,37 @@ fn shapes_mode(app: &mut App, ui: &mut egui::Ui) {
         };
         about(ui, &t(what));
         if !matches!(app.shape.tool, ShapeTool::Edit | ShapeTool::Point) {
-            ui.separator();
+            ui.add_space(4.0);
             let n = app.shape.points.len();
             let text = if n == 0 { t("Click on the map where the shape starts.") } else { tf("{0} points · Enter or a double click finishes · Backspace takes the last back · Esc cancels", &[&n.to_string()]) };
-            status(ui, &text, n > 0);
+            theme::card(ui, if n > 0 { theme::ACCENT.gamma_multiply(0.75) } else { theme::BORDER }, |ui| {
+                let mut job = egui::text::LayoutJob::default();
+                job.append(icons::POLYGON, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: if n > 0 { theme::ACCENT } else { theme::TEXT_DIM }, ..Default::default() });
+                job.append(&text, 6.0, egui::TextFormat { font_id: egui::FontId::proportional(12.5), color: if n > 0 { theme::TEXT_BRIGHT } else { theme::TEXT }, ..Default::default() });
+                ui.add(egui::Label::new(job).wrap());
+            });
+            ui.add_space(2.0);
             angle_snap_ui(app, ui);
         }
     });
     section(ui, &icons::with(icons::POLYGON, &t("Selected shape")), true, |ui| shape_details(app, ui));
     section(ui, &icons::with(icons::WAVES, &t("Water courses from the terrain")), false, |ui| {
-        ui.weak(t("Lines along which water runs down the terrain, in a new shape layer: drop the River or Stream generator on them. The Water flow shading of the view shows the same."));
+        about(ui, &t("Lines along which water runs down the terrain, in a new shape layer: drop the River or Stream generator on them. The Water flow shading of the view shows the same."));
+        ui.add_space(2.0);
         row(ui, &t("Wetness"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.shape.course_wetness, 0.3..=0.95)).on_hover_text(t("How much water must gather for a course to start: higher gives fewer, larger ones.")); });
         row(ui, &t("Shortest m"), |ui| { ui.add(crate::theme::ValueField::new(&mut app.shape.course_length, 20.0..=5000.0).logarithmic(true)); });
-        if ui.button(icons::with(icons::WAVES, &t("Find water courses"))).clicked() {
+        ui.add_space(4.0);
+        let w = ui.available_width();
+        if ui.add(egui::Button::new(icons::with(icons::WAVES, &t("Find water courses"))).min_size(vec2(w, 24.0))).clicked() {
             app.find_water_courses();
         }
     });
     section(ui, &icons::with(icons::FOLDER_OPEN, &t("Files")), false, |ui| {
-        ui.horizontal(|ui| {
-            if ui.button(t("Import...")).on_hover_text("SHP, TV4S").clicked() { app.import_shapes(); }
-            if ui.button(t("Export...")).on_hover_text("SHP").clicked() { app.export_shapes(); }
+        theme::button_columns(ui, 2, |c| {
+            let w0 = c[0].available_width();
+            if c[0].add(egui::Button::new(icons::with(icons::DOWNLOAD_SIMPLE, &t("Import..."))).min_size(vec2(w0, 24.0))).on_hover_text("SHP, TV4S").clicked() { app.import_shapes(); }
+            let w1 = c[1].available_width();
+            if c[1].add(egui::Button::new(icons::with(icons::UPLOAD_SIMPLE, &t("Export..."))).min_size(vec2(w1, 24.0))).on_hover_text("SHP").clicked() { app.export_shapes(); }
         });
     });
 }
@@ -1666,7 +1711,12 @@ fn shape_details(app: &mut App, ui: &mut egui::Ui) {
     use dz_core::shapes::ShapeKind;
     let count = app.shape.selection.len();
     if count == 0 {
-        ui.weak(t("Nothing selected"));
+        theme::card(ui, theme::BORDER, |ui| {
+            let mut job = egui::text::LayoutJob::default();
+            job.append(icons::POLYGON, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: theme::TEXT_DIM, ..Default::default() });
+            job.append(&t("Nothing selected"), 6.0, egui::TextFormat { font_id: icons::strong(13.0), color: theme::TEXT_DIM, ..Default::default() });
+            ui.label(job);
+        });
         return;
     }
     let Some(doc) = &app.doc else { return };
@@ -1683,14 +1733,17 @@ fn shape_details(app: &mut App, ui: &mut egui::Ui) {
     let mut remove = false;
     let mut to_line = None;
     if count > 1 {
-        ui.label(tf("{0} shapes selected", &[&count.to_string()]));
+        theme::details_head(ui, icons::POLYGON, theme::KIND_SHAPE, &tf("{0} shapes selected", &[&count.to_string()]), names.get(target).map(String::as_str).unwrap_or(""));
     } else {
-        ui.label(match shape.kind { ShapeKind::Point => t("Point"), ShapeKind::Polyline => t("Polyline"), ShapeKind::Polygon => t("Polygon") });
+        let kind_name = match shape.kind { ShapeKind::Point => t("Point"), ShapeKind::Polyline => t("Polyline"), ShapeKind::Polygon => t("Polygon") };
+        theme::details_head(ui, icons::POLYGON, theme::KIND_SHAPE, &kind_name, &tf("{0} points", &[&shape.points.len().to_string()]));
         if shape.kind != ShapeKind::Point {
             let mut kind = shape.kind;
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut kind, ShapeKind::Polygon, t("Polygon"));
-                ui.selectable_value(&mut kind, ShapeKind::Polyline, t("Polyline"));
+            row(ui, &t("Type"), |ui| {
+                theme::segmented(ui, &mut kind, &[
+                    (ShapeKind::Polygon, t("Polygon"), String::new()),
+                    (ShapeKind::Polyline, t("Polyline"), String::new()),
+                ]);
             });
             if kind != shape.kind && shape.points.len() >= kind.min_points() {
                 shape.kind = kind;
@@ -1699,36 +1752,59 @@ fn shape_details(app: &mut App, ui: &mut egui::Ui) {
         }
     }
     row(ui, &t("Layer"), |ui| {
-        egui::ComboBox::from_id_salt("shape_layer").selected_text(names.get(target).cloned().unwrap_or_default()).show_ui(ui, |ui| {
+        let w = ui.available_width();
+        egui::ComboBox::from_id_salt("shape_layer").width(w).selected_text(names.get(target).cloned().unwrap_or_default()).show_ui(ui, |ui| {
             for (i, n) in names.iter().enumerate() { ui.selectable_value(&mut target, i, n); }
         });
     });
     if count == 1 {
-        egui::CollapsingHeader::new(tf("{0} points", &[&shape.points.len().to_string()])).id_salt("shape_points").default_open(shape.points.len() <= 12).show(ui, |ui| {
-            egui::ScrollArea::vertical().id_salt("shape_point_list").max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
-                let marked = app.shape.vertex;
-                for (i, p) in shape.points.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        if ui.selectable_label(marked == Some(i), format!("{}", i + 1)).clicked() { app.shape.vertex = Some(i); }
-                        changed |= ui.add(egui::DragValue::new(&mut p[0]).speed(0.1).prefix("X ")).changed();
-                        changed |= ui.add(egui::DragValue::new(&mut p[1]).speed(0.1).prefix("Z ")).changed();
+        theme::subsection(ui, &tf("{0} points", &[&shape.points.len().to_string()]), shape.points.len() <= 12, |ui| {
+            egui::Frame::new()
+                .fill(theme::DARK)
+                .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::same(4))
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical().id_salt("shape_point_list").max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        let marked = app.shape.vertex;
+                        for (i, p) in shape.points.iter_mut().enumerate() {
+                            let is_marked = marked == Some(i);
+                            let bg = if is_marked { theme::ACCENT_SOFT } else if i % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
+                            egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(3, 1)).show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 4.0;
+                                    if ui.add_sized([22.0, 20.0], egui::SelectableLabel::new(is_marked, RichText::new(format!("{}", i + 1)).monospace().small())).clicked() {
+                                        app.shape.vertex = Some(i);
+                                    }
+                                    let field_w = ((ui.available_width() - 4.0) * 0.5).max(52.0);
+                                    changed |= ui.add_sized([field_w, 20.0], egui::DragValue::new(&mut p[0]).speed(0.1).prefix("X ")).changed();
+                                    changed |= ui.add_sized([field_w, 20.0], egui::DragValue::new(&mut p[1]).speed(0.1).prefix("Z ")).changed();
+                                });
+                            });
+                        }
                     });
-                }
-            });
+                });
         });
         for (k, v) in &mut shape.attributes {
-            row(ui, k, |ui| { changed |= ui.text_edit_singleline(v).changed(); });
+            row(ui, k, |ui| { changed |= ui.add(egui::TextEdit::singleline(v).desired_width(f32::INFINITY)).changed(); });
         }
-        if shape.kind != ShapeKind::Point && ui.button(t("Use as a road or object line")).on_hover_text(t("Opens the Roads tool with these points.")).clicked() {
-            to_line = Some(shape.points.clone());
+        if shape.kind != ShapeKind::Point {
+            ui.add_space(4.0);
+            let w = ui.available_width();
+            if ui.add(egui::Button::new(icons::with(icons::PATH, &t("Use as a road or object line"))).min_size(vec2(w, 24.0))).on_hover_text(t("Opens the Roads tool with these points.")).clicked() {
+                to_line = Some(shape.points.clone());
+            }
         }
     }
     let mut select_inside = None;
     if app.selected_areas() > 0 {
-        let r = ui.button(crate::icons::with(crate::icons::SELECTION_ALL, &t("Select objects inside"))).on_hover_text(t("Selects the objects inside the selected areas and opens the Select tool. Hold Shift to add them to what is already selected."));
+        let w = ui.available_width();
+        let r = ui.add(egui::Button::new(icons::with(icons::SELECTION_ALL, &t("Select objects inside"))).min_size(vec2(w, 24.0))).on_hover_text(t("Selects the objects inside the selected areas and opens the Select tool. Hold Shift to add them to what is already selected."));
         if r.clicked() { select_inside = Some(ui.input(|i| i.modifiers.shift)); }
     }
-    if ui.button(t("Delete shape")).clicked() { remove = true; }
+    let w = ui.available_width();
+    if ui.add(egui::Button::new(RichText::new(icons::with(icons::TRASH, &t("Delete shape"))).color(Color32::from_rgb(235, 110, 100))).min_size(vec2(w, 24.0))).clicked() { remove = true; }
     if changed {
         layers[first.0].shapes[first.1] = shape;
         let doc = app.doc.as_mut().unwrap();
@@ -1818,7 +1894,7 @@ fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSe
         });
     });
     if r.deck_fixed {
-        row(ui, &t("Deck at m"), |ui| { changed |= ui.add(egui::DragValue::new(&mut r.deck_height).speed(0.1).suffix(" m")).on_hover_text(t("Height of the driving surface above sea level. The road on both banks rises or falls to it.")).changed(); });
+        row(ui, &t("Deck at m"), |ui| { changed |= ui.add(crate::theme::ValueField::new(&mut r.deck_height, -50.0..=2000.0).suffix(" m")).on_hover_text(t("Height of the driving surface above sea level. The road on both banks rises or falls to it.")).changed(); });
     } else {
         row(ui, &t("Raise deck m"), |ui| { changed |= ui.add(crate::theme::ValueField::new(&mut r.deck_raise, -5.0..=20.0)).on_hover_text(t("Lifts the deck above the middle of its two banks; the road on both banks rises to it.")).changed(); });
     }
@@ -1830,7 +1906,14 @@ fn routing_fields(ui: &mut egui::Ui, r: &mut dayz_road_tool::document::RoutingSe
 /// on at its ends, its points, a crossroad, and the ground under it, the last ones folded.
 fn route_details(app: &mut App, ui: &mut egui::Ui) {
     let Some(index) = app.line.selected_route.filter(|i| app.doc.as_ref().is_some_and(|d| *i < d.world.routes.len())) else {
-        section(ui, &icons::with(icons::ROAD_HORIZON, &t("Selected route")), true, |ui| status(ui, &t("Click a route on the map to edit it."), false));
+        section(ui, &icons::with(icons::ROAD_HORIZON, &t("Selected route")), true, |ui| {
+            theme::card(ui, theme::BORDER, |ui| {
+                let mut job = egui::text::LayoutJob::default();
+                job.append(icons::ROAD_HORIZON, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: theme::TEXT_DIM, ..Default::default() });
+                job.append(&t("Click a route on the map to edit it."), 6.0, egui::TextFormat { font_id: egui::FontId::proportional(12.5), color: theme::TEXT_DIM, ..Default::default() });
+                ui.add(egui::Label::new(job).wrap());
+            });
+        });
         return;
     };
     let before = app.doc.as_ref().unwrap().world.routes[index].points.clone();
@@ -1842,12 +1925,14 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         row(ui, &t("Name"), |ui| { ui.add(egui::TextEdit::singleline(&mut route.name).desired_width(f32::INFINITY)); });
         about(ui, &tf("{0} models · {1} points", &[&route.objects.len().to_string(), &route.points.len().to_string()]));
         row(ui, &t("Road type"), |ui| {
-            egui::ComboBox::from_id_salt("route_family").selected_text(route.family.clone()).width((ui.available_width() - 30.0).max(60.0)).truncate().show_ui(ui, |ui| {
+            let w = ui.available_width();
+            egui::ComboBox::from_id_salt("route_family").selected_text(route.family.clone()).width(w).truncate().show_ui(ui, |ui| {
                 for f in families { ui.selectable_value(&mut route.family, f.clone(), f); }
             });
         });
         let mut method = route.method;
-        ui.label(t("Edit as"));
+        ui.add_space(2.0);
+        ui.label(RichText::new(t("Edit as")).small().color(theme::TEXT_DIM));
         ui.horizontal_wrapped(|ui| {
             for (m, g, n, tip) in draw_methods() {
                 ui.spacing_mut().item_spacing = vec2(3.0, 3.0);
@@ -1866,14 +1951,17 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         let route = &mut app.doc.as_mut().unwrap().world.routes[index];
         let thumbs = app.thumbs.handle();
         theme::subsection(ui, &t("Route settings"), false, |ui| { routing_fields(ui, &mut route.settings, &thumbs); });
-        ui.add_space(2.0);
-        ui.horizontal_wrapped(|ui| {
-            if method != RoadDraw::Parts {
-                if ui.button(icons::with(icons::ARROWS_CLOCKWISE, &t("Fit again"))).on_hover_text(t("Applies the type, settings and typed points.")).clicked() { action = 1; }
-                if ui.button(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Reverse"))).on_hover_text(t("The road runs the other way: its start becomes its end.")).clicked() { action = 2; }
-            }
-            if ui.button(RichText::new(icons::with(icons::TRASH, &t("Delete route"))).color(Color32::from_rgb(235, 110, 100))).clicked() { action = 4; }
-        });
+        ui.add_space(4.0);
+        if method != RoadDraw::Parts {
+            theme::button_columns(ui, 2, |c| {
+                let w0 = c[0].available_width();
+                if c[0].add(egui::Button::new(icons::with(icons::ARROWS_CLOCKWISE, &t("Fit again"))).min_size(vec2(w0, 24.0))).on_hover_text(t("Applies the type, settings and typed points.")).clicked() { action = 1; }
+                let w1 = c[1].available_width();
+                if c[1].add(egui::Button::new(icons::with(icons::ARROWS_LEFT_RIGHT, &t("Reverse"))).min_size(vec2(w1, 24.0))).on_hover_text(t("The road runs the other way: its start becomes its end.")).clicked() { action = 2; }
+            });
+        }
+        let w = ui.available_width();
+        if ui.add(egui::Button::new(RichText::new(icons::with(icons::TRASH, &t("Delete route"))).color(Color32::from_rgb(235, 110, 100))).min_size(vec2(w, 24.0))).clicked() { action = 4; }
     });
     if app.doc.as_ref().unwrap().world.routes[index].method == RoadDraw::Parts {
         section(ui, &icons::with(icons::PUZZLE_PIECE, &t("Pieces")), true, |ui| {
@@ -1881,16 +1969,25 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
             let now = crate::road_draw::stamp(&route.parts);
             let taken = app.road_parts.target.filter(|t| t.0 == index && app.road_parts.stamp == now);
             if taken.is_none() { crate::road_draw::load_route(app, index, app.road_parts.target.is_some_and(|t| t.0 == index && t.1)); }
-            let at_start = app.road_parts.target.is_some_and(|t| t.1);
+            let mut at_start = app.road_parts.target.is_some_and(|t| t.1);
             row(ui, &t("Change the pieces at the"), |ui| {
-                use crate::tool_icons::{button, Glyph as G};
-                if button(ui, at_start, G::EndStart, t("start")).clicked() && !at_start { crate::road_draw::load_route(app, index, true); }
-                if button(ui, !at_start, G::EndEnd, t("end")).clicked() && at_start { crate::road_draw::load_route(app, index, false); }
+                use crate::tool_icons::Glyph as G;
+                if crate::tool_icons::segmented(ui, &mut at_start, &[
+                    (true, G::EndStart, t("start")),
+                    (false, G::EndEnd, t("end")),
+                ]) {
+                    crate::road_draw::load_route(app, index, at_start);
+                }
             });
             if app.road_parts.open.is_some() {
                 parts_panel(app, ui);
             } else {
-                ui.colored_label(theme::WARN, t("This route keeps no pieces to go on from. Fit it again with points first."));
+                theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme::WARN, icons::WARNING);
+                        ui.add(egui::Label::new(RichText::new(t("This route keeps no pieces to go on from. Fit it again with points first.")).small().color(theme::WARN)).wrap());
+                    });
+                });
             }
         });
     } else {
@@ -1898,11 +1995,19 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
             app.road_parts = crate::road_draw::PartsDraw { next: app.road_parts.next.take(), left: app.road_parts.left, ..Default::default() };
         }
         section(ui, &icons::with(icons::ARROWS_OUT_LINE_HORIZONTAL, &t("Extend")), true, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                use crate::tool_icons::{button, Glyph as G};
-                if button(ui, app.line.extend == Some(true), G::ExtendStart, t("Extend start")).clicked() { app.line.extend = if app.line.extend == Some(true) { None } else { Some(true) }; }
-                if button(ui, app.line.extend == Some(false), G::ExtendEnd, t("Extend end")).clicked() { app.line.extend = if app.line.extend == Some(false) { None } else { Some(false) }; }
+            theme::button_columns(ui, 2, |c| {
+                let start_on = app.line.extend == Some(true);
+                let end_on = app.line.extend == Some(false);
+                let w0 = c[0].available_width();
+                if c[0].add(egui::Button::new(RichText::new(icons::with(icons::ARROW_LINE_LEFT, &t("Extend start"))).color(if start_on { Color32::WHITE } else { theme::TEXT })).fill(if start_on { theme::ACCENT } else { theme::SECTION }).min_size(vec2(w0, 24.0))).clicked() {
+                    app.line.extend = if start_on { None } else { Some(true) };
+                }
+                let w1 = c[1].available_width();
+                if c[1].add(egui::Button::new(RichText::new(icons::with(icons::ARROW_LINE_RIGHT, &t("Extend end"))).color(if end_on { Color32::WHITE } else { theme::TEXT })).fill(if end_on { theme::ACCENT } else { theme::SECTION }).min_size(vec2(w1, 24.0))).clicked() {
+                    app.line.extend = if end_on { None } else { Some(false) };
+                }
             });
+            ui.add_space(2.0);
             about(ui, &t("Then click on the map beyond that end; Ctrl+click picks the nearer end itself."));
             theme::check_row(ui, &mut app.line.extend_only, t("Fit only the new stretch when extending")).on_hover_text(t("A route lengthened at its start or end keeps its models; Fit again lays models only from the old end to the new points. Moving other points still fits the whole route."));
         });
@@ -1911,19 +2016,38 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         let count = app.doc.as_ref().unwrap().world.routes[index].points.len();
         section(ui, &icons::with(icons::DOTS_THREE, &t("Points")), false, |ui| {
             about(ui, &tf("{0} points; typed values wait for Fit again.", &[&count.to_string()]));
+            ui.add_space(2.0);
             let marked = app.line.selected_point;
             let route = &mut app.doc.as_mut().unwrap().world.routes[index];
             let removable = route.points.len() > 2;
-            egui::ScrollArea::vertical().id_salt("route_point_list").max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
-                for (i, p) in route.points.iter_mut().enumerate() {
-                    ui.horizontal(|ui| {
-                        if ui.selectable_label(marked == Some(i), format!("{:>2}", i + 1)).clicked() { app.line.selected_point = Some(i); }
-                        typed |= ui.add(egui::DragValue::new(&mut p[0]).speed(0.5).prefix("X ")).changed();
-                        typed |= ui.add(egui::DragValue::new(&mut p[1]).speed(0.5).prefix("Z ")).changed();
-                        if ui.add_enabled(removable, egui::Button::new("✖").small()).on_hover_text(t("Delete the point (Delete or Backspace)")).clicked() { remove = Some(i); }
+            egui::Frame::new()
+                .fill(theme::DARK)
+                .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::same(4))
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical().id_salt("route_point_list").max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        for (i, p) in route.points.iter_mut().enumerate() {
+                            let is_marked = marked == Some(i);
+                            let bg = if is_marked { theme::ACCENT_SOFT } else if i % 2 == 1 { theme::ROW_ALT } else { Color32::TRANSPARENT };
+                            egui::Frame::new().fill(bg).corner_radius(2).inner_margin(egui::Margin::symmetric(3, 1)).show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 4.0;
+                                    if ui.add_sized([22.0, 20.0], egui::SelectableLabel::new(is_marked, RichText::new(format!("{}", i + 1)).monospace().small())).clicked() {
+                                        app.line.selected_point = Some(i);
+                                    }
+                                    let field_w = ((ui.available_width() - 28.0) * 0.5).max(46.0);
+                                    typed |= ui.add_sized([field_w, 20.0], egui::DragValue::new(&mut p[0]).speed(0.5).prefix("X ")).changed();
+                                    typed |= ui.add_sized([field_w, 20.0], egui::DragValue::new(&mut p[1]).speed(0.5).prefix("Z ")).changed();
+                                    if ui.add_enabled(removable, egui::Button::new(icons::X).frame(false).min_size(vec2(20.0, 20.0))).on_hover_text(t("Delete the point (Delete or Backspace)")).clicked() {
+                                        remove = Some(i);
+                                    }
+                                });
+                            });
+                        }
                     });
-                }
-            });
+                });
         });
         if let Some(i) = remove {
             app.delete_route_point(index, i);
@@ -1941,7 +2065,9 @@ fn route_details(app: &mut App, ui: &mut egui::Ui) {
         let grading = (route.grade, route.grade_width, route.grade_falloff, route.grading);
         theme::check_row(ui, &mut route.grade, t("Grade the terrain under the road"));
         ui.add_enabled_ui(route.grade, |ui| {
-            if ui.add_enabled(road_width > 0.5, egui::Button::new(t("Take the width from the road model"))).clicked() { route.grade_width = road_width; }
+            let w = ui.available_width();
+            if ui.add_enabled(road_width > 0.5, egui::Button::new(icons::with(icons::RULER, &t("Take the width from the road model"))).min_size(vec2(w, 24.0))).clicked() { route.grade_width = road_width; }
+            ui.add_space(2.0);
             grading_ui(ui, &mut route.grading, &mut route.grade_width, &mut route.grade_falloff, !route.profile.is_empty());
         });
         regrade = grading != (route.grade, route.grade_width, route.grade_falloff, route.grading);
@@ -1985,19 +2111,31 @@ fn crossroad_fields(app: &mut App, ui: &mut egui::Ui, index: usize) {
     }
     let chosen = list.iter().find(|c| c.path == app.line.crossroad_model).map(crate::crossroads::label).unwrap_or_default();
     row(ui, &t("Crossroad"), |ui| {
-        egui::ComboBox::from_id_salt("route_crossroad").selected_text(chosen).width((ui.available_width() - 34.0).max(60.0)).truncate().show_ui(ui, |ui| {
+        let w = ui.available_width();
+        egui::ComboBox::from_id_salt("route_crossroad").selected_text(chosen).width(w).truncate().show_ui(ui, |ui| {
             for c in &list {
                 ui.selectable_value(&mut app.line.crossroad_model, c.path.clone(), crate::crossroads::label(c));
             }
         });
     });
+    ui.add_space(4.0);
     let armed = app.line.crossroad_armed;
-    if tool_button(ui, armed, &t("Put in a crossroad")).on_hover_text(t("Click on the route where the crossroad goes; its side arm faces the side you click. The route is laid again as two roads leaving the crossroad.")).clicked() {
+    let w = ui.available_width();
+    let btn = egui::Button::new(RichText::new(icons::with(icons::GIT_FORK, &t("Put in a crossroad"))).color(if armed { Color32::WHITE } else { theme::TEXT }))
+        .fill(if armed { theme::ACCENT } else { theme::SECTION })
+        .min_size(vec2(w, 24.0));
+    if ui.add(btn).on_hover_text(t("Click on the route where the crossroad goes; its side arm faces the side you click. The route is laid again as two roads leaving the crossroad.")).clicked() {
         app.line.crossroad_armed = !armed;
         app.line.extend = None;
     }
     if armed {
-        ui.weak(t("Click on the route where the crossroad goes (Esc cancels)."));
+        ui.add_space(4.0);
+        theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme::WARN, icons::GIT_FORK);
+                ui.add(egui::Label::new(RichText::new(t("Click on the route where the crossroad goes (Esc cancels).")).small().color(theme::WARN)).wrap());
+            });
+        });
     }
 }
 
@@ -2014,7 +2152,12 @@ fn parts_panel(app: &mut App, ui: &mut egui::Ui) {
     let d = &app.road_parts;
     let editing = d.target.is_some();
     let stage = if editing { t("Lay pieces at the open end or take them away, then apply.") } else if d.open.is_some() { t("Choose a piece and click on the map (or press its key) to lay it.") } else if d.start.is_some() { t("Click where the road heads.") } else { t("Click where the road starts.") };
-    ui.label(stage);
+    theme::card(ui, if d.open.is_some() { theme::ACCENT.gamma_multiply(0.75) } else { theme::BORDER }, |ui| {
+        let mut job = egui::text::LayoutJob::default();
+        job.append(icons::PUZZLE_PIECE, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: if d.open.is_some() { theme::ACCENT } else { theme::TEXT_DIM }, ..Default::default() });
+        job.append(&stage, 6.0, egui::TextFormat { font_id: egui::FontId::proportional(12.5), color: if d.open.is_some() { theme::TEXT_BRIGHT } else { theme::TEXT }, ..Default::default() });
+        ui.add(egui::Label::new(job).wrap());
+    });
     key_hints(ui, &[
         (k.text(Action::RoadPieceAdd), t(Action::RoadPieceAdd.name())),
         (format!("{} / {}", k.text(Action::RoadPiecePrev), k.text(Action::RoadPieceNext)), t("Previous or next piece")),
@@ -2023,35 +2166,59 @@ fn parts_panel(app: &mut App, ui: &mut egui::Ui) {
         ("Enter".into(), if editing { t("Apply") } else { t("Finish the road") }),
         ("Esc".into(), if editing { t("Discard the changes") } else { t("Cancel") }),
     ]);
-    ui.horizontal(|ui| {
-        ui.label(t("Curves bend"));
-        use crate::tool_icons::{button, Glyph as G};
-        if button(ui, app.road_parts.left, G::BendLeft, t("Left")).clicked() { app.road_parts.left = true; }
-        if button(ui, !app.road_parts.left, G::BendRight, t("Right")).clicked() { app.road_parts.left = false; }
+    ui.add_space(2.0);
+    row(ui, &t("Curves bend"), |ui| {
+        use crate::tool_icons::Glyph as G;
+        crate::tool_icons::segmented(ui, &mut app.road_parts.left, &[
+            (true, G::BendLeft, t("Left")),
+            (false, G::BendRight, t("Right")),
+        ]);
     });
     let list = crate::road_draw::choices(&app.road_catalog, &crate::road_draw::family_of(app));
     if list.is_empty() {
-        ui.colored_label(theme::WARN, t("No pieces of this road type are loaded"));
+        theme::card(ui, theme::WARN.gamma_multiply(0.75), |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme::WARN, icons::WARNING);
+                ui.add(egui::Label::new(RichText::new(t("No pieces of this road type are loaded")).small().color(theme::WARN)).wrap());
+            });
+        });
+    } else {
+        egui::Frame::new()
+            .fill(theme::DARK)
+            .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+            .corner_radius(4)
+            .inner_margin(egui::Margin::same(3))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("road_pieces").max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
+                    for c in &list {
+                        let name = c.path.rsplit(['\\', '/']).next().unwrap_or(&c.path).trim_end_matches(".p3d").to_string();
+                        let turn = crate::road_draw::turn_of(c).abs();
+                        let right = if c.category == 4 { format!("{turn:.1}°  {:.1} m", c.model.length) } else { format!("{:.1} m", c.model.length) };
+                        let chosen = app.road_parts.next.as_ref() == Some(&c.path);
+                        let r = theme::list_row(ui, chosen, icons::PUZZLE_PIECE, theme::KIND_ROAD, name.as_str(), &right);
+                        if r.clicked() { app.road_parts.next = Some(c.path.clone()); }
+                        if r.double_clicked() { crate::road_draw::add_piece(app); }
+                    }
+                });
+            });
     }
-    egui::ScrollArea::vertical().id_salt("road_pieces").max_height(220.0).show(ui, |ui| {
-        for c in &list {
-            let name = c.path.rsplit(['\\', '/']).next().unwrap_or(&c.path).trim_end_matches(".p3d").to_string();
-            let turn = crate::road_draw::turn_of(c).abs();
-            let text = if c.category == 4 { format!("{name}   {turn:.1}°  {:.1} m", c.model.length) } else { format!("{name}   {:.1} m", c.model.length) };
-            let chosen = app.road_parts.next.as_ref() == Some(&c.path);
-            let r = ui.selectable_label(chosen, text);
-            if r.clicked() { app.road_parts.next = Some(c.path.clone()); }
-            if r.double_clicked() { crate::road_draw::add_piece(app); }
-        }
-    });
     let laid = app.road_parts.parts.iter().filter(|p| !dayz_road_tool::roads::is_cap(p, &app.road_catalog)).count();
-    ui.label(tf("{0} pieces laid", &[&laid.to_string()]));
-    ui.horizontal(|ui| {
-        if ui.add_enabled(app.road_parts.open.is_some(), egui::Button::new(t("Lay"))).clicked() { crate::road_draw::add_piece(app); }
-        if ui.add_enabled(laid > 0, egui::Button::new(t("Take the last away"))).clicked() { crate::road_draw::parts_back(app); }
-        let finish = if editing { t("Apply") } else { t("Finish the road") };
-        if ui.add_enabled(laid > 0, egui::Button::new(finish)).clicked() { crate::road_draw::parts_finish(app, app.line.grade); }
+    ui.add_space(2.0);
+    ui.label(RichText::new(tf("{0} pieces laid", &[&laid.to_string()])).small().color(theme::TEXT_DIM));
+    theme::button_columns(ui, 2, |c| {
+        let w0 = c[0].available_width();
+        if c[0].add_enabled(app.road_parts.open.is_some(), egui::Button::new(icons::with(icons::PLUS, &t("Lay"))).min_size(vec2(w0, 24.0))).clicked() { crate::road_draw::add_piece(app); }
+        let w1 = c[1].available_width();
+        if c[1].add_enabled(laid > 0, egui::Button::new(icons::with(icons::ARROW_COUNTER_CLOCKWISE, &t("Take the last away"))).min_size(vec2(w1, 24.0))).clicked() { crate::road_draw::parts_back(app); }
     });
+    let finish = if editing { t("Apply") } else { t("Finish the road") };
+    let w = ui.available_width();
+    let finish_btn = if laid > 0 {
+        egui::Button::new(RichText::new(icons::with(icons::CHECK, &finish)).color(Color32::WHITE)).fill(theme::ACCENT).stroke(egui::Stroke::NONE).min_size(vec2(w, 24.0))
+    } else {
+        egui::Button::new(icons::with(icons::CHECK, &finish)).min_size(vec2(w, 24.0))
+    };
+    if ui.add_enabled(laid > 0, finish_btn).clicked() { crate::road_draw::parts_finish(app, app.line.grade); }
 }
 
 fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
@@ -2107,7 +2274,13 @@ fn lines_tool_panel(app: &mut App, ui: &mut egui::Ui) {
 fn drawing_status(app: &mut App, ui: &mut egui::Ui) {
     let n = app.line.points.len();
     let text = if n == 0 { t(if app.line.action == LineAction::Road { "Click on the map where the road starts." } else { "Click on the map where the line starts." }) } else { tf("{0} points · Enter finishes · Backspace takes the last back · Esc cancels", &[&n.to_string()]) };
-    ui.label(egui::RichText::new(text).color(if n == 0 { theme::TEXT } else { Color32::WHITE }));
+    theme::card(ui, if n > 0 { theme::ACCENT.gamma_multiply(0.75) } else { theme::BORDER }, |ui| {
+        let mut job = egui::text::LayoutJob::default();
+        job.append(icons::PATH, 0.0, egui::TextFormat { font_id: egui::FontId::proportional(13.5), color: if n > 0 { theme::ACCENT } else { theme::TEXT_DIM }, ..Default::default() });
+        job.append(&text, 6.0, egui::TextFormat { font_id: egui::FontId::proportional(12.5), color: if n > 0 { theme::TEXT_BRIGHT } else { theme::TEXT }, ..Default::default() });
+        ui.add(egui::Label::new(job).wrap());
+    });
+    ui.add_space(2.0);
     angle_snap_ui(app, ui);
 }
 
@@ -2125,12 +2298,15 @@ fn draw_methods() -> [(RoadDraw, crate::tool_icons::Glyph, &'static str, &'stati
 fn road_draw_fields(app: &mut App, ui: &mut egui::Ui) {
     let families = app.road_families.clone();
     row(ui, &t("Road type"), |ui| {
-        egui::ComboBox::from_id_salt("family").selected_text(app.line.family.clone()).width((ui.available_width() - 64.0).max(60.0)).truncate().show_ui(ui, |ui| {
-            for f in families { ui.selectable_value(&mut app.line.family, f.clone(), f); }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.add(egui::Button::new(icons::FOLDER_OPEN).min_size(vec2(26.0, 22.0))).on_hover_text(t("Road types from TV4P...")).clicked() {
+                if let Some(p) = rfd::FileDialog::new().add_filter("Terrain Builder", &["tv4p"]).pick_file() { app.load_road_types(p); }
+            }
+            let w = ui.available_width();
+            egui::ComboBox::from_id_salt("family").selected_text(app.line.family.clone()).width(w).truncate().show_ui(ui, |ui| {
+                for f in families { ui.selectable_value(&mut app.line.family, f.clone(), f); }
+            });
         });
-        if ui.small_button(icons::FOLDER_OPEN).on_hover_text(t("Road types from TV4P...")).clicked() {
-            if let Some(p) = rfd::FileDialog::new().add_filter("Terrain Builder", &["tv4p"]).pick_file() { app.load_road_types(p); }
-        }
     });
     // Wrapped, so a narrow panel is not held wide by the three buttons.
     ui.horizontal_wrapped(|ui| {
@@ -2139,13 +2315,13 @@ fn road_draw_fields(app: &mut App, ui: &mut egui::Ui) {
             if crate::tool_icons::tile(ui, app.line.draw == d, g, &t(n), t(tip)).clicked() { app.line.draw = d; }
         }
     });
-    let about = match app.line.draw {
+    let about_text = match app.line.draw {
         RoadDraw::Points => "Click the points of the road; Enter fits the models along them.",
         RoadDraw::Live => "The models follow the mouse: green where they fit, red where they cannot. A click keeps the road up to there.",
         RoadDraw::Parts => "Lay the road one chosen piece after another, as Terrain Builder's Road Tool does.",
     };
-    hint(ui, &t(about));
-    ui.separator();
+    about(ui, &t(about_text));
+    ui.add_space(4.0);
     if app.line.draw == RoadDraw::Parts {
         parts_panel(app, ui);
         return;
@@ -2164,7 +2340,8 @@ fn road_draw_fields(app: &mut App, ui: &mut egui::Ui) {
                 if app.line.forbidden.is_some_and(|i| i >= shapes.len()) { app.line.forbidden = None; }
                 row(ui, &t("Forbidden areas"), |ui| {
                     let shown = app.line.forbidden.map(|i| shapes[i].clone()).unwrap_or_else(|| t("(none)"));
-                    egui::ComboBox::from_id_salt("forbidden").selected_text(shown).show_ui(ui, |ui| {
+                    let w = ui.available_width();
+                    egui::ComboBox::from_id_salt("forbidden").width(w).selected_text(shown).show_ui(ui, |ui| {
                         ui.selectable_value(&mut app.line.forbidden, None, t("(none)"));
                         for (i, n) in shapes.iter().enumerate() { ui.selectable_value(&mut app.line.forbidden, Some(i), n); }
                     });

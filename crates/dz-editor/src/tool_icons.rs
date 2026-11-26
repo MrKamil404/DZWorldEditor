@@ -27,8 +27,6 @@ pub enum Glyph {
     DrawPoints,
     DrawLive,
     DrawParts,
-    ExtendStart,
-    ExtendEnd,
     EndStart,
     EndEnd,
     BendLeft,
@@ -38,14 +36,34 @@ pub enum Glyph {
     Add,
 }
 
-/// A button with the picture of a tool; the tip tells what it is.
-pub fn button(ui: &mut egui::Ui, active: bool, glyph: Glyph, tip: String) -> egui::Response {
-    let (rect, r) = ui.allocate_exact_size(vec2(34.0, 30.0), egui::Sense::click());
-    let hovered = r.hovered();
-    let fill = if active { theme::ACCENT } else if hovered { theme::HOVER } else { theme::SECTION };
-    ui.painter().rect_filled(rect, 4.0, fill);
-    draw(ui.painter(), rect.shrink2(vec2(5.0, 4.0)), glyph, active);
-    r.on_hover_text(tip)
+/// Glyph choices side by side on one dark plate, matching `theme::segmented` and `theme::icon_segmented`.
+pub fn segmented<T: PartialEq + Clone>(ui: &mut egui::Ui, value: &mut T, choices: &[(T, Glyph, String)]) -> bool {
+    let mut changed = false;
+    egui::Frame::new()
+        .fill(Color32::from_rgb(18, 18, 18))
+        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(44, 44, 44)))
+        .corner_radius(4)
+        .inner_margin(egui::Margin::same(2))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.horizontal(|ui| {
+                for (v, glyph, tip) in choices {
+                    let on = *value == *v;
+                    let (rect, resp) = ui.allocate_exact_size(vec2(30.0, 24.0), egui::Sense::click());
+                    if ui.is_rect_visible(rect) {
+                        let fill = if on { theme::ACCENT } else if resp.hovered() { theme::HOVER } else { Color32::TRANSPARENT };
+                        ui.painter().rect_filled(rect, 3.0, fill);
+                        draw(ui.painter(), rect.shrink2(vec2(4.0, 3.0)), *glyph, on);
+                    }
+                    let resp = if tip.is_empty() { resp } else { resp.on_hover_text(tip.as_str()) };
+                    if resp.clicked() && !on {
+                        *value = v.clone();
+                        changed = true;
+                    }
+                }
+            });
+        });
+    changed
 }
 
 /// A tool as a tile, its picture over its name, as the tools of a mode are shown.
@@ -188,13 +206,6 @@ pub fn draw(painter: &egui::Painter, rect: Rect, glyph: Glyph, active: bool) {
                 let x = 0.02 + i as f32 * 0.34;
                 painter.rect_stroke(Rect::from_min_max(at(x, 0.3), at(x + 0.28, 0.7)), 1.0, Stroke::new(1.6_f32, c), egui::StrokeKind::Inside);
             }
-        }
-        Glyph::ExtendStart | Glyph::ExtendEnd => {
-            let m = |x: f32| if glyph == Glyph::ExtendEnd { x } else { 1.0 - x };
-            line(vec![at(m(0.0), 0.5), at(m(0.5), 0.5)], fg, 2.0);
-            painter.circle_filled(at(m(0.5), 0.5), 2.4, fg);
-            dashed(vec![at(m(0.55), 0.5), at(m(0.9), 0.5)]);
-            line(vec![at(m(0.78), 0.25), at(m(1.0), 0.5), at(m(0.78), 0.75)], hot, 1.8);
         }
         Glyph::EndStart | Glyph::EndEnd => {
             let m = |x: f32| if glyph == Glyph::EndEnd { x } else { 1.0 - x };
