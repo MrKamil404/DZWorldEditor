@@ -897,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "dz-core"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "ab_glyph",
  "anyhow",
@@ -917,7 +917,7 @@ dependencies = [
 
 [[package]]
 name = "dz-editor"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "dz-core",
@@ -1294,7 +1294,7 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "forest-core"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "image",
@@ -2873,7 +2873,7 @@ dependencies = [
 
 [[package]]
 name = "road-core"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "crc32fast",
