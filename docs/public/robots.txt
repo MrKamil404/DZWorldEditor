@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mrkamil404.github.io/DZWorldEditor/sitemap.xml
