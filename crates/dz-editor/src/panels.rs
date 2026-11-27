@@ -134,6 +134,20 @@ pub fn visibility_toggles(app: &mut App, ui: &mut egui::Ui) {
     ui.add_enabled(app.show_objects, egui::Checkbox::new(&mut app.show_proxies, t("Proxies in buildings"))).on_hover_text(t("Furniture and fittings that buildings place in their visual LOD, as the game shows them. Proxies of the geometry, fire, memory and roadway LODs are not drawn."));
     ui.checkbox(&mut app.show_shadows, t("Shadows"));
     ui.checkbox(&mut app.show_water, t("Water"));
+    if app.settings.sea_source == crate::settings::PreviewSource::MapConfig {
+        if let Some(d) = &app.doc {
+            if !d.world.meta.config.has_ocean {
+                ui.weak(t("Ocean is turned off in Map config (hasOcean = 0)."));
+            }
+        }
+    }
+    let outside_active = app.settings.terrain_look_source == crate::settings::PreviewSource::MapConfig;
+    if ui.add_enabled(outside_active, egui::Checkbox::new(&mut app.settings.show_outside_terrain, t("Outside terrain")))
+        .on_hover_text(t("Terrain beyond the edges of the map from File > Map config > Terrain look. Active when Camera > Terrain look uses Map config."))
+        .changed()
+    {
+        app.settings.save();
+    }
     ui.checkbox(&mut app.show_lines, t("Roads and lines")).on_hover_text(keys.tip(Action::ToggleShapes));
     ui.checkbox(&mut app.show_shapes, t("Shapes")).on_hover_text(keys.tip(Action::ToggleShapes));
     ui.checkbox(&mut app.show_keypoints, t("Key points"));
@@ -3917,8 +3931,21 @@ fn settings_graphics(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::RULER, &t("Distances")), true, |ui| {
         slider(ui, &t("Terrain detail"), &mut app.settings.terrain_quality, 0.6..=3.0, false);
         slider(ui, &t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0, true);
-        slider(ui, &t("Full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
+        slider(ui, &t("Object full detail distance"), &mut app.settings.near_detail, 20.0..=5000.0, true);
         slider(ui, &t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0, true);
+        if app.settings.terrain_look_source == crate::settings::PreviewSource::MapConfig {
+            let (full, no) = app.doc.as_ref().map(|d| {
+                let r = dz_core::world_preview::ResolvedMapConfig::of(&d.world.meta);
+                (r.full_detail_dist, r.no_detail_dist)
+            }).unwrap_or((10.0, 65.0));
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(Color32::from_rgb(235, 180, 90), tf("Currently overridden by Map config ({0}–{1} m).", &[&format!("{full:.0}"), &format!("{no:.0}")]));
+                if ui.small_button(t("Use Editor slider")).clicked() {
+                    app.settings.terrain_look_source = crate::settings::PreviewSource::Editor;
+                    app.settings.save();
+                }
+            });
+        }
         theme::check_row(ui, &mut app.settings.occlusion, t("Leave out objects hidden behind the terrain or buildings"))
             .on_hover_text(t("Objects behind a hill, or behind the solid walls of a building or rock, are not drawn. Glass, fences and leaves never hide anything."));
     });
@@ -4010,52 +4037,7 @@ fn settings_backups(app: &mut App, ui: &mut egui::Ui) {
 /// The settings of the world config of the map, beside the config.cpp they make.
 /// What the base world has for a setting the map config can override, shown as a hint.
 fn base_value(base: &dz_core::world::BaseWorld, key: &str) -> &'static str {
-    use dz_core::world::BaseWorld as B;
-    let chernarus = matches!(base, B::ChernarusPlus);
-    match key {
-        "cutscenes" => if chernarus { "ChernarusPlusIntro" } else { "EnochIntro" },
-        "startTime" => "9:00",
-        "startDate" => if chernarus { "5/10/2015" } else { "25/8/2015" },
-        "ceFiles" => if chernarus { r"DZ\worlds\chernarusplus\ce" } else { r"DZ\worlds\enoch\ce" },
-        "mapDisplayNameKey" => "#STR_CfgVehicles_ChernarusMap0",
-        "mapDescriptionKey" => "#STR_CfgVehicles_ChernarusMap1",
-        "mapTextureClosed" => if chernarus { r"dz\gear\navigation\data\map_chernarus_co.paa" } else { r"dz\gear\navigation\data\map_enoch_co.paa" },
-        "mapTextureOpened" => if chernarus { r"dz\structures\signs\tourist\data\karta_co.paa" } else { r"dz\structures_bliss\signs\tourist\data\karta_enoch_co.paa" },
-        "mapTextureLegend" => if chernarus { r"dz\structures\signs\tourist\data\karta_side_co.paa" } else { r"dz\structures_bliss\signs\tourist\data\karta_enoch_side_co.paa" },
-        "userMapPath" => if chernarus { r"dz\gear\navigation\data\usermap" } else { r"dz\worlds\enoch\data\usermap" },
-        "satellite" => if chernarus { r"DZ\worlds\chernarusplus\data\outside_sat_co.paa" } else { r"DZ\worlds\enoch\data\enoch_satout_co.paa" },
-        "texture" => if chernarus { r"DZ\surfaces\data\terrain\cp_grass_ca.paa" } else { r"DZ\surfaces_bliss\data\terrain\en_grass1_ca.paa" },
-        "nopx" => if chernarus { r"DZ\surfaces\data\terrain\cp_grass_nopx.paa" } else { r"DZ\surfaces_bliss\data\terrain\en_grass1_nopx.paa" },
-        "midDetailTexture" => if chernarus { r"DZ\worlds\chernarusplus\data\middle_sat_mco.paa" } else { r"DZ\worlds\enoch\data\enoch_middle_mco.paa" },
-        "terrainNormalTexture" => if chernarus { r"DZ\worlds\chernarusplus\data\global_nohq.paa" } else { r"DZ\worlds\enoch\data\enoch_global_nohq.paa" },
-        "oceanMaterial" => if chernarus { "" } else { r"dz\worlds\enoch\data\enoch_riversea.emat" },
-        "noDetailDist" => if chernarus { "40" } else { "65" },
-        "fullDetailDist" => if chernarus { "15" } else { "10" },
-        "clutterDist" => "125",
-        "clutterGrid" => "1",
-        "minTrees" => "10",
-        "minRocks" => "5",
-        "envTexture" => r"DZ\Data\data\env_co.paa",
-        "atmosphereTexture" => r"DZ\worlds\chernarusplus\data\Sky_Stage01_Clear_sky.paa",
-        "maxTide" => "1.5",
-        "maxWave" => "0.25",
-        "waveAmplitude" => "0.081",
-        "waveFrequency" => "9",
-        "waveOctaves" => "6",
-        "wavePersistence" => "0.745",
-        "starsIntensity" => "0.181",
-        "hazeDistCoef" => "0",
-        "hazeFogCoef" => "1",
-        "volFogOffset" => "0",
-        "satNormStart" => "100",
-        "satNormEnd" => "500",
-        "terrainNormalPower" => "3.21",
-        "soundMapAttenCoef" => "0.01",
-        "tileWidth" => "50",
-        "maxSlope" => "60",
-        "maxStep" => "0.45",
-        _ => "",
-    }
+    dz_core::world_preview::base_value(base, key)
 }
 
 /// A text setting of the config: empty keeps the value of the base world, shown greyed.
@@ -4085,6 +4067,8 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     let camera = [app.camera.pos[0], app.camera.pos[2]];
     let (cam_pos, cam_fwd, cam_fov) = (app.camera.pos, app.camera.forward(), app.camera.fov);
     let mut go_to: Option<dz_core::world::CharacterScene> = None;
+    let mut preview_action: Option<bool> = None;
+    let all_cfg_preview = app.settings.is_all_map_config();
     let Some(doc) = &mut app.doc else { *open = false; return };
     let before = doc.world.meta.clone();
     let size = doc.world.meta.size_m();
@@ -4094,6 +4078,20 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
         .default_size([980.0, 620.0])
         .min_size([640.0, 420.0])
         .show(ctx, open, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            if all_cfg_preview {
+                ui.colored_label(Color32::from_rgb(120, 210, 145), t("3D view is previewing all Map config settings live."));
+                if ui.small_button(t("Back to Editor preview")).clicked() {
+                    preview_action = Some(false);
+                }
+            } else {
+                ui.weak(t("Visual settings here preview live in the 3D view when Camera / Lighting sources are set to Map config."));
+                if ui.small_button(icons::with(icons::EYE, &t("Preview all from Map config"))).clicked() {
+                    preview_action = Some(true);
+                }
+            }
+        });
+        ui.separator();
         ui.columns(2, |cols| {
             let ui = &mut cols[0];
             egui::ScrollArea::vertical().id_salt("cfg_form").auto_shrink([false, false]).show(ui, |ui| {
@@ -4185,7 +4183,7 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
                             row(ui, &t("Fog"), |ui| { ui.add(crate::theme::ValueField::new(&mut s.fog, 0.0..=1.0)); });
                             ui.horizontal(|ui| {
                                 if ui.button(icons::with(icons::CAMERA, &t("From the camera"))).on_hover_text(t("Where the 3D camera stands and what it looks at.")).clicked() { from_camera(s); }
-                                if ui.button(icons::with(icons::EYE, &t("Look from here"))).on_hover_text(t("Takes the 3D camera to this scene.")).clicked() { go_to = Some(s.clone()); }
+                                if ui.button(icons::with(icons::EYE, &t("Look from here"))).on_hover_text(t("Takes the 3D camera to this scene and applies its FOV, date/time, overcast and fog.")).clicked() { go_to = Some(s.clone()); }
                                 if ui.button(icons::with(icons::TRASH, &t("Delete"))).clicked() { remove = Some(k); }
                             });
                         });
@@ -4361,11 +4359,20 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
     if doc.world.meta != before {
         doc.history.revision += 1;
     }
+    if let Some(use_cfg) = preview_action {
+        if use_cfg {
+            app.settings.all_from_map_config();
+            app.apply_map_config_lighting();
+        } else {
+            app.settings.all_from_editor();
+        }
+        app.settings.save();
+    }
     if copied {
         app.status = t("The config is on the clipboard");
     }
     if let Some(s) = go_to {
-        let ground = app.doc.as_ref().map_or(0.0, |d| d.world.height.sample(s.position[0], s.position[1]));
+        let (ground, lat) = app.doc.as_ref().map_or((0.0, 50.0), |d| (d.world.height.sample(s.position[0], s.position[1]), d.world.meta.latitude));
         let pos = [s.position[0], ground + s.position[2], s.position[1]];
         let d = [s.target[0] - pos[0], s.target[2] - pos[1], s.target[1] - pos[2]];
         let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-3);
@@ -4373,6 +4380,18 @@ fn map_config_window(app: &mut App, ctx: &egui::Context, open: &mut bool) {
         app.camera.yaw = d[0].atan2(d[2]);
         app.camera.pitch = (d[1] / len).asin();
         app.camera.fov = s.fov;
+        app.settings.fov = s.fov.to_degrees().clamp(20.0, 120.0);
+        let hour = (s.date[3].clamp(0, 23) as f32 + s.date[4].clamp(0, 59) as f32 / 60.0).clamp(0.0, 24.0);
+        let day = dz_core::world_preview::day_of_year(s.date[2], s.date[1]);
+        app.time_of_day = hour;
+        app.overcast = s.overcast.clamp(0.0, 1.0);
+        let shadow_range = app.settings.lighting.shadow_range;
+        let exposure = app.settings.lighting.exposure;
+        let mut l = crate::settings::Lighting::at(hour, app.overcast, lat, day);
+        l.fog = (l.fog + s.fog.clamp(0.0, 1.0) * 4.0).clamp(0.0, 6.0);
+        l.shadow_range = shadow_range;
+        l.exposure = exposure;
+        app.settings.lighting = l;
         app.view_mode = crate::app::ViewMode::Perspective;
     }
 }

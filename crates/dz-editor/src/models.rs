@@ -614,6 +614,136 @@ pub fn load_layer_textures(root: PathBuf, layers: Vec<(usize, String, String, [u
     rx
 }
 
+/// Decoded RGBA texture loaded from the work drive for Map config preview slots.
+#[derive(Clone)]
+pub struct DecodedTexture {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+/// Cache key identifying the set of paths resolved from `MapConfig` + work drive.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct MapConfigAssetsKey {
+    pub work_drive: PathBuf,
+    pub mid_detail: String,
+    pub terrain_normal: String,
+    pub env_texture: String,
+    pub atmosphere_texture: String,
+    pub outside_satellite: String,
+    pub outside_texture: String,
+    pub outside_nopx: String,
+    pub ocean_nice: String,
+    pub ocean_storm: String,
+}
+
+impl MapConfigAssetsKey {
+    pub fn from_resolved(work_drive: &Path, r: &dz_core::world_preview::ResolvedMapConfig) -> Self {
+        Self {
+            work_drive: work_drive.to_path_buf(),
+            mid_detail: r.mid_detail_texture.clone(),
+            terrain_normal: r.terrain_normal_texture.clone(),
+            env_texture: r.env_texture.clone(),
+            atmosphere_texture: r.atmosphere_texture.clone(),
+            outside_satellite: r.outside_satellite.clone(),
+            outside_texture: r.outside_texture.clone(),
+            outside_nopx: r.outside_nopx.clone(),
+            ocean_nice: r.ocean_nice_material.clone(),
+            ocean_storm: r.ocean_storm_material.clone(),
+        }
+    }
+}
+
+/// Summary of which Map config textures and materials loaded successfully from the work drive.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MapConfigAssetStatus {
+    pub mid_detail: bool,
+    pub terrain_normal: bool,
+    pub env_texture: bool,
+    pub atmosphere_texture: bool,
+    pub outside_satellite: bool,
+    pub outside_texture: bool,
+    pub outside_nopx: bool,
+    pub ocean_nice: bool,
+    pub ocean_storm: bool,
+}
+
+/// Decoded textures and parsed ocean materials loaded for a `MapConfigAssetsKey`.
+pub struct MapConfigAssets {
+    pub key: MapConfigAssetsKey,
+    pub mid_detail: Option<DecodedTexture>,
+    pub terrain_normal: Option<DecodedTexture>,
+    pub env_texture: Option<DecodedTexture>,
+    pub atmosphere_texture: Option<DecodedTexture>,
+    pub outside_satellite: Option<DecodedTexture>,
+    pub outside_texture: Option<DecodedTexture>,
+    pub outside_nopx: Option<DecodedTexture>,
+    pub ocean_nice: Option<dz_core::world_preview::OceanMaterial>,
+    pub ocean_storm: Option<dz_core::world_preview::OceanMaterial>,
+    pub status: MapConfigAssetStatus,
+}
+
+fn decode_paa_file(root: &Path, rel: &str, max_side: u32) -> Option<DecodedTexture> {
+    let trimmed = rel.trim().trim_start_matches(['\\', '/']);
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+    let mut full = root.join(trimmed.replace('\\', "/"));
+    if full.extension().is_none() {
+        full.set_extension("paa");
+    }
+    let bytes = std::fs::read(&full).ok()?;
+    let decoded = forest_core::paa::decode(&bytes, max_side).ok()?;
+    Some(DecodedTexture { width: decoded.width, height: decoded.height, rgba: decoded.rgba })
+}
+
+/// Loads all textures and `.emat` ocean materials referenced by `key` on a background thread.
+pub fn load_map_config_assets(key: MapConfigAssetsKey, ctx: eframe::egui::Context) -> Receiver<MapConfigAssets> {
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        let root = &key.work_drive;
+        let mid_detail = decode_paa_file(root, &key.mid_detail, 512);
+        let terrain_normal = decode_paa_file(root, &key.terrain_normal, 1024);
+        let env_texture = decode_paa_file(root, &key.env_texture, 512);
+        let atmosphere_texture = decode_paa_file(root, &key.atmosphere_texture, 512);
+        let outside_satellite = decode_paa_file(root, &key.outside_satellite, 1024);
+        let outside_texture = decode_paa_file(root, &key.outside_texture, 512);
+        let outside_nopx = decode_paa_file(root, &key.outside_nopx, 512);
+        let ocean_nice = dz_core::world_preview::OceanMaterial::load(root, &key.ocean_nice);
+        let ocean_storm = if key.ocean_storm.eq_ignore_ascii_case(&key.ocean_nice) {
+            ocean_nice
+        } else {
+            dz_core::world_preview::OceanMaterial::load(root, &key.ocean_storm)
+        };
+        let status = MapConfigAssetStatus {
+            mid_detail: mid_detail.is_some(),
+            terrain_normal: terrain_normal.is_some(),
+            env_texture: env_texture.is_some(),
+            atmosphere_texture: atmosphere_texture.is_some(),
+            outside_satellite: outside_satellite.is_some(),
+            outside_texture: outside_texture.is_some(),
+            outside_nopx: outside_nopx.is_some(),
+            ocean_nice: ocean_nice.is_some(),
+            ocean_storm: ocean_storm.is_some(),
+        };
+        let _ = tx.send(MapConfigAssets {
+            key,
+            mid_detail,
+            terrain_normal,
+            env_texture,
+            atmosphere_texture,
+            outside_satellite,
+            outside_texture,
+            outside_nopx,
+            ocean_nice,
+            ocean_storm,
+            status,
+        });
+        ctx.request_repaint();
+    });
+    rx
+}
+
 /// Terrain surface textures available on the work drive.
 pub fn scan_surfaces(root: &Path) -> Vec<String> {
     let mut out = Vec::new();

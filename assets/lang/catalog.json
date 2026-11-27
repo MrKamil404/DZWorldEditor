@@ -7067,10 +7067,6 @@
   "de": "Beim Öffnen der Karte ausführen",
   "pl": "Uruchom je po otwarciu mapy"
  },
- "Runs through the whole tide of the game, up to MaxTide 1.5 m, in two minutes.": {
-  "de": "Durchläuft die ganzen Gezeiten des Spiels, bis MaxTide 1,5 m, in zwei Minuten.",
-  "pl": "Przechodzi przez cały pływ z gry, do MaxTide 1,5 m, w dwie minuty."
- },
  "Safe position": {
   "de": "Sichere Position",
   "pl": "Bezpieczna pozycja"
@@ -8175,10 +8171,6 @@
   "de": "Entfernt Sprenkel: Jedes Pixel der Maske nimmt die Farbe an, die die meisten Pixel um es herum haben.",
   "pl": "Usuwa drobinki: każdy piksel maski przyjmuje kolor, który ma większość pikseli wokół niego."
  },
- "Takes the 3D camera to this scene.": {
-  "de": "Bringt die 3D-Kamera zu dieser Szene.",
-  "pl": "Przenosi kamerę 3D do tej sceny."
- },
  "Takes the surface under the cursor.": {
   "de": "Nimmt die Oberfläche unter dem Cursor auf.",
   "pl": "Pobiera powierzchnię spod kursora."
@@ -9190,10 +9182,6 @@
  "The spacing leaves room for about {0} per 100 m²": {
   "de": "Der Abstand lässt Platz für etwa {0} auf 100 m²",
   "pl": "Odstęp pozwala na około {0} na 100 m²"
- },
- "The sun of that hour at the map's latitude and start date (Map config).": {
-  "de": "Die Sonne zu dieser Stunde am Breitengrad und Startdatum der Karte (Kartenkonfiguration).",
-  "pl": "Słońce o tej godzinie na szerokości geograficznej i w dniu startu mapy (Konfiguracja mapy)."
  },
  "The surface it painted": {
   "de": "Die von ihm gemalte Oberfläche",
@@ -11066,5 +11054,145 @@
  "Maximize": {
   "de": "Maximieren",
   "pl": "Maksymalizuj"
+ },
+ "3D view is previewing all Map config settings live.": {
+  "de": "Die 3D-Ansicht zeigt alle Einstellungen der Kartenkonfiguration live an.",
+  "pl": "Widok 3D podgląda na żywo wszystkie ustawienia konfiguracji mapy."
+ },
+ "Active grid: {0} m ({1} / {2} / {3} m)": {
+  "de": "Aktives Raster: {0} m ({1} / {2} / {3} m)",
+  "pl": "Aktywna siatka: {0} m ({1} / {2} / {3} m)"
+ },
+ "Back to Editor preview": {
+  "de": "Zurück zur Editor-Vorschau",
+  "pl": "Wróć do podglądu edytora"
+ },
+ "Currently overridden by Map config ({0}–{1} m).": {
+  "de": "Derzeit durch Kartenkonfiguration überschrieben ({0}–{1} m).",
+  "pl": "Obecnie nadpisane przez konfigurację mapy ({0}–{1} m)."
+ },
+ "Detail: {0}–{1} m · Height blend: {2} · Bicubic: {3}": {
+  "de": "Detail: {0}–{1} m · Höhenmischung: {2} · Bikubisch: {3}",
+  "pl": "Detal: {0}–{1} m · Mieszanie wys.: {2} · Bikubiczne: {3}"
+ },
+ "Draws the in-game map grid from File > Map config > Map grid, switching between Zoom 1, 2 and 3 as you zoom.": {
+  "de": "Zeichnet das Kartenraster aus Datei > Kartenkonfiguration > Kartenraster und wechselt beim Zoomen zwischen Zoom 1, 2 und 3.",
+  "pl": "Rysuje siatkę mapy z gry z Plik > Konfiguracja mapy > Siatka mapy, przełączając Zoom 1, 2 i 3 przy zbliżaniu."
+ },
+ "Edit in Map config...": {
+  "de": "In Kartenkonfiguration bearbeiten...",
+  "pl": "Edytuj w Konfiguracji mapy..."
+ },
+ "Editor": {
+  "de": "Editor",
+  "pl": "Edytor"
+ },
+ "Go to map centre": {
+  "de": "Zur Kartenmitte springen",
+  "pl": "Przejdź do środka mapy"
+ },
+ "Go to map centre ({0}, {1} · Map config)": {
+  "de": "Zur Kartenmitte ({0}, {1} · Kartenkonfiguration)",
+  "pl": "Przejdź do środka mapy ({0}, {1} · Konfiguracja mapy)"
+ },
+ "Haze dist {0} · fog ×{1} · vol {2} m · stars {3}": {
+  "de": "Dunst Abst. {0} · Nebel ×{1} · Vol. {2} m · Sterne {3}",
+  "pl": "Zamglenie {0} · mgła ×{1} · wol. {2} m · gwiazdy {3}"
+ },
+ "Map config grid (Zoom 1–3)": {
+  "de": "Kartenkonfigurations-Raster (Zoom 1–3)",
+  "pl": "Siatka z konfiguracji mapy (Zoom 1–3)"
+ },
+ "Map config: lat {0}° · date {1} · start {2}": {
+  "de": "Kartenkonfiguration: Breite {0}° · Datum {1} · Start {2}",
+  "pl": "Konfiguracja mapy: szer. {0}° · data {1} · start {2}"
+ },
+ "MaxWave {0} m · amp {1} · freq {2} · oct {3}": {
+  "de": "MaxWave {0} m · Amp. {1} · Freq. {2} · Okt. {3}",
+  "pl": "MaxWave {0} m · amp. {1} · częst. {2} · okt. {3}"
+ },
+ "Object full detail distance": {
+  "de": "Volle Detaildistanz (Objekte)",
+  "pl": "Dystans pełnych detali obiektów"
+ },
+ "Ocean is turned off in Map config (hasOcean = 0).": {
+  "de": "Ozean ist in der Kartenkonfiguration ausgeschaltet (hasOcean = 0).",
+  "pl": "Ocean jest wyłączony w konfiguracji mapy (hasOcean = 0)."
+ },
+ "Ocean material: vanilla defaults (MatOceanOld)": {
+  "de": "Ozeanmaterial: Standardwerte (MatOceanOld)",
+  "pl": "Materiał oceanu: domyślne z gry (MatOceanOld)"
+ },
+ "Ocean material: {0}": {
+  "de": "Ozeanmaterial: {0}",
+  "pl": "Materiał oceanu: {0}"
+ },
+ "Outside terrain": {
+  "de": "Gelände außerhalb",
+  "pl": "Teren poza mapą"
+ },
+ "Preview all from Map config": {
+  "de": "Alles aus Kartenkonfiguration anzeigen",
+  "pl": "Podgląd wszystkiego z konfiguracji mapy"
+ },
+ "Preview source": {
+  "de": "Vorschauquelle",
+  "pl": "Źródło podglądu"
+ },
+ "Runs through the map's full tide range (MaxTide {0} m from Map config) in two minutes.": {
+  "de": "Durchläuft den vollen Gezeitenbereich der Karte (MaxTide {0} m aus der Kartenkonfiguration) in zwei Minuten.",
+  "pl": "Przechodzi przez pełny zakres pływów mapy (MaxTide {0} m z konfiguracji mapy) w dwie minuty."
+ },
+ "Sets the sun from startTime, startDate and latitude in File > Map config.": {
+  "de": "Stellt die Sonne nach startTime, startDate und Breitengrad aus Datei > Kartenkonfiguration ein.",
+  "pl": "Ustawia słońce na podstawie startTime, startDate i szerokości geograficznej z Plik > Konfiguracja mapy."
+ },
+ "Show outside terrain": {
+  "de": "Gelände außerhalb anzeigen",
+  "pl": "Pokaż teren poza mapą"
+ },
+ "Takes the 3D camera to this scene and applies its FOV, date/time, overcast and fog.": {
+  "de": "Bringt die 3D-Kamera zu dieser Szene und übernimmt Sichtfeld, Datum/Zeit, Bewölkung und Nebel.",
+  "pl": "Przenosi kamerę 3D do tej sceny i ustawia jej FOV, datę/godzinę, zachmurzenie oraz mgłę."
+ },
+ "Terrain beyond the edges of the map from File > Map config > Terrain look. Active when Camera > Terrain look uses Map config.": {
+  "de": "Gelände jenseits der Kartenränder aus Datei > Kartenkonfiguration > Gelände-Aussehen. Aktiv, wenn Kamera > Gelände-Aussehen die Kartenkonfiguration nutzt.",
+  "pl": "Teren poza krawędziami mapy z Plik > Konfiguracja mapy > Wygląd terenu. Aktywny, gdy Kamera > Wygląd terenu używa konfiguracji mapy."
+ },
+ "Textures: Mid {0} · Normal {1} · Outside {2}": {
+  "de": "Texturen: Mittel {0} · Normal {1} · Außen {2}",
+  "pl": "Tekstury: Średnia {0} · Normalna {1} · Poza {2}"
+ },
+ "Textures: Sky {0} · Env {1}": {
+  "de": "Texturen: Himmel {0} · Umgeb. {1}",
+  "pl": "Tekstury: Niebo {0} · Odbicia {1}"
+ },
+ "Use Editor slider": {
+  "de": "Editor-Regler verwenden",
+  "pl": "Użyj suwaka edytora"
+ },
+ "Uses atmosphereTexture and envTexture from File > Map config (loaded from the work drive).": {
+  "de": "Verwendet atmosphereTexture und envTexture aus Datei > Kartenkonfiguration (vom Arbeitslaufwerk geladen).",
+  "pl": "Używa atmosphereTexture i envTexture z Plik > Konfiguracja mapy (wczytanych z dysku roboczego)."
+ },
+ "Uses fullDetailDist, noDetailDist, heightBlendingMode and bicubicMode from File > Map config.": {
+  "de": "Verwendet fullDetailDist, noDetailDist, heightBlendingMode und bicubicMode aus Datei > Kartenkonfiguration.",
+  "pl": "Używa fullDetailDist, noDetailDist, heightBlendingMode i bicubicMode z Plik > Konfiguracja mapy."
+ },
+ "Uses hasOcean, MaxWave and wave parameters from File > Map config > Sea and waves.": {
+  "de": "Verwendet hasOcean, MaxWave und Wellenparameter aus Datei > Kartenkonfiguration > Meer und Wellen.",
+  "pl": "Używa hasOcean, MaxWave i parametrów fal z Plik > Konfiguracja mapy > Morze i fale."
+ },
+ "Uses hazeDistCoef, hazeFogCoef, volFogOffset and starsIntensity from File > Map config > Atmosphere and sky.": {
+  "de": "Verwendet hazeDistCoef, hazeFogCoef, volFogOffset und starsIntensity aus Datei > Kartenkonfiguration > Atmosphäre und Himmel.",
+  "pl": "Używa hazeDistCoef, hazeFogCoef, volFogOffset i starsIntensity z Plik > Konfiguracja mapy > Atmosfera i niebo."
+ },
+ "Uses midDetailTexture, terrainNormalTexture and OutsideTerrain from File > Map config (loaded from the work drive).": {
+  "de": "Verwendet midDetailTexture, terrainNormalTexture und OutsideTerrain aus Datei > Kartenkonfiguration (vom Arbeitslaufwerk geladen).",
+  "pl": "Używa midDetailTexture, terrainNormalTexture i OutsideTerrain z Plik > Konfiguracja mapy (wczytanych z dysku roboczego)."
+ },
+ "Visual settings here preview live in the 3D view when Camera / Lighting sources are set to Map config.": {
+  "de": "Visuelle Einstellungen hier werden live in der 3D-Ansicht angezeigt, wenn Kamera-/Lichtquellen auf Kartenkonfiguration stehen.",
+  "pl": "Ustawienia wizualne stąd widać na żywo w widoku 3D, gdy źródła w menu Kamera / Oświetlenie są ustawione na Konfigurację mapy."
  }
 }
