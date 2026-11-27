@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.4
+
+### New
+
+- **Live Map config preview in the 3D and 2D views.**
+  - Every visual group in the viewport now lets you choose between **Editor settings** and **Map config (CfgWorlds)** — either all at once from the **Preview source** switch in **Camera** or the top bar of **File > Map config**, or individually per group, with direct **Edit in Map config...** links and live readouts of active values and loaded work-drive textures.
+  - **Terrain look (Map config)**: previews `fullDetailDist`, `noDetailDist`, `heightBlendingMode`, `bicubicMode`, middle-distance detail (`midDetailTexture`), global terrain normal maps (`terrainNormalTexture`, `satelliteNormalBlendStart`, `satelliteNormalBlendEnd`, `terrainNormalPower`), and **Outside terrain** (`OutsideTerrain`, including `enableTerrainSynth`, satellite, texture, and relief, also toggleable under **Show**).
+  - **Sea and waves (Map config)**: respects `hasOcean`, uses `MaxWave`, `waveAmplitude`, `waveFrequency`, `waveOctaves`, and `wavePersistence` in the ocean shader, and parses DayZ `.emat` ocean materials (`oceanMaterial`, `oceanNiceMaterial`, and `oceanStormMaterial`, switching automatically by overcast). The tide slider and tide cycle now always use the map's `MaxTide`.
+  - **Lighting, atmosphere, and sky (Map config)**: **Lighting** adds a **Map config** button that sets the sun from `startTime`, `startDate` (using the base world's own start date when unset), and `latitude`, plus an **Atmosphere and sky** source applying `hazeDistCoef`, `hazeFogCoef`, height-based volumetric fog (`volFogOffset`), night stars (`starsIntensity`), `atmosphereTexture`, and `envTexture` reflections.
+  - **Main menu scenes (`cfgCharacterScenes`)**: clicking **Look from here** now also applies the scene's date/time, overcast, and fog to the 3D view alongside camera position and FOV.
+  - **Top view and navigation**: projects now open centered on `centerPosition`, and **Top view** adds **Map config grid (Zoom 1–3)** (switching automatically between the map's `grid_steps` as you zoom) and **Go to map centre**.
+- **Clearer graphics and camera controls.**
+  - Renamed the object LOD slider to **Object full detail distance** so it is distinct from terrain `fullDetailDist`.
+  - **Settings > Graphics** now shows a clear notice with a quick **Use Editor slider** button whenever **Surface texture range** is currently overridden by **Map config**.
+
+### Good to know
+
+- Projects from 0.4.3 and earlier open in 0.4.4, and projects saved in 0.4.4 open in 0.4.3 as well.
+- The new preview source choices (`Editor` by default, so existing views look unchanged until you switch to `Map config`) are saved in your editor settings (`settings.json`).
+
 ## 0.4.3
 
 ### New
