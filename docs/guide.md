@@ -66,12 +66,24 @@ generator, road, shape, shape layer or model in the Outliner and choose **Move t
 fly to it.
 
 The bar at the top of each view chooses the shading (Lit, Satellite, Mask, Hillshade, Height,
-Slope — coloured by DayZ vehicle and foot thresholds, Object density, Water flow), wireframe, the speed of the camera, **Lighting** (sun, shadows), **Show** and **Camera**.
-**Lighting** also has **Time of day** and **Overcast**: the sun of that hour at the map's
-latitude and start date, weaker and with more fog under cloud. **Camera** also chooses whether
-the grass (clutter) draw distance uses the editor slider or the map's own **Map config**
-(`clutterDist` and `clutterGrid`). **Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
-(Shift+H), the land grid and texture tiles.
+Slope — coloured by DayZ vehicle and foot thresholds, Object density, Water flow), wireframe, the speed of the camera, **Lighting** (sun, shadows, atmosphere), **Show** and **Camera**.
+Each visual group (**Terrain look**, **Grass range**, **Sea and waves** in **Camera**, and
+**Atmosphere and sky** in **Lighting**) can use either the editor's own sliders or the map's
+**Map config** (`CfgWorlds`, falling back to the base world's defaults), with quick **Editor / Map config**
+switches and direct **Edit in Map config...** links:
+* **Terrain look (Map config)**: applies `fullDetailDist`, `noDetailDist`, `heightBlendingMode`,
+  `bicubicMode`, `midDetailTexture`, `terrainNormalTexture` (with its blend distances and power)
+  and **Outside terrain** (`OutsideTerrain` beyond the map edges, also toggleable under **Show**).
+* **Grass range (Map config)**: uses `clutterDist` and `clutterGrid`.
+* **Sea and waves (Map config)**: respects `hasOcean`, `MaxWave`, `waveAmplitude`, `waveFrequency`,
+  `waveOctaves`, `wavePersistence` and the ocean `.emat` material (`oceanNiceMaterial` / `oceanStormMaterial` / `oceanMaterial`). The tide slider and cycle always use the map's `MaxTide`.
+* **Lighting and Atmosphere (Map config)**: **Lighting** has a **Map config** preset button that
+  sets the sun from `startTime`, `startDate` and `latitude`, and **Atmosphere and sky** applies
+  `hazeDistCoef`, `hazeFogCoef`, `volFogOffset`, night `starsIntensity`, `atmosphereTexture` and `envTexture`.
+* **Top view**: can draw the zoom-adaptive **Map config grid (Zoom 1–3)** from `grid_steps` and jump
+  to the map's `centerPosition`.
+**Show** and the View menu turn parts of the map on and off: grass (G), objects (H), shapes
+(Shift+H), water, outside terrain, the land grid and texture tiles.
 
 `View > Full screen` (F11) gives the whole screen to the view; move the pointer to an edge for the
 panels. `View > View in a separate window` moves the view to a window of its own, for example on

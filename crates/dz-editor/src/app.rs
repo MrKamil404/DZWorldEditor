@@ -412,6 +412,11 @@ pub struct App {
     pub surfaces: Vec<String>,
     layer_rx: Option<Receiver<models::LayerTexture>>,
     pub layer_averages: Vec<[u8; 3]>,
+    map_cfg_assets_key: models::MapConfigAssetsKey,
+    map_cfg_assets_rx: Option<Receiver<models::MapConfigAssets>>,
+    pub map_cfg_asset_status: models::MapConfigAssetStatus,
+    pub map_cfg_ocean_nice: Option<dz_core::world_preview::OceanMaterial>,
+    pub map_cfg_ocean_storm: Option<dz_core::world_preview::OceanMaterial>,
     /// The map check and its window.
     pub check: crate::map_check::MapCheck,
     /// Whether the view holds the surfaces as the game shows them.
@@ -692,7 +697,7 @@ impl App {
         let mut app = Self {
             ctx, db, loader, thumbs, updater, surfaces,
             assets: Arc::new(AssetIndex::default()), assets_rx: None,
-            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), check: Default::default(), shown_game_surfaces: false, goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, density_rev: u64::MAX, layer_thumbs: Vec::new(),
+            doc: None, renderer: Default::default(), layer_rx: None, layer_averages: Vec::new(), map_cfg_assets_key: Default::default(), map_cfg_assets_rx: None, map_cfg_asset_status: Default::default(), map_cfg_ocean_nice: None, map_cfg_ocean_storm: None, check: Default::default(), shown_game_surfaces: false, goto: Default::default(), measure: Default::default(), stamps: Default::default(), time_of_day: 10.0, overcast: 0.2, flow_key: 0, flow_at: None, density_rev: u64::MAX, layer_thumbs: Vec::new(),
             road_catalog: Arc::new(Vec::new()), road_families: Vec::new(), road_rx: None,
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
@@ -742,6 +747,8 @@ impl App {
         self.thumbs = Thumbnails::new(self.db.clone(), data_dir().join("thumbnails"), self.ctx.clone());
         self.rescan_assets();
         self.scan_roads();
+        self.map_cfg_assets_key = Default::default();
+        self.sync_map_config_assets();
     }
 
     /// Opens the asset browser at the model of an object.
@@ -1519,6 +1526,18 @@ impl App {
             drop(r);
             self.push_palette();
         }
+        self.sync_map_config_assets();
+        if let Some(rx) = &self.map_cfg_assets_rx {
+            if let Ok(loaded) = rx.try_recv() {
+                if loaded.key == self.map_cfg_assets_key {
+                    self.map_cfg_asset_status = loaded.status;
+                    self.map_cfg_ocean_nice = loaded.ocean_nice;
+                    self.map_cfg_ocean_storm = loaded.ocean_storm;
+                    self.renderer.lock().unwrap().set_map_config_textures(&loaded);
+                }
+                self.map_cfg_assets_rx = None;
+            }
+        }
         // Texture settings apply to what loads from now on, so a change loads the models again.
         let graphics = (self.settings.texture_size, self.settings.anisotropy);
         if self.applied_graphics != graphics {
@@ -1673,11 +1692,37 @@ impl App {
         self.layer_rx = Some(models::load_layer_textures(self.settings.tools.work_drive.clone(), list, self.ctx.clone()));
     }
 
+    /// Keeps Map config preview textures and ocean `.emat` materials in sync with the open world's config.
+    pub fn sync_map_config_assets(&mut self) {
+        let Some(doc) = &self.doc else { return };
+        let resolved = dz_core::world_preview::ResolvedMapConfig::of(&doc.world.meta);
+        let key = models::MapConfigAssetsKey::from_resolved(&self.settings.tools.work_drive, &resolved);
+        if key != self.map_cfg_assets_key {
+            self.map_cfg_assets_key = key.clone();
+            self.map_cfg_assets_rx = Some(models::load_map_config_assets(key, self.ctx.clone()));
+        }
+    }
+
+    /// Sets the 3D view's sun, time of day and overcast from the map's `startTime`, `startDate` and `latitude`.
+    pub fn apply_map_config_lighting(&mut self) {
+        let Some(doc) = &self.doc else { return };
+        let r = dz_core::world_preview::ResolvedMapConfig::of(&doc.world.meta);
+        self.time_of_day = r.start_hour.clamp(0.0, 24.0);
+        self.overcast = 0.0;
+        let shadow_range = self.settings.lighting.shadow_range;
+        let exposure = self.settings.lighting.exposure;
+        let mut l = crate::settings::Lighting::at(self.time_of_day, self.overcast, r.latitude, r.start_day);
+        l.shadow_range = shadow_range;
+        l.exposure = exposure;
+        self.settings.lighting = l;
+    }
+
     /// Makes `world` the open document.
     pub fn open_world(&mut self, world: World, dir: Option<PathBuf>) {
         let lod = TerrainLod::build(&world.height);
         let (lo, hi) = world.height.min_max();
         let side = world.meta.size_m();
+        let resolved = dz_core::world_preview::ResolvedMapConfig::of(&world.meta);
         {
             let mut r = self.renderer.lock().unwrap();
             r.reset_terrain(&world.height);
@@ -1690,17 +1735,23 @@ impl App {
         self.loader.reset();
         self.impostor_fits.clear();
         self.layer_averages.clear();
+        self.map_cfg_assets_key = Default::default();
+        self.map_cfg_assets_rx = None;
+        self.map_cfg_asset_status = Default::default();
+        self.map_cfg_ocean_nice = None;
+        self.map_cfg_ocean_storm = None;
         self.detail_center = [f32::MIN, f32::MIN];
         self.selection.clear();
         self.hidden_objects.clear();
         self.density_rev = u64::MAX;
         self.selected_modifier = None;
         self.selection_rev += 1;
-        self.top_center = [side * 0.5, side * 0.5];
+        let center = resolved.center;
+        self.top_center = center;
         self.top_mpp = side / 900.0;
-        let ground = world.height.sample(side * 0.5, side * 0.5).max(0.0);
-        self.camera.pos = [side * 0.35, ground + side * 0.09, side * 0.3];
-        self.camera.look_at([side * 0.5, ground, side * 0.52]);
+        let ground = world.height.sample(center[0], center[1]).max(0.0);
+        self.camera.pos = [(center[0] - side * 0.15).clamp(0.0, side), ground + side * 0.09, (center[1] - side * 0.2).clamp(0.0, side)];
+        self.camera.look_at([center[0], ground, center[1]]);
         self.line.points.clear();
         self.shape.selection.clear();
         self.shape.points.clear();
@@ -1723,6 +1774,7 @@ impl App {
         self.view2 = Default::default();
         self.push_palette();
         self.reload_layer_textures();
+        self.sync_map_config_assets();
         self.info(tf("Opened {0}", &[&name]));
         if let Some(p) = road_project {
             self.load_road_types(p);

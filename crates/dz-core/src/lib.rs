@@ -44,6 +44,7 @@ pub mod terrain;
 pub mod terrain_stamps;
 pub mod tv4l;
 pub mod world;
+pub mod world_preview;
 pub mod wrp;
 
 pub use forest_core;

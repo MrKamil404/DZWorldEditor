@@ -1040,12 +1040,10 @@ fn prepare_objects_for(app: &mut App, v: &View, top: bool, which: u8) -> ObjectD
     // Ground clutter on a grid, thinned with distance like the game's clutter range.
     let mut clutter_requests: Vec<(u32, u8)> = Vec::new();
     if !v.ortho && app.show_grass && !app.clutter_models.is_empty() {
+        let resolved = dz_core::world_preview::ResolvedMapConfig::of(&world.meta);
         let (range_f, grid_step) = match app.settings.grass_range_source {
             crate::settings::GrassRangeSource::Editor => (app.settings.grass_range.clamp(15.0, 400.0), 1.0_f32),
-            crate::settings::GrassRangeSource::MapConfig => (
-                world.meta.config.clutter_dist.unwrap_or(125.0).clamp(15.0, 400.0),
-                world.meta.config.clutter_grid.unwrap_or(1.0).clamp(0.4, 4.0),
-            ),
+            crate::settings::GrassRangeSource::MapConfig => (resolved.clutter_dist, resolved.clutter_grid),
         };
         let range_m = range_f.ceil() as i32;
         let shading = if top { app.shading2 } else { app.shading3 };
@@ -4061,15 +4059,95 @@ fn view_header(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     }
 }
 
-/// The game's MaxTide: how far the tide moves the sea, in metres.
-const MAX_TIDE: f32 = 1.5;
+/// Resolved Map config of the open project, if any.
+fn resolved_config(app: &App) -> Option<dz_core::world_preview::ResolvedMapConfig> {
+    app.doc.as_ref().map(|d| dz_core::world_preview::ResolvedMapConfig::of(&d.world.meta))
+}
+
+/// Active `MaxTide` in metres: from Map config (falling back to 1.5 m).
+fn max_tide_of(app: &App) -> f32 {
+    resolved_config(app).map_or(1.5, |r| r.max_tide)
+}
 
 /// The tide now: the one chosen, or the cycle running through all of it.
 fn tide(app: &App, ctx: &egui::Context) -> f32 {
+    let max_tide = max_tide_of(app);
+    if max_tide <= 0.0 {
+        return 0.0;
+    }
     if app.settings.tide_cycle {
-        MAX_TIDE * (ctx.input(|i| i.time) as f32 * std::f32::consts::TAU / 120.0).sin()
+        max_tide * (ctx.input(|i| i.time) as f32 * std::f32::consts::TAU / 120.0).sin()
     } else {
-        app.settings.sea_tide.clamp(-MAX_TIDE, MAX_TIDE)
+        app.settings.sea_tide.clamp(-max_tide, max_tide)
+    }
+}
+
+/// Computes the effective `(surface_range, show_water, sea_waves, MapConfigGpu)` for the current frame.
+fn frame_map_config(app: &App, resolved: &dz_core::world_preview::ResolvedMapConfig, top: bool) -> (f32, bool, f32, crate::render::MapConfigGpu) {
+    use crate::settings::PreviewSource;
+    let terrain_cfg = app.settings.terrain_look_source == PreviewSource::MapConfig;
+    let sea_cfg = app.settings.sea_source == PreviewSource::MapConfig;
+    let sky_cfg = app.settings.sky_source == PreviewSource::MapConfig;
+
+    let (surface_range, full_detail_dist, height_blending, bicubic) = if terrain_cfg {
+        (resolved.no_detail_dist, resolved.full_detail_dist, resolved.height_blending, resolved.bicubic)
+    } else {
+        (app.settings.surface_range, app.settings.surface_range * 0.21, true, !app.settings.game_surfaces)
+    };
+
+    let (show_water, sea_waves, wave_amplitude, wave_frequency, wave_octaves, wave_persistence, ocean) = if sea_cfg {
+        let ocean = (if app.overcast >= 0.5 { app.map_cfg_ocean_storm } else { app.map_cfg_ocean_nice }).unwrap_or_default();
+        (
+            app.show_water && resolved.has_ocean,
+            resolved.max_wave,
+            resolved.wave_amplitude,
+            resolved.wave_frequency,
+            resolved.wave_octaves as i32,
+            resolved.wave_persistence,
+            ocean,
+        )
+    } else {
+        (app.show_water, app.settings.sea_waves, 0.081, 9.0, 6, 0.745, dz_core::world_preview::OceanMaterial::default())
+    };
+
+    let (haze_dist_coef, haze_fog_coef, vol_fog_offset, stars_intensity, use_env_texture, use_atmosphere_texture) = if sky_cfg {
+        (resolved.haze_dist_coef, resolved.haze_fog_coef, resolved.vol_fog_offset, resolved.stars_intensity, true, true)
+    } else {
+        (0.0, 1.0, 0.0, 0.0, false, false)
+    };
+
+    let gpu = crate::render::MapConfigGpu {
+        full_detail_dist,
+        height_blending,
+        bicubic,
+        use_mid_detail: terrain_cfg,
+        use_terrain_normal: terrain_cfg,
+        sat_norm_start: resolved.sat_normal_blend_start,
+        sat_norm_end: resolved.sat_normal_blend_end,
+        terrain_norm_power: resolved.terrain_normal_power,
+        outside_enabled: terrain_cfg && app.settings.show_outside_terrain && !top,
+        outside_synth: resolved.outside_synth,
+        wave_amplitude,
+        wave_frequency,
+        wave_octaves,
+        wave_persistence,
+        ocean,
+        haze_dist_coef,
+        haze_fog_coef,
+        vol_fog_offset,
+        stars_intensity,
+        overcast: app.overcast,
+        use_env_texture,
+        use_atmosphere_texture,
+    };
+    (surface_range, show_water, sea_waves, gpu)
+}
+
+/// Small inline link button that opens `File > Map config` directly.
+fn edit_in_map_config_button(app: &mut App, ui: &mut egui::Ui) {
+    if ui.small_button(crate::icons::with(crate::icons::SLIDERS_HORIZONTAL, &t("Edit in Map config..."))).clicked() {
+        app.dialog = crate::app::Dialog::MapConfig;
+        ui.close_menu();
     }
 }
 
@@ -4079,6 +4157,29 @@ fn top_view_menu(app: &mut App, ui: &mut egui::Ui) {
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
         let mut changed = ui.checkbox(&mut app.settings.top_models, t("Models from above")).on_hover_text(t("Close up the top view draws the models themselves, as a drone sees them, instead of their outlines.")).changed();
         changed |= ui.checkbox(&mut app.settings.top_follow, t("Follow the 3D camera")).on_hover_text(t("In the split view the top view keeps the 3D camera in its middle.")).changed();
+        changed |= ui.checkbox(&mut app.settings.top_config_grid, t("Map config grid (Zoom 1–3)"))
+            .on_hover_text(t("Draws the in-game map grid from File > Map config > Map grid, switching between Zoom 1, 2 and 3 as you zoom.")).changed();
+        if let Some(r) = resolved_config(app) {
+            if app.settings.top_config_grid {
+                let step = r.grid_step_for_mpp(app.top_mpp);
+                ui.weak(tf("Active grid: {0} m ({1} / {2} / {3} m)", &[
+                    &format!("{step:.0}"),
+                    &r.grid_steps[0].to_string(),
+                    &r.grid_steps[1].to_string(),
+                    &r.grid_steps[2].to_string(),
+                ]));
+            }
+            let center_label = if r.center_custom {
+                tf("Go to map centre ({0}, {1} · Map config)", &[&format!("{:.0}", r.center[0]), &format!("{:.0}", r.center[1])])
+            } else {
+                t("Go to map centre")
+            };
+            if ui.button(center_label).clicked() {
+                app.top_center = r.center;
+                ui.close_menu();
+            }
+            edit_in_map_config_button(app, ui);
+        }
         ui.separator();
         ui.label(t("Split view"));
         changed |= ui.radio_value(&mut app.settings.split_stacked, false, t("Side by side")).changed();
@@ -4092,12 +4193,51 @@ fn top_view_menu(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
+fn source_combo(ui: &mut egui::Ui, id: &str, label: &str, value: &mut crate::settings::PreviewSource) -> bool {
+    use crate::settings::PreviewSource;
+    let name = |s: PreviewSource| match s {
+        PreviewSource::Editor => t("Editor settings"),
+        PreviewSource::MapConfig => t("Map config (CfgWorlds)"),
+    };
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.label(label);
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(name(*value))
+            .show_ui(ui, |ui| {
+                changed |= ui.selectable_value(value, PreviewSource::Editor, name(PreviewSource::Editor)).changed();
+                changed |= ui.selectable_value(value, PreviewSource::MapConfig, name(PreviewSource::MapConfig)).changed();
+            });
+    });
+    changed
+}
+
 fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
-    ui.menu_button(crate::icons::with(crate::icons::CAMERA, &t("Camera")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-        ui.set_min_width(280.0);
+    use crate::settings::{GrassRangeSource, PreviewSource};
+    ui.menu_button(crate::icons::with(crate::icons::CAMERA, &t("Camera")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        ui.set_min_width(310.0);
+        let mut save = false;
         let row = |ui: &mut egui::Ui, label: String, v: &mut f32, range: std::ops::RangeInclusive<f32>| {
             ui.add(crate::theme::ValueField::new(v, range).text(label));
         };
+        let resolved = resolved_config(app);
+        let status = app.map_cfg_asset_status;
+
+        // Master preview source quick switch so the user always sees and controls where values come from.
+        ui.horizontal(|ui| {
+            ui.label(t("Preview source"));
+            if ui.selectable_label(!app.settings.any_map_config(), t("Editor")).clicked() {
+                app.settings.all_from_editor();
+                save = true;
+            }
+            if ui.selectable_label(app.settings.is_all_map_config(), t("Map config")).clicked() {
+                app.settings.all_from_map_config();
+                save = true;
+            }
+            edit_in_map_config_button(app, ui);
+        });
+        ui.separator();
+
         let tip = app.settings.keys.tip(crate::keys::Action::CameraBelow);
         ui.checkbox(&mut app.camera_under, t("Camera below the terrain")).on_hover_text(tip);
         row(ui, t("Field of view"), &mut app.settings.fov, 20.0..=120.0);
@@ -4105,10 +4245,37 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
         row(ui, t("Movement speed"), &mut app.settings.camera_speed, 1.0..=4000.0);
         app.camera.speed = app.settings.camera_speed;
         row(ui, t("Object draw distance"), &mut app.settings.draw_distance, 300.0..=8000.0);
-        row(ui, t("Full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0);
-        row(ui, t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0);
+        row(ui, t("Object full detail distance"), &mut app.settings.near_detail, 30.0..=5000.0);
+
+        ui.separator();
+        save |= source_combo(ui, "cam_terrain_src", &t("Terrain look"), &mut app.settings.terrain_look_source);
+        match app.settings.terrain_look_source {
+            PreviewSource::Editor => {
+                row(ui, t("Surface texture range m"), &mut app.settings.surface_range, 60.0..=5000.0);
+            }
+            PreviewSource::MapConfig => {
+                if let Some(r) = &resolved {
+                    let on_off = |b: bool| if b { t("On") } else { t("Off") };
+                    ui.weak(tf("Detail: {0}–{1} m · Height blend: {2} · Bicubic: {3}", &[
+                        &format!("{:.0}", r.full_detail_dist),
+                        &format!("{:.0}", r.no_detail_dist),
+                        &on_off(r.height_blending),
+                        &on_off(r.bicubic),
+                    ])).on_hover_text(t("Uses fullDetailDist, noDetailDist, heightBlendingMode and bicubicMode from File > Map config."));
+                    let ok = |b: bool| if b { "✓" } else { "–" };
+                    ui.weak(tf("Textures: Mid {0} · Normal {1} · Outside {2}", &[
+                        ok(status.mid_detail),
+                        ok(status.terrain_normal),
+                        ok(status.outside_satellite || status.outside_texture),
+                    ])).on_hover_text(t("Uses midDetailTexture, terrainNormalTexture and OutsideTerrain from File > Map config (loaded from the work drive)."));
+                    save |= ui.checkbox(&mut app.settings.show_outside_terrain, t("Show outside terrain")).changed();
+                }
+            }
+        }
+        surface_relief_ui(ui, &mut app.settings);
+
+        ui.separator();
         {
-            use crate::settings::GrassRangeSource;
             let src_label = |s: GrassRangeSource| match s {
                 GrassRangeSource::Editor => t("Editor settings"),
                 GrassRangeSource::MapConfig => t("Map config (CfgWorlds)"),
@@ -4118,8 +4285,8 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
                 egui::ComboBox::from_id_salt("cam_grass_src")
                     .selected_text(src_label(app.settings.grass_range_source))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut app.settings.grass_range_source, GrassRangeSource::Editor, src_label(GrassRangeSource::Editor));
-                        ui.selectable_value(&mut app.settings.grass_range_source, GrassRangeSource::MapConfig, src_label(GrassRangeSource::MapConfig));
+                        save |= ui.selectable_value(&mut app.settings.grass_range_source, GrassRangeSource::Editor, src_label(GrassRangeSource::Editor)).changed();
+                        save |= ui.selectable_value(&mut app.settings.grass_range_source, GrassRangeSource::MapConfig, src_label(GrassRangeSource::MapConfig)).changed();
                     });
             });
             match app.settings.grass_range_source {
@@ -4127,19 +4294,52 @@ fn camera_menu(app: &mut App, ui: &mut egui::Ui) {
                     row(ui, t("Grass draw distance m"), &mut app.settings.grass_range, 15.0..=300.0);
                 }
                 GrassRangeSource::MapConfig => {
-                    let (dist, grid) = app.doc.as_ref().map_or((125.0, 1.0), |d| {
-                        (d.world.meta.config.clutter_dist.unwrap_or(125.0), d.world.meta.config.clutter_grid.unwrap_or(1.0))
-                    });
+                    let (dist, grid) = resolved.as_ref().map_or((125.0, 1.0), |r| (r.clutter_dist, r.clutter_grid));
                     ui.weak(tf("From Map config: {0} m (grid {1} m)", &[&format!("{dist:.0}"), &format!("{grid:.2}")]))
                         .on_hover_text(t("Uses clutterDist and clutterGrid from File > Map config (falling back to the base world's defaults)."));
                 }
             }
         }
-        surface_relief_ui(ui, &mut app.settings);
-        row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=1.0);
-        ui.weak(t("How far the swell runs up the shore and back; the game's MaxWave is 0.25 m."));
-        ui.add_enabled(!app.settings.tide_cycle, crate::theme::ValueField::new(&mut app.settings.sea_tide, -MAX_TIDE..=MAX_TIDE).text(t("Tide m")));
-        ui.checkbox(&mut app.settings.tide_cycle, t("Tide rises and falls")).on_hover_text(t("Runs through the whole tide of the game, up to MaxTide 1.5 m, in two minutes."));
+
+        ui.separator();
+        save |= source_combo(ui, "cam_sea_src", &t("Sea and waves"), &mut app.settings.sea_source);
+        let max_tide = resolved.as_ref().map_or(1.5, |r| r.max_tide);
+        match app.settings.sea_source {
+            PreviewSource::Editor => {
+                row(ui, t("Sea waves m"), &mut app.settings.sea_waves, 0.0..=1.0);
+                ui.weak(t("How far the swell runs up the shore and back; the game's MaxWave is 0.25 m."));
+            }
+            PreviewSource::MapConfig => {
+                if let Some(r) = &resolved {
+                    if !r.has_ocean {
+                        ui.colored_label(Color32::from_rgb(235, 180, 90), t("Ocean is turned off in Map config (hasOcean = 0)."));
+                    } else {
+                        ui.weak(tf("MaxWave {0} m · amp {1} · freq {2} · oct {3}", &[
+                            &format!("{:.2}", r.max_wave),
+                            &format!("{:.3}", r.wave_amplitude),
+                            &format!("{:.1}", r.wave_frequency),
+                            &r.wave_octaves.to_string(),
+                        ])).on_hover_text(t("Uses hasOcean, MaxWave and wave parameters from File > Map config > Sea and waves."));
+                        let mat_path = r.ocean_material_for(app.overcast);
+                        let mat_loaded = if app.overcast >= 0.5 { status.ocean_storm } else { status.ocean_nice };
+                        if mat_loaded {
+                            let short = mat_path.rsplit(['\\', '/']).next().unwrap_or(mat_path);
+                            ui.weak(tf("Ocean material: {0}", &[short]));
+                        } else {
+                            ui.weak(t("Ocean material: vanilla defaults (MatOceanOld)"));
+                        }
+                    }
+                }
+            }
+        }
+        let tide_hi = max_tide.max(0.01);
+        app.settings.sea_tide = app.settings.sea_tide.clamp(-tide_hi, tide_hi);
+        ui.add_enabled(!app.settings.tide_cycle && max_tide > 0.0, crate::theme::ValueField::new(&mut app.settings.sea_tide, -tide_hi..=tide_hi).text(t("Tide m")));
+        ui.checkbox(&mut app.settings.tide_cycle, t("Tide rises and falls"))
+            .on_hover_text(tf("Runs through the map's full tide range (MaxTide {0} m from Map config) in two minutes.", &[&format!("{max_tide:.2}")]));
+        if save {
+            app.settings.save();
+        }
     });
 }
 
@@ -4148,30 +4348,70 @@ fn show_menu(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
-    use crate::settings::Lighting;
-    ui.menu_button(crate::icons::with(crate::icons::SUN, &t("Lighting")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend); 
-        ui.set_min_width(260.0);
-        let l = &mut app.settings.lighting;
+    use crate::settings::{Lighting, PreviewSource};
+    ui.menu_button(crate::icons::with(crate::icons::SUN, &t("Lighting")), |ui| { ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        ui.set_min_width(290.0);
+        let mut save = false;
+        let resolved = resolved_config(app);
+        let status = app.map_cfg_asset_status;
+        let mut apply_cfg = false;
         ui.horizontal_wrapped(|ui| {
             for (name, preset) in [("Morning", Lighting::MORNING), ("Noon", Lighting::NOON), ("Evening", Lighting::EVENING), ("Overcast", Lighting::OVERCAST)] {
                 if ui.button(t(name)).clicked() {
-                    *l = preset;
+                    app.settings.lighting = preset;
                 }
             }
+            if resolved.is_some()
+                && ui.button(crate::icons::with(crate::icons::SLIDERS_HORIZONTAL, &t("Map config")))
+                    .on_hover_text(t("Sets the sun from startTime, startDate and latitude in File > Map config."))
+                    .clicked()
+            {
+                apply_cfg = true;
+            }
         });
+        if apply_cfg {
+            app.apply_map_config_lighting();
+        }
         ui.separator();
-        // The sun of an hour of the map's day, at its latitude.
-        let (lat, day) = app.doc.as_ref().map(|d| (d.world.meta.latitude, start_day(&d.world.meta.config.start_date))).unwrap_or((50.0, 240));
+        // The sun of an hour of the map's day, at its latitude (using the base world's start date when unset).
+        let (lat, day, date_str, start_str) = resolved
+            .as_ref()
+            .map(|r| (r.latitude, r.start_day, r.start_date_str.clone(), r.start_time_str.clone()))
+            .unwrap_or_else(|| (50.0, 237, "25/8/2015".into(), "9:00".into()));
         let mut changed = false;
-        theme::row(ui, &t("Time of day"), |ui| { changed |= ui.add(crate::theme::ValueField::new(&mut app.time_of_day, 4.0..=21.0).custom_formatter(|v, _| format!("{}:{:02}", v as u32, ((v.fract()) * 60.0) as u32))).changed(); });
+        theme::row(ui, &t("Time of day"), |ui| { changed |= ui.add(crate::theme::ValueField::new(&mut app.time_of_day, 0.0..=24.0).custom_formatter(|v, _| format!("{}:{:02}", (v as u32) % 24, ((v.fract()) * 60.0) as u32))).changed(); });
         theme::row(ui, &t("Overcast"), |ui| { changed |= ui.add(crate::theme::ValueField::new(&mut app.overcast, 0.0..=1.0)).changed(); });
         if changed {
-            *l = Lighting::at(app.time_of_day, app.overcast, lat, day);
+            let shadow_range = app.settings.lighting.shadow_range;
+            let exposure = app.settings.lighting.exposure;
+            let mut nl = Lighting::at(app.time_of_day, app.overcast, lat, day);
+            nl.shadow_range = shadow_range;
+            nl.exposure = exposure;
+            app.settings.lighting = nl;
         }
-        ui.weak(t("The sun of that hour at the map's latitude and start date (Map config)."));
+        ui.weak(tf("Map config: lat {0}° · date {1} · start {2}", &[&format!("{lat:.1}"), &date_str, &start_str]));
+
         ui.separator();
+        save |= source_combo(ui, "light_sky_src", &t("Atmosphere and sky"), &mut app.settings.sky_source);
+        if app.settings.sky_source == PreviewSource::MapConfig {
+            if let Some(r) = &resolved {
+                let ok = |b: bool| if b { "✓" } else { "–" };
+                ui.weak(tf("Haze dist {0} · fog ×{1} · vol {2} m · stars {3}", &[
+                    &format!("{:.2}", r.haze_dist_coef),
+                    &format!("{:.2}", r.haze_fog_coef),
+                    &format!("{:.0}", r.vol_fog_offset),
+                    &format!("{:.2}", r.stars_intensity),
+                ])).on_hover_text(t("Uses hazeDistCoef, hazeFogCoef, volFogOffset and starsIntensity from File > Map config > Atmosphere and sky."));
+                ui.weak(tf("Textures: Sky {0} · Env {1}", &[ok(status.atmosphere_texture), ok(status.env_texture)]))
+                    .on_hover_text(t("Uses atmosphereTexture and envTexture from File > Map config (loaded from the work drive)."));
+            }
+            edit_in_map_config_button(app, ui);
+        }
+
+        ui.separator();
+        let l = &mut app.settings.lighting;
         theme::row(ui, &t("Sun azimuth"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.azimuth, 0.0..=360.0).suffix("°")); });
-        theme::row(ui, &t("Sun elevation"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.elevation, -10.0..=90.0).suffix("°")); });
+        theme::row(ui, &t("Sun elevation"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.elevation, -20.0..=90.0).suffix("°")); });
         theme::row(ui, &t("Sun strength"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.strength, 0.0..=2.0)); });
         theme::row(ui, &t("Sun colour"), |ui| { ui.color_edit_button_rgb(&mut l.color); });
         theme::row(ui, &t("Ambient"), |ui| { ui.add(crate::theme::ValueField::new(&mut l.ambient, 0.0..=2.0)); });
@@ -4182,19 +4422,16 @@ fn lighting_menu(app: &mut App, ui: &mut egui::Ui) {
         if ui.button(t("Reset")).clicked() {
             app.settings.lighting = Lighting::default();
         }
+        if save {
+            app.settings.save();
+        }
     });
 }
 
 /// The day of the year of a start date written as "25/8/2015"; the end of August without one.
+#[cfg(test)]
 pub fn start_day(date: &str) -> u32 {
-    let parts: Vec<u32> = date.split('/').filter_map(|p| p.trim().parse().ok()).collect();
-    match parts.as_slice() {
-        [d, m, ..] if (1..=12).contains(m) => {
-            const BEFORE: [u32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-            BEFORE[*m as usize - 1] + d.clamp(&1, &31)
-        }
-        _ => 237,
-    }
+    dz_core::world_preview::parse_day_of_year(date).unwrap_or(237)
 }
 
 /// The parallax and blending of the surfaces, from the relief in their alpha channel.
@@ -4435,6 +4672,15 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
     let patches = doc.lod.select(&v, quality);
     let ranges = doc.lod.ranges(quality);
     let meta = &doc.world.meta;
+    let resolved = dz_core::world_preview::ResolvedMapConfig::of(meta);
+    let (surface_range, show_water, sea_waves, map_config) = frame_map_config(app, &resolved, top);
+    let land_grid = if top && app.settings.top_config_grid {
+        resolved.grid_step_for_mpp(v.mpp)
+    } else if app.show_land_grid {
+        meta.land_cell()
+    } else {
+        0.0
+    };
     let frame = Frame {
         view: v,
         viewport_key: top as u8,
@@ -4443,15 +4689,15 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         shading: if top { app.shading2 } else { app.shading3 },
         wireframe: app.wireframe && !top,
         brush: brush_of(app, hover),
-        grid: [if app.show_land_grid { meta.land_cell() } else { 0.0 }, if app.show_tile_grid { meta.tile_step() } else { 0.0 }, if app.show_contours { app.contour_interval } else { 0.0 }],
+        grid: [land_grid, if app.show_tile_grid { meta.tile_step() } else { 0.0 }, if app.show_contours { app.contour_interval } else { 0.0 }],
         sea: meta.sea_level,
         height_range: doc.height_range,
         objects,
-        show_water: app.show_water,
-        surface_range: app.settings.surface_range,
+        show_water,
+        surface_range,
         parallax: app.settings.surface_parallax.max(0.0) / 100.0,
         blend_sharp: app.settings.surface_blend.clamp(0.0, 1.0), game: app.settings.game_surfaces, pixels: app.settings.surface_pixels,
-        sea_waves: app.settings.sea_waves,
+        sea_waves,
         tide: tide(app, &ctx),
         world: meta.size_m(),
         tile: 10.0 / meta.land_cell(),
@@ -4461,9 +4707,10 @@ fn draw_view(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: bool) {
         shadow_bias: shadow_bias(app.settings.lighting.shadow_range),
         ao: if top || (if top { app.shading2 } else { app.shading3 }) != Shading::Lit { 0 } else { app.settings.ambient_occlusion },
         smoothing: app.settings.edge_smoothing,
+        map_config,
     };
     // The sea moves on its own, also when nothing else makes the window redraw.
-    if !top && app.show_water && (app.settings.sea_waves > 0.0 || app.settings.tide_cycle) && doc.height_range[0] < meta.sea_level + MAX_TIDE + app.settings.sea_waves {
+    if !top && show_water && (sea_waves > 0.0 || app.settings.tide_cycle) && doc.height_range[0] < meta.sea_level + resolved.max_tide + sea_waves {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
     }
     ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
@@ -4969,6 +5216,8 @@ fn minimap(app: &mut App, ui: &mut egui::Ui, view: Rect) {
     if let Some(doc) = &app.doc {
         let quality = app.settings.terrain_quality;
         let meta = &doc.world.meta;
+        let resolved = dz_core::world_preview::ResolvedMapConfig::of(meta);
+        let (surface_range, show_water, sea_waves, map_config) = frame_map_config(app, &resolved, true);
         let frame = Frame {
             view: v,
             viewport_key: 2,
@@ -4981,11 +5230,11 @@ fn minimap(app: &mut App, ui: &mut egui::Ui, view: Rect) {
             sea: meta.sea_level,
             height_range: doc.height_range,
             objects,
-            show_water: app.show_water,
-            surface_range: app.settings.surface_range,
+            show_water,
+            surface_range,
             parallax: 0.0,
             blend_sharp: app.settings.surface_blend.clamp(0.0, 1.0), game: app.settings.game_surfaces, pixels: app.settings.surface_pixels,
-            sea_waves: app.settings.sea_waves,
+            sea_waves,
             tide: tide(app, &ctx),
             world: meta.size_m(),
             tile: 10.0 / meta.land_cell(),
@@ -4995,6 +5244,7 @@ fn minimap(app: &mut App, ui: &mut egui::Ui, view: Rect) {
             shadow_bias: shadow_bias(app.settings.lighting.shadow_range),
             ao: 0,
             smoothing: app.settings.edge_smoothing,
+            map_config,
         };
         ui.painter_at(rect).add(render::callback(app.renderer.clone(), frame));
     }
@@ -5462,7 +5712,7 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         "measure" => app.measure = crate::app::Measure { active: true, points: nums.chunks(2).filter(|c| c.len() == 2).map(|c| [c[0], c[1]]).collect() },
         // tod hour overcast: the lighting of that hour.
         "tod" if nums.len() >= 2 => {
-            let (lat, day) = app.doc.as_ref().map(|d| (d.world.meta.latitude, start_day(&d.world.meta.config.start_date))).unwrap_or((50.0, 240));
+            let (lat, day) = resolved_config(app).map_or((50.0, 237), |r| (r.latitude, r.start_day));
             (app.time_of_day, app.overcast) = (nums[0], nums[1]);
             app.settings.lighting = crate::settings::Lighting::at(nums[0], nums[1], lat, day);
         }

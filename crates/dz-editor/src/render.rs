@@ -12,13 +12,38 @@ use std::sync::Arc;
 
 pub const PATCH: usize = 32;
 
+/// Shared distance haze and height-based volumetric fog helper (`hazeDistCoef`, `hazeFogCoef`, `volFogOffset`).
+const FOG_GLSL: &str = r#"
+uniform float u_fog, u_haze_dist, u_haze_fog, u_vol_fog_offset, u_fog_sea;
+float fogFactor(vec3 wp, float dist){
+  float eff = u_fog * max(u_haze_fog, 0.0) + max(u_haze_dist, 0.0) * 0.00012;
+  float base = 1.0 - exp(-dist * eff);
+  if (u_vol_fog_offset != 0.0) {
+    float h = max((u_fog_sea + u_vol_fog_offset) - wp.y, 0.0);
+    float vol = 1.0 - exp(-dist * max(eff, 0.00025) * 2.2 * clamp(h / 120.0, 0.0, 1.0));
+    return clamp(max(base, vol), 0.0, 1.0);
+  }
+  return clamp(base, 0.0, 1.0);
+}
+"#;
+
 /// Sky reflection and water surface, shared by the sea and by river and pond models.
 /// The numbers follow the game's water materials: the sea's `MatOceanOld` and the
 /// `MatWaterPool` of rivers and ponds.
 const WATER_GLSL: &str = r#"
 uniform float u_time;
+uniform sampler2D u_env_tex;
+uniform int u_has_env;
+uniform float u_wave_amp, u_wave_freq, u_wave_persist;
+uniform int u_wave_octaves;
+uniform vec3 u_water_deep, u_foam_color;
+uniform float u_water_sun_pow, u_water_sun_inf, u_water_grey;
 vec3 environment(vec3 d){
   float day = smoothstep(-0.12, 0.3, u_sun.y);
+  if (u_has_env != 0) {
+    vec2 euv = vec2(atan(d.x, d.z) / 6.2831853 + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / 3.14159265);
+    return texture(u_env_tex, euv).rgb * mix(0.16, 1.0, day);
+  }
   if (d.y < 0.0) return mix(vec3(0.03,0.04,0.05), vec3(0.22,0.24,0.18), day);
   vec3 sky = mix(vec3(0.73,0.79,0.86), vec3(0.38,0.53,0.74), pow(d.y, 0.55));
   return mix(vec3(0.09,0.11,0.2), sky, day);
@@ -29,27 +54,31 @@ float vnoise(vec2 p){
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash12(i), hash12(i + vec2(1,0)), u.x), mix(hash12(i + vec2(0,1)), hash12(i + vec2(1,1)), u.x), u.y);
 }
-// Slope of the small waves: six octaves, each finer and lower than the last, as the game's
-// waveOctaves and wavePersistence have it.
+// Slope of the small waves: driven by the world config's waveAmplitude, waveFrequency,
+// waveOctaves and wavePersistence (CAWorld defaults: 0.081, 9, 6, 0.745).
 vec2 waveSlope(vec2 p, float strength){
   vec2 g = vec2(0.0);
-  float a = 0.081, k = 0.55;
+  float a = u_wave_amp;
+  float k = 0.55 * max(u_wave_freq / 9.0, 0.05);
+  float persist = clamp(u_wave_persist, 0.0, 1.5);
+  int octs = clamp(u_wave_octaves, 1, 12);
   // Metres a pixel spans here: waves finer than that would only flicker, as a normal map's
   // smaller mipmaps smooth them away.
   float px = max(length(fwidth(p)), 1e-4);
-  for (int i = 0; i < 6; i++) {
+  for (int i = 0; i < 12; i++) {
+    if (i >= octs) break;
     float r = float(i) * 2.399;
     vec2 d = vec2(cos(r), sin(r));
     vec2 e = vec2(-d.y, d.x);
     float ph = dot(d, p) * k + u_time * sqrt(9.81 * k) + 1.7 * sin(dot(e, p) * k * 0.31 + float(i));
     g += d * cos(ph) * a * k * (1.0 - smoothstep(0.15, 0.6, px * k / 6.2832));
-    a *= 0.745; k *= 1.93;
+    a *= persist; k *= 1.93;
   }
   return g * strength;
 }
 // `depth` is how deep the water is under this point, `clear` the metres light gets through
 // (WaterExtinction), `body` the colour of the water itself.
-vec4 shadeWater(vec3 wp, float fog, float depth, float foam, float clear, vec3 body, float strength, vec2 extra){
+vec4 shadeWater(vec3 wp, float depth, float foam, float clear, vec3 body, float strength, vec2 extra){
   float dist = distance(wp, u_eye);
   vec3 V = normalize(u_eye - wp);
   // Close up the ripples are sharp; far off they blur into a calm, mirroring surface.
@@ -60,24 +89,27 @@ vec4 shadeWater(vec3 wp, float fog, float depth, float foam, float clear, vec3 b
   vec3 lightc = u_amb + u_sun_col * max(u_sun.y, 0.0);
   // Light the water itself sends back, and how much of the bed shows through it: the light
   // goes down to the bed and back up along the view.
-  // The deep colour of the material lightened toward the grey blue the game shows far off
-  // (DeepMapAlphaColor), which is how the sea looks under a bright sky.
-  vec3 scatter = (body * 2.0 + vec3(0.47, 0.53, 0.59) * 0.25) * lightc;
+  // The deep colour of the material lightened toward DeepMapAlphaColor.
+  vec3 scatter = (body * 2.0 + u_water_deep * 0.25) * lightc;
   float path = max(depth, 0.0) * (1.0 + 1.0 / max(V.y, 0.1));
   float T = exp(-path * 2.5 / max(clear, 0.1));
   vec3 r = reflect(-V, N);
   // At grazing angles a wave can reflect below the horizon; the water still mirrors the sky.
   vec3 refl = environment(vec3(r.x, abs(r.y), r.z)) * vec3(0.9, 0.94, 0.97);
   vec3 H = normalize(V + u_sun);
-  // Sharp glints of the sun (SunPower 256), which break up into sparkles on the ripples.
-  vec3 spec = u_sun_col * pow(max(dot(N, H), 0.0), 256.0) * 4.0 * step(0.0, u_sun.y);
+  // Sharp glints of the sun (SunPower, SunInfluence), which break up into sparkles on the ripples.
+  vec3 spec = u_sun_col * pow(max(dot(N, H), 0.0), max(u_water_sun_pow, 4.0)) * u_water_sun_inf * step(0.0, u_sun.y);
   vec3 c = scatter * (1.0 - T) * (1.0 - f) + refl * f + spec;
   float a = 1.0 - T * (1.0 - f);
   // Foam (FoamColor) lies on top.
-  vec3 fc = vec3(0.80, 0.80, 0.76) * lightc;
+  vec3 fc = clamp(u_foam_color * 3.0, vec3(0.0), vec3(1.0)) * lightc;
   c = mix(c, fc, foam);
   a = mix(a, 1.0, foam);
-  float k = 1.0 - exp(-dist * fog);
+  if (u_water_grey < 0.999) {
+    float luma = dot(c, vec3(0.299, 0.587, 0.114));
+    c = mix(vec3(luma), c, clamp(u_water_grey, 0.0, 1.0));
+  }
+  float k = fogFactor(wp, dist);
   c = mix(c, vec3(0.73,0.79,0.86) * max(a, 1e-3), k);
   a = mix(a, 1.0, k);
   return vec4(c / max(a, 1e-3) * u_exposure, clamp(a, 0.0, 1.0));
@@ -154,15 +186,24 @@ uniform sampler2DShadow u_shadow;
 uniform mat4 u_light;
 uniform int u_has_shadow;
 uniform vec3 u_sun, u_sun_col, u_amb;
-uniform float u_fog, u_exposure, u_bias, u_surface_range;
+uniform float u_exposure, u_bias, u_surface_range, u_full_detail_dist;
 // Depth of the relief in the surfaces' alpha, in metres; 0 leaves them flat.
 uniform float u_parallax;
 // How sharply surfaces meet along their relief, 0 soft to 1 hard.
 uniform float u_blend_sharp;
+uniform int u_height_blend;
+uniform int u_bicubic;
 uniform int u_game;
 uniform int u_pixels;
 uniform int u_brush_shape;
 uniform float u_time;
+uniform sampler2D u_mid_detail;
+uniform int u_has_mid_detail;
+uniform sampler2D u_terrain_normal;
+uniform int u_has_terrain_normal;
+uniform float u_sat_norm_start, u_sat_norm_end, u_terrain_norm_power;
+uniform float u_wet_floor;
+//FOG
 //SEA
 vec3 tone(vec3 c){
   // Linear up to 0.7, then a soft shoulder so bright surfaces keep their detail.
@@ -211,9 +252,8 @@ void surfacesAt(vec2 mp, out uvec4 ids, out vec4 share){
   ivec2 base = ivec2(floor(mp)) - 1;
   vec2 f = mp - floor(mp);
   vec4 wx = bspline(f.x), wy = bspline(f.y);
-  // The game filters its mask between the four nearest pixels only, so one pixel shows in
-  // full at its middle. The smooth spline would spread it over 4x4 pixels and wash it out.
-  if (u_game != 0) { wx = vec4(0.0, 1.0 - f.x, f.x, 0.0); wy = vec4(0.0, 1.0 - f.y, f.y, 0.0); }
+  // Bilinear when bicubic filtering is off (standard DayZ mask filtering), 4x4 B-spline when on.
+  if (u_bicubic == 0) { wx = vec4(0.0, 1.0 - f.x, f.x, 0.0); wy = vec4(0.0, 1.0 - f.y, f.y, 0.0); }
   ids = uvec4(maskAt(base + ivec2(1, 1)));
   share = vec4(0.0);
   int n = 1;
@@ -297,8 +337,25 @@ void main(){
 
   if (u_mode == 0) { // lit, like in the game
     vec3 alb = sat;
+    // Middle-distance detail texture (`midDetailTexture`, _mco) breaks up the satellite beyond fullDetailDist.
+    if (u_has_mid_detail != 0 && u_ortho == 0) {
+      float mid_in = smoothstep(u_full_detail_dist * 0.7, max(u_surface_range, u_full_detail_dist + 1.0), dist);
+      float mid_out = 1.0 - smoothstep(450.0, 1600.0, dist);
+      float mid_w = mid_in * mid_out * 0.65;
+      if (mid_w > 0.002) {
+        vec3 mco = texture(u_mid_detail, v_world.xz * 0.025).rgb;
+        alb *= mix(vec3(1.0), mco * 2.0, mid_w);
+      }
+    }
     vec3 bn = n;
-    float near = 1.0 - smoothstep(u_ortho != 0 ? 0.0 : u_surface_range * 0.21, u_ortho != 0 ? u_surface_range * 3.7 : u_surface_range, dist);
+    // Global terrain normal map (`terrainNormalTexture`) blended over `[satelliteNormalBlendStart, satelliteNormalBlendEnd]`.
+    if (u_has_terrain_normal != 0) {
+      float nw = smoothstep(u_sat_norm_start, max(u_sat_norm_end, u_sat_norm_start + 1.0), dist);
+      vec3 gn = texture(u_terrain_normal, uv).xyz * 2.0 - 1.0;
+      float strength = clamp(u_terrain_norm_power * 0.22, 0.0, 1.5) * nw;
+      bn = normalize(bn + vec3(gn.x, 0.0, gn.y) * strength);
+    }
+    float near = 1.0 - smoothstep(u_ortho != 0 ? 0.0 : u_full_detail_dist, u_ortho != 0 ? u_surface_range * 3.7 : u_surface_range, dist);
     if (near > 0.002) {
       vec2 t = v_world.xz * u_tile;
       vec2 dx = dFdx(t), dy = dFdy(t);
@@ -316,14 +373,16 @@ void main(){
         vec2 tp = t;
         float depth = 0.0;
         vec4 hh = vec4(textureGrad(u_layers, vec3(tp, float(a)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(b)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(c)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(d)), dx, dy).a);
-        float surf = 1.0 - dot(heightBlend(hh, share), hh);
+        vec4 hw = u_height_blend != 0 ? heightBlend(hh, share) : share;
+        float surf = 1.0 - dot(hw, hh);
         float before = surf;
         for (int i = 0; i < STEPS && depth < surf; i++) {
           before = surf - depth;
           tp += P * stepd;
           depth += stepd;
           hh = vec4(textureGrad(u_layers, vec3(tp, float(a)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(b)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(c)), dx, dy).a, textureGrad(u_layers, vec3(tp, float(d)), dx, dy).a);
-          surf = 1.0 - dot(heightBlend(hh, share), hh);
+          hw = u_height_blend != 0 ? heightBlend(hh, share) : share;
+          surf = 1.0 - dot(hw, hh);
         }
         // Between the last two steps, where the view went under the relief.
         float after = surf - depth;
@@ -333,18 +392,20 @@ void main(){
       vec4 ra = textureGrad(u_layers, vec3(t, float(a)), dx, dy), rb = textureGrad(u_layers, vec3(t, float(b)), dx, dy);
       vec4 rc = textureGrad(u_layers, vec3(t, float(c)), dx, dy), rd = textureGrad(u_layers, vec3(t, float(d)), dx, dy);
       vec3 ta = ra.rgb, tb = rb.rgb, tc = rc.rgb, td = rd.rgb;
-      // Where mask pixels of two surfaces meet, the border follows their relief.
-      vec4 lift = heightBlend(vec4(ra.a, rb.a, rc.a, rd.a), share);
-      wa = lift.x; wb = lift.y; wc = lift.z; wd = lift.w;
+      // Where mask pixels of two surfaces meet, the border follows their relief when heightBlendingMode is on.
+      if (u_height_blend != 0) {
+        vec4 lift = heightBlend(vec4(ra.a, rb.a, rc.a, rd.a), share);
+        wa = lift.x; wb = lift.y; wc = lift.z; wd = lift.w;
+      }
       vec3 s = ta / max(avg(a), vec3(0.05)) * wa + tb / max(avg(b), vec3(0.05)) * wb + tc / max(avg(c), vec3(0.05)) * wc + td / max(avg(d), vec3(0.05)) * wd;
       vec3 raw = ta * wa + tb * wb + tc * wc + td * wd;
       // Close up the game shows the surface texture itself, tinted a little by the satellite.
       vec3 tinted = sat * clamp(s, vec3(0.4), vec3(1.6));
-      alb = mix(sat, mix(raw, tinted, u_has_sat != 0 ? 0.45 : 0.0), near);
+      alb = mix(alb, mix(raw, tinted, u_has_sat != 0 ? 0.45 : 0.0), near);
       // Normal maps of the surfaces; their texture runs east and south over the ground.
       vec3 tn = (textureGrad(u_layer_normals, vec3(t, float(a)), dx, dy).xyz * wa + textureGrad(u_layer_normals, vec3(t, float(b)), dx, dy).xyz * wb
                + textureGrad(u_layer_normals, vec3(t, float(c)), dx, dy).xyz * wc + textureGrad(u_layer_normals, vec3(t, float(d)), dx, dy).xyz * wd) * 2.0 - 1.0;
-      bn = normalize(n + vec3(tn.x, 0.0, tn.y) * near);
+      bn = normalize(bn + vec3(tn.x, 0.0, tn.y) * near);
     }
     // Ground the sea reaches is wet and darker (WetFloor), more so under the water.
     if (u_has_sea != 0) {
@@ -352,7 +413,8 @@ void main(){
       float reach = u_sea + u_tide + u_waves + 0.25;
       float wet = v_world.y < lvl ? 1.0 : 1.0 - smoothstep(lvl, max(reach, lvl + 0.05), v_world.y);
       wet *= step(lvl - 40.0, v_world.y);
-      alb *= mix(1.0, v_world.y < lvl ? 0.6 : 0.76, wet);
+      float dark = clamp(u_wet_floor * 0.48, 0.0, 0.65);
+      alb *= mix(1.0, v_world.y < lvl ? 1.0 - dark * 1.45 : 1.0 - dark, wet);
     }
     // Light adds up in linear space, as it does in the game.
     vec3 sky = u_amb * (0.6 + 0.4*n.y);
@@ -411,9 +473,106 @@ void main(){
     float fill = bd < u_brush.z ? 0.10 : 0.0;
     col = mix(col, u_brush_color.rgb, max(max(ring, inner * 0.5), fill));
   }
-  if (u_ortho == 0 && u_mode <= 1) col = mix(col, FOG, 1.0 - exp(-dist * u_fog));
+  if (u_ortho == 0 && u_mode <= 1) col = mix(col, FOG, fogFactor(v_world, dist));
   if (u_mode <= 1) col = tone(col * u_exposure);
   o = vec4(col, 1.0);
+}"#;
+
+/// Terrain rendered beyond the edges of the map (`OutsideTerrain` in `CfgWorlds`).
+const OUTSIDE_VS: &str = r#"#version 330 core
+layout(location=0) in vec2 a_pos;
+uniform mat4 u_vp;
+uniform sampler2D u_height;
+uniform vec2 u_size;
+uniform float u_cell, u_world;
+uniform int u_outside_synth;
+out vec3 v_world;
+out vec3 v_normal;
+float ohash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float onoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(ohash(i), ohash(i + vec2(1,0)), u.x), mix(ohash(i + vec2(0,1)), ohash(i + vec2(1,1)), u.x), u.y);
+}
+float ofbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { v += a * onoise(p); p = p * 2.04 + vec2(13.7, 29.1); a *= 0.5; }
+  return v;
+}
+float outsideH(vec2 wxz){
+  vec2 edge = clamp(wxz, vec2(0.0), vec2(u_world));
+  float eh = texture(u_height, (edge / u_cell + 0.5) / u_size).r;
+  if (u_outside_synth == 0) return eh;
+  float d = length(wxz - edge);
+  float blend = smoothstep(0.0, 500.0, d);
+  float hills = (ofbm(wxz * 0.00075) - 0.44) * 90.0 + (ofbm(wxz * 0.0028) - 0.5) * 18.0;
+  return eh + hills * blend;
+}
+void main(){
+  vec2 wxz = a_pos * u_world;
+  float y = outsideH(wxz);
+  float eps = max(u_cell * 2.0, 12.0);
+  float hx = outsideH(wxz + vec2(eps, 0.0)) - outsideH(wxz - vec2(eps, 0.0));
+  float hz = outsideH(wxz + vec2(0.0, eps)) - outsideH(wxz - vec2(0.0, eps));
+  v_normal = normalize(vec3(-hx, 2.0 * eps, -hz));
+  v_world = vec3(wxz.x, y, wxz.y);
+  gl_Position = u_vp * vec4(v_world, 1.0);
+}"#;
+
+const OUTSIDE_FS: &str = r#"#version 330 core
+in vec3 v_world;
+in vec3 v_normal;
+out vec4 o;
+uniform vec3 u_eye, u_sun, u_sun_col, u_amb;
+uniform float u_exposure, u_world, u_tile, u_surface_range, u_full_detail_dist;
+uniform float u_sea, u_time, u_wet_floor;
+uniform int u_has_sea, u_ortho, u_mode;
+uniform sampler2D u_outside_sat, u_outside_tex, u_outside_nopx;
+uniform int u_has_outside_sat, u_has_outside_tex, u_has_outside_nopx;
+//FOG
+//SEA
+vec3 tone(vec3 c){
+  vec3 over = max(c - vec3(0.7), vec3(0.0));
+  return min(c, vec3(0.7)) + 0.3 * (vec3(1.0) - exp(-over / 0.3));
+}
+const vec3 FOG = vec3(0.73, 0.79, 0.86);
+void main(){
+  vec3 n = normalize(v_normal);
+  float dist = distance(v_world, u_eye);
+  vec2 sat_uv = v_world.xz / max(u_world * 0.5, 512.0);
+  vec3 sat = u_has_outside_sat != 0 ? texture(u_outside_sat, sat_uv).rgb : vec3(0.28, 0.33, 0.22);
+  vec3 alb = sat;
+  vec3 bn = n;
+  if (u_mode == 0) {
+    float near = 1.0 - smoothstep(u_ortho != 0 ? 0.0 : u_full_detail_dist, u_ortho != 0 ? u_surface_range * 3.7 : u_surface_range, dist);
+    if (near > 0.002 && u_has_outside_tex != 0) {
+      vec2 t = v_world.xz * u_tile;
+      vec3 dt = texture(u_outside_tex, t).rgb;
+      alb = mix(sat, mix(dt, sat * clamp(dt * 2.0, vec3(0.4), vec3(1.6)), 0.45), near);
+      if (u_has_outside_nopx != 0) {
+        vec3 tn = texture(u_outside_nopx, t).xyz * 2.0 - 1.0;
+        bn = normalize(n + vec3(tn.x, 0.0, tn.y) * near);
+      }
+    }
+    if (u_has_sea != 0) {
+      float lvl = seaLevel(v_world.xz);
+      float reach = u_sea + u_tide + u_waves + 0.25;
+      float wet = v_world.y < lvl ? 1.0 : 1.0 - smoothstep(lvl, max(reach, lvl + 0.05), v_world.y);
+      wet *= step(lvl - 40.0, v_world.y);
+      float dark = clamp(u_wet_floor * 0.48, 0.0, 0.65);
+      alb *= mix(1.0, v_world.y < lvl ? 1.0 - dark * 1.45 : 1.0 - dark, wet);
+    }
+    vec3 sky = u_amb * (0.6 + 0.4 * n.y);
+    vec3 A = pow(sky, vec3(2.2));
+    vec3 S = pow(sky + u_sun_col, vec3(2.2)) - A;
+    vec3 col = pow(pow(alb, vec3(2.2)) * (A + S * max(dot(bn, u_sun), 0.0)), vec3(1.0 / 2.2));
+    if (u_ortho == 0) col = mix(col, FOG, fogFactor(v_world, dist));
+    o = vec4(tone(col * u_exposure), 1.0);
+  } else {
+    vec3 col = sat;
+    if (u_ortho == 0) col = mix(col, FOG, fogFactor(v_world, dist));
+    o = vec4(tone(col * u_exposure), 1.0);
+  }
 }"#;
 
 const WATER_VS: &str = r#"#version 330 core
@@ -435,8 +594,11 @@ void main(){
 
 const WATER_FS: &str = r#"#version 330 core
 in vec3 v_world; out vec4 o;
-uniform vec3 u_eye, u_sun, u_sun_col, u_amb; uniform float u_fog, u_exposure, u_sea, u_cell;
+uniform vec3 u_eye, u_sun, u_sun_col, u_amb; uniform float u_exposure, u_sea, u_cell;
 uniform vec2 u_size; uniform sampler2D u_height;
+uniform vec3 u_water_color;
+uniform float u_water_extinct, u_foam_power, u_water_norm_pow;
+//FOG
 //WATER
 //SEA
 void main(){
@@ -450,8 +612,8 @@ void main(){
   float rising = 0.5 + 0.5 * cos(u_time * 0.70 - dot(w, vec2(0.0314, 0.0236)));
   float edge = 1.0 - smoothstep(0.0, 0.18 + 0.25 * rising, depth);
   float band = (1.0 - smoothstep(0.1, 0.9, depth)) * smoothstep(0.5, 0.8, lace);
-  float foam = clamp(edge * smoothstep(0.25, 0.6, lace) + band * 0.6, 0.0, 1.0) * 0.64 * step(0.0, u_waves + 0.001);
-  o = shadeWater(v_world, u_fog, depth, foam, 15.0, vec3(0.0235, 0.0588, 0.0745), 1.0, vec2(0.0));
+  float foam = clamp(edge * smoothstep(0.25, 0.6, lace) + band * 0.6, 0.0, 1.0) * u_foam_power * step(0.0, u_waves + 0.001);
+  o = shadeWater(v_world, depth, foam, u_water_extinct, u_water_color, clamp(u_water_norm_pow / 0.1, 0.1, 4.0), vec2(0.0));
 }"#;
 
 const MESH_VS: &str = r#"#version 330 core
@@ -513,7 +675,7 @@ uniform vec4 u_xf[15];
 uniform vec3 u_xo[15];
 uniform int u_textured, u_mode;
 uniform vec3 u_eye, u_sun, u_sun_col, u_amb;
-uniform float u_alpha, u_fog, u_exposure, u_bias, u_f0;
+uniform float u_alpha, u_exposure, u_bias, u_f0;
 // Material colours: emissive, ambient, diffuse, forced diffuse, specular.
 uniform vec3 u_mc[5];
 uniform float u_power, u_cut;
@@ -568,6 +730,7 @@ float shadow(vec3 n){
   }
   return mix(1.0, s * 0.25, smoothstep(0.0, 0.08, min(edge.x, edge.y)));
 }
+//FOG
 //WATER
 void main(){
   if (v_world.y > u_clip_y) discard;
@@ -597,7 +760,7 @@ void main(){
       sg *= fade;
     }
     float foam = smoothstep(0.72, 0.95, streak) * 0.12 * fade * smoothstep(0.6, 1.5, v_flow.z);
-    o = shadeWater(v_world, u_fog, max(depth, 0.3), foam, 3.0, vec3(0.0392, 0.0549, 0.0667), 0.18, sg);
+    o = shadeWater(v_world, max(depth, 0.3), foam, 3.0, vec3(0.0392, 0.0549, 0.0667), 0.18, sg);
     return;
   }
   float dist = distance(v_world, u_eye);
@@ -737,7 +900,7 @@ void main(){
   if (v_tint.a >= 0.99) lit = mix(lit, lin(v_tint.rgb), 0.55);
   // Fog is laid over the colour as it is shown, as on the ground, so things in the distance
   // fade at the same rate as the ground they stand on and do not turn white first.
-  vec3 shown = mix(pow(lit, vec3(1.0 / 2.2)), vec3(0.73,0.79,0.86), 1.0 - exp(-dist * u_fog));
+  vec3 shown = mix(pow(lit, vec3(1.0 / 2.2)), vec3(0.73,0.79,0.86), fogFactor(v_world, dist));
   o = vec4(tone(shown * u_exposure), v_tint.a >= 0.99 ? 1.0 : alpha);
 }"#;
 
@@ -749,6 +912,9 @@ void main(){ v = a_pos * 2.0 - 1.0; gl_Position = vec4(v, 1.0, 1.0); }"#;
 const SKY_FS: &str = r#"#version 330 core
 in vec2 v; out vec4 o;
 uniform vec3 u_f, u_r, u_u, u_sun; uniform vec2 u_t; uniform float u_exposure, u_time;
+uniform float u_stars, u_overcast;
+uniform sampler2D u_atmo_tex, u_env_tex;
+uniform int u_has_atmo, u_has_env;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p){
   vec2 i = floor(p), f = fract(p);
@@ -765,18 +931,38 @@ void main(){
   float h = clamp(d.y, -0.05, 1.0);
   vec3 c = mix(vec3(0.73,0.79,0.86), vec3(0.38,0.53,0.74), pow(max(h, 0.0), 0.55));
   float day = smoothstep(-0.12, 0.3, u_sun.y);
+  if (u_has_atmo != 0 && d.y >= -0.05) {
+    vec2 auv = vec2(atan(d.x, d.z) / 6.2831853 + 0.5, 1.0 - clamp(asin(clamp(d.y, 0.0, 1.0)) / 1.5707963, 0.0, 1.0));
+    vec3 atmo = texture(u_atmo_tex, auv).rgb;
+    c = mix(c, atmo, 0.72 * smoothstep(-0.05, 0.15, d.y));
+  } else if (u_has_env != 0 && d.y >= -0.05) {
+    vec2 euv = vec2(atan(d.x, d.z) / 6.2831853 + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / 3.14159265);
+    c = mix(c, texture(u_env_tex, euv).rgb, 0.55);
+  }
   c = mix(vec3(0.09,0.11,0.2), c, day);
   // Warm band near the horizon when the sun is low.
   c = mix(c, vec3(0.95,0.6,0.38), (1.0 - smoothstep(0.0, 0.45, u_sun.y)) * smoothstep(0.35, 0.0, abs(h)) * 0.55 * smoothstep(-0.1, 0.05, u_sun.y));
   // High thin cloud, drifting slowly and thinning out towards the horizon haze.
+  float cloud_mask = 0.0;
   if (d.y > 0.0) {
     vec2 q = d.xz / (d.y + 0.12) * 0.9 + vec2(u_time * 0.004, u_time * 0.0015);
-    float cover = smoothstep(0.42, 0.78, fbm(q * vec2(1.0, 2.2)) * 0.75 + fbm(q * 3.1) * 0.25);
+    float thr = mix(0.42, 0.18, clamp(u_overcast, 0.0, 1.0));
+    float cover = smoothstep(thr, thr + 0.36, fbm(q * vec2(1.0, 2.2)) * 0.75 + fbm(q * 3.1) * 0.25);
     vec3 cloud = mix(vec3(0.62, 0.66, 0.72), vec3(0.95, 0.96, 0.97), day) * (0.8 + 0.2 * max(u_sun.y, 0.0));
-    c = mix(c, cloud, cover * 0.7 * smoothstep(0.0, 0.22, d.y));
+    cloud_mask = cover * mix(0.7, 0.92, clamp(u_overcast, 0.0, 1.0)) * smoothstep(0.0, 0.22, d.y);
+    c = mix(c, cloud, cloud_mask);
+  }
+  // Night stars scaled by `starsIntensity`.
+  float night = 1.0 - smoothstep(-0.14, 0.06, u_sun.y);
+  if (u_stars > 0.001 && night > 0.01 && d.y > 0.02) {
+    vec2 sc = floor((d.xz / (d.y + 0.25)) * 180.0);
+    float r1 = hash(sc);
+    float r2 = hash(sc + vec2(41.3, 19.7));
+    float star = step(0.9945, r1) * (0.4 + 0.6 * r2);
+    c += vec3(0.88, 0.92, 1.0) * star * u_stars * 3.2 * night * (1.0 - cloud_mask) * smoothstep(0.02, 0.25, d.y);
   }
   float s = max(dot(d, u_sun), 0.0);
-  c += vec3(1.0,0.9,0.75) * (pow(s, 400.0) * 1.2 + pow(s, 12.0) * 0.08);
+  c += vec3(1.0,0.9,0.75) * (pow(s, 400.0) * 1.2 + pow(s, 12.0) * 0.08) * (1.0 - cloud_mask * 0.85);
   o = vec4(c * u_exposure, 1.0);
 }"#;
 
@@ -898,7 +1084,8 @@ void main(){
 
 const IMPOSTOR_FS: &str = r#"#version 330 core
 in vec3 v_uv; in vec3 v_world; out vec4 o;
-uniform sampler2DArray u_tex; uniform vec3 u_eye, u_sun_col, u_amb; uniform float u_fog, u_exposure;
+uniform sampler2DArray u_tex; uniform vec3 u_eye, u_sun_col, u_amb; uniform float u_exposure;
+//FOG
 vec3 lin(vec3 c){ return pow(max(c, vec3(0.0)), vec3(2.2)); }
 void main(){
   vec4 c = texture(u_tex, v_uv);
@@ -908,7 +1095,7 @@ void main(){
   vec3 S = lin(u_amb * 0.75 + u_sun_col * 0.92) - A;
   vec3 lit = lin(c.rgb) * (A * 0.85 + S * 0.42);
   float dist = distance(v_world, u_eye);
-  vec3 e = mix(pow(lit, vec3(1.0 / 2.2)), vec3(0.73,0.79,0.86), 1.0 - exp(-dist * u_fog)) * u_exposure;
+  vec3 e = mix(pow(lit, vec3(1.0 / 2.2)), vec3(0.73,0.79,0.86), fogFactor(v_world, dist)) * u_exposure;
   vec3 over = max(e - vec3(0.7), vec3(0.0));
   o = vec4(min(e, vec3(0.7)) + 0.3 * (vec3(1.0) - exp(-over / 0.3)), 1.0);
 }"#;
@@ -1185,6 +1372,71 @@ pub struct LightGpu {
     pub exposure: f32,
 }
 
+/// Map config visual parameters forwarded to the GPU renderer.
+#[derive(Clone, Copy, Debug)]
+pub struct MapConfigGpu {
+    /// Distance where surface detail starts fading (`fullDetailDist` or `surface_range * 0.21`).
+    pub full_detail_dist: f32,
+    /// Blend neighbouring surfaces along their relief alpha (`heightBlendingMode`).
+    pub height_blending: bool,
+    /// Cubic B-spline mask filtering (`bicubicMode`, or `!game_surfaces` in Editor mode).
+    pub bicubic: bool,
+    /// Apply `midDetailTexture` in the medium distance.
+    pub use_mid_detail: bool,
+    /// Apply `terrainNormalTexture` blended over `[sat_norm_start, sat_norm_end]`.
+    pub use_terrain_normal: bool,
+    pub sat_norm_start: f32,
+    pub sat_norm_end: f32,
+    pub terrain_norm_power: f32,
+    /// Render `OutsideTerrain` beyond the map boundary.
+    pub outside_enabled: bool,
+    pub outside_synth: bool,
+    /// Sea waves (`waveAmplitude`, `waveFrequency`, `waveOctaves`, `wavePersistence`).
+    pub wave_amplitude: f32,
+    pub wave_frequency: f32,
+    pub wave_octaves: i32,
+    pub wave_persistence: f32,
+    /// Parsed `MatOceanOld` material parameters.
+    pub ocean: dz_core::world_preview::OceanMaterial,
+    /// Atmosphere & sky (`hazeDistCoef`, `hazeFogCoef`, `volFogOffset`, `starsIntensity`, textures).
+    pub haze_dist_coef: f32,
+    pub haze_fog_coef: f32,
+    pub vol_fog_offset: f32,
+    pub stars_intensity: f32,
+    pub overcast: f32,
+    pub use_env_texture: bool,
+    pub use_atmosphere_texture: bool,
+}
+
+impl Default for MapConfigGpu {
+    fn default() -> Self {
+        Self {
+            full_detail_dist: 40.0,
+            height_blending: true,
+            bicubic: false,
+            use_mid_detail: false,
+            use_terrain_normal: false,
+            sat_norm_start: 100.0,
+            sat_norm_end: 500.0,
+            terrain_norm_power: 3.21,
+            outside_enabled: false,
+            outside_synth: true,
+            wave_amplitude: 0.081,
+            wave_frequency: 9.0,
+            wave_octaves: 6,
+            wave_persistence: 0.745,
+            ocean: dz_core::world_preview::OceanMaterial::default(),
+            haze_dist_coef: 0.0,
+            haze_fog_coef: 1.0,
+            vol_fog_offset: 0.0,
+            stars_intensity: 0.0,
+            overcast: 0.2,
+            use_env_texture: false,
+            use_atmosphere_texture: false,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Frame {
     pub view: View,
@@ -1224,6 +1476,18 @@ pub struct Frame {
     pub ao: u32,
     /// Edge smoothing: 0 off, 1 FXAA, 2 with the view drawn at 1.5 times its size, 3 at twice.
     pub smoothing: u32,
+    /// Map config preview overrides (detail distances, blending, waves, ocean, atmosphere, outside terrain).
+    pub map_config: MapConfigGpu,
+}
+
+struct MapConfigTexturesUpload {
+    mid_detail: Option<(i32, i32, Vec<u8>)>,
+    terrain_normal: Option<(i32, i32, Vec<u8>)>,
+    env_texture: Option<(i32, i32, Vec<u8>)>,
+    atmosphere_texture: Option<(i32, i32, Vec<u8>)>,
+    outside_satellite: Option<(i32, i32, Vec<u8>)>,
+    outside_texture: Option<(i32, i32, Vec<u8>)>,
+    outside_nopx: Option<(i32, i32, Vec<u8>)>,
 }
 
 enum Upload {
@@ -1240,12 +1504,14 @@ enum Upload {
     Flow { width: i32, height: i32, data: Vec<u8> },
     Density { width: i32, height: i32, data: Vec<u8> },
     Layer { index: i32, size: i32, rgba: Vec<u8>, normal: Vec<u8> },
+    MapConfigTextures(Box<MapConfigTexturesUpload>),
     Mesh(Box<MeshData>),
     ClearModels,
 }
 
 struct Programs {
     terrain: glow::Program,
+    outside: glow::Program,
     water: glow::Program,
     mesh: glow::Program,
     impostor: glow::Program,
@@ -1314,6 +1580,8 @@ pub struct Renderer {
     quad_vao: Option<glow::VertexArray>,
     sea_vao: Option<glow::VertexArray>,
     sea_indices: i32,
+    outside_vao: Option<glow::VertexArray>,
+    outside_indices: i32,
     quad_vbo: Option<glow::Buffer>,
     box_vao: Option<glow::VertexArray>,
     box_vbo: Option<glow::Buffer>,
@@ -1335,6 +1603,13 @@ pub struct Renderer {
     palette: Option<glow::Texture>,
     layers: Option<glow::Texture>,
     layer_normals: Option<glow::Texture>,
+    mid_detail_tex: Option<glow::Texture>,
+    terrain_normal_tex: Option<glow::Texture>,
+    env_tex: Option<glow::Texture>,
+    atmosphere_tex: Option<glow::Texture>,
+    outside_sat_tex: Option<glow::Texture>,
+    outside_tex: Option<glow::Texture>,
+    outside_nopx_tex: Option<glow::Texture>,
     impostors: Option<glow::Texture>,
     size: [f32; 2],
     mask_size: [f32; 2],
@@ -1348,6 +1623,7 @@ pub struct Renderer {
     /// 2 the minimap. `stats` is whichever was drawn last.
     pub view_stats: [Stats; 3],
     max_tex: i32,
+    max_tex_units: i32,
     instances_uploaded: HashMap<u8, *const Vec<f32>>,
     shadow_fbo: Option<glow::Framebuffer>,
     shadow_map: Option<glow::Texture>,
@@ -1432,7 +1708,7 @@ unsafe fn compile(gl: &glow::Context, vs: &str, fs: &str) -> Result<glow::Progra
     let mut shaders = Vec::new();
     for (kind, src) in [(glow::VERTEX_SHADER, vs), (glow::FRAGMENT_SHADER, fs)] {
         let s = gl.create_shader(kind)?;
-        gl.shader_source(s, &src.replace("//WATER", WATER_GLSL).replace("//SEA", SEA_GLSL));
+        gl.shader_source(s, &src.replace("//FOG", FOG_GLSL).replace("//WATER", WATER_GLSL).replace("//SEA", SEA_GLSL));
         gl.compile_shader(s);
         if !gl.get_shader_compile_status(s) {
             return Err(gl.get_shader_info_log(s));
@@ -1463,7 +1739,7 @@ unsafe fn set_filter(gl: &glow::Context, target: u32, min: u32, mag: u32, wrap: 
 
 impl Renderer {
     pub fn reset_terrain(&mut self, h: &Heightmap) {
-        self.uploads.retain(|u| matches!(u, Upload::Palette { .. } | Upload::Layer { .. }));
+        self.uploads.retain(|u| matches!(u, Upload::Palette { .. } | Upload::Layer { .. } | Upload::MapConfigTextures(_)));
         self.height_rev += 1;
         self.uploads.push(Upload::ClearModels);
         self.uploads.push(Upload::Reset { cols: h.cols as i32, rows: h.rows as i32, cell: h.cell, data: h.data.clone() });
@@ -1596,6 +1872,18 @@ impl Renderer {
     pub fn set_layer(&mut self, index: usize, size: usize, rgba: Vec<u8>, normal: Vec<u8>) {
         self.uploads.push(Upload::Layer { index: index as i32, size: size as i32, rgba, normal });
     }
+    pub fn set_map_config_textures(&mut self, a: &crate::models::MapConfigAssets) {
+        let pack = |t: &Option<crate::models::DecodedTexture>| t.as_ref().map(|d| (d.width as i32, d.height as i32, d.rgba.clone()));
+        self.uploads.push(Upload::MapConfigTextures(Box::new(MapConfigTexturesUpload {
+            mid_detail: pack(&a.mid_detail),
+            terrain_normal: pack(&a.terrain_normal),
+            env_texture: pack(&a.env_texture),
+            atmosphere_texture: pack(&a.atmosphere_texture),
+            outside_satellite: pack(&a.outside_satellite),
+            outside_texture: pack(&a.outside_texture),
+            outside_nopx: pack(&a.outside_nopx),
+        })));
+    }
     pub fn add_mesh(&mut self, m: MeshData) {
         self.uploads.push(Upload::Mesh(Box::new(m)));
     }
@@ -1665,11 +1953,13 @@ impl Renderer {
             return Ok(());
         }
         self.max_tex = gl.get_parameter_i32(glow::MAX_TEXTURE_SIZE);
+        self.max_tex_units = gl.get_parameter_i32(glow::MAX_TEXTURE_IMAGE_UNITS);
         if self.gpu_auto == 0 {
             self.gpu_auto = model_budget(gl);
         }
         self.programs = Some(Programs {
             terrain: compile(gl, TERRAIN_VS, TERRAIN_FS)?,
+            outside: compile(gl, OUTSIDE_VS, OUTSIDE_FS)?,
             water: compile(gl, WATER_VS, WATER_FS)?,
             mesh: compile(gl, MESH_VS, MESH_FS)?,
             impostor: compile(gl, IMPOSTOR_VS, IMPOSTOR_FS)?,
@@ -1750,6 +2040,52 @@ impl Renderer {
         self.sea_vao = Some(svao);
         self.sea_indices = sea_i.len() as i32;
         self.quad_vbo = Some(qvbo);
+
+        // Concentric square skirt mesh around [0, 1] x [0, 1] for OutsideTerrain (seamless at map edge).
+        const RINGS: u32 = 48;
+        const SIDE_SEGS: u32 = 64;
+        const PERIM: u32 = SIDE_SEGS * 4;
+        let mut out_v: Vec<f32> = Vec::with_capacity(((RINGS + 1) * PERIM * 2) as usize);
+        let mut out_i: Vec<u32> = Vec::with_capacity((RINGS * PERIM * 6) as usize);
+        for r in 0..=RINGS {
+            let t = r as f32 / RINGS as f32;
+            // Quadratic radial spacing: crisp near the map border, wide toward the horizon (up to 2.5x world out).
+            let dist = t * t * 2.5;
+            for s in 0..PERIM {
+                let side = s / SIDE_SEGS;
+                let u = (s % SIDE_SEGS) as f32 / SIDE_SEGS as f32;
+                let (ex, ez) = match side {
+                    0 => (u, 0.0),
+                    1 => (1.0, u),
+                    2 => (1.0 - u, 1.0),
+                    _ => (0.0, 1.0 - u),
+                };
+                let (dx, dz) = (ex - 0.5, ez - 0.5);
+                out_v.push(ex + dx * 2.0 * dist);
+                out_v.push(ez + dz * 2.0 * dist);
+            }
+        }
+        for r in 0..RINGS {
+            let row0 = r * PERIM;
+            let row1 = (r + 1) * PERIM;
+            for s in 0..PERIM {
+                let sn = (s + 1) % PERIM;
+                let (a, b, c, d) = (row0 + s, row0 + sn, row1 + s, row1 + sn);
+                out_i.extend_from_slice(&[a, c, b, b, c, d]);
+            }
+        }
+        let ovao = gl.create_vertex_array()?;
+        gl.bind_vertex_array(Some(ovao));
+        let ovbo = gl.create_buffer()?;
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(ovbo));
+        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes(&out_v), glow::STATIC_DRAW);
+        let oebo = gl.create_buffer()?;
+        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(oebo));
+        gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytes(&out_i), glow::STATIC_DRAW);
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0);
+        self.outside_vao = Some(ovao);
+        self.outside_indices = out_i.len() as i32;
 
         // Unit box, y from 0 to 1: position, normal, uv.
         let mut b: Vec<f32> = Vec::new();
@@ -1971,6 +2307,33 @@ impl Renderer {
                             gl.generate_mipmap(glow::TEXTURE_2D_ARRAY);
                         }
                     }
+                }
+                Upload::MapConfigTextures(pack) => {
+                    let aniso = self.anisotropy;
+                    let put = |slot: &mut Option<glow::Texture>, img: Option<(i32, i32, Vec<u8>)>, wrap: u32| -> Result<(), String> {
+                        if let Some(old) = slot.take() {
+                            gl.delete_texture(old);
+                        }
+                        if let Some((w, h, rgba)) = img {
+                            let t = gl.create_texture()?;
+                            gl.bind_texture(glow::TEXTURE_2D, Some(t));
+                            gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA8 as i32, w, h, 0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(Some(&rgba)));
+                            gl.generate_mipmap(glow::TEXTURE_2D);
+                            set_filter(gl, glow::TEXTURE_2D, glow::LINEAR_MIPMAP_LINEAR, glow::LINEAR, wrap);
+                            if aniso >= 2.0 {
+                                gl.tex_parameter_f32(glow::TEXTURE_2D, glow::TEXTURE_MAX_ANISOTROPY, aniso.min(16.0));
+                            }
+                            *slot = Some(t);
+                        }
+                        Ok(())
+                    };
+                    put(&mut self.mid_detail_tex, pack.mid_detail, glow::REPEAT)?;
+                    put(&mut self.terrain_normal_tex, pack.terrain_normal, glow::CLAMP_TO_EDGE)?;
+                    put(&mut self.env_tex, pack.env_texture, glow::REPEAT)?;
+                    put(&mut self.atmosphere_tex, pack.atmosphere_texture, glow::CLAMP_TO_EDGE)?;
+                    put(&mut self.outside_sat_tex, pack.outside_satellite, glow::MIRRORED_REPEAT)?;
+                    put(&mut self.outside_tex, pack.outside_texture, glow::REPEAT)?;
+                    put(&mut self.outside_nopx_tex, pack.outside_nopx, glow::REPEAT)?;
                 }
                 Upload::ClearModels => {
                     for (_, m) in self.models.drain() {
@@ -2432,7 +2795,7 @@ impl Renderer {
         }
         let Some(p) = &self.programs else { return };
         let (Some(height), Some(mask)) = (self.height, self.mask) else { return };
-        let (terrain, water, mesh_prog, impostor_prog, sky, post, ao_prog) = (p.terrain, p.water, p.mesh, p.impostor, p.sky, p.post, p.occlusion);
+        let (terrain, outside_prog, water, mesh_prog, impostor_prog, sky, post, ao_prog) = (p.terrain, p.outside, p.water, p.mesh, p.impostor, p.sky, p.post, p.occlusion);
         // Where the interface is being drawn; the view goes back there when it is finished.
         let screen = gl.get_parameter_framebuffer(glow::DRAW_FRAMEBUFFER_BINDING);
         self.touch(&f.objects.groups);
@@ -2479,6 +2842,7 @@ impl Renderer {
         gl.disable(glow::CULL_FACE);
         gl.disable(glow::BLEND);
 
+        let mc = &f.map_config;
         let u = |prog: glow::Program, n: &str| gl.get_uniform_location(prog, n);
         let light_uniforms = |prog: glow::Program| {
             let l = &f.lighting;
@@ -2486,8 +2850,33 @@ impl Renderer {
             gl.uniform_3_f32_slice(u(prog, "u_sun_col").as_ref(), &l.sun_color);
             gl.uniform_3_f32_slice(u(prog, "u_amb").as_ref(), &l.ambient);
             gl.uniform_1_f32(u(prog, "u_fog").as_ref(), l.fog);
+            gl.uniform_1_f32(u(prog, "u_haze_dist").as_ref(), mc.haze_dist_coef);
+            gl.uniform_1_f32(u(prog, "u_haze_fog").as_ref(), mc.haze_fog_coef);
+            gl.uniform_1_f32(u(prog, "u_vol_fog_offset").as_ref(), mc.vol_fog_offset);
+            gl.uniform_1_f32(u(prog, "u_fog_sea").as_ref(), f.sea);
             gl.uniform_1_f32(u(prog, "u_exposure").as_ref(), l.exposure);
             gl.uniform_1_f32(u(prog, "u_time").as_ref(), f.time);
+        };
+        let env_tex = self.env_tex.filter(|_| mc.use_env_texture);
+        let atmo_tex = self.atmosphere_tex.filter(|_| mc.use_atmosphere_texture);
+        let water_env_uniforms = |prog: glow::Program, env_unit: u32, can_bind: bool| {
+            gl.uniform_1_f32(u(prog, "u_wave_amp").as_ref(), mc.wave_amplitude);
+            gl.uniform_1_f32(u(prog, "u_wave_freq").as_ref(), mc.wave_frequency);
+            gl.uniform_1_i32(u(prog, "u_wave_octaves").as_ref(), mc.wave_octaves);
+            gl.uniform_1_f32(u(prog, "u_wave_persist").as_ref(), mc.wave_persistence);
+            gl.uniform_3_f32_slice(u(prog, "u_water_deep").as_ref(), &mc.ocean.deep_color);
+            gl.uniform_3_f32_slice(u(prog, "u_foam_color").as_ref(), &mc.ocean.foam_color);
+            gl.uniform_1_f32(u(prog, "u_water_sun_pow").as_ref(), mc.ocean.sun_power);
+            gl.uniform_1_f32(u(prog, "u_water_sun_inf").as_ref(), mc.ocean.sun_influence);
+            gl.uniform_1_f32(u(prog, "u_water_grey").as_ref(), mc.ocean.grey_modifier);
+            if can_bind && env_tex.is_some() {
+                gl.active_texture(glow::TEXTURE0 + env_unit);
+                gl.bind_texture(glow::TEXTURE_2D, env_tex);
+                gl.uniform_1_i32(u(prog, "u_env_tex").as_ref(), env_unit as i32);
+                gl.uniform_1_i32(u(prog, "u_has_env").as_ref(), 1);
+            } else {
+                gl.uniform_1_i32(u(prog, "u_has_env").as_ref(), 0);
+            }
         };
         if !f.view.ortho {
             gl.depth_mask(false);
@@ -2499,6 +2888,16 @@ impl Renderer {
             gl.uniform_3_f32_slice(u(sky, "u_r").as_ref(), &v.right);
             gl.uniform_3_f32_slice(u(sky, "u_u").as_ref(), &v.up);
             gl.uniform_2_f32(u(sky, "u_t").as_ref(), v.tan_half_fov * v.aspect, v.tan_half_fov);
+            gl.uniform_1_f32(u(sky, "u_stars").as_ref(), mc.stars_intensity);
+            gl.uniform_1_f32(u(sky, "u_overcast").as_ref(), mc.overcast);
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(glow::TEXTURE_2D, atmo_tex.or(self.palette));
+            gl.uniform_1_i32(u(sky, "u_atmo_tex").as_ref(), 0);
+            gl.uniform_1_i32(u(sky, "u_has_atmo").as_ref(), atmo_tex.is_some() as i32);
+            gl.active_texture(glow::TEXTURE1);
+            gl.bind_texture(glow::TEXTURE_2D, env_tex.or(self.palette));
+            gl.uniform_1_i32(u(sky, "u_env_tex").as_ref(), 1);
+            gl.uniform_1_i32(u(sky, "u_has_env").as_ref(), env_tex.is_some() as i32);
             gl.bind_vertex_array(self.quad_vao);
             gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
             gl.enable(glow::DEPTH_TEST);
@@ -2509,8 +2908,15 @@ impl Renderer {
         light_uniforms(terrain);
         gl.uniform_matrix_4_f32_slice(u(terrain, "u_vp").as_ref(), false, &f.view.vp);
         gl.uniform_1_f32(u(terrain, "u_surface_range").as_ref(), f.surface_range);
+        gl.uniform_1_f32(u(terrain, "u_full_detail_dist").as_ref(), mc.full_detail_dist);
         gl.uniform_1_f32(u(terrain, "u_parallax").as_ref(), f.parallax);
         gl.uniform_1_f32(u(terrain, "u_blend_sharp").as_ref(), f.blend_sharp);
+        gl.uniform_1_i32(u(terrain, "u_height_blend").as_ref(), mc.height_blending as i32);
+        gl.uniform_1_i32(u(terrain, "u_bicubic").as_ref(), mc.bicubic as i32);
+        gl.uniform_1_f32(u(terrain, "u_sat_norm_start").as_ref(), mc.sat_norm_start);
+        gl.uniform_1_f32(u(terrain, "u_sat_norm_end").as_ref(), mc.sat_norm_end);
+        gl.uniform_1_f32(u(terrain, "u_terrain_norm_power").as_ref(), mc.terrain_norm_power);
+        gl.uniform_1_f32(u(terrain, "u_wet_floor").as_ref(), mc.ocean.wet_floor);
         gl.uniform_1_i32(u(terrain, "u_game").as_ref(), f.game as i32);
         gl.uniform_1_i32(u(terrain, "u_pixels").as_ref(), f.pixels as i32);
         gl.uniform_2_f32(u(terrain, "u_size").as_ref(), self.size[0], self.size[1]);
@@ -2557,6 +2963,12 @@ impl Renderer {
         bind(8, glow::TEXTURE_2D_ARRAY, self.layer_normals, "u_layer_normals");
         bind(9, glow::TEXTURE_2D, self.flow.or(self.palette), "u_flow");
         bind(10, glow::TEXTURE_2D, self.density.or(self.palette), "u_density");
+        let mid_tex = self.mid_detail_tex.filter(|_| mc.use_mid_detail);
+        let tnorm_tex = self.terrain_normal_tex.filter(|_| mc.use_terrain_normal);
+        bind(11, glow::TEXTURE_2D, mid_tex.or(self.palette), "u_mid_detail");
+        bind(12, glow::TEXTURE_2D, tnorm_tex.or(self.palette), "u_terrain_normal");
+        gl.uniform_1_i32(u(terrain, "u_has_mid_detail").as_ref(), mid_tex.is_some() as i32);
+        gl.uniform_1_i32(u(terrain, "u_has_terrain_normal").as_ref(), tnorm_tex.is_some() as i32);
         gl.uniform_1_i32(u(terrain, "u_has_flow").as_ref(), self.flow.is_some() as i32);
         gl.uniform_1_i32(u(terrain, "u_has_density").as_ref(), self.density.is_some() as i32);
         gl.uniform_1_i32(u(terrain, "u_has_holes").as_ref(), self.holes.is_some() as i32);
@@ -2579,10 +2991,55 @@ impl Renderer {
         stats.triangles += (f.patches.len() as u64) * (self.index_count as u64 / 3);
         stats.draw_calls += 1;
 
+        // Outside terrain beyond the map edges (`OutsideTerrain`).
+        if mc.outside_enabled && matches!(f.shading, Shading::Lit | Shading::Satellite) && self.outside_vao.is_some() {
+            gl.use_program(Some(outside_prog));
+            light_uniforms(outside_prog);
+            gl.uniform_matrix_4_f32_slice(u(outside_prog, "u_vp").as_ref(), false, &f.view.vp);
+            gl.uniform_2_f32(u(outside_prog, "u_size").as_ref(), self.size[0], self.size[1]);
+            gl.uniform_1_f32(u(outside_prog, "u_cell").as_ref(), self.cell);
+            gl.uniform_1_f32(u(outside_prog, "u_world").as_ref(), f.world);
+            gl.uniform_1_i32(u(outside_prog, "u_outside_synth").as_ref(), mc.outside_synth as i32);
+            gl.uniform_3_f32(u(outside_prog, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
+            gl.uniform_1_f32(u(outside_prog, "u_tile").as_ref(), f.tile);
+            gl.uniform_1_f32(u(outside_prog, "u_surface_range").as_ref(), f.surface_range);
+            gl.uniform_1_f32(u(outside_prog, "u_full_detail_dist").as_ref(), mc.full_detail_dist);
+            gl.uniform_1_f32(u(outside_prog, "u_sea").as_ref(), f.sea);
+            gl.uniform_1_f32(u(outside_prog, "u_tide").as_ref(), f.tide);
+            gl.uniform_1_f32(u(outside_prog, "u_waves").as_ref(), f.sea_waves);
+            gl.uniform_1_f32(u(outside_prog, "u_wet_floor").as_ref(), mc.ocean.wet_floor);
+            gl.uniform_1_i32(u(outside_prog, "u_has_sea").as_ref(), f.show_water as i32);
+            gl.uniform_1_i32(u(outside_prog, "u_ortho").as_ref(), f.view.ortho as i32);
+            gl.uniform_1_i32(u(outside_prog, "u_mode").as_ref(), mode);
+            let bind_out = |unit: u32, tex: Option<glow::Texture>, name: &str| {
+                gl.active_texture(glow::TEXTURE0 + unit);
+                gl.bind_texture(glow::TEXTURE_2D, tex.or(self.palette));
+                gl.uniform_1_i32(u(outside_prog, name).as_ref(), unit as i32);
+            };
+            bind_out(0, Some(height), "u_height");
+            bind_out(1, self.outside_sat_tex, "u_outside_sat");
+            bind_out(2, self.outside_tex, "u_outside_tex");
+            bind_out(3, self.outside_nopx_tex, "u_outside_nopx");
+            gl.uniform_1_i32(u(outside_prog, "u_has_outside_sat").as_ref(), self.outside_sat_tex.is_some() as i32);
+            gl.uniform_1_i32(u(outside_prog, "u_has_outside_tex").as_ref(), self.outside_tex.is_some() as i32);
+            gl.uniform_1_i32(u(outside_prog, "u_has_outside_nopx").as_ref(), self.outside_nopx_tex.is_some() as i32);
+            gl.bind_vertex_array(self.outside_vao);
+            if f.wireframe {
+                gl.polygon_mode(glow::FRONT_AND_BACK, glow::LINE);
+            }
+            gl.draw_elements(glow::TRIANGLES, self.outside_indices, glow::UNSIGNED_INT, 0);
+            if f.wireframe {
+                gl.polygon_mode(glow::FRONT_AND_BACK, glow::FILL);
+            }
+            stats.triangles += self.outside_indices as u64 / 3;
+            stats.draw_calls += 1;
+        }
+
         // Objects.
         gl.active_texture(glow::TEXTURE0);
         gl.use_program(Some(mesh_prog));
         light_uniforms(mesh_prog);
+        water_env_uniforms(mesh_prog, 17, self.max_tex_units >= 18);
         gl.uniform_matrix_4_f32_slice(u(mesh_prog, "u_vp").as_ref(), false, &f.view.vp);
         gl.uniform_3_f32(u(mesh_prog, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
         gl.uniform_1_i32(u(mesh_prog, "u_tex").as_ref(), 0);
@@ -2757,6 +3214,7 @@ impl Renderer {
             gl.depth_mask(false);
             gl.use_program(Some(water));
             light_uniforms(water);
+            water_env_uniforms(water, 1, true);
             gl.uniform_matrix_4_f32_slice(u(water, "u_vp").as_ref(), false, &f.view.vp);
             gl.uniform_3_f32(u(water, "u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
             gl.uniform_1_f32(u(water, "u_sea").as_ref(), f.sea);
@@ -2764,6 +3222,10 @@ impl Renderer {
             gl.uniform_1_f32(u(water, "u_tide").as_ref(), f.tide);
             gl.uniform_1_f32(u(water, "u_cell").as_ref(), self.cell);
             gl.uniform_2_f32(u(water, "u_size").as_ref(), self.size[0], self.size[1]);
+            gl.uniform_3_f32_slice(u(water, "u_water_color").as_ref(), &mc.ocean.color);
+            gl.uniform_1_f32(u(water, "u_water_extinct").as_ref(), mc.ocean.extinction);
+            gl.uniform_1_f32(u(water, "u_foam_power").as_ref(), mc.ocean.foam_power);
+            gl.uniform_1_f32(u(water, "u_water_norm_pow").as_ref(), mc.ocean.normal_power);
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(glow::TEXTURE_2D, Some(height));
             gl.uniform_1_i32(u(water, "u_height").as_ref(), 0);
@@ -2885,6 +3347,10 @@ impl Renderer {
             gl.uniform_3_f32_slice(us("u_r").as_ref(), &f.view.right);
             gl.uniform_3_f32_slice(us("u_u").as_ref(), &f.view.up);
             gl.uniform_2_f32(us("u_t").as_ref(), f.view.tan_half_fov * f.view.aspect, f.view.tan_half_fov);
+            gl.uniform_1_f32(us("u_stars").as_ref(), 0.0);
+            gl.uniform_1_f32(us("u_overcast").as_ref(), 0.15);
+            gl.uniform_1_i32(us("u_has_atmo").as_ref(), 0);
+            gl.uniform_1_i32(us("u_has_env").as_ref(), 0);
             gl.bind_vertex_array(self.quad_vao);
             gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
             gl.enable(glow::DEPTH_TEST);
@@ -2897,8 +3363,22 @@ impl Renderer {
         gl.uniform_3_f32_slice(u("u_sun_col").as_ref(), &sun_col);
         gl.uniform_3_f32_slice(u("u_amb").as_ref(), &amb);
         gl.uniform_1_f32(u("u_fog").as_ref(), 0.0);
+        gl.uniform_1_f32(u("u_haze_dist").as_ref(), 0.0);
+        gl.uniform_1_f32(u("u_haze_fog").as_ref(), 1.0);
+        gl.uniform_1_f32(u("u_vol_fog_offset").as_ref(), 0.0);
+        gl.uniform_1_f32(u("u_fog_sea").as_ref(), 0.0);
         gl.uniform_1_f32(u("u_exposure").as_ref(), exposure);
         gl.uniform_1_f32(u("u_time").as_ref(), 0.0);
+        gl.uniform_1_i32(u("u_has_env").as_ref(), 0);
+        gl.uniform_1_f32(u("u_wave_amp").as_ref(), 0.081);
+        gl.uniform_1_f32(u("u_wave_freq").as_ref(), 9.0);
+        gl.uniform_1_i32(u("u_wave_octaves").as_ref(), 6);
+        gl.uniform_1_f32(u("u_wave_persist").as_ref(), 0.745);
+        gl.uniform_3_f32(u("u_water_deep").as_ref(), 0.47, 0.53, 0.59);
+        gl.uniform_3_f32(u("u_foam_color").as_ref(), 0.2667, 0.2667, 0.251);
+        gl.uniform_1_f32(u("u_water_sun_pow").as_ref(), 256.0);
+        gl.uniform_1_f32(u("u_water_sun_inf").as_ref(), 4.0);
+        gl.uniform_1_f32(u("u_water_grey").as_ref(), 1.0);
         gl.uniform_matrix_4_f32_slice(u("u_vp").as_ref(), false, &f.view.vp);
         gl.uniform_3_f32(u("u_eye").as_ref(), f.view.eye[0], f.view.eye[1], f.view.eye[2]);
         gl.uniform_1_i32(u("u_tex").as_ref(), 0);

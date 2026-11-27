@@ -201,10 +201,30 @@ pub struct Settings {
     pub grass_range_source: GrassRangeSource,
     /// Ground clutter draw distance in metres when `grass_range_source == Editor`.
     pub grass_range: f32,
+    /// Where the 3D view gets terrain detail distances, blending, mid-detail, global normal and outside terrain from.
+    pub terrain_look_source: PreviewSource,
+    /// Where the 3D view gets sea presence, wave parameters and ocean material from.
+    pub sea_source: PreviewSource,
+    /// Where the 3D view gets haze, volumetric fog, stars, environment map and sky texture from.
+    pub sky_source: PreviewSource,
+    /// Draw the terrain beyond the map edge (`OutsideTerrain`) when terrain look uses Map config.
+    pub show_outside_terrain: bool,
+    /// Draw the Map config's zoom-adaptive grid (`grid_steps`) in the top view.
+    pub top_config_grid: bool,
     /// The keyboard shortcuts the user chose.
     pub keys: crate::keys::KeyMap,
     /// The choices of the export window.
     pub export: crate::exporting::ExportSettings,
+}
+
+/// Source of preview values in the 3D view: the editor's own sliders or the map's `CfgWorlds` config.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
+pub enum PreviewSource {
+    /// Uses the editor's own sliders and procedural defaults.
+    #[default]
+    Editor,
+    /// Uses the values and assets from `File > Map config` (falling back to the base world's defaults).
+    MapConfig,
 }
 
 /// Source of the clutter (grass) draw distance and grid in the 3D view.
@@ -273,6 +293,34 @@ impl Settings {
             (self.terrain_quality, self.draw_distance, self.near_detail, self.surface_range) == (v.0, v.1, v.2, v.3) && (self.texture_size, self.anisotropy, self.shadow_map, self.lighting.shadow_range) == (v.4, v.5, v.6, v.7)
         })
     }
+    /// Switches every preview group (terrain look, grass, sea, sky/atmosphere) to read from Map config.
+    pub fn all_from_map_config(&mut self) {
+        self.grass_range_source = GrassRangeSource::MapConfig;
+        self.terrain_look_source = PreviewSource::MapConfig;
+        self.sea_source = PreviewSource::MapConfig;
+        self.sky_source = PreviewSource::MapConfig;
+    }
+    /// Switches every preview group back to the editor's own sliders and defaults.
+    pub fn all_from_editor(&mut self) {
+        self.grass_range_source = GrassRangeSource::Editor;
+        self.terrain_look_source = PreviewSource::Editor;
+        self.sea_source = PreviewSource::Editor;
+        self.sky_source = PreviewSource::Editor;
+    }
+    /// Whether every preview group currently reads from Map config.
+    pub fn is_all_map_config(&self) -> bool {
+        self.grass_range_source == GrassRangeSource::MapConfig
+            && self.terrain_look_source == PreviewSource::MapConfig
+            && self.sea_source == PreviewSource::MapConfig
+            && self.sky_source == PreviewSource::MapConfig
+    }
+    /// Whether any preview group currently reads from Map config.
+    pub fn any_map_config(&self) -> bool {
+        self.grass_range_source == GrassRangeSource::MapConfig
+            || self.terrain_look_source == PreviewSource::MapConfig
+            || self.sea_source == PreviewSource::MapConfig
+            || self.sky_source == PreviewSource::MapConfig
+    }
 }
 
 impl Default for Settings {
@@ -281,7 +329,7 @@ impl Default for Settings {
             language: String::new(), ui_scale: 1.0, own_title_bar: true, tools: ToolPaths::default(), recent: Vec::new(),
             terrain_quality: 1.0, draw_distance: 2500.0, mission_draw_distance: 800.0, near_detail: 180.0, autosave_minutes: 10, backup_enabled: true, backup_minutes: 30, backup_keep: 10, backup_folder: String::new(),
             check_updates: true, experimental: false, team_name: String::new(), extra_mods: String::new(), with_client: true, check_before_build: true, asset_roots: Vec::new(), fov: 75.0, library_tile: 96.0, surface_range: 190.0, surface_parallax: 4.0, surface_blend: 0.45, game_surfaces: true, surface_pixels: false, row_gap: 0.0, row_angle: 0.0, row_flip: false, row_turn: 0.0, row_preset: None, sea_waves: 0.25, sea_tide: 0.0, tide_cycle: false, drag_by_body: false, pivot_mode: PivotMode::default(), turn_about_press: false, lasso: false, layout: Default::default(), occlusion: false, show_fps: true, angle_step: 15.0, grid_snap: false, grid_step: 1.0, align_to_ground: false, show_hints: true, split_ratio: 0.5, split_stacked: false, split_swapped: false, top_follow: false, top_models: true, minimap: true, minimap_size: 200.0, camera_speed: 60.0, lighting: Lighting::default(),
-            texture_size: 2048, model_memory: 0, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6, grass_range_source: GrassRangeSource::Editor, grass_range: 110.0, keys: Default::default(), export: Default::default(),
+            texture_size: 2048, model_memory: 0, anisotropy: 8, shadow_map: 4096, edge_smoothing: 2, ambient_occlusion: 12, grass_ground_color: 0.6, grass_range_source: GrassRangeSource::Editor, grass_range: 110.0, terrain_look_source: PreviewSource::Editor, sea_source: PreviewSource::Editor, sky_source: PreviewSource::Editor, show_outside_terrain: true, top_config_grid: false, keys: Default::default(), export: Default::default(),
         }
     }
 }
