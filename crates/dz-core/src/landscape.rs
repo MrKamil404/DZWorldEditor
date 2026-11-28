@@ -695,6 +695,306 @@ pub fn roadside_objects(w: &mut World, db: &crate::model_info::ModelDb, g: &Road
     Ok(out)
 }
 
+// ---------------------------------------------------------------- orchards and vineyards
+
+/// Regular rows of fruit trees or vineyard trellises inside polygons, optionally painting a
+/// ground surface underneath.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct OrchardGen {
+    pub objects: ObjectSet,
+    /// Metres between rows.
+    pub row_spacing: f32,
+    /// Metres between plants along a row.
+    pub plant_spacing: f32,
+    /// Direction of the rows in degrees from north; `None` follows the longest side of each polygon.
+    pub angle: Option<f32>,
+    /// Random offset from the exact grid point, in metres.
+    pub jitter: f32,
+    /// Share of grid spots left empty (0..1) so an orchard looks natural or aged.
+    pub missing: f32,
+    /// Margin kept inside the polygon edge, in metres.
+    pub margin: f32,
+    /// Turn each piece along the row direction instead of random/zero yaw (for vineyard rows).
+    pub align_to_row: bool,
+    /// Extra yaw in degrees added when `align_to_row` is on.
+    pub yaw_offset: f32,
+    /// Optional ground surface painted inside the orchard polygon; empty leaves the mask alone.
+    pub surface: String,
+    pub seed: u64,
+}
+
+impl Default for OrchardGen {
+    fn default() -> Self {
+        let trees = [
+            ("dz\\plants\\tree\\t_malusDomestica_2s.p3d", 3.0),
+            ("dz\\plants\\tree\\t_malusDomestica_3s.p3d", 2.5),
+            ("dz\\plants\\tree\\t_malusDomestica_1s.p3d", 1.5),
+            ("dz\\plants\\tree\\t_pyrusCommunis_2s.p3d", 2.0),
+            ("dz\\plants\\tree\\t_pyrusCommunis_3s.p3d", 2.0),
+            ("dz\\plants\\tree\\t_prunusDomestica_2s.p3d", 2.0),
+        ]
+        .iter()
+        .map(|(m, w)| ((*m).to_string(), *w))
+        .collect();
+        Self {
+            objects: ObjectSet { models: trees, scale_min: 0.9, scale_max: 1.12, random_yaw: true, align: false, ..Default::default() },
+            row_spacing: 7.5,
+            plant_spacing: 6.0,
+            angle: None,
+            jitter: 0.45,
+            missing: 0.08,
+            margin: 2.0,
+            align_to_row: false,
+            yaw_offset: 0.0,
+            surface: String::new(),
+            seed: 1,
+        }
+    }
+}
+
+impl OrchardGen {
+    /// Vineyard preset: tighter rows of `Wall_FenVineyard.p3d` aligned along the row direction.
+    pub fn vineyard() -> Self {
+        Self {
+            objects: ObjectSet {
+                models: vec![("dz\\structures_bliss\\walls\\Wall_FenVineyard.p3d".to_string(), 1.0)],
+                scale_min: 0.98,
+                scale_max: 1.02,
+                random_yaw: false,
+                align: true,
+                ..Default::default()
+            },
+            row_spacing: 3.5,
+            plant_spacing: 4.0,
+            angle: None,
+            jitter: 0.05,
+            missing: 0.03,
+            margin: 1.5,
+            align_to_row: true,
+            yaw_offset: 0.0,
+            surface: String::new(),
+            seed: 1,
+        }
+    }
+}
+
+/// Optional ground surface painted inside the orchard/vineyard polygons.
+pub fn orchard_mask(w: &World, g: &OrchardGen, polygons: &[Vec<[f32; 2]>]) -> Option<Vec<u8>> {
+    if g.surface.is_empty() {
+        return None;
+    }
+    let layer = w.layer_index(&g.surface).map(|i| i as u8)?;
+    Some(polygons_mask(w, polygons, layer))
+}
+
+/// Fruit trees or vineyard rows placed on a regular grid inside each polygon.
+pub fn orchard_objects(w: &mut World, g: &OrchardGen, polygons: &[Vec<[f32; 2]>]) -> Result<Vec<Obj>> {
+    use rand::Rng;
+    if g.objects.models.is_empty() || g.row_spacing <= 0.2 || g.plant_spacing <= 0.2 {
+        return Ok(Vec::new());
+    }
+    let picker = Picker::new(w, &g.objects)?;
+    let mut rng = StdRng::seed_from_u64(g.seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0x0c4a5d);
+    let size = w.meta.size_m();
+    let sea = w.meta.sea_level;
+    let mut out = Vec::new();
+    for ring in polygons {
+        if ring.len() < 3 {
+            continue;
+        }
+        // Row direction: explicit angle from north, or the longest side of the polygon.
+        let along = match g.angle {
+            Some(deg) => {
+                let r = deg.to_radians();
+                [r.sin(), r.cos()]
+            }
+            None => {
+                let mut best = [0.0f32, 1.0];
+                let mut max_len = 0.0f32;
+                for k in 0..ring.len() {
+                    let a = ring[k];
+                    let b = ring[(k + 1) % ring.len()];
+                    let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+                    let len = dx.hypot(dz);
+                    if len > max_len {
+                        max_len = len;
+                        best = [dx / len, dz / len];
+                    }
+                }
+                best
+            }
+        };
+        let across = [along[1], -along[0]];
+        let row_yaw = (along[0].atan2(along[1]).to_degrees() + g.yaw_offset).rem_euclid(360.0);
+        let (mut u0, mut u1, mut v0, mut v1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+        for p in ring {
+            let u = p[0] * across[0] + p[1] * across[1];
+            let v = p[0] * along[0] + p[1] * along[1];
+            u0 = u0.min(u); u1 = u1.max(u);
+            v0 = v0.min(v); v1 = v1.max(v);
+        }
+        let mut u = u0 + g.margin.max(0.0);
+        let u_end = u1 - g.margin.max(0.0);
+        let v_start = v0 + g.margin.max(0.0);
+        let v_end = v1 - g.margin.max(0.0);
+        while u <= u_end {
+            let mut v = v_start;
+            while v <= v_end {
+                if rng.gen::<f32>() >= g.missing {
+                    let ju = if g.jitter > 0.0 { rng.gen_range(-g.jitter..=g.jitter) } else { 0.0 };
+                    let jv = if g.jitter > 0.0 { rng.gen_range(-g.jitter..=g.jitter) } else { 0.0 };
+                    let x = (u + ju) * across[0] + (v + jv) * along[0];
+                    let z = (u + ju) * across[1] + (v + jv) * along[1];
+                    if x >= 0.0 && z >= 0.0 && x <= size && z <= size
+                        && crate::shapes::point_in_polygon(ring, x, z)
+                        && w.height.sample(x, z) >= sea
+                    {
+                        let model = picker.model(&mut rng);
+                        let yaw = g.align_to_row.then_some(row_yaw);
+                        out.push(picker.object(w, &mut rng, model, x, z, yaw));
+                    }
+                }
+                v += g.plant_spacing;
+            }
+            u += g.row_spacing;
+        }
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------- tree alleys along roads
+
+/// Which side(s) of a road or line a tree alley is planted on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AlleySide {
+    Both,
+    Left,
+    Right,
+}
+
+impl Default for AlleySide {
+    fn default() -> Self {
+        Self::Both
+    }
+}
+
+/// Trees planted in regular rows along one or both sides of a road or polyline.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct TreeAlleyGen {
+    pub objects: ObjectSet,
+    pub sides: AlleySide,
+    /// Metres from the centre of the road/line to the tree row.
+    pub offset: f32,
+    /// Metres between consecutive trees along the line.
+    pub spacing: f32,
+    /// When planting on both sides, offset the right side by half the spacing.
+    pub stagger: bool,
+    /// Small random position variation in metres.
+    pub jitter: f32,
+    /// Share of spots skipped at random (0..1) so the alley looks aged.
+    pub missing: f32,
+    /// Which routes to follow when dropped on the whole map.
+    pub follow: Follow,
+    pub seed: u64,
+}
+
+impl Default for TreeAlleyGen {
+    fn default() -> Self {
+        let trees = [
+            ("dz\\plants\\tree\\t_BetulaPendula_2f.p3d", 3.0),
+            ("dz\\plants\\tree\\t_BetulaPendula_3f.p3d", 2.0),
+            ("dz\\plants\\tree\\t_FagusSylvatica_2f.p3d", 2.0),
+            ("dz\\plants\\tree\\t_quercusRobur_2f.p3d", 2.0),
+        ]
+        .iter()
+        .map(|(m, w)| ((*m).to_string(), *w))
+        .collect();
+        Self {
+            objects: ObjectSet { models: trees, scale_min: 0.9, scale_max: 1.15, random_yaw: true, align: false, ..Default::default() },
+            sides: AlleySide::Both,
+            offset: 6.5,
+            spacing: 12.0,
+            stagger: false,
+            jitter: 0.6,
+            missing: 0.08,
+            follow: Follow::Roads,
+            seed: 1,
+        }
+    }
+}
+
+/// Trees along one or both sides of `lines`, keeping clear of any road in `roads`.
+pub fn tree_alley_objects(w: &mut World, g: &TreeAlleyGen, lines: &[Vec<[f32; 2]>], roads: &[Vec<[f32; 2]>]) -> Result<Vec<Obj>> {
+    use rand::Rng;
+    if g.objects.models.is_empty() || g.spacing <= 0.2 {
+        return Ok(Vec::new());
+    }
+    let picker = Picker::new(w, &g.objects)?;
+    let mut rng = StdRng::seed_from_u64(g.seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0xa11e7);
+    let size = w.meta.size_m();
+    let sea = w.meta.sea_level;
+    let clearance = (g.offset * 0.72).max(2.5);
+    let on_road = |x: f32, z: f32| -> bool {
+        roads.iter().any(|r| r.windows(2).any(|s| {
+            let (a, b) = (s[0], s[1]);
+            let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+            let t = (((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
+            (x - a[0] - dx * t).hypot(z - a[1] - dz * t) < clearance
+        }))
+    };
+    let mut spacing = Spacing::new((g.spacing * 0.45).max(1.5));
+    let mut out = Vec::new();
+    let side_signs: &[f32] = match g.sides {
+        AlleySide::Both => &[-1.0, 1.0],
+        AlleySide::Left => &[-1.0],
+        AlleySide::Right => &[1.0],
+    };
+    let mut place_at = |pos: [f32; 2], dir: [f32; 2], sign: f32, rng: &mut StdRng| {
+        if rng.gen::<f32>() < g.missing {
+            return;
+        }
+        // Left normal is [-dir[1], dir[0]] (sign -1), right normal is [dir[1], -dir[0]] (sign +1).
+        let nx = sign * dir[1];
+        let nz = -sign * dir[0];
+        let jn = if g.jitter > 0.0 { rng.gen_range(-g.jitter..=g.jitter) } else { 0.0 };
+        let ja = if g.jitter > 0.0 { rng.gen_range(-g.jitter..=g.jitter) } else { 0.0 };
+        let x = pos[0] + nx * (g.offset + jn) + dir[0] * ja;
+        let z = pos[1] + nz * (g.offset + jn) + dir[1] * ja;
+        if x < 0.0 || z < 0.0 || x > size || z > size || w.height.sample(x, z) < sea || on_road(x, z) {
+            return;
+        }
+        if !spacing.claim(x, z) {
+            return;
+        }
+        let model = picker.model(rng);
+        let yaw = (!g.objects.random_yaw).then(|| dir[0].atan2(dir[1]).to_degrees().rem_euclid(360.0));
+        out.push(picker.object(w, rng, model, x, z, yaw));
+    };
+    for line in lines {
+        if line.len() < 2 {
+            continue;
+        }
+        if g.sides == AlleySide::Both && g.stagger {
+            let half = g.spacing * 0.5;
+            let mut step_idx = 0usize;
+            walk(line, half, |pos, dir, _| {
+                let sign = if step_idx % 2 == 0 { -1.0 } else { 1.0 };
+                place_at(pos, dir, sign, &mut rng);
+                step_idx += 1;
+            });
+        } else {
+            walk(line, g.spacing, |pos, dir, _| {
+                for &sign in side_signs {
+                    place_at(pos, dir, sign, &mut rng);
+                }
+            });
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -797,5 +1097,37 @@ mod tests {
         let objects = roadside_objects(&mut w, &db, &g, std::slice::from_ref(&road), std::slice::from_ref(&road)).unwrap();
         assert!(objects.len() > 10);
         assert!(objects.iter().all(|o| (o.x - 50.0).abs() >= 8.9 && (o.x - 50.0).abs() <= 17.1), "beyond the verge");
+    }
+
+    #[test]
+    fn orchard_places_regular_rows_inside_polygon() {
+        let mut w = world();
+        let poly = vec![[60.0, 60.0], [120.0, 60.0], [120.0, 120.0], [60.0, 120.0]];
+        let g = OrchardGen { row_spacing: 10.0, plant_spacing: 10.0, jitter: 0.0, missing: 0.0, margin: 5.0, ..Default::default() };
+        let objects = orchard_objects(&mut w, &g, std::slice::from_ref(&poly)).unwrap();
+        assert_eq!(objects.len(), 36, "6x6 grid inside 60x60 with 5m margin");
+        assert!(objects.iter().all(|o| o.x >= 65.0 - 1e-3 && o.x <= 115.0 + 1e-3));
+        // Vineyard aligns pieces along the row direction.
+        let v = OrchardGen { angle: Some(90.0), jitter: 0.0, missing: 0.0, ..OrchardGen::vineyard() };
+        let vines = orchard_objects(&mut w, &v, std::slice::from_ref(&poly)).unwrap();
+        assert!(!vines.is_empty());
+        assert!(vines.iter().all(|o| (o.yaw - 90.0).abs() < 1e-3));
+    }
+
+    #[test]
+    fn tree_alley_respects_both_left_and_right_sides() {
+        let mut w = world();
+        // Road going north (+z) along x = 100.
+        let road = vec![[100.0, 40.0], [100.0, 200.0]];
+        let base = TreeAlleyGen { offset: 8.0, spacing: 20.0, jitter: 0.0, missing: 0.0, ..Default::default() };
+        let both = tree_alley_objects(&mut w, &base, std::slice::from_ref(&road), std::slice::from_ref(&road)).unwrap();
+        assert!(both.iter().any(|o| (o.x - 92.0).abs() < 0.01), "left side");
+        assert!(both.iter().any(|o| (o.x - 108.0).abs() < 0.01), "right side");
+
+        let left = tree_alley_objects(&mut w, &TreeAlleyGen { sides: AlleySide::Left, ..base.clone() }, std::slice::from_ref(&road), std::slice::from_ref(&road)).unwrap();
+        assert!(!left.is_empty() && left.iter().all(|o| (o.x - 92.0).abs() < 0.01), "only left side");
+
+        let right = tree_alley_objects(&mut w, &TreeAlleyGen { sides: AlleySide::Right, ..base }, std::slice::from_ref(&road), std::slice::from_ref(&road)).unwrap();
+        assert!(!right.is_empty() && right.iter().all(|o| (o.x - 108.0).abs() < 0.01), "only right side");
     }
 }

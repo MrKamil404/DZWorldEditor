@@ -46,6 +46,9 @@ struct ProjectFile {
     active_shape_layer: usize,
     #[serde(default)]
     generators: Vec<crate::library::GeneratorInstance>,
+    /// Newer generator kinds kept apart from `generators` so older versions still open the project.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    extra_generators: Vec<(usize, crate::library::GeneratorInstance)>,
     #[serde(default)]
     road_removed: std::collections::BTreeSet<String>,
     #[serde(default)]
@@ -83,6 +86,23 @@ fn join_stamps(mut rest: Vec<TerrainModifier>, mut stamps: Vec<(usize, TerrainMo
     for (k, m) in stamps {
         let at = k.min(rest.len());
         rest.insert(at, m);
+    }
+    rest
+}
+
+fn split_generators(all: Vec<crate::library::GeneratorInstance>) -> (Vec<crate::library::GeneratorInstance>, Vec<(usize, crate::library::GeneratorInstance)>) {
+    let (mut rest, mut extra) = (Vec::new(), Vec::new());
+    for (k, g) in all.into_iter().enumerate() {
+        if g.kind.is_extended() { extra.push((k, g)) } else { rest.push(g) }
+    }
+    (rest, extra)
+}
+
+fn join_generators(mut rest: Vec<crate::library::GeneratorInstance>, mut extra: Vec<(usize, crate::library::GeneratorInstance)>) -> Vec<crate::library::GeneratorInstance> {
+    extra.sort_by_key(|e| e.0);
+    for (k, g) in extra {
+        let at = k.min(rest.len());
+        rest.insert(at, g);
     }
     rest
 }
@@ -143,6 +163,7 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
     for g in &mut generators {
         g.objects = g.objects.iter().filter_map(|id| ordinal.get(id).copied()).collect();
     }
+    let (generators, extra_generators) = split_generators(generators);
     let mut routes = w.routes.clone();
     for r in &mut routes {
         r.objects = r.objects.iter().filter_map(|id| ordinal.get(id).copied()).collect();
@@ -165,6 +186,7 @@ pub fn save(w: &World, dir: &Path, parts: SaveParts) -> Result<()> {
         authors: w.authors.clone(),
         active_shape_layer: w.active_shape_layer,
         generators,
+        extra_generators,
         road_removed: w.road_removed.clone(),
         road_added: w.road_added.clone(),
         road_project: w.road_project.clone(),
@@ -289,7 +311,7 @@ pub fn load_with(dir: &Path, satellite: bool) -> Result<World> {
     }
     w.shape_layers = file.shape_layers;
     w.active_shape_layer = file.active_shape_layer;
-    w.generators = file.generators;
+    w.generators = join_generators(file.generators, file.extra_generators);
     w.road_removed = file.road_removed;
     w.road_added = file.road_added;
     w.road_project = file.road_project;
@@ -378,6 +400,30 @@ mod tests {
         file.as_object_mut().unwrap().remove("terrain_stamps");
         std::fs::write(d.path().join("project.dzwe"), serde_json::to_vec(&file).unwrap()).unwrap();
         assert_eq!(load(d.path()).unwrap().modifiers.len(), 3);
+    }
+
+    #[test]
+    fn extended_generators_are_kept_apart_so_older_versions_open_the_project() {
+        use crate::library::{GenTarget, GeneratorInstance, GeneratorKind};
+        let d = tempfile::tempdir().unwrap();
+        let mut w = World::new(WorldMeta::new("GenCompat", 64, 8.0), 10.0);
+        let mk = |id, name: &str, kind| GeneratorInstance {
+            id, name: name.into(), kind, target: GenTarget::Map, objects: Vec::new(), modifier: None, removed: Vec::new(), mask_modifier: None,
+        };
+        w.generators = vec![
+            mk(1, "Fields", GeneratorKind::Fields(Default::default())),
+            mk(2, "Orchard", GeneratorKind::Orchard(Default::default())),
+            mk(3, "Tree alley", GeneratorKind::TreeAlley(Default::default())),
+            mk(4, "Coast", GeneratorKind::Coast(Default::default())),
+        ];
+        save(&w, d.path(), SaveParts::ALL).unwrap();
+        let file: serde_json::Value = serde_json::from_slice(&std::fs::read(d.path().join("project.dzwe")).unwrap()).unwrap();
+        let classic = file["generators"].to_string();
+        assert!(!classic.contains("Orchard") && !classic.contains("TreeAlley"), "classic list has unknown kinds: {classic}");
+        assert_eq!(file["generators"].as_array().unwrap().len(), 2);
+        assert_eq!(file["extra_generators"].as_array().unwrap().len(), 2);
+        let r = load(d.path()).unwrap();
+        assert_eq!(r.generators.iter().map(|g| g.id).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
     }
 
     #[test]

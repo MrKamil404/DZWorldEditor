@@ -945,6 +945,61 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             follow_row(ui, &mut g.follow);
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
         }
+        GeneratorKind::Orchard(g) => {
+            ui.weak(t("Regular rows of fruit trees or vineyard trellises inside polygons, with optional ground surface."));
+            number(ui, t("Row spacing m"), &mut g.row_spacing, 1.0..=50.0);
+            number(ui, t("Plant spacing m"), &mut g.plant_spacing, 1.0..=50.0);
+            let mut fixed = g.angle.is_some();
+            ui.checkbox(&mut fixed, t("Rows in one direction")).on_hover_text(t("Off: rows follow the longest side of each polygon."));
+            match (fixed, g.angle) {
+                (true, None) => g.angle = Some(0.0),
+                (false, Some(_)) => g.angle = None,
+                _ => {}
+            }
+            if let Some(a) = &mut g.angle { number(ui, t("Direction °"), a, 0.0..=180.0); }
+            number(ui, t("Position jitter m"), &mut g.jitter, 0.0..=4.0);
+            number(ui, t("Missing share"), &mut g.missing, 0.0..=0.8);
+            number(ui, t("Edge margin m"), &mut g.margin, 0.0..=20.0);
+            ui.checkbox(&mut g.align_to_row, t("Align to row direction"));
+            if g.align_to_row {
+                number(ui, t("Turn °"), &mut g.yaw_offset, -180.0..=180.0);
+            }
+            layer_pick(ui, "orchard_surface", t("Ground surface"), &mut g.surface, &cx.layers, &cx.layer_pics);
+            group(ui, "orchard_objects", t("Trees or vines"), false, |ui| {
+                objects_ui(ui, &mut g.objects, cx);
+            });
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::TreeAlley(g) => {
+            use dz_core::landscape::AlleySide;
+            ui.weak(t("Rows of trees along one or both sides of a road or line. Drop it on a road, a line, or the map."));
+            row(ui, &t("Sides"), |ui| {
+                let label = |s: AlleySide| match s {
+                    AlleySide::Both => t("Both sides"),
+                    AlleySide::Left => t("Left side only"),
+                    AlleySide::Right => t("Right side only"),
+                };
+                egui::ComboBox::from_id_salt("alley_sides")
+                    .selected_text(label(g.sides))
+                    .show_ui(ui, |ui| {
+                        for s in [AlleySide::Both, AlleySide::Left, AlleySide::Right] {
+                            ui.selectable_value(&mut g.sides, s, label(s));
+                        }
+                    });
+            });
+            if g.sides == AlleySide::Both {
+                ui.checkbox(&mut g.stagger, t("Stagger opposite side"));
+            }
+            number(ui, t("From the middle m"), &mut g.offset, 1.5..=40.0);
+            number(ui, t("Spacing m"), &mut g.spacing, 2.0..=80.0);
+            number(ui, t("Position jitter m"), &mut g.jitter, 0.0..=4.0);
+            number(ui, t("Missing share"), &mut g.missing, 0.0..=0.8);
+            group(ui, "alley_objects", t("Trees"), false, |ui| {
+                objects_ui(ui, &mut g.objects, cx);
+            });
+            follow_row(ui, &mut g.follow);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
         GeneratorKind::Wrecks(g) => {
             ui.weak(t("Places with wrecks along roads: a jam of cars in a lane, a crash, or a car left on the verge, with stains under them; and cracks, patches and tyre marks on the road. Drop it on a road, or on the map for all roads."));
             number(ui, t("Places per km"), &mut g.scenes_per_km, 0.0..=20.0);
@@ -1043,6 +1098,8 @@ pub(crate) fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::Roadside(_) => ("V", Color32::from_rgb(90, 110, 70)),
         GeneratorKind::Wrecks(_) => ("W", Color32::from_rgb(120, 70, 50)),
         GeneratorKind::Dressing(_) => ("D", Color32::from_rgb(110, 90, 70)),
+        GeneratorKind::Orchard(_) => ("O", Color32::from_rgb(108, 134, 64)),
+        GeneratorKind::TreeAlley(_) => ("A", Color32::from_rgb(76, 122, 68)),
     }
 }
 
@@ -1088,11 +1145,13 @@ pub(crate) fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
         GeneratorKind::Roadside(g) => first_of(&g.plants),
         GeneratorKind::Wrecks(g) => first_of(&g.wrecks),
         GeneratorKind::Dressing(g) => first_of(&g.residential),
+        GeneratorKind::Orchard(g) => first_of(&g.objects),
+        GeneratorKind::TreeAlley(g) => first_of(&g.objects),
         _ => None,
     };
     match model {
         Some(m) => Preview::Model(ObjectStore::normalize_path(&m)),
-        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_)) => Preview::Nothing,
+        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_) | GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_)) => Preview::Nothing,
         None => {
             let key = match kind {
                 GeneratorKind::Terrain(p) => format!("terrain {p:?}"),
@@ -1786,7 +1845,7 @@ pub(crate) fn resolve_target(app: &App, kind: &GeneratorKind, drop: Option<Dropp
         (TargetKind::Point, _, None) => { let s = doc.world.meta.size_m(); GenTarget::Point([s * 0.5, s * 0.5]) }
         (TargetKind::Area | TargetKind::Map | TargetKind::Any, _, _) => GenTarget::Map,
         // Those that dress roads follow all roads of their kind on the whole map.
-        (TargetKind::Line, _, _) if matches!(kind, GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_)) => GenTarget::Map,
+        (TargetKind::Line, _, _) if matches!(kind, GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::TreeAlley(_)) => GenTarget::Map,
         (TargetKind::Line, _, _) => return Err(t("Drop this generator on a line or a road, or select one first")),
     })
 }
@@ -2210,6 +2269,41 @@ pub fn run_generator(app: &mut App, id: u64) {
                 Ok(Box::new(move |a: &mut App| {
                     store_generated(a, id, models, objects);
                     store_mask(a, id, &label, data);
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Orchard(mut g) => {
+            if polygons.is_empty() {
+                app.warn(t("This generator needs a polygon"));
+                return;
+            }
+            g.objects = g.objects.resolved(&presets);
+            let rings: Vec<Vec<[f32; 2]>> = polygons.iter().map(|p| p.points.clone()).collect();
+            app.spawn(label.clone(), move |_| {
+                let mask = dz_core::landscape::orchard_mask(&lite, &g, &rings);
+                let objects = dz_core::landscape::orchard_objects(&mut lite, &g, &rings)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    if let Some(data) = mask {
+                        store_mask(a, id, &label, data);
+                    }
+                }) as Finish)
+            });
+        }
+        GeneratorKind::TreeAlley(mut g) => {
+            g.objects = g.objects.resolved(&presets);
+            let lines = if g_target_is_map(&g_target) { roads_of(world, g.follow) } else { lines };
+            if lines.is_empty() {
+                app.warn(t("There are no roads to follow"));
+                return;
+            }
+            let roads: Vec<Vec<[f32; 2]>> = world.routes.iter().map(|r| r.centerline.clone()).collect();
+            app.spawn(label.clone(), move |_| {
+                let objects = dz_core::landscape::tree_alley_objects(&mut lite, &g, &lines, &roads)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
                 }) as Finish)
             });
         }

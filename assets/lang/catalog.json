@@ -11618,5 +11618,85 @@
  "Apply without adding": {
   "de": "Ohne Hinzufügen anwenden",
   "pl": "Zastosuj bez dodawania"
+ },
+ "Orchard": {
+  "de": "Obstgarten",
+  "pl": "Sad"
+ },
+ "Vineyard": {
+  "de": "Weinberg",
+  "pl": "Winnica"
+ },
+ "Tree alley": {
+  "de": "Baumalleen",
+  "pl": "Aleja drzew"
+ },
+ "Regular rows of fruit trees or vineyard trellises inside polygons, with optional ground surface.": {
+  "de": "Regelmäßige Reihen aus Obstbäumen oder Weinreben in Polygonen, optional mit Bodenoberfläche.",
+  "pl": "Regularne rzędy drzew owocowych lub winorośli w poligonach, opcjonalnie z podłożem."
+ },
+ "Row spacing m": {
+  "de": "Reihenabstand m",
+  "pl": "Odstęp rzędów m"
+ },
+ "Plant spacing m": {
+  "de": "Pflanzenabstand m",
+  "pl": "Odstęp w rzędzie m"
+ },
+ "Rows in one direction": {
+  "de": "Reihen in einer Richtung",
+  "pl": "Rzędy w jednym kierunku"
+ },
+ "Off: rows follow the longest side of each polygon.": {
+  "de": "Aus: Reihen folgen der längsten Seite jedes Polygons.",
+  "pl": "Wył.: rzędy biegną wzdłuż najdłuższego boku każdego poligonu."
+ },
+ "Position jitter m": {
+  "de": "Positionsstreuung m",
+  "pl": "Losowe przesunięcie m"
+ },
+ "Missing share": {
+  "de": "Anteil fehlender",
+  "pl": "Udział braków"
+ },
+ "Edge margin m": {
+  "de": "Randabstand m",
+  "pl": "Margines od krawędzi m"
+ },
+ "Align to row direction": {
+  "de": "An Reihenrichtung ausrichten",
+  "pl": "Wyrównaj do kierunku rzędu"
+ },
+ "Ground surface": {
+  "de": "Bodenoberfläche",
+  "pl": "Powierzchnia podłoża"
+ },
+ "Trees or vines": {
+  "de": "Bäume oder Reben",
+  "pl": "Drzewa lub winorośl"
+ },
+ "Rows of trees along one or both sides of a road or line. Drop it on a road, a line, or the map.": {
+  "de": "Baumreihen entlang einer oder beider Seiten einer Straße oder Linie. Auf eine Straße, eine Linie oder die Karte ziehen.",
+  "pl": "Rzędy drzew po jednej lub obu stronach drogi albo linii. Upuść na drogę, linię lub mapę."
+ },
+ "Sides": {
+  "de": "Seiten",
+  "pl": "Strony"
+ },
+ "Left side only": {
+  "de": "Nur linke Seite",
+  "pl": "Tylko lewa strona"
+ },
+ "Right side only": {
+  "de": "Nur rechte Seite",
+  "pl": "Tylko prawa strona"
+ },
+ "Stagger opposite side": {
+  "de": "Gegenseite versetzen",
+  "pl": "Przesuń drugą stronę (naprzemiennie)"
+ },
+ "Spacing m": {
+  "de": "Abstand m",
+  "pl": "Odstęp m"
  }
 }
