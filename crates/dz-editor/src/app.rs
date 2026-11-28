@@ -634,6 +634,7 @@ pub struct App {
     pub library: dz_core::library::Library,
     pub built_in: Vec<dz_core::library::GeneratorPreset>,
     pub built_in_objects: Vec<dz_core::library::ObjectPreset>,
+    pub built_in_prefabs: Vec<dz_core::library::Prefab>,
     /// Generator of the project shown in the details panel.
     pub selected_generator: Option<u64>,
     /// Library entries being edited.
@@ -727,7 +728,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), hidden_objects: std::collections::HashSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
-            task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, outliner_rename: None, tile_limit: TileLimitState::default(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), built_in_objects: dz_core::library::built_in_objects(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
+            task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, outliner_rename: None, tile_limit: TileLimitState::default(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), built_in_objects: dz_core::library::built_in_objects(), built_in_prefabs: dz_core::library::built_in_prefabs(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), loot_proto: Default::default(), team: Default::default(),
             settings,
         };
@@ -787,6 +788,16 @@ impl App {
 
     /// Display name of an object preset (translated for built-in presets).
     pub fn object_preset_name(&self, p: &dz_core::library::ObjectPreset) -> String {
+        if p.is_built_in() { crate::i18n::t(&p.name) } else { p.name.clone() }
+    }
+
+    /// Finds a prefab by id in the user library or the built-in ones.
+    pub fn prefab(&self, id: u64) -> Option<&dz_core::library::Prefab> {
+        self.library.prefabs.iter().find(|p| p.id == id).or_else(|| self.built_in_prefabs.iter().find(|p| p.id == id))
+    }
+
+    /// Display name of a prefab (translated for built-in prefabs).
+    pub fn prefab_name(&self, p: &dz_core::library::Prefab) -> String {
         if p.is_built_in() { crate::i18n::t(&p.name) } else { p.name.clone() }
     }
 
@@ -2209,7 +2220,7 @@ impl App {
 
     /// Places a prefab with its middle at (x, z) and selects what it placed.
     pub fn place_prefab(&mut self, id: u64, x: f32, z: f32) -> Vec<u32> {
-        let Some(prefab) = self.library.prefabs.iter().find(|p| p.id == id).cloned() else { return Vec::new() };
+        let Some(prefab) = self.prefab(id).cloned() else { return Vec::new() };
         let label = tf("Place {0}", &[&prefab.name]);
         self.place_layout(&prefab, x, z, label)
     }

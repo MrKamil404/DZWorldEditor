@@ -43,6 +43,7 @@ pub enum Group {
     BuiltIn,
     BuiltInGenerators,
     BuiltInPresets,
+    BuiltInPrefabs,
     BuiltInModifiers,
     Library,
     LibraryGenerators,
@@ -142,7 +143,7 @@ impl Source {
         match self {
             Source::Drive(p) if !p.is_empty() => Some(Source::Drive(p.rsplit_once('\\').map_or("", |x| x.0).to_string())),
             Source::Folder(n) if !n.is_empty() => Some(Source::Folder(parent_folder(n).to_string())),
-            Source::Group(Group::BuiltInGenerators | Group::BuiltInPresets | Group::BuiltInModifiers) => Some(Source::Group(Group::BuiltIn)),
+            Source::Group(Group::BuiltInGenerators | Group::BuiltInPresets | Group::BuiltInPrefabs | Group::BuiltInModifiers) => Some(Source::Group(Group::BuiltIn)),
             Source::Group(Group::LibraryGenerators | Group::LibraryPresets | Group::LibraryPrefabs) | Source::Templates(None) => Some(Source::Group(Group::Library)),
             Source::Templates(Some(_)) => Some(Source::Templates(None)),
             Source::LibFolder(n) => Some(library_source(parent_folder(n))),
@@ -172,7 +173,7 @@ impl Source {
                 Group::BuiltInGenerators | Group::LibraryGenerators => "Generators",
                 Group::BuiltInPresets | Group::LibraryPresets => "Presets",
                 Group::BuiltInModifiers => "Modifiers",
-                Group::LibraryPrefabs => "Prefabs",
+                Group::BuiltInPrefabs | Group::LibraryPrefabs => "Prefabs",
                 Group::Library => "Library",
             }),
             Source::Surfaced => t("Models with a surface"),
@@ -183,7 +184,7 @@ impl Source {
         }
     }
     fn locked(&self) -> bool {
-        matches!(self, Source::Group(Group::BuiltIn | Group::BuiltInGenerators | Group::BuiltInPresets | Group::BuiltInModifiers) | Source::Category(..))
+        matches!(self, Source::Group(Group::BuiltIn | Group::BuiltInGenerators | Group::BuiltInPresets | Group::BuiltInPrefabs | Group::BuiltInModifiers) | Source::Category(..))
     }
 }
 
@@ -619,7 +620,7 @@ fn models_of(app: &App, pick: &Pick) -> Vec<String> {
         Pick::Generator(_) | Pick::Modifier(_) | Pick::Biome(_) => Vec::new(),
         Pick::Prefab(id) => {
             let mut seen = std::collections::HashSet::new();
-            app.library.prefabs.iter().find(|p| p.id == *id).map(|p| p.items.iter().map(|i| dz_core::objects::ObjectStore::normalize_path(&i.model)).filter(|m| seen.insert(m.clone())).collect()).unwrap_or_default()
+            app.prefab(*id).map(|p| p.items.iter().map(|i| dz_core::objects::ObjectStore::normalize_path(&i.model)).filter(|m| seen.insert(m.clone())).collect()).unwrap_or_default()
         }
     }
 }
@@ -632,9 +633,10 @@ fn is_locked(app: &App, pick: &Pick) -> bool {
     match pick {
         Pick::Generator(id) => app.built_in.iter().any(|g| g.id == *id),
         Pick::Preset(id) => app.built_in_objects.iter().any(|p| p.id == *id),
+        Pick::Prefab(id) => app.built_in_prefabs.iter().any(|p| p.id == *id),
         Pick::Forest(n) => !app.library.forest_presets.iter().any(|p| p.name == *n),
         Pick::Road(_) | Pick::Modifier(_) | Pick::Biome(_) => true,
-        Pick::Model(_) | Pick::Prefab(_) => false,
+        Pick::Model(_) => false,
     }
 }
 
@@ -646,7 +648,7 @@ fn name_of(app: &App, pick: &Pick) -> String {
         Pick::Forest(n) | Pick::Road(n) => n.clone(),
         Pick::Biome(i) => dz_core::gen::surface_biomes().get(*i).map(|b| t(b.name)).unwrap_or_default(),
         Pick::Modifier(i) => t(MODIFIERS[*i].name),
-        Pick::Prefab(id) => app.library.prefabs.iter().find(|p| p.id == *id).map(|p| p.name.clone()).unwrap_or_default(),
+        Pick::Prefab(id) => app.prefab(*id).map(|p| app.prefab_name(p)).unwrap_or_default(),
     }
 }
 
@@ -676,7 +678,7 @@ fn look_of(app: &mut App, ctx: &egui::Context, pick: &Pick, layers: &[(String, [
         }
         Pick::Prefab(id) => {
             (letter, color) = ("P", Color32::from_rgb(86, 70, 100));
-            let n = app.library.prefabs.iter().find(|p| p.id == *id).map_or(0, |p| p.items.len());
+            let n = app.prefab(*id).map_or(0, |p| p.items.len());
             count = Some(n);
             tooltip = format!("{name}\n{}", tf("{0} objects", &[&n.to_string()]));
             STRIPE_PRESET
@@ -770,7 +772,7 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
         Source::Group(g) => {
             let sub = |gs: &[Group]| gs.iter().map(|g| Item::Folder(Source::Group(*g))).collect::<Vec<_>>();
             match g {
-                Group::BuiltIn => out.extend(sub(&[Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInModifiers])),
+                Group::BuiltIn => out.extend(sub(&[Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInPrefabs, Group::BuiltInModifiers])),
                 Group::Library => {
                     out.extend(sub(&[Group::LibraryGenerators, Group::LibraryPresets, Group::LibraryPrefabs]));
                     out.extend(library_subfolders(app, ""));
@@ -789,6 +791,9 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
                     out.extend(app.road_families.iter().filter(|f| named(f)).map(|f| Item::Asset(Pick::Road(f.clone()))));
                     out.extend(app.built_in_objects.iter().filter(|p| named(&t(&p.name))).map(|p| Item::Asset(Pick::Preset(p.id))));
                     out.extend(dz_core::gen::surface_biomes().iter().enumerate().filter(|(_, b)| named(&t(b.name))).map(|(i, _)| Item::Asset(Pick::Biome(i))));
+                }
+                Group::BuiltInPrefabs => {
+                    out.extend(app.built_in_prefabs.iter().filter(|p| named(&t(&p.name))).map(|p| Item::Asset(Pick::Prefab(p.id))));
                 }
                 Group::LibraryPrefabs => {
                     if !searching { out.extend(library_subfolders(app, PREFABS_ROOT)); }
@@ -1146,7 +1151,14 @@ fn built_in_section(ui: &mut egui::Ui, app: &App, acts: &mut Vec<Act>) {
     egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
         .show_header(ui, |ui| { locked_row(ui, &app.browser.source, Source::Group(Group::BuiltIn), Source::Group(Group::BuiltIn).label(), acts); })
         .body(|ui| {
-            for g in [Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInModifiers] {
+            for g in [Group::BuiltInGenerators, Group::BuiltInPresets, Group::BuiltInPrefabs, Group::BuiltInModifiers] {
+                if categories(g).is_empty() {
+                    ui.horizontal(|ui| {
+                        ui.add_space(18.0);
+                        locked_row(ui, &app.browser.source, Source::Group(g), Source::Group(g).label(), acts);
+                    });
+                    continue;
+                }
                 let id = ui.make_persistent_id(("builtin", g as u8));
                 egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false)
                     .show_header(ui, |ui| {
@@ -2088,9 +2100,11 @@ fn duplicate(app: &mut App, pick: &Pick) {
         Pick::Forest(n) => crate::library_ui::duplicate_forest_preset(app, n),
         Pick::Preset(id) => crate::library_ui::duplicate_object_preset(app, *id),
         Pick::Prefab(id) => {
-            if let Some(mut p) = app.library.prefabs.iter().find(|p| p.id == *id).cloned() {
+            if let Some(mut p) = app.prefab(*id).cloned() {
+                let base = app.prefab_name(&p);
+                if p.is_built_in() { p.folder.clear(); }
                 p.id = dz_core::library::new_id();
-                p.name = format!("{} 2", p.name);
+                p.name = format!("{base} 2");
                 let new = p.id;
                 app.library.prefabs.push(p);
                 app.edit_prefab = Some(new);
@@ -2287,7 +2301,7 @@ fn details(app: &mut App, ui: &mut egui::Ui, layers: &[(String, [u8; 3])], acts:
                     ui.weak(t("Drop it on the map to add a terrain modifier there."));
                 }
                 Pick::Prefab(id) => {
-                    if let Some(p) = app.library.prefabs.iter().find(|p| p.id == *id) {
+                    if let Some(p) = app.prefab(*id) {
                         rows.push((t("Kind"), t("Prefab")));
                         rows.push((t("Objects"), p.items.len().to_string()));
                         info_rows(ui, &rows);

@@ -1296,6 +1296,39 @@ pub fn details(app: &mut App, ui: &mut egui::Ui) -> bool {
 
 /// The name, contents and actions of a prefab of the library. False when it is gone.
 fn prefab_details(app: &mut App, ui: &mut egui::Ui, id: u64) -> bool {
+    if let Some(p) = app.built_in_prefabs.iter().find(|p| p.id == id).cloned() {
+        ui.strong(t(&p.name));
+        ui.weak(t("A built-in prefab. Duplicate it to make your own version."));
+        ui.weak(tf("{0} objects", &[&p.items.len().to_string()]));
+        let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        for i in &p.items {
+            *counts.entry(i.model.rsplit('\\').next().unwrap_or(&i.model).to_string()).or_default() += 1;
+        }
+        egui::ScrollArea::vertical().id_salt("prefab_models").max_height(160.0).show(ui, |ui| {
+            for (m, n) in &counts {
+                ui.label(format!("{m}  ×{n}"));
+            }
+        });
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            if ui.button(t("Place")).on_hover_text(t("Click on the map to place it; it can also be dragged onto the map.")).clicked() {
+                app.place.prefab = Some(id);
+                app.place.preset = None;
+                app.mode = crate::app::Mode::Place;
+            }
+            if ui.button(t("Duplicate")).clicked() {
+                let mut copy = p.clone();
+                copy.id = new_id();
+                copy.folder.clear();
+                copy.name = unused_name(&t(&p.name), |n| app.library.prefabs.iter().any(|x| x.name == n));
+                let new = copy.id;
+                app.library.prefabs.push(copy);
+                app.edit_prefab = Some(new);
+                app.lib_dirty = true;
+            }
+        });
+        return true;
+    }
     let Some(at) = app.library.prefabs.iter().position(|p| p.id == id) else {
         app.edit_prefab = None;
         return false;

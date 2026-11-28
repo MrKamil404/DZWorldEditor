@@ -3724,7 +3724,7 @@ fn open_group(app: &mut App, group: &str) {
 /// the prefab, which is where the spawn stands: offsets along the axes of the map, the yaw as
 /// the direction, and a height over the spawn for objects above the ground.
 fn prefab_objects(app: &mut App, id: u64) -> Option<(String, Vec<places::GroupObject>)> {
-    let prefab = app.library.prefabs.iter().find(|p| p.id == id).cloned()?;
+    let prefab = app.prefab(id).cloned()?;
     let de = app.mission.group_de;
     let objects = prefab.items.iter().map(|i| places::GroupObject {
         kind: class_of_model(app, &i.model, de),

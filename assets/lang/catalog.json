@@ -11698,5 +11698,33 @@
  "Spacing m": {
   "de": "Abstand m",
   "pl": "Odstęp m"
+ },
+ "A built-in prefab. Duplicate it to make your own version.": {
+  "de": "Ein eingebautes Prefab. Dupliziere es für deine eigene Version.",
+  "pl": "Wbudowany prefab. Zduplikuj go, aby zrobić własną wersję."
+ },
+ "Bus stop (village)": {
+  "de": "Bushaltestelle (Dorf)",
+  "pl": "Przystanek autobusowy (wiejski)"
+ },
+ "Forest camp": {
+  "de": "Waldlager",
+  "pl": "Obozowisko leśne"
+ },
+ "Hunting post": {
+  "de": "Jägerstand",
+  "pl": "Ambona myśliwska"
+ },
+ "Road checkpoint": {
+  "de": "Straßenkontrollpunkt",
+  "pl": "Checkpoint drogowy"
+ },
+ "Military outpost": {
+  "de": "Militärposten",
+  "pl": "Posterunek wojskowy"
+ },
+ "Transformer station": {
+  "de": "Trafostation",
+  "pl": "Stacja transformatorowa"
  }
 }

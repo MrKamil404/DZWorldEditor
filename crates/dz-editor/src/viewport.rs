@@ -4507,7 +4507,7 @@ fn append_place_preview(app: &mut App, ctx: &egui::Context, v: &View, resp: &egu
                     }
                 }
                 Pick::Prefab(id) => {
-                    if let Some(pf) = app.library.prefabs.iter().find(|x| x.id == *id) {
+                    if let Some(pf) = app.prefab(*id) {
                         from_prefab = true;
                         for it in &pf.items {
                             items.push((it.model.clone(), target[0] + it.x, target[2] + it.z, it.yaw, it.pitch, it.roll, it.scale, surface_y.map(|sy| sy + it.elevation)));
@@ -4525,7 +4525,7 @@ fn append_place_preview(app: &mut App, ctx: &egui::Context, v: &View, resp: &egu
             }
         }
     } else if let Some(pid) = app.place.prefab {
-        if let Some(pf) = app.library.prefabs.iter().find(|p| p.id == pid) {
+        if let Some(pf) = app.prefab(pid) {
             from_prefab = true;
             for it in &pf.items {
                 items.push((it.model.clone(), target[0] + it.x, target[2] + it.z, it.yaw, it.pitch, it.roll, it.scale, surface_y.map(|sy| sy + it.elevation)));
@@ -5467,6 +5467,10 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
             }
         }
         "wrp" => app.import_wrp_file(std::path::PathBuf::from(arg)),
+        "flat" => {
+            let w = dz_core::world::World::new(dz_core::world::WorldMeta::new("Flat", 256, 4.0), 20.0);
+            app.open_world(w, None);
+        }
         "demo" => {
             let mut w = dz_core::world::World::new(dz_core::world::WorldMeta::new("Demo", 2048, 5.0), 60.0);
             let params = gen::TerrainParams { kind: gen::TerrainKind::Island, ..Default::default() };
@@ -5618,7 +5622,8 @@ pub fn run_script(app: &mut App, ctx: &egui::Context) {
         // `prefabmake`: a prefab of the selection; `prefabplace x z`: the last prefab placed there.
         "prefabmake" => { app.create_prefab(); }
         "prefabplace" if nums.len() >= 2 => {
-            if let Some(id) = app.library.prefabs.last().map(|p| p.id) {
+            let id = nums.get(2).map(|v| *v as u64).or_else(|| app.library.prefabs.last().map(|p| p.id));
+            if let Some(id) = id {
                 let ids = app.place_prefab(id, nums[0], nums[1]);
                 eprintln!("PREFAB placed {} objects", ids.len());
             }

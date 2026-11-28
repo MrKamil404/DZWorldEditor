@@ -713,6 +713,10 @@ pub struct Prefab {
 }
 
 impl Prefab {
+    pub fn is_built_in(&self) -> bool {
+        self.folder == BUILT_IN || self.folder.starts_with("Built-in/")
+    }
+
     /// The layout of objects round the middle of their footprint on the map.
     pub fn from_objects(id: u64, name: String, objects: &[(String, Obj)], height: &crate::terrain::Heightmap) -> Self {
         let (mut lo, mut hi) = ([f32::MAX; 2], [f32::MIN; 2]);
@@ -815,6 +819,11 @@ impl Library {
     /// Finds an object preset by id in the user library or the built-in ones.
     pub fn find_object(&self, id: u64) -> Option<ObjectPreset> {
         self.objects.iter().find(|p| p.id == id).cloned().or_else(|| built_in_objects().into_iter().find(|p| p.id == id))
+    }
+
+    /// Finds a prefab by id in the user library or the built-in ones.
+    pub fn find_prefab(&self, id: u64) -> Option<Prefab> {
+        self.prefabs.iter().find(|p| p.id == id).cloned().or_else(|| built_in_prefabs().into_iter().find(|p| p.id == id))
     }
 
     /// Everything in the library a forest can be planted with.
@@ -1719,6 +1728,79 @@ pub fn built_in_objects() -> Vec<ObjectPreset> {
     ]
 }
 
+/// The prefabs every installation starts with; they cannot be changed, only duplicated.
+pub fn built_in_prefabs() -> Vec<Prefab> {
+    let item = |model: &str, x: f32, z: f32, yaw: f32| PrefabItem {
+        model: model.to_string(),
+        x,
+        z,
+        elevation: 0.0,
+        yaw,
+        pitch: 0.0,
+        roll: 0.0,
+        scale: 1.0,
+        flags: 0,
+    };
+    let make = |id, name: &str, items: Vec<PrefabItem>| Prefab {
+        id,
+        name: name.to_string(),
+        folder: BUILT_IN.to_string(),
+        items,
+    };
+    vec![
+        make(2001, "Bus stop (village)", vec![
+            item(r"dz\structures\residential\bus\BusStop_Village.p3d", 0.0, 0.0, 270.0),
+            item(r"dz\structures\residential\bus\BusStop_Village_Sign.p3d", 3.4, 1.4, 0.0),
+            item(r"dz\structures\residential\misc\Garbage_Bin.p3d", -3.0, 0.6, 0.0),
+            item(r"dz\structures\residential\misc\Misc_Bench1.p3d", 3.5, -0.4, 0.0),
+        ]),
+        make(2002, "Forest camp", vec![
+            item(r"dz\structures\residential\misc\Misc_WoodTable_Outdoor.p3d", -1.4, 0.0, 0.0),
+            item(r"dz\structures\residential\misc\Misc_Table_Camp.p3d", 2.0, 0.8, 15.0),
+            item(r"dz\structures\residential\misc\Misc_Chair_Camp1.p3d", 1.8, 2.0, 195.0),
+            item(r"dz\structures\residential\misc\Misc_Chair_Camp1.p3d", 2.3, -0.4, 15.0),
+            item(r"dz\structures\residential\misc\Misc_WoodPile1.p3d", -2.2, -2.6, 90.0),
+            item(r"dz\structures\residential\misc\Misc_WoodBlock.p3d", 0.4, -2.2, 30.0),
+        ]),
+        make(2003, "Hunting post", vec![
+            item(r"dz\structures\residential\misc\Misc_DeerStand1.p3d", 0.0, 0.0, 0.0),
+            item(r"dz\structures\residential\misc\Misc_FeedRack.p3d", 3.2, 2.8, 20.0),
+            item(r"dz\structures\residential\misc\Misc_WoodPile2.p3d", -3.2, -0.6, 0.0),
+        ]),
+        make(2004, "Road checkpoint", vec![
+            item(r"dz\structures\military\improvised\Mil_GuardShed.p3d", -3.8, 0.0, 90.0),
+            item(r"dz\structures\residential\misc\Misc_RoadBarrier.p3d", -1.2, 0.0, 90.0),
+            item(r"dz\structures\military\misc\Misc_BagFence_3m.p3d", -3.8, -2.5, 0.0),
+            item(r"dz\structures\military\misc\Misc_BagFence_3m.p3d", -3.8, 2.5, 0.0),
+            item(r"dz\structures\military\misc\Misc_BagFence_3m.p3d", 4.2, 1.4, 0.0),
+            item(r"dz\structures\military\misc\Misc_Hedgehog_Iron.p3d", 4.4, -1.5, 35.0),
+            item(r"dz\structures\industrial\misc\misc_barrelempty.p3d", -2.3, -1.8, 0.0),
+        ]),
+        make(2005, "Military outpost", vec![
+            item(r"dz\structures\military\improvised\Mil_GuardShed.p3d", 0.0, -1.6, 0.0),
+            item(r"dz\structures\military\misc\Misc_BagFence_3m.p3d", 0.0, 2.8, 0.0),
+            item(r"dz\structures\military\misc\Misc_BagFence_3m.p3d", -3.4, 1.2, 40.0),
+            item(r"dz\structures\military\misc\Misc_BagFence_3m.p3d", 3.4, 1.2, 320.0),
+            item(r"dz\structures\military\misc\Misc_SupplyBox1.p3d", -3.0, -2.0, 15.0),
+            item(r"dz\structures\military\misc\Misc_SupplyBox2.p3d", -3.2, -0.4, 0.0),
+            item(r"dz\structures\military\misc\Misc_SupplyBox3.p3d", 3.0, -1.6, 90.0),
+            item(r"dz\structures\industrial\misc\misc_barrelempty.p3d", 2.8, -0.1, 0.0),
+            item(r"dz\structures\industrial\misc\misc_barrelempty.p3d", 3.4, 0.3, 40.0),
+        ]),
+        make(2006, "Transformer station", vec![
+            item(r"dz\structures\industrial\power\Power_Transformer_Small.p3d", 0.0, 0.0, 0.0),
+            item(r"dz\structures\walls\Wall_IndFnc_3.p3d", -1.5, -3.0, 0.0),
+            item(r"dz\structures\walls\Wall_IndFnc_3.p3d", 1.5, -3.0, 0.0),
+            item(r"dz\structures\walls\Wall_IndFnc_3.p3d", -3.0, -1.5, 90.0),
+            item(r"dz\structures\walls\Wall_IndFnc_3.p3d", -3.0, 1.5, 90.0),
+            item(r"dz\structures\walls\Wall_IndFnc_3.p3d", 3.0, -1.5, 90.0),
+            item(r"dz\structures\walls\Wall_IndFnc_3.p3d", 3.0, 1.5, 90.0),
+            item(r"dz\structures\walls\Wall_IndFnc_3.p3d", -1.5, 3.0, 0.0),
+            item(r"dz\structures\industrial\misc\misc_coil.p3d", 5.4, -1.0, 20.0),
+        ]),
+    ]
+}
+
 /// Where a generator in the project works.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum GenTarget {
@@ -1940,6 +2022,14 @@ mod tests {
                 for (m, _) in &p.items {
                     let full = std::path::Path::new(r"P:\").join(m);
                     assert!(full.is_file(), "missing model in {}: {}", p.name, full.display());
+                }
+            }
+            for pf in built_in_prefabs() {
+                assert!(pf.is_built_in() && !pf.items.is_empty());
+                assert!(seen.insert(pf.id) && !gens.contains(&pf.id), "duplicate id {}", pf.id);
+                for it in &pf.items {
+                    let full = std::path::Path::new(r"P:\").join(&it.model);
+                    assert!(full.is_file(), "missing prefab model in {}: {}", pf.name, full.display());
                 }
             }
         }
