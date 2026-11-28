@@ -11774,5 +11774,41 @@
  "Fallen logs": {
   "de": "Umgestürzte Stämme",
   "pl": "Powalone kłody"
+ },
+ "Roadblock and checkpoint": {
+  "de": "Straßensperre und Kontrollpunkt",
+  "pl": "Blokada drogowa i checkpoint"
+ },
+ "Places military checkpoints or civilian roadblocks aligned to the road. Drop it on a road, a line, or the map.": {
+  "de": "Setzt militärische Kontrollpunkte oder zivile Straßensperren entlang der Straße. Auf eine Straße, eine Linie oder die Karte ziehen.",
+  "pl": "Ustawia wojskowe checkpointy lub cywilne blokady dopasowane do osi drogi. Upuść na drogę, linię lub mapę."
+ },
+ "Style": {
+  "de": "Stil",
+  "pl": "Styl"
+ },
+ "Civilian": {
+  "de": "Zivil",
+  "pl": "Cywilny"
+ },
+ "Mixed": {
+  "de": "Gemischt",
+  "pl": "Mieszany"
+ },
+ "One every m (0 = middle)": {
+  "de": "Einer alle m (0 = Mitte)",
+  "pl": "Jeden co m (0 = na środku)"
+ },
+ "Guard booth": {
+  "de": "Wachhäuschen",
+  "pl": "Budka wartownicza"
+ },
+ "Barbed wire and hedgehogs": {
+  "de": "Stacheldraht und Panzersperren",
+  "pl": "Drut kolczasty i jeże przeciwpancerne"
+ },
+ "Abandoned vehicles": {
+  "de": "Verlassene Fahrzeuge",
+  "pl": "Porzucone pojazdy"
  }
 }

@@ -1024,6 +1024,33 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             });
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
         }
+        GeneratorKind::Roadblock(g) => {
+            use dz_core::dressing::RoadblockStyle;
+            ui.weak(t("Places military checkpoints or civilian roadblocks aligned to the road. Drop it on a road, a line, or the map."));
+            row(ui, &t("Style"), |ui| {
+                let label = |s: RoadblockStyle| match s {
+                    RoadblockStyle::Military => t("Military"),
+                    RoadblockStyle::Civilian => t("Civilian"),
+                    RoadblockStyle::Mixed => t("Mixed"),
+                };
+                egui::ComboBox::from_id_salt("roadblock_style")
+                    .selected_text(label(g.style))
+                    .show_ui(ui, |ui| {
+                        for s in [RoadblockStyle::Military, RoadblockStyle::Civilian, RoadblockStyle::Mixed] {
+                            ui.selectable_value(&mut g.style, s, label(s));
+                        }
+                    });
+            });
+            number(ui, t("One every m (0 = middle)"), &mut g.spacing, 0.0..=5000.0);
+            number(ui, t("Half the road width m"), &mut g.road_half, 2.0..=12.0);
+            if g.style != RoadblockStyle::Civilian {
+                ui.checkbox(&mut g.add_booth, t("Guard booth"));
+            }
+            ui.checkbox(&mut g.add_wire, t("Barbed wire and hedgehogs"));
+            ui.checkbox(&mut g.add_wrecks, t("Abandoned vehicles"));
+            follow_row(ui, &mut g.follow);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
         GeneratorKind::Wrecks(g) => {
             ui.weak(t("Places with wrecks along roads: a jam of cars in a lane, a crash, or a car left on the verge, with stains under them; and cracks, patches and tyre marks on the road. Drop it on a road, or on the map for all roads."));
             number(ui, t("Places per km"), &mut g.scenes_per_km, 0.0..=20.0);
@@ -1125,6 +1152,7 @@ pub(crate) fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::Orchard(_) => ("O", Color32::from_rgb(108, 134, 64)),
         GeneratorKind::TreeAlley(_) => ("A", Color32::from_rgb(76, 122, 68)),
         GeneratorKind::Wetland(_) => ("M", Color32::from_rgb(66, 108, 86)),
+        GeneratorKind::Roadblock(_) => ("B", Color32::from_rgb(132, 86, 62)),
     }
 }
 
@@ -1173,11 +1201,12 @@ pub(crate) fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
         GeneratorKind::Orchard(g) => first_of(&g.objects),
         GeneratorKind::TreeAlley(g) => first_of(&g.objects),
         GeneratorKind::Wetland(g) => first_of(&g.reeds),
+        GeneratorKind::Roadblock(_) => Some(r"dz\structures\military\improvised\Mil_GuardShed.p3d".to_string()),
         _ => None,
     };
     match model {
         Some(m) => Preview::Model(ObjectStore::normalize_path(&m)),
-        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_) | GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_)) => Preview::Nothing,
+        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_) | GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_) | GeneratorKind::Roadblock(_)) => Preview::Nothing,
         None => {
             let key = match kind {
                 GeneratorKind::Terrain(p) => format!("terrain {p:?}"),
@@ -1904,7 +1933,7 @@ pub(crate) fn resolve_target(app: &App, kind: &GeneratorKind, drop: Option<Dropp
         (TargetKind::Point, _, None) => { let s = doc.world.meta.size_m(); GenTarget::Point([s * 0.5, s * 0.5]) }
         (TargetKind::Area | TargetKind::Map | TargetKind::Any, _, _) => GenTarget::Map,
         // Those that dress roads follow all roads of their kind on the whole map.
-        (TargetKind::Line, _, _) if matches!(kind, GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::TreeAlley(_)) => GenTarget::Map,
+        (TargetKind::Line, _, _) if matches!(kind, GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Roadblock(_)) => GenTarget::Map,
         (TargetKind::Line, _, _) => return Err(t("Drop this generator on a line or a road, or select one first")),
     })
 }
@@ -2385,6 +2414,20 @@ pub fn run_generator(app: &mut App, id: u64) {
                 Ok(Box::new(move |a: &mut App| {
                     store_generated(a, id, models, objects);
                     store_mask(a, id, &label, data);
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Roadblock(g) => {
+            let lines = if g_target_is_map(&g_target) { roads_of(world, g.follow) } else { lines };
+            if lines.is_empty() {
+                app.warn(t("There are no roads to follow"));
+                return;
+            }
+            app.spawn(label.clone(), move |job| {
+                let objects = dz_core::dressing::roadblock_objects(&mut lite, &g, &lines, job)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
                 }) as Finish)
             });
         }

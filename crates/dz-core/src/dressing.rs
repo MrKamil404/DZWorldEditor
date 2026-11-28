@@ -377,6 +377,163 @@ pub fn dress_objects(w: &mut World, db: &ModelDb, g: &DressGen, buildings: &[(Ob
     Ok(out)
 }
 
+// ---------------------------------------------------------------- roadblocks and checkpoints
+
+/// Kind of roadblock placed across a road.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoadblockStyle {
+    Military,
+    Civilian,
+    Mixed,
+}
+
+impl Default for RoadblockStyle {
+    fn default() -> Self {
+        Self::Military
+    }
+}
+
+/// Roadblocks and checkpoints aligned automatically to the road direction.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct RoadblockGen {
+    pub style: RoadblockStyle,
+    /// Metres between checkpoints along a road (0 = a single checkpoint at the middle of each line).
+    pub spacing: f32,
+    /// Half width of the road in metres: booths and sandbags stand outside this on the verge.
+    pub road_half: f32,
+    /// Place a guard booth on the verge (military style).
+    pub add_booth: bool,
+    /// Place barbed wire and iron hedgehogs.
+    pub add_wire: bool,
+    /// Place abandoned police/civilian wrecks at the block.
+    pub add_wrecks: bool,
+    /// Which roads it follows when dropped on the whole map.
+    pub follow: Follow,
+    pub seed: u64,
+}
+
+impl Default for RoadblockGen {
+    fn default() -> Self {
+        Self {
+            style: RoadblockStyle::Military,
+            spacing: 0.0,
+            road_half: 3.8,
+            add_booth: true,
+            add_wire: true,
+            add_wrecks: true,
+            follow: Follow::Roads,
+            seed: 1,
+        }
+    }
+}
+
+/// Places roadblocks along `lines`, automatically aligned to each road's direction.
+pub fn roadblock_objects(w: &mut World, g: &RoadblockGen, lines: &[Vec<[f32; 2]>], job: &Job) -> Result<Vec<Obj>> {
+    let mut rng = StdRng::seed_from_u64(g.seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0x40adb10c);
+    let size = w.meta.size_m();
+    let sea = w.meta.sea_level;
+    let mut out = Vec::new();
+    let mut spacing = Spacing::new(30.0);
+
+    // Helper: place a model at local (right, forward) offset relative to road center & direction.
+    let place_rel = |w: &mut World, out: &mut Vec<Obj>, pos: [f32; 2], dir: [f32; 2], right_m: f32, fwd_m: f32, local_yaw: f32, align: bool, model: &str| {
+        // dir is forward (+Z in local frame); right is [dir[1], -dir[0]] (+X in local frame).
+        let x = pos[0] + dir[1] * right_m + dir[0] * fwd_m;
+        let z = pos[1] - dir[0] * right_m + dir[1] * fwd_m;
+        if x < 0.0 || z < 0.0 || x > size || z > size || w.height.sample(x, z) < sea {
+            return;
+        }
+        let road_yaw = dir[0].atan2(dir[1]).to_degrees();
+        let yaw = (road_yaw + local_yaw).rem_euclid(360.0);
+        let (pitch, roll) = if align { slope_angles(&w.height, x, z, yaw) } else { (0.0, 0.0) };
+        let m = w.objects.intern(model);
+        out.push(Obj { x, z, elevation: 0.0, yaw, pitch, roll, scale: 1.0, model: m, flags: 0 });
+    };
+
+    for line in lines {
+        if job.cancelled() || line.len() < 2 {
+            continue;
+        }
+        let total = length(line);
+        if total < 12.0 {
+            continue;
+        }
+        let stations: Vec<f32> = if g.spacing <= 0.0 {
+            vec![total * 0.5]
+        } else {
+            let mut s = (g.spacing * 0.5).min(total * 0.5);
+            let mut v = Vec::new();
+            while s < total - 15.0 {
+                v.push(s);
+                s += g.spacing;
+            }
+            if v.is_empty() && total >= 30.0 {
+                v.push(total * 0.5);
+            }
+            v
+        };
+        for s in stations {
+            let Some((pos, dir)) = point_at(line, s) else { continue };
+            if !spacing.claim(pos[0], pos[1]) {
+                continue;
+            }
+            let military = match g.style {
+                RoadblockStyle::Military => true,
+                RoadblockStyle::Civilian => false,
+                RoadblockStyle::Mixed => rng.gen_bool(0.5),
+            };
+            let flip = if rng.gen_bool(0.5) { 1.0f32 } else { -1.0f32 };
+            let rh = g.road_half.max(2.0);
+            if military {
+                // Guard booth on one verge facing the road, flanked by sandbags & barrel.
+                if g.add_booth {
+                    place_rel(w, &mut out, pos, dir, -flip * (rh + 0.4), 0.0, if flip > 0.0 { 90.0 } else { 270.0 }, false, r"dz\structures\military\improvised\Mil_GuardShed.p3d");
+                    place_rel(w, &mut out, pos, dir, -flip * (rh + 0.4), -2.5, 0.0, true, r"dz\structures\military\misc\Misc_BagFence_3m.p3d");
+                    place_rel(w, &mut out, pos, dir, -flip * (rh + 0.4), 2.5, 0.0, true, r"dz\structures\military\misc\Misc_BagFence_3m.p3d");
+                    place_rel(w, &mut out, pos, dir, -flip * (rh - 1.1), -1.8, 0.0, true, r"dz\structures\industrial\misc\misc_barrelempty.p3d");
+                }
+                // Boom barrier reaching across the road from the booth side.
+                place_rel(w, &mut out, pos, dir, -flip * (rh - 2.2), 0.0, if flip > 0.0 { 90.0 } else { 270.0 }, true, r"dz\structures\residential\misc\Misc_RoadBarrier.p3d");
+                // Sandbags & crates on the opposite verge.
+                place_rel(w, &mut out, pos, dir, flip * (rh + 0.4), 1.4, 0.0, true, r"dz\structures\military\misc\Misc_BagFence_3m.p3d");
+                place_rel(w, &mut out, pos, dir, flip * (rh + 1.4), -2.2, rng.gen_range(-15.0..15.0), true, r"dz\structures\military\misc\Misc_SupplyBox1.p3d");
+                if g.add_wire {
+                    place_rel(w, &mut out, pos, dir, flip * (rh + 0.6), -1.5, 35.0, true, r"dz\structures\military\misc\Misc_Hedgehog_Iron.p3d");
+                    place_rel(w, &mut out, pos, dir, -flip * (rh + 0.8), 4.6, 0.0, true, r"dz\structures\military\misc\Misc_RazorWire.p3d");
+                }
+                if g.add_wrecks {
+                    let car = if rng.gen_bool(0.5) {
+                        r"dz\structures\wrecks\vehicles\Wreck_Uaz.p3d"
+                    } else {
+                        r"dz\structures\wrecks\vehicles\Wreck_HMMWV.p3d"
+                    };
+                    place_rel(w, &mut out, pos, dir, flip * (rh * 0.45), -6.5, rng.gen_range(-20.0..20.0), true, car);
+                }
+            } else {
+                // Civilian / police roadblock: angled police wrecks + barricades + concrete blocks.
+                place_rel(w, &mut out, pos, dir, -flip * (rh * 0.55), 1.8, 0.0, true, r"dz\structures\residential\misc\Misc_Barricade.p3d");
+                place_rel(w, &mut out, pos, dir, flip * (rh * 0.55), -1.8, 180.0, true, r"dz\structures\residential\misc\Misc_Barricade.p3d");
+                place_rel(w, &mut out, pos, dir, -flip * (rh + 0.3), -1.2, 12.0, true, r"dz\structures\military\misc\Misc_ConcreteBlock1.p3d");
+                place_rel(w, &mut out, pos, dir, flip * (rh + 0.3), 1.5, -10.0, true, r"dz\structures\industrial\misc\misc_barrelempty.p3d");
+                if g.add_wire {
+                    place_rel(w, &mut out, pos, dir, flip * (rh + 0.8), -3.5, 25.0, true, r"dz\structures\military\misc\Misc_BarbedWire.p3d");
+                }
+                if g.add_wrecks {
+                    let police = if rng.gen_bool(0.5) {
+                        r"dz\structures\wrecks\vehicles\wreck_sed01_aban1_police.p3d"
+                    } else {
+                        r"dz\structures\wrecks\vehicles\wreck_hb01_aban1_police.p3d"
+                    };
+                    place_rel(w, &mut out, pos, dir, flip * (rh * 0.35), 4.2, flip * 38.0, true, police);
+                    place_rel(w, &mut out, pos, dir, -flip * (rh * 0.45), -5.0, -flip * 22.0, true, r"dz\structures\wrecks\vehicles\wreck_sed02_aban1_grey.p3d");
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,5 +602,23 @@ mod tests {
         let objects = dress_objects(&mut w, &db, &g, &[(house, path)], &[], &[], &Job::default()).unwrap();
         assert!(!objects.is_empty());
         assert!(objects.iter().all(|o| (o.x - 200.0).hypot(o.z - 200.0) < 8.0));
+    }
+
+    #[test]
+    fn roadblock_aligns_to_road_and_supports_styles() {
+        let mut w = world();
+        // Road running east (+x) at z = 200.
+        let road = vec![[50.0, 200.0], [350.0, 200.0]];
+        let mil = roadblock_objects(&mut w, &RoadblockGen::default(), std::slice::from_ref(&road), &Job::default()).unwrap();
+        assert!(mil.len() >= 6, "military checkpoint objects: {}", mil.len());
+        // Midpoint of road is (200, 200); all objects clustered near it.
+        assert!(mil.iter().all(|o| (o.x - 200.0).hypot(o.z - 200.0) < 12.0));
+
+        let civ = roadblock_objects(&mut w, &RoadblockGen { style: RoadblockStyle::Civilian, ..Default::default() }, std::slice::from_ref(&road), &Job::default()).unwrap();
+        assert!(civ.len() >= 5, "civilian roadblock objects: {}", civ.len());
+
+        // Spacing places multiple checkpoints along a long road.
+        let multi = roadblock_objects(&mut w, &RoadblockGen { spacing: 100.0, ..Default::default() }, std::slice::from_ref(&road), &Job::default()).unwrap();
+        assert!(multi.len() >= mil.len() * 2);
     }
 }
