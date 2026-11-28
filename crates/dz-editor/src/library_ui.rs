@@ -1051,6 +1051,92 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             follow_row(ui, &mut g.follow);
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
         }
+        GeneratorKind::GridArea(g) => {
+            ui.weak(t("Fills polygons with a grid and aisles (cemetery, parking lot, container yard), with jitter and clustered gaps so it looks natural."));
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(t("Cemetery")).clicked() { *g = dz_core::landscape::GridAreaGen::cemetery(); }
+                if ui.button(t("Parking lot")).clicked() { *g = dz_core::landscape::GridAreaGen::parking(); }
+                if ui.button(t("Container yard")).clicked() { *g = dz_core::landscape::GridAreaGen::containers(); }
+            });
+            number(ui, t("Row spacing m"), &mut g.row_spacing, 1.0..=40.0);
+            number(ui, t("Column spacing m"), &mut g.col_spacing, 1.0..=40.0);
+            row(ui, &t("Aisle every N rows"), |ui| { ui.add(crate::theme::ValueField::new(&mut g.aisle_every, 0..=20)); });
+            if g.aisle_every > 0 {
+                number(ui, t("Aisle extra width m"), &mut g.aisle_width, 0.0..=25.0);
+            }
+            let mut fixed = g.angle.is_some();
+            ui.checkbox(&mut fixed, t("Rows in one direction")).on_hover_text(t("Off: rows follow the longest side of each polygon."));
+            match (fixed, g.angle) {
+                (true, None) => g.angle = Some(0.0),
+                (false, Some(_)) => g.angle = None,
+                _ => {}
+            }
+            if let Some(a) = &mut g.angle { number(ui, t("Direction °"), a, 0.0..=180.0); }
+            number(ui, t("Turn °"), &mut g.yaw_offset, -180.0..=180.0);
+            number(ui, t("Position jitter m"), &mut g.jitter, 0.0..=3.0);
+            number(ui, t("Rotation jitter °"), &mut g.yaw_jitter, 0.0..=45.0);
+            ui.checkbox(&mut g.allow_flip, t("Flip some by 180°"));
+            number(ui, t("Missing share"), &mut g.missing, 0.0..=0.95);
+            number(ui, t("Clustered gaps"), &mut g.cluster_noise, 0.0..=1.0);
+            ui.weak(t("Higher values group empty slots into natural open patches."));
+            number(ui, t("Edge margin m"), &mut g.margin, 0.0..=20.0);
+            layer_pick(ui, "grid_surface", t("Ground surface"), &mut g.surface, &cx.layers, &cx.layer_pics);
+            group(ui, "grid_objects", t("Objects"), false, |ui| {
+                objects_ui(ui, &mut g.objects, cx);
+            });
+            group(ui, "grid_aisle_objects", t("Aisle props"), false, |ui| {
+                number(ui, t("Spacing m"), &mut g.aisle_spacing, 0.0..=120.0);
+                objects_ui(ui, &mut g.aisle_objects, cx);
+            });
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::Trench(g) => {
+            ui.weak(t("Carves a zigzag trench along a line, paints dirt, and adds sandbags, timbers and barbed wire."));
+            number(ui, t("Width m"), &mut g.width, 1.0..=8.0);
+            number(ui, t("Depth m"), &mut g.depth, 0.3..=4.0);
+            number(ui, t("Blend m"), &mut g.falloff, 0.5..=10.0);
+            number(ui, t("Zigzag length m"), &mut g.zigzag_length, 0.0..=40.0);
+            number(ui, t("Zigzag swing m"), &mut g.zigzag_amplitude, 0.0..=12.0);
+            ui.checkbox(&mut g.parapet_sandbags, t("Parapet sandbags"));
+            ui.checkbox(&mut g.add_wire, t("Barbed wire in front"));
+            if g.add_wire {
+                number(ui, t("Wire distance m"), &mut g.wire_offset, 1.5..=25.0);
+            }
+            ui.checkbox(&mut g.add_timbers, t("Timbers and crates"));
+            layer_pick(ui, "trench_surface", t("Ground surface"), &mut g.surface, &cx.layers, &cx.layer_pics);
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
+        GeneratorKind::Trail(g) => {
+            use dz_core::landscape::TrailColor;
+            ui.weak(t("Paints a narrow forest footpath along a line or road, clears vegetation from the corridor, and places trail markers and benches."));
+            line_ui(ui, &mut g.line);
+            number(ui, t("Path width m"), &mut g.width, 0.8..=10.0);
+            number(ui, t("Ragged edge m"), &mut g.edge_noise, 0.0..=4.0);
+            layer_pick(ui, "trail_surface", t("Ground surface"), &mut g.surface, &cx.layers, &cx.layer_pics);
+            ui.checkbox(&mut g.clear_corridor, t("Clear vegetation"));
+            if g.clear_corridor {
+                number(ui, t("Clear half-width m"), &mut g.clear_width, 0.5..=12.0);
+            }
+            row(ui, &t("Trail colour"), |ui| {
+                let label = |c: TrailColor| match c {
+                    TrailColor::Red => t("Red"),
+                    TrailColor::Blue => t("Blue"),
+                    TrailColor::Green => t("Green"),
+                    TrailColor::Yellow => t("Yellow"),
+                };
+                egui::ComboBox::from_id_salt("trail_color")
+                    .selected_text(label(g.marker_color))
+                    .show_ui(ui, |ui| {
+                        for c in [TrailColor::Red, TrailColor::Blue, TrailColor::Green, TrailColor::Yellow] {
+                            ui.selectable_value(&mut g.marker_color, c, label(c));
+                        }
+                    });
+            });
+            number(ui, t("Marker every m"), &mut g.marker_spacing, 0.0..=1000.0);
+            number(ui, t("Bench every m"), &mut g.bench_spacing, 0.0..=2000.0);
+            ui.checkbox(&mut g.add_map_board, t("Start map board"));
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
         GeneratorKind::Wrecks(g) => {
             ui.weak(t("Places with wrecks along roads: a jam of cars in a lane, a crash, or a car left on the verge, with stains under them; and cracks, patches and tyre marks on the road. Drop it on a road, or on the map for all roads."));
             number(ui, t("Places per km"), &mut g.scenes_per_km, 0.0..=20.0);
@@ -1153,6 +1239,9 @@ pub(crate) fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::TreeAlley(_) => ("A", Color32::from_rgb(76, 122, 68)),
         GeneratorKind::Wetland(_) => ("M", Color32::from_rgb(66, 108, 86)),
         GeneratorKind::Roadblock(_) => ("B", Color32::from_rgb(132, 86, 62)),
+        GeneratorKind::GridArea(_) => ("G", Color32::from_rgb(112, 108, 92)),
+        GeneratorKind::Trench(_) => ("Z", Color32::from_rgb(104, 86, 62)),
+        GeneratorKind::Trail(_) => ("T", Color32::from_rgb(138, 104, 62)),
     }
 }
 
@@ -1202,11 +1291,14 @@ pub(crate) fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
         GeneratorKind::TreeAlley(g) => first_of(&g.objects),
         GeneratorKind::Wetland(g) => first_of(&g.reeds),
         GeneratorKind::Roadblock(_) => Some(r"dz\structures\military\improvised\Mil_GuardShed.p3d".to_string()),
+        GeneratorKind::GridArea(g) => first_of(&g.objects),
+        GeneratorKind::Trench(_) => Some(r"dz\structures\military\misc\Misc_BagFence_3m.p3d".to_string()),
+        GeneratorKind::Trail(g) => Some(g.marker_color.pole_model().to_string()),
         _ => None,
     };
     match model {
         Some(m) => Preview::Model(ObjectStore::normalize_path(&m)),
-        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_) | GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_) | GeneratorKind::Roadblock(_)) => Preview::Nothing,
+        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_) | GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_) | GeneratorKind::Roadblock(_) | GeneratorKind::GridArea(_) | GeneratorKind::Trench(_) | GeneratorKind::Trail(_)) => Preview::Nothing,
         None => {
             let key = match kind {
                 GeneratorKind::Terrain(p) => format!("terrain {p:?}"),
@@ -2428,6 +2520,80 @@ pub fn run_generator(app: &mut App, id: u64) {
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| {
                     store_generated(a, id, models, objects);
+                }) as Finish)
+            });
+        }
+        GeneratorKind::GridArea(mut g) => {
+            if polygons.is_empty() {
+                app.warn(t("This generator needs a polygon"));
+                return;
+            }
+            g.objects = g.objects.resolved(&presets);
+            g.aisle_objects = g.aisle_objects.resolved(&presets);
+            let rings: Vec<Vec<[f32; 2]>> = polygons.iter().map(|p| p.points.clone()).collect();
+            app.spawn(label.clone(), move |_| {
+                let mask = dz_core::landscape::grid_area_mask(&lite, &g, &rings);
+                let objects = dz_core::landscape::grid_area_objects(&mut lite, &g, &rings)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    if let Some(data) = mask {
+                        store_mask(a, id, &label, data);
+                    }
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Trench(g) => {
+            let Some(first) = lines.first().cloned() else { return };
+            app.spawn(label.clone(), move |_| {
+                let modifier = dz_core::landscape::trench_modifier(&lite.base, 0, &label, &first, &g);
+                let data = dz_core::landscape::trench_mask(&lite, &lines, &g);
+                let objects = dz_core::landscape::trench_objects(&mut lite, &lines, &g)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    store_mask(a, id, &label, data);
+                    match modifier {
+                        Some(m) => store_modifier(a, id, m),
+                        None => clear_modifier(a, id),
+                    }
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Trail(g) => {
+            if lines.is_empty() {
+                return;
+            }
+            let lines_for_clear = lines.clone();
+            let g_clear = g.clone();
+            app.spawn(label.clone(), move |_| {
+                let data = dz_core::landscape::trail_mask(&lite, &lines, &g);
+                let objects = dz_core::landscape::trail_objects(&mut lite, &lines, &g)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    store_mask(a, id, &label, data);
+                    // Clear vegetation from the trail corridor, storing removed items for restore.
+                    if let Some(doc) = &mut a.doc {
+                        if let Some(idx) = doc.world.generators.iter().position(|x| x.id == id) {
+                            let w = &mut doc.world;
+                            for saved in std::mem::take(&mut w.generators[idx].removed) {
+                                let m = w.objects.intern(&saved.model);
+                                w.objects.insert(saved.object(m));
+                            }
+                            let skip: Vec<u32> = w.generators[idx].objects.clone();
+                            let hit_ids = dz_core::landscape::trail_clear_ids(w, &lines_for_clear, &g_clear, &skip);
+                            let mut removed = Vec::new();
+                            for oid in hit_ids {
+                                if let Some(o) = w.objects.remove(oid) {
+                                    let path = w.objects.model_path(&o).to_string();
+                                    removed.push(dz_core::library::RemovedObject::new(&path, &o));
+                                }
+                            }
+                            w.generators[idx].removed = removed;
+                            w.objects.revision += 1;
+                        }
+                    }
                 }) as Finish)
             });
         }

@@ -11810,5 +11810,137 @@
  "Abandoned vehicles": {
   "de": "Verlassene Fahrzeuge",
   "pl": "Porzucone pojazdy"
+ },
+ "Grid area": {
+  "de": "Rasterfläche",
+  "pl": "Plac siatkowy"
+ },
+ "Cemetery": {
+  "de": "Friedhof",
+  "pl": "Cmentarz"
+ },
+ "Parking lot": {
+  "de": "Parkplatz",
+  "pl": "Parking"
+ },
+ "Container yard": {
+  "de": "Containerplatz",
+  "pl": "Plac kontenerowy"
+ },
+ "Trenches": {
+  "de": "Schützengräben",
+  "pl": "Okopy"
+ },
+ "Tourist trail": {
+  "de": "Wanderweg",
+  "pl": "Szlak turystyczny"
+ },
+ "Fills polygons with a grid and aisles (cemetery, parking lot, container yard), with jitter and clustered gaps so it looks natural.": {
+  "de": "Füllt Polygone mit einem Raster und Gängen (Friedhof, Parkplatz, Containerplatz), mit Streuung und gruppierten Lücken für ein natürliches Bild.",
+  "pl": "Wypełnia poligony siatką z alejkami (cmentarz, parking, plac kontenerowy), z losowym rozrzutem i grupowanymi przerwami dla naturalnego wyglądu."
+ },
+ "Column spacing m": {
+  "de": "Spaltenabstand m",
+  "pl": "Odstęp kolumn m"
+ },
+ "Aisle every N rows": {
+  "de": "Gang alle N Reihen",
+  "pl": "Alejka co N rzędów"
+ },
+ "Aisle extra width m": {
+  "de": "Zusätzliche Gangbreite m",
+  "pl": "Dodatkowa szerokość alejki m"
+ },
+ "Rotation jitter °": {
+  "de": "Drehstreuung °",
+  "pl": "Losowy obrót °"
+ },
+ "Flip some by 180°": {
+  "de": "Einige um 180° drehen",
+  "pl": "Obracaj część o 180°"
+ },
+ "Clustered gaps": {
+  "de": "Gruppierte Lücken",
+  "pl": "Grupowane puste miejsca"
+ },
+ "Higher values group empty slots into natural open patches.": {
+  "de": "Höhere Werte gruppieren leere Plätze zu natürlichen freien Flächen.",
+  "pl": "Wyższe wartości skupiają puste miejsca w naturalne wolne plamy."
+ },
+ "Aisle props": {
+  "de": "Gang-Objekte",
+  "pl": "Obiekty przy alejkach"
+ },
+ "Carves a zigzag trench along a line, paints dirt, and adds sandbags, timbers and barbed wire.": {
+  "de": "Gräbt einen Zickzackgraben entlang einer Linie, malt Erde und setzt Sandsäcke, Balken und Stacheldraht.",
+  "pl": "Rzeźbi zygzakowaty okop wzdłuż linii, maluje ziemię i ustawia worki z piaskiem, belki oraz drut kolczasty."
+ },
+ "Width m": {
+  "de": "Breite m",
+  "pl": "Szerokość m"
+ },
+ "Depth m": {
+  "de": "Tiefe m",
+  "pl": "Głębokość m"
+ },
+ "Blend m": {
+  "de": "Übergang m",
+  "pl": "Przejście m"
+ },
+ "Zigzag length m": {
+  "de": "Zickzack-Länge m",
+  "pl": "Długość odcinka zygzaka m"
+ },
+ "Zigzag swing m": {
+  "de": "Zickzack-Auslenkung m",
+  "pl": "Wychylenie zygzaka m"
+ },
+ "Parapet sandbags": {
+  "de": "Brüstungs-Sandsäcke",
+  "pl": "Worki z piaskiem na przedpiersiu"
+ },
+ "Barbed wire in front": {
+  "de": "Stacheldraht davor",
+  "pl": "Drut kolczasty na przedpolu"
+ },
+ "Wire distance m": {
+  "de": "Drahtabstand m",
+  "pl": "Odległość drutu m"
+ },
+ "Timbers and crates": {
+  "de": "Balken und Kisten",
+  "pl": "Belki i skrzynie"
+ },
+ "Paints a narrow forest footpath along a line or road, clears vegetation from the corridor, and places trail markers and benches.": {
+  "de": "Malt einen schmalen Waldpfad entlang einer Linie oder Straße, entfernt Vegetation im Korridor und setzt Wegweiser und Bänke.",
+  "pl": "Maluje wąską ścieżkę leśną wzdłuż linii lub drogi, wycina roślinność w korytarzu i stawia słupki szlakowe oraz ławki."
+ },
+ "Path width m": {
+  "de": "Pfadbreite m",
+  "pl": "Szerokość ścieżki m"
+ },
+ "Clear vegetation": {
+  "de": "Vegetation entfernen",
+  "pl": "Wycinaj roślinność"
+ },
+ "Clear half-width m": {
+  "de": "Freischnitt-Halbbreite m",
+  "pl": "Połowa szerokości wycinki m"
+ },
+ "Trail colour": {
+  "de": "Wegfarbe",
+  "pl": "Kolor szlaku"
+ },
+ "Marker every m": {
+  "de": "Wegweiser alle m",
+  "pl": "Słupek co m"
+ },
+ "Bench every m": {
+  "de": "Bank alle m",
+  "pl": "Ławka co m"
+ },
+ "Start map board": {
+  "de": "Kartentafel am Start",
+  "pl": "Tablica z mapą na starcie"
  }
 }

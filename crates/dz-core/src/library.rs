@@ -563,6 +563,9 @@ pub enum GeneratorKind {
     TreeAlley(crate::landscape::TreeAlleyGen),
     Wetland(crate::landscape::WetlandGen),
     Roadblock(crate::dressing::RoadblockGen),
+    GridArea(crate::landscape::GridAreaGen),
+    Trench(crate::landscape::TrenchGen),
+    Trail(crate::landscape::TrailGen),
 }
 
 /// What a generator needs to be pointed at.
@@ -580,11 +583,11 @@ pub enum TargetKind {
 impl GeneratorKind {
     pub fn target_kind(&self) -> TargetKind {
         match self {
-            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) | GeneratorKind::Pond(_) | GeneratorKind::Coast(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Fields(_) | GeneratorKind::Orchard(_) | GeneratorKind::Wetland(_) => TargetKind::Area,
+            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) | GeneratorKind::Pond(_) | GeneratorKind::Coast(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Fields(_) | GeneratorKind::Orchard(_) | GeneratorKind::Wetland(_) | GeneratorKind::GridArea(_) => TargetKind::Area,
             GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Roadblock(_) => TargetKind::Line,
             GeneratorKind::Dressing(_) => TargetKind::Area,
             GeneratorKind::Settlement(_) => TargetKind::Point,
-            GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::River(_) | GeneratorKind::Line(_) | GeneratorKind::LineTerrain(_) => TargetKind::Line,
+            GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::River(_) | GeneratorKind::Line(_) | GeneratorKind::LineTerrain(_) | GeneratorKind::Trench(_) | GeneratorKind::Trail(_) => TargetKind::Line,
             GeneratorKind::Remove(_) => TargetKind::Any,
             // Terrain generators work on the whole map or inside shapes, fading out at their edge.
             GeneratorKind::Terrain(_) | GeneratorKind::Erosion(_) | GeneratorKind::ThermalErosion { .. } | GeneratorKind::Terraces { .. } => TargetKind::Area,
@@ -592,7 +595,7 @@ impl GeneratorKind {
     }
     /// Variants added after 0.4.4, stored in a separate project field so older versions still open the file.
     pub fn is_extended(&self) -> bool {
-        matches!(self, GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_) | GeneratorKind::Roadblock(_))
+        matches!(self, GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_) | GeneratorKind::Roadblock(_) | GeneratorKind::GridArea(_) | GeneratorKind::Trench(_) | GeneratorKind::Trail(_))
     }
     /// Name of the built-in generator this one derives from.
     pub fn type_name(&self) -> &'static str {
@@ -633,6 +636,9 @@ impl GeneratorKind {
             GeneratorKind::TreeAlley(_) => "Tree alley",
             GeneratorKind::Wetland(_) => "Wetland and marsh",
             GeneratorKind::Roadblock(_) => "Roadblock and checkpoint",
+            GeneratorKind::GridArea(_) => "Grid area",
+            GeneratorKind::Trench(_) => "Trenches",
+            GeneratorKind::Trail(_) => "Tourist trail",
         }
     }
 }
@@ -1368,6 +1374,11 @@ pub fn built_in_generators() -> Vec<GeneratorPreset> {
         make(35, "Tree alley", GeneratorKind::TreeAlley(Default::default())),
         make(36, "Wetland and marsh", GeneratorKind::Wetland(Default::default())),
         make(37, "Roadblock and checkpoint", GeneratorKind::Roadblock(Default::default())),
+        make(38, "Cemetery", GeneratorKind::GridArea(crate::landscape::GridAreaGen::cemetery())),
+        make(39, "Parking lot", GeneratorKind::GridArea(crate::landscape::GridAreaGen::parking())),
+        make(40, "Container yard", GeneratorKind::GridArea(crate::landscape::GridAreaGen::containers())),
+        make(41, "Trenches", GeneratorKind::Trench(Default::default())),
+        make(42, "Tourist trail", GeneratorKind::Trail(Default::default())),
     ]
 }
 
@@ -1972,8 +1983,8 @@ mod tests {
     #[test]
     fn built_ins_cover_every_kind() {
         let names: Vec<&str> = built_in_generators().iter().map(|g| g.kind.type_name()).collect();
-        assert_eq!(names.len(), 37);
-        assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects") && names.contains(&"Orchard") && names.contains(&"Tree alley") && names.contains(&"Wetland and marsh") && names.contains(&"Roadblock and checkpoint"));
+        assert_eq!(names.len(), 42);
+        assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects") && names.contains(&"Orchard") && names.contains(&"Tree alley") && names.contains(&"Wetland and marsh") && names.contains(&"Roadblock and checkpoint") && names.contains(&"Grid area") && names.contains(&"Trenches") && names.contains(&"Tourist trail"));
     }
 
     #[test]

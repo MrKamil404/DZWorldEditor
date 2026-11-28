@@ -84,8 +84,8 @@ fn generator_category(kind: &dz_core::library::GeneratorKind) -> usize {
     match kind {
         K::Terrain(_) | K::Erosion(_) | K::ThermalErosion { .. } | K::Terraces { .. } | K::LineTerrain(_) => 0,
         K::Forest(_) | K::SurfacePaint { .. } => 1,
-        K::Settlement(_) | K::Scatter(_) | K::Area(_) | K::Remove(_) => 2,
-        K::Fence(_) | K::PowerLine(_) | K::Line(_) | K::Roadside(_) | K::Wrecks(_) | K::TreeAlley(_) | K::Roadblock(_) => 3,
+        K::Settlement(_) | K::Scatter(_) | K::Area(_) | K::Remove(_) | K::GridArea(_) => 2,
+        K::Fence(_) | K::PowerLine(_) | K::Line(_) | K::Roadside(_) | K::Wrecks(_) | K::TreeAlley(_) | K::Roadblock(_) | K::Trench(_) | K::Trail(_) => 3,
         K::Dressing(_) => 2,
         K::River(_) | K::Pond(_) => 4,
         K::Coast(_) | K::Cliffs(_) | K::Fields(_) | K::Orchard(_) | K::Wetland(_) => 5,

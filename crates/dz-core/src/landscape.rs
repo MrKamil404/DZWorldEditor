@@ -1140,6 +1140,633 @@ pub fn wetland_objects(w: &mut World, g: &WetlandGen, maps: &TerrainMaps, area: 
     Ok(out)
 }
 
+// ---------------------------------------------------------------- grid areas (cemetery, parking, containers)
+
+/// Regular grid area with aisles and naturalization controls (jitter, yaw jitter, 180° flips,
+/// clustered empty spots) for cemeteries, parking lots and container yards.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GridAreaGen {
+    pub objects: ObjectSet,
+    /// Metres between rows.
+    pub row_spacing: f32,
+    /// Metres between items along a row.
+    pub col_spacing: f32,
+    /// Leave a wider aisle after every N rows (0 = no aisles).
+    pub aisle_every: u32,
+    /// Extra width of each aisle in metres.
+    pub aisle_width: f32,
+    /// Direction of rows in degrees from north; `None` follows the longest side of each polygon.
+    pub angle: Option<f32>,
+    /// Base yaw added to the row direction, in degrees.
+    pub yaw_offset: f32,
+    /// Random X/Z position offset in metres so the grid does not look rigid.
+    pub jitter: f32,
+    /// Random yaw deviation in degrees (±yaw_jitter).
+    pub yaw_jitter: f32,
+    /// Randomly turn half of the items by 180° (e.g. cars parked nose-in or backed-in).
+    pub allow_flip: bool,
+    /// Base share of empty slots (0..0.95).
+    pub missing: f32,
+    /// 0..1: uses smooth noise so empty spots group into natural open patches.
+    pub cluster_noise: f32,
+    /// Margin kept inside polygon edges, in metres.
+    pub margin: f32,
+    /// Optional ground surface painted inside the polygon.
+    pub surface: String,
+    /// Optional props placed along aisles (lamps, benches, barrels).
+    pub aisle_objects: ObjectSet,
+    /// Spacing of aisle props in metres (0 = none).
+    pub aisle_spacing: f32,
+    pub seed: u64,
+}
+
+impl Default for GridAreaGen {
+    fn default() -> Self {
+        Self::cemetery()
+    }
+}
+
+impl GridAreaGen {
+    pub fn cemetery() -> Self {
+        let graves = [
+            (r"dz\structures\specific\cemeteries\Cemetery_Tombstone1.p3d", 2.0),
+            (r"dz\structures\specific\cemeteries\Cemetery_Tombstone2.p3d", 2.0),
+            (r"dz\structures\specific\cemeteries\Cemetery_Tombstone3.p3d", 1.5),
+            (r"dz\structures\specific\cemeteries\Cemetery_Tombstone4.p3d", 1.5),
+            (r"dz\structures\specific\cemeteries\Cemetery_Grave1.p3d", 1.2),
+            (r"dz\structures\specific\cemeteries\Cemetery_Grave2.p3d", 1.2),
+            (r"dz\structures\specific\cemeteries\Cemetery_SmallCross.p3d", 1.5),
+            (r"dz\structures\specific\cemeteries\Cemetery_SmallCross2.p3d", 1.0),
+        ]
+        .iter()
+        .map(|(m, w)| ((*m).to_string(), *w))
+        .collect();
+        let benches = vec![(r"dz\structures\residential\misc\Misc_Bench1.p3d".to_string(), 1.0)];
+        Self {
+            objects: ObjectSet { models: graves, scale_min: 0.92, scale_max: 1.08, random_yaw: false, align: true, ..Default::default() },
+            row_spacing: 3.4,
+            col_spacing: 2.3,
+            aisle_every: 3,
+            aisle_width: 2.8,
+            angle: None,
+            yaw_offset: 0.0,
+            jitter: 0.25,
+            yaw_jitter: 7.0,
+            allow_flip: false,
+            missing: 0.22,
+            cluster_noise: 0.45,
+            margin: 2.0,
+            surface: String::new(),
+            aisle_objects: ObjectSet { models: benches, scale_min: 1.0, scale_max: 1.0, random_yaw: false, align: false, ..Default::default() },
+            aisle_spacing: 24.0,
+            seed: 1,
+        }
+    }
+
+    pub fn parking() -> Self {
+        let cars = [
+            (r"dz\structures\wrecks\vehicles\wreck_sed01_aban1_black.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_sed01_aban2_white.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_sed02_aban1_grey.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_hb01_aban1_blue.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_hb02_aban1_red.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Lada_Red.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Volha_Grey.p3d", 1.0),
+        ]
+        .iter()
+        .map(|(m, w)| ((*m).to_string(), *w))
+        .collect();
+        let lamps = vec![(r"dz\structures\residential\misc\Lamp_City1.p3d".to_string(), 1.0)];
+        Self {
+            objects: ObjectSet { models: cars, scale_min: 1.0, scale_max: 1.0, random_yaw: false, align: true, ..Default::default() },
+            row_spacing: 5.5,
+            col_spacing: 3.2,
+            aisle_every: 2,
+            aisle_width: 6.5,
+            angle: None,
+            yaw_offset: 90.0,
+            jitter: 0.35,
+            yaw_jitter: 9.0,
+            allow_flip: true,
+            missing: 0.55,
+            cluster_noise: 0.55,
+            margin: 3.0,
+            surface: String::new(),
+            aisle_objects: ObjectSet { models: lamps, scale_min: 1.0, scale_max: 1.0, random_yaw: false, align: false, ..Default::default() },
+            aisle_spacing: 26.0,
+            seed: 1,
+        }
+    }
+
+    pub fn containers() -> Self {
+        let boxes = [
+            (r"dz\structures\industrial\containers\Container_1A.p3d", 1.5),
+            (r"dz\structures\industrial\containers\Container_1B.p3d", 1.5),
+            (r"dz\structures\industrial\containers\Container_1C.p3d", 1.2),
+            (r"dz\structures\industrial\containers\Container_1D.p3d", 1.2),
+            (r"dz\structures\industrial\containers\Container_2A.p3d", 1.0),
+            (r"dz\structures\industrial\containers\Container_2B.p3d", 1.0),
+        ]
+        .iter()
+        .map(|(m, w)| ((*m).to_string(), *w))
+        .collect();
+        let props = vec![
+            (r"dz\structures\industrial\misc\misc_pallets1.p3d".to_string(), 1.0),
+            (r"dz\structures\industrial\misc\misc_barrelempty.p3d".to_string(), 1.0),
+        ];
+        Self {
+            objects: ObjectSet { models: boxes, scale_min: 1.0, scale_max: 1.0, random_yaw: false, align: true, ..Default::default() },
+            row_spacing: 3.6,
+            col_spacing: 7.4,
+            aisle_every: 2,
+            aisle_width: 7.0,
+            angle: None,
+            yaw_offset: 0.0,
+            jitter: 0.18,
+            yaw_jitter: 3.0,
+            allow_flip: true,
+            missing: 0.35,
+            cluster_noise: 0.6,
+            margin: 4.0,
+            surface: String::new(),
+            aisle_objects: ObjectSet { models: props, scale_min: 0.95, scale_max: 1.05, random_yaw: true, align: true, ..Default::default() },
+            aisle_spacing: 18.0,
+            seed: 1,
+        }
+    }
+}
+
+pub fn grid_area_mask(w: &World, g: &GridAreaGen, polygons: &[Vec<[f32; 2]>]) -> Option<Vec<u8>> {
+    if g.surface.is_empty() {
+        return None;
+    }
+    let layer = w.layer_index(&g.surface).map(|i| i as u8)?;
+    Some(polygons_mask(w, polygons, layer))
+}
+
+pub fn grid_area_objects(w: &mut World, g: &GridAreaGen, polygons: &[Vec<[f32; 2]>]) -> Result<Vec<Obj>> {
+    use rand::Rng;
+    if g.objects.models.is_empty() || g.row_spacing <= 0.3 || g.col_spacing <= 0.3 {
+        return Ok(Vec::new());
+    }
+    let picker = Picker::new(w, &g.objects)?;
+    let aisle_picker = if g.aisle_spacing > 0.5 && !g.aisle_objects.models.is_empty() {
+        Some(Picker::new(w, &g.aisle_objects)?)
+    } else {
+        None
+    };
+    let mut rng = StdRng::seed_from_u64(g.seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0x91d4);
+    let patch = Perlin::new(g.seed ^ 0x621d);
+    let size = w.meta.size_m();
+    let sea = w.meta.sea_level;
+    let mut out = Vec::new();
+    for ring in polygons {
+        if ring.len() < 3 {
+            continue;
+        }
+        let along = match g.angle {
+            Some(deg) => {
+                let r = deg.to_radians();
+                [r.sin(), r.cos()]
+            }
+            None => {
+                let mut best = [0.0f32, 1.0];
+                let mut max_len = 0.0f32;
+                for k in 0..ring.len() {
+                    let a = ring[k];
+                    let b = ring[(k + 1) % ring.len()];
+                    let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+                    let len = dx.hypot(dz);
+                    if len > max_len {
+                        max_len = len;
+                        best = [dx / len, dz / len];
+                    }
+                }
+                best
+            }
+        };
+        let across = [along[1], -along[0]];
+        let base_yaw = along[0].atan2(along[1]).to_degrees() + g.yaw_offset;
+        let (mut u0, mut u1, mut v0, mut v1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+        for p in ring {
+            let u = p[0] * across[0] + p[1] * across[1];
+            let v = p[0] * along[0] + p[1] * along[1];
+            u0 = u0.min(u); u1 = u1.max(u);
+            v0 = v0.min(v); v1 = v1.max(v);
+        }
+        let m = g.margin.max(0.0);
+        let (mut u, u_end) = (u0 + m, u1 - m);
+        let (v_start, v_end) = (v0 + m, v1 - m);
+        let mut row_idx = 0u32;
+        while u <= u_end {
+            let mut v = v_start;
+            while v <= v_end {
+                let ju = if g.jitter > 0.0 { rng.gen_range(-g.jitter..=g.jitter) } else { 0.0 };
+                let jv = if g.jitter > 0.0 { rng.gen_range(-g.jitter..=g.jitter) } else { 0.0 };
+                let x = (u + ju) * across[0] + (v + jv) * along[0];
+                let z = (u + ju) * across[1] + (v + jv) * along[1];
+                let clumped_miss = if g.cluster_noise > 0.0 {
+                    let n = patch.fbm(x / 24.0, z / 24.0, 3, 0.55, 2.0) * 0.5 + 0.5;
+                    (g.missing + (n - 0.5) * g.cluster_noise).clamp(0.0, 0.98)
+                } else {
+                    g.missing
+                };
+                if rng.gen::<f32>() >= clumped_miss
+                    && x >= 0.0 && z >= 0.0 && x <= size && z <= size
+                    && crate::shapes::point_in_polygon(ring, x, z)
+                    && w.height.sample(x, z) >= sea
+                {
+                    let model = picker.model(&mut rng);
+                    let flip = if g.allow_flip && rng.gen_bool(0.5) { 180.0 } else { 0.0 };
+                    let dy = if g.yaw_jitter > 0.0 { rng.gen_range(-g.yaw_jitter..=g.yaw_jitter) } else { 0.0 };
+                    let yaw = (base_yaw + flip + dy).rem_euclid(360.0);
+                    out.push(picker.object(w, &mut rng, model, x, z, Some(yaw)));
+                }
+                v += g.col_spacing;
+            }
+            row_idx += 1;
+            u += g.row_spacing;
+            if g.aisle_every > 0 && row_idx % g.aisle_every == 0 && g.aisle_width > 0.0 {
+                if let Some(ap) = &aisle_picker {
+                    let aisle_u = u + g.aisle_width * 0.5 - g.row_spacing * 0.5;
+                    let mut av = v_start + g.aisle_spacing * 0.5;
+                    while av <= v_end {
+                        let ax = aisle_u * across[0] + av * along[0];
+                        let az = aisle_u * across[1] + av * along[1];
+                        if ax >= 0.0 && az >= 0.0 && ax <= size && az <= size
+                            && crate::shapes::point_in_polygon(ring, ax, az)
+                            && w.height.sample(ax, az) >= sea
+                        {
+                            let model = ap.model(&mut rng);
+                            let ayaw = (along[0].atan2(along[1]).to_degrees()).rem_euclid(360.0);
+                            out.push(ap.object(w, &mut rng, model, ax, az, (!g.aisle_objects.random_yaw).then_some(ayaw)));
+                        }
+                        av += g.aisle_spacing;
+                    }
+                }
+                u += g.aisle_width;
+            }
+        }
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------- trenches and frontlines
+
+/// Zigzag trench carved along a polyline with sandbags, timbers and barbed wire in front.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct TrenchGen {
+    pub width: f32,
+    pub depth: f32,
+    pub falloff: f32,
+    /// Length of each zigzag segment along the line in metres (0 = straight).
+    pub zigzag_length: f32,
+    /// Lateral swing of the zigzag in metres (0 = straight).
+    pub zigzag_amplitude: f32,
+    pub parapet_sandbags: bool,
+    pub add_wire: bool,
+    pub wire_offset: f32,
+    pub add_timbers: bool,
+    /// Dirt/soil surface painted along the trench; empty auto-picks dirt/soil/mud.
+    pub surface: String,
+    pub seed: u64,
+}
+
+impl Default for TrenchGen {
+    fn default() -> Self {
+        Self {
+            width: 2.2,
+            depth: 1.6,
+            falloff: 2.0,
+            zigzag_length: 12.0,
+            zigzag_amplitude: 2.2,
+            parapet_sandbags: true,
+            add_wire: true,
+            wire_offset: 5.5,
+            add_timbers: true,
+            surface: String::new(),
+            seed: 1,
+        }
+    }
+}
+
+/// Converts a polyline into a zigzag trench path.
+pub fn trench_path(line: &[[f32; 2]], g: &TrenchGen) -> Vec<[f32; 2]> {
+    if line.len() < 2 || g.zigzag_length <= 0.5 || g.zigzag_amplitude.abs() <= 0.05 {
+        return line.to_vec();
+    }
+    let mut out = Vec::new();
+    let mut side = 1.0f32;
+    let step = g.zigzag_length.max(2.0);
+    walk(line, step, |p, dir, _| {
+        let nx = dir[1] * g.zigzag_amplitude * side;
+        let nz = -dir[0] * g.zigzag_amplitude * side;
+        out.push([p[0] + nx, p[1] + nz]);
+        side = -side;
+    });
+    if out.len() < 2 { line.to_vec() } else { out }
+}
+
+/// Terrain modifier carving the zigzag trench into the ground.
+pub fn trench_modifier(
+    base: &crate::terrain::Heightmap,
+    id: u64,
+    name: &str,
+    line: &[[f32; 2]],
+    g: &TrenchGen,
+) -> Option<crate::world::TerrainModifier> {
+    let path = trench_path(line, g);
+    if path.len() < 2 {
+        return None;
+    }
+    let heights: Vec<f32> = path.iter().map(|p| base.sample(p[0], p[1])).collect();
+    let n = path.len() as f32;
+    let x = path.iter().map(|p| p[0]).sum::<f32>() / n;
+    let z = path.iter().map(|p| p[1]).sum::<f32>() / n;
+    Some(crate::world::TerrainModifier {
+        id,
+        name: name.to_string(),
+        enabled: true,
+        x,
+        z,
+        yaw: 0.0,
+        shape: crate::world::ModShape::Line {
+            points: path,
+            heights,
+            half_width: (g.width * 0.5).max(0.5),
+            gaps: Vec::new(),
+            bank: None,
+        },
+        mode: crate::world::ModMode::Offset,
+        target: None,
+        amount: -g.depth.abs(),
+        falloff: g.falloff.max(0.5),
+        attached: None,
+        follow: false,
+    })
+}
+
+/// Paints dirt/soil along the zigzag trench.
+pub fn trench_mask(w: &World, lines: &[Vec<[f32; 2]>], g: &TrenchGen) -> Vec<u8> {
+    let Some(layer) = find_layer(w, &g.surface, &["dirt", "soil", "mud", "gravel"]) else {
+        return w.mask.data.clone();
+    };
+    let paths: Vec<Vec<[f32; 2]>> = lines.iter().map(|l| trench_path(l, g)).collect();
+    let reach = g.width * 0.5 + g.falloff * 0.8;
+    paint_mask(w, |x, z| {
+        let hit = paths.iter().any(|l| l.windows(2).any(|s| {
+            let (a, b) = (s[0], s[1]);
+            let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+            let t = (((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
+            (x - a[0] - dx * t).hypot(z - a[1] - dz * t) <= reach
+        }));
+        hit.then_some(layer)
+    })
+}
+
+/// Places sandbags along the parapet, timbers/crates, and barbed wire in front of the trench.
+pub fn trench_objects(w: &mut World, lines: &[Vec<[f32; 2]>], g: &TrenchGen) -> Result<Vec<Obj>> {
+    use rand::Rng;
+    let mut rng = StdRng::seed_from_u64(g.seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0x72e4c4);
+    let size = w.meta.size_m();
+    let sea = w.meta.sea_level;
+    let mut out = Vec::new();
+    let mut place = |w: &mut World, x: f32, z: f32, yaw: f32, align: bool, model: &str| {
+        if x < 0.0 || z < 0.0 || x > size || z > size || w.height.sample(x, z) < sea {
+            return;
+        }
+        let y = yaw.rem_euclid(360.0);
+        let (pitch, roll) = if align { slope_angles(&w.height, x, z, y) } else { (0.0, 0.0) };
+        let m = w.objects.intern(model);
+        out.push(Obj { x, z, elevation: 0.0, yaw: y, pitch, roll, scale: 1.0, model: m, flags: 0 });
+    };
+    for line in lines {
+        let path = trench_path(line, g);
+        if path.len() < 2 {
+            continue;
+        }
+        if g.parapet_sandbags {
+            let rim = g.width * 0.5 + 1.1;
+            walk(&path, 4.3, |p, dir, _| {
+                if rng.gen::<f32>() < 0.12 {
+                    return;
+                }
+                let x = p[0] + dir[1] * rim;
+                let z = p[1] - dir[0] * rim;
+                let yaw = dir[0].atan2(dir[1]).to_degrees() + 90.0 + rng.gen_range(-4.0..4.0);
+                place(w, x, z, yaw, true, r"dz\structures\military\misc\Misc_BagFence_3m.p3d");
+            });
+        }
+        if g.add_wire {
+            let off = g.width * 0.5 + g.wire_offset.max(1.5);
+            walk(line, 6.5, |p, dir, _| {
+                let x = p[0] + dir[1] * off + rng.gen_range(-0.5..0.5);
+                let z = p[1] - dir[0] * off + rng.gen_range(-0.5..0.5);
+                let yaw = dir[0].atan2(dir[1]).to_degrees() + 90.0 + rng.gen_range(-10.0..10.0);
+                let m = if rng.gen_bool(0.6) { r"dz\structures\military\misc\Misc_RazorWire.p3d" } else { r"dz\structures\military\misc\Misc_BarbedWire.p3d" };
+                place(w, x, z, yaw, true, m);
+            });
+        }
+        if g.add_timbers {
+            let back = -(g.width * 0.5 + 1.8);
+            walk(&path, 14.0, |p, dir, _| {
+                let x = p[0] + dir[1] * back + rng.gen_range(-0.6..0.6);
+                let z = p[1] - dir[0] * back + rng.gen_range(-0.6..0.6);
+                let yaw = dir[0].atan2(dir[1]).to_degrees() + rng.gen_range(-20.0..20.0);
+                let m = match rng.gen_range(0..3) {
+                    0 => r"dz\structures\industrial\misc\misc_boardspack1.p3d",
+                    1 => r"dz\structures\military\misc\Misc_SupplyBox1.p3d",
+                    _ => r"dz\structures\industrial\misc\misc_barrelempty.p3d",
+                };
+                place(w, x, z, yaw, true, m);
+            });
+        }
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------- tourist trails and forest footpaths
+
+/// Trail blaze colour matching vanilla Chernarus/Livonia wooden trail poles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrailColor {
+    Red,
+    Blue,
+    Green,
+    Yellow,
+}
+
+impl Default for TrailColor {
+    fn default() -> Self {
+        Self::Red
+    }
+}
+
+impl TrailColor {
+    pub fn pole_model(self) -> &'static str {
+        match self {
+            Self::Red => r"dz\structures\signs\tourist\Trail_WoodenPole_R.p3d",
+            Self::Blue => r"dz\structures\signs\tourist\Trail_WoodenPole_B.p3d",
+            Self::Green => r"dz\structures\signs\tourist\Trail_WoodenPole_G.p3d",
+            Self::Yellow => r"dz\structures\signs\tourist\Trail_WoodenPole_Y.p3d",
+        }
+    }
+}
+
+/// Tourist trail or forest footpath along a polyline/road: paints a narrow surface path, clears
+/// trees/bushes from the corridor, and places trail marker poles, trail maps and resting benches.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct TrailGen {
+    pub line: crate::library::LineOptions,
+    /// Width of the painted footpath in metres.
+    pub width: f32,
+    /// Ragged edge noise in metres.
+    pub edge_noise: f32,
+    /// Path surface; empty auto-picks dirt/soil/gravel.
+    pub surface: String,
+    /// Clear trees and bushes inside the trail corridor (restored if the generator is removed).
+    pub clear_corridor: bool,
+    /// Half-width of the vegetation clearing corridor in metres.
+    pub clear_width: f32,
+    pub marker_color: TrailColor,
+    /// Metres between trail marker poles (0 = none).
+    pub marker_spacing: f32,
+    /// Metres between roadside resting benches (0 = none).
+    pub bench_spacing: f32,
+    /// Place a tourist map board at the start of the trail.
+    pub add_map_board: bool,
+    pub seed: u64,
+}
+
+impl Default for TrailGen {
+    fn default() -> Self {
+        Self {
+            line: crate::library::LineOptions { mode: crate::library::LineMode::Bezier, offset: 0.0 },
+            width: 2.2,
+            edge_noise: 0.5,
+            surface: String::new(),
+            clear_corridor: true,
+            clear_width: 2.4,
+            marker_color: TrailColor::Red,
+            marker_spacing: 120.0,
+            bench_spacing: 350.0,
+            add_map_board: true,
+            seed: 1,
+        }
+    }
+}
+
+/// Paints the narrow footpath surface along each trail line.
+pub fn trail_mask(w: &World, lines: &[Vec<[f32; 2]>], g: &TrailGen) -> Vec<u8> {
+    let Some(layer) = find_layer(w, &g.surface, &["dirt", "soil", "gravel"]) else {
+        return w.mask.data.clone();
+    };
+    let smooth: Vec<Vec<[f32; 2]>> = lines.iter().map(|l| crate::gen::prepare_line(l, &g.line)).collect();
+    let half = (g.width * 0.5).max(0.4);
+    let noise = Perlin::new(g.seed ^ 0x74a11);
+    paint_mask(w, |x, z| {
+        let r = half + ragged(&noise, x, z, g.edge_noise);
+        let hit = smooth.iter().any(|l| l.windows(2).any(|s| {
+            let (a, b) = (s[0], s[1]);
+            let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+            let t = (((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
+            (x - a[0] - dx * t).hypot(z - a[1] - dz * t) <= r
+        }));
+        hit.then_some(layer)
+    })
+}
+
+/// Places trail marker poles, resting benches and start map board along each trail.
+pub fn trail_objects(w: &mut World, lines: &[Vec<[f32; 2]>], g: &TrailGen) -> Result<Vec<Obj>> {
+    use rand::Rng;
+    let mut rng = StdRng::seed_from_u64(g.seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0x74a11);
+    let size = w.meta.size_m();
+    let sea = w.meta.sea_level;
+    let mut out = Vec::new();
+    let mut place = |w: &mut World, x: f32, z: f32, yaw: f32, model: &str| {
+        if x < 0.0 || z < 0.0 || x > size || z > size || w.height.sample(x, z) < sea {
+            return;
+        }
+        let m = w.objects.intern(model);
+        out.push(Obj { x, z, elevation: 0.0, yaw: yaw.rem_euclid(360.0), pitch: 0.0, roll: 0.0, scale: 1.0, model: m, flags: 0 });
+    };
+    let side_off = (g.width * 0.5 + 1.1).max(1.6);
+    for raw in lines {
+        let line = crate::gen::prepare_line(raw, &g.line);
+        if line.len() < 2 {
+            continue;
+        }
+        if g.add_map_board {
+            let (a, b) = (line[0], line[1]);
+            let len = (b[0] - a[0]).hypot(b[1] - a[1]).max(1e-3);
+            let dir = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+            let x = a[0] + dir[1] * (side_off + 0.6);
+            let z = a[1] - dir[0] * (side_off + 0.6);
+            let yaw = dir[0].atan2(dir[1]).to_degrees() - 90.0;
+            place(w, x, z, yaw, r"dz\structures\signs\tourist\TrailMap_NoArrow.p3d");
+        }
+        if g.marker_spacing > 1.0 {
+            let pole = g.marker_color.pole_model();
+            let mut idx = 0usize;
+            walk(&line, g.marker_spacing, |p, dir, along| {
+                if along < 8.0 {
+                    return;
+                }
+                let sign = if idx % 2 == 0 { 1.0 } else { -1.0 };
+                let x = p[0] + dir[1] * side_off * sign;
+                let z = p[1] - dir[0] * side_off * sign;
+                let yaw = dir[0].atan2(dir[1]).to_degrees() + rng.gen_range(-20.0..20.0);
+                place(w, x, z, yaw, pole);
+                idx += 1;
+            });
+        }
+        if g.bench_spacing > 5.0 {
+            walk(&line, g.bench_spacing, |p, dir, along| {
+                if along < 20.0 {
+                    return;
+                }
+                let sign = if rng.gen_bool(0.5) { 1.0 } else { -1.0 };
+                let x = p[0] + dir[1] * (side_off + 0.8) * sign;
+                let z = p[1] - dir[0] * (side_off + 0.8) * sign;
+                let yaw = dir[0].atan2(dir[1]).to_degrees() + if sign > 0.0 { 270.0 } else { 90.0 };
+                place(w, x, z, yaw, r"dz\structures\residential\misc\Misc_Bench1.p3d");
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Finds vegetation objects (trees/bushes) inside the cleared trail corridor so they can be
+/// removed and restored cleanly when the generator re-runs or is deleted.
+pub fn trail_clear_ids(w: &World, lines: &[Vec<[f32; 2]>], g: &TrailGen, skip_ids: &[u32]) -> Vec<u32> {
+    if !g.clear_corridor || g.clear_width <= 0.1 {
+        return Vec::new();
+    }
+    let smooth: Vec<Vec<[f32; 2]>> = lines.iter().map(|l| crate::gen::prepare_line(l, &g.line)).collect();
+    let r = g.clear_width;
+    let skip: std::collections::HashSet<u32> = skip_ids.iter().copied().collect();
+    w.objects.iter().filter_map(|(id, o)| {
+        if skip.contains(&id) {
+            return None;
+        }
+        let p = w.objects.model_path(o).to_ascii_lowercase();
+        let is_plant = p.contains("\\plants") || p.contains("plants_");
+        if !is_plant {
+            return None;
+        }
+        let hit = smooth.iter().any(|l| l.windows(2).any(|s| {
+            let (a, b) = (s[0], s[1]);
+            let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+            let t = (((o.x - a[0]) * dx + (o.z - a[1]) * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
+            (o.x - a[0] - dx * t).hypot(o.z - a[1] - dz * t) <= r
+        }));
+        hit.then_some(id)
+    }).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1294,5 +1921,37 @@ mod tests {
         let objs = wetland_objects(&mut w, &g, &maps, Some(&area), [60.0, 60.0, 130.0, 130.0], &Job::default()).unwrap();
         assert!(objs.len() > 20, "reeds, willows and logs placed: {}", objs.len());
         assert!(objs.iter().all(|o| o.x >= 60.0 && o.x <= 130.0 && o.z >= 60.0 && o.z <= 130.0));
+    }
+
+    #[test]
+    fn grid_area_trench_and_trail_work_end_to_end() {
+        let mut w = world();
+        w.layers.push(SurfaceLayer { name: "dirt".into(), texture: String::new(), material: String::new(), color: [0, 0, 0] });
+        // 1. Grid area (cemetery & parking) with aisles and naturalization.
+        let poly = vec![[60.0, 60.0], [140.0, 60.0], [140.0, 140.0], [60.0, 140.0]];
+        let cem = grid_area_objects(&mut w, &GridAreaGen::cemetery(), std::slice::from_ref(&poly)).unwrap();
+        assert!(cem.len() > 20, "cemetery graves: {}", cem.len());
+        let park = grid_area_objects(&mut w, &GridAreaGen::parking(), std::slice::from_ref(&poly)).unwrap();
+        assert!(!park.is_empty(), "parking cars");
+
+        // 2. Zigzag trench modifier + sandbags + wire.
+        let line = vec![[60.0, 100.0], [140.0, 100.0]];
+        let tg = TrenchGen::default();
+        let tm = trench_modifier(&w.base, 1, "Trench", &line, &tg).unwrap();
+        assert!(tm.amount < 0.0);
+        let tobjs = trench_objects(&mut w, std::slice::from_ref(&line), &tg).unwrap();
+        assert!(tobjs.len() > 10, "trench props: {}", tobjs.len());
+
+        // 3. Trail mask + markers + vegetation clearing.
+        let tr = TrailGen { width: 5.0, marker_spacing: 30.0, ..Default::default() };
+        let tmask = trail_mask(&w, std::slice::from_ref(&line), &tr);
+        assert_eq!(mask_at(&w, &tmask, 100.0, 100.0), 5, "trail paints dirt");
+        let tr_objs = trail_objects(&mut w, std::slice::from_ref(&line), &tr).unwrap();
+        assert!(tr_objs.len() >= 3, "map board + poles: {}", tr_objs.len());
+        let tree_m = w.objects.intern(r"dz\plants\tree\t_PiceaAbies_2f.p3d");
+        let on_trail = w.objects.insert(Obj { x: 100.0, z: 100.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: tree_m, flags: 0 });
+        let far_off = w.objects.insert(Obj { x: 100.0, z: 150.0, elevation: 0.0, yaw: 0.0, pitch: 0.0, roll: 0.0, scale: 1.0, model: tree_m, flags: 0 });
+        let cleared = trail_clear_ids(&w, std::slice::from_ref(&line), &tr, &[]);
+        assert!(cleared.contains(&on_trail) && !cleared.contains(&far_off));
     }
 }
