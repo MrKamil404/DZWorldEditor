@@ -28,9 +28,36 @@ pub enum TerrainKind {
     Highlands,
     /// Lowland left by an ice sheet: low rolling ground with kettle holes and eskers.
     Moraine,
+    /// Volcanic island rising to a sharp caldera rim with a sunken crater lake in the middle.
+    Caldera,
+    /// Coastal highland cut by deep, narrow, steep-walled sea inlets.
+    Fjords,
+    /// Wind-sculpted sand sea with asymmetric dune ridges and flat interdune flats.
+    Erg,
+    /// Limestone plateau pitted with sinkholes, dry hollows and rocky ridges.
+    Karst,
 }
 impl TerrainKind {
-    pub const ALL: [TerrainKind; 10] = [Self::Hills, Self::Mountains, Self::Highlands, Self::Moraine, Self::Plains, Self::Island, Self::Archipelago, Self::Valley, Self::Canyons, Self::Coast];
+    pub const ALL: [TerrainKind; 14] = [
+        Self::Hills,
+        Self::Mountains,
+        Self::Highlands,
+        Self::Moraine,
+        Self::Plains,
+        Self::Island,
+        Self::Archipelago,
+        Self::Caldera,
+        Self::Fjords,
+        Self::Valley,
+        Self::Canyons,
+        Self::Coast,
+        Self::Erg,
+        Self::Karst,
+    ];
+    /// Shapes added after 0.4.4, stored in `extra_generators` so older versions still open the file.
+    pub fn is_extended(self) -> bool {
+        matches!(self, Self::Caldera | Self::Fjords | Self::Erg | Self::Karst)
+    }
     pub fn name(self) -> &'static str {
         match self {
             Self::Hills => "Hills",
@@ -43,6 +70,10 @@ impl TerrainKind {
             Self::Coast => "Coast",
             Self::Highlands => "Highlands",
             Self::Moraine => "Moraine lowland",
+            Self::Caldera => "Volcanic island",
+            Self::Fjords => "Fjords",
+            Self::Erg => "Sand desert",
+            Self::Karst => "Karst",
         }
     }
 }
@@ -158,6 +189,43 @@ pub fn generate_terrain_in(h: &mut Heightmap, p: &TerrainParams, frame: Option<[
                     let shore = u + fbm * 0.35;
                     let land = smooth(-0.15, 0.25, shore);
                     -20.0 + land * (p.base + 20.0 + (worn + 0.3).max(0.0) * p.amplitude * smooth(0.0, 0.8, shore))
+                }
+                TerrainKind::Caldera => {
+                    // Volcanic island with a sharp caldera rim, sunken crater basin and small central cone.
+                    let r_dist = radial + fbm * 0.14;
+                    let island = 1.0 - smooth(0.55, 0.94, r_dist);
+                    let ridges = noise.ridged(nx * 1.4, nz * 1.4, p.octaves.min(6), p.roughness, 2.0);
+                    let rim = 1.0 - smooth(0.0, 0.36, (r_dist - 0.30).abs());
+                    let pit = 1.0 - smooth(0.12, 0.30, r_dist);
+                    let central_cone = (1.0 - smooth(0.0, 0.10, r_dist)) * 0.28;
+                    let flank = island * (0.28 + 0.72 * (1.0 - smooth(0.28, 0.82, r_dist)));
+                    let h_rel = (flank + rim * 0.55 + ridges * 0.28 * island - pit * 0.95 + central_cone).max(0.0);
+                    -22.0 + island * (22.0 + p.base * 0.35 + h_rel * p.amplitude)
+                }
+                TerrainKind::Fjords => {
+                    // Steep coastal highland carved by deep, winding sea inlets.
+                    let coast = smooth(-0.35, 0.05, u + fbm * 0.25);
+                    let fjord_line = noise.ridged(nx * 1.15, nz * 1.15 + 5.0, 4, 0.5, 2.0);
+                    let inlet = smooth(0.68, 0.90, fjord_line) * (1.0 - smooth(0.35, 0.95, u));
+                    let plateau = 0.65 + 0.35 * noise.ridged(nx * 0.9, nz * 0.9, p.octaves.min(6), p.roughness, 2.0);
+                    let land = (coast - inlet * 1.15).clamp(0.0, 1.0);
+                    -20.0 + land * (20.0 + p.base * 0.5 + plateau * p.amplitude * 0.85)
+                }
+                TerrainKind::Erg => {
+                    // Wind-sculpted sand desert: asymmetric barchan dune waves + rocky outcrops.
+                    let phase = (nx * 4.5 + nz * 1.6 + noise.fbm(nx * 1.2, nz * 1.2, 3, 0.5, 2.0) * 1.8).rem_euclid(1.0);
+                    let wave = if phase < 0.74 { phase / 0.74 } else { (1.0 - phase) / 0.26 };
+                    let macro_dune = (noise.fbm(nx * 0.6, nz * 0.6, 4, 0.5, 2.0) * 0.5 + 0.5).clamp(0.0, 1.0);
+                    let outcrop = smooth(0.62, 0.85, noise.ridged(nx * 0.8 + 7.0, nz * 0.8, 3, 0.5, 2.0)) * 0.45;
+                    p.base + (macro_dune * 0.35 + wave * 0.22 * (0.4 + 0.6 * macro_dune) + outcrop) * p.amplitude
+                }
+                TerrainKind::Karst => {
+                    // Limestone plateau pitted with multi-scale sinkholes and rocky ridges.
+                    let base_land = 0.55 + worn * 0.25;
+                    let big_sinks = smooth(0.42, 0.72, noise.get(nx * 3.8 + 13.0, nz * 3.8 + 7.0)).powf(1.4) * 0.42;
+                    let small_sinks = smooth(0.48, 0.78, noise.get(nx * 9.5 + 29.0, nz * 9.5 + 19.0)).powf(1.3) * 0.18;
+                    let lapiaz = smooth(0.72, 0.95, noise.ridged(nx * 2.5, nz * 2.5, 3, 0.5, 2.0)) * 0.16;
+                    p.base + (base_land - big_sinks - small_sinks + lapiaz) * p.amplitude
                 }
             };
             *v += (height - *v) * p.blend;

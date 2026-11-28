@@ -415,15 +415,16 @@ mod tests {
             mk(2, "Orchard", GeneratorKind::Orchard(Default::default())),
             mk(3, "Tree alley", GeneratorKind::TreeAlley(Default::default())),
             mk(4, "Coast", GeneratorKind::Coast(Default::default())),
+            mk(5, "Fjords", GeneratorKind::Terrain(crate::gen::TerrainParams { kind: crate::gen::TerrainKind::Fjords, ..Default::default() })),
         ];
         save(&w, d.path(), SaveParts::ALL).unwrap();
         let file: serde_json::Value = serde_json::from_slice(&std::fs::read(d.path().join("project.dzwe")).unwrap()).unwrap();
         let classic = file["generators"].to_string();
-        assert!(!classic.contains("Orchard") && !classic.contains("TreeAlley"), "classic list has unknown kinds: {classic}");
+        assert!(!classic.contains("Orchard") && !classic.contains("TreeAlley") && !classic.contains("Fjords"), "classic list has unknown kinds: {classic}");
         assert_eq!(file["generators"].as_array().unwrap().len(), 2);
-        assert_eq!(file["extra_generators"].as_array().unwrap().len(), 2);
+        assert_eq!(file["extra_generators"].as_array().unwrap().len(), 3);
         let r = load(d.path()).unwrap();
-        assert_eq!(r.generators.iter().map(|g| g.id).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
+        assert_eq!(r.generators.iter().map(|g| g.id).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
     }
 
     #[test]

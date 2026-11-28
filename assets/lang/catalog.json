@@ -11942,5 +11942,45 @@
  "Start map board": {
   "de": "Kartentafel am Start",
   "pl": "Tablica z mapą na starcie"
+ },
+ "Plateau / Mesa": {
+  "de": "Plateau / Tafelberg",
+  "pl": "Płaskowyż / Mesa"
+ },
+ "Bomb crater field": {
+  "de": "Bombenkraterfeld",
+  "pl": "Pole lejów po bombach"
+ },
+ "Trench": {
+  "de": "Schützengraben",
+  "pl": "Okop"
+ },
+ "Cliff": {
+  "de": "Klippe",
+  "pl": "Klif"
+ },
+ "Levee / Dyke": {
+  "de": "Deich / Hochwasserdamm",
+  "pl": "Grobla / Wał przeciwpowodziowy"
+ },
+ "Pond basin": {
+  "de": "Teichbecken",
+  "pl": "Niecka stawu"
+ },
+ "Volcanic island": {
+  "de": "Vulkaninsel",
+  "pl": "Wyspa wulkaniczna"
+ },
+ "Fjords": {
+  "de": "Fjorde",
+  "pl": "Fiordy"
+ },
+ "Sand desert": {
+  "de": "Sandwüste",
+  "pl": "Pustynia wydmowa"
+ },
+ "Karst": {
+  "de": "Karst",
+  "pl": "Teren krasowy"
  }
 }

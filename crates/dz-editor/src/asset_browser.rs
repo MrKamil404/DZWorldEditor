@@ -254,7 +254,7 @@ const fn stamp(name: &'static str, form: StampForm) -> ModTemplate {
     ModTemplate { name, mode: ModMode::Offset, shape: || ModShape::Circle { radius: 1.0 }, amount: 0.0, falloff: 0.0, form: Some(form) }
 }
 
-pub const MODIFIERS: [ModTemplate; 14] = [
+pub const MODIFIERS: [ModTemplate; 20] = [
     ModTemplate { name: "Flatten (circle)", mode: ModMode::Flatten, shape: || ModShape::Circle { radius: 12.0 }, amount: 0.0, falloff: 10.0, form: None },
     ModTemplate { name: "Flatten (rectangle)", mode: ModMode::Flatten, shape: || ModShape::Rect { half_x: 10.0, half_z: 10.0 }, amount: 0.0, falloff: 10.0, form: None },
     ModTemplate { name: "Raise", mode: ModMode::Offset, shape: || ModShape::Circle { radius: 15.0 }, amount: 3.0, falloff: 15.0, form: None },
@@ -269,6 +269,12 @@ pub const MODIFIERS: [ModTemplate; 14] = [
     stamp("Valley", StampForm::Valley),
     stamp("Volcano", StampForm::Volcano),
     stamp("Dunes", StampForm::Dunes),
+    stamp("Plateau / Mesa", StampForm::Mesa),
+    stamp("Bomb crater field", StampForm::BombField),
+    stamp("Trench", StampForm::Trench),
+    stamp("Cliff", StampForm::Cliff),
+    stamp("Levee / Dyke", StampForm::Levee),
+    stamp("Pond basin", StampForm::PondBasin),
 ];
 
 /// The folders of the work drive as a tree, made once for each scan.

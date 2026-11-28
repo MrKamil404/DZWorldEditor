@@ -26,10 +26,31 @@ pub enum StampForm {
     Valley,
     Volcano,
     Dunes,
+    Mesa,
+    BombField,
+    Trench,
+    Cliff,
+    Levee,
+    PondBasin,
 }
 
 impl StampForm {
-    pub const ALL: [StampForm; 8] = [StampForm::Crater, StampForm::Hill, StampForm::Ridge, StampForm::Quarry, StampForm::Mound, StampForm::Valley, StampForm::Volcano, StampForm::Dunes];
+    pub const ALL: [StampForm; 14] = [
+        StampForm::Crater,
+        StampForm::Hill,
+        StampForm::Ridge,
+        StampForm::Quarry,
+        StampForm::Mound,
+        StampForm::Valley,
+        StampForm::Volcano,
+        StampForm::Dunes,
+        StampForm::Mesa,
+        StampForm::BombField,
+        StampForm::Trench,
+        StampForm::Cliff,
+        StampForm::Levee,
+        StampForm::PondBasin,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -41,6 +62,12 @@ impl StampForm {
             StampForm::Valley => "Valley",
             StampForm::Volcano => "Volcano",
             StampForm::Dunes => "Dunes",
+            StampForm::Mesa => "Plateau / Mesa",
+            StampForm::BombField => "Bomb crater field",
+            StampForm::Trench => "Trench",
+            StampForm::Cliff => "Cliff",
+            StampForm::Levee => "Levee / Dyke",
+            StampForm::PondBasin => "Pond basin",
         }
     }
 
@@ -55,6 +82,12 @@ impl StampForm {
             StampForm::Valley => (500.0, 25.0),
             StampForm::Volcano => (700.0, 90.0),
             StampForm::Dunes => (300.0, 6.0),
+            StampForm::Mesa => (320.0, 35.0),
+            StampForm::BombField => (180.0, 5.0),
+            StampForm::Trench => (80.0, 2.5),
+            StampForm::Cliff => (260.0, 28.0),
+            StampForm::Levee => (160.0, 4.5),
+            StampForm::PondBasin => (120.0, 6.0),
         }
     }
 
@@ -118,6 +151,87 @@ impl StampForm {
                         let w = (u * 7.0 + 0.6 * rough).fract();
                         let wave = if w < 0.75 { w / 0.75 } else { (1.0 - w) / 0.25 };
                         (wave - 0.4) * (1.0 - smooth(0.6, 1.0, r))
+                    }
+                    // Flat-topped rocky plateau with stepped cliffs and ragged outline.
+                    StampForm::Mesa => {
+                        let d = r + 0.14 * rough;
+                        let body = 1.0 - smooth(0.46, 0.86, d);
+                        let strata = ((body * 3.0).floor() + smooth(0.55, 1.0, (body * 3.0).fract())) / 3.0;
+                        let top_detail = 0.05 * noise.fbm(u * 6.0, v * 6.0, 3, 0.5, 2.0) * smooth(0.7, 0.98, body);
+                        (strata + top_detail) * (1.0 - smooth(0.84, 1.0, r))
+                    }
+                    // Cluster of artillery / bomb craters of varying sizes.
+                    StampForm::BombField => {
+                        const PITS: &[(f32, f32, f32, f32)] = &[
+                            (0.0, 0.0, 0.26, 1.0),
+                            (-0.36, 0.22, 0.22, 0.85),
+                            (0.32, -0.18, 0.24, 0.9),
+                            (-0.18, -0.38, 0.19, 0.75),
+                            (0.24, 0.34, 0.20, 0.8),
+                            (-0.48, -0.16, 0.16, 0.65),
+                            (0.48, 0.14, 0.15, 0.6),
+                            (0.05, 0.52, 0.14, 0.55),
+                            (-0.08, -0.56, 0.14, 0.55),
+                            (0.44, -0.42, 0.13, 0.5),
+                            (-0.42, 0.44, 0.13, 0.5),
+                        ];
+                        let mut acc = 0.0f32;
+                        for &(cx, cy, rad, depth) in PITS {
+                            let d = ((u - cx).hypot(v - cy)) / rad;
+                            if d < 1.0 {
+                                let c = if d < 0.68 {
+                                    -1.0 + 1.3 * smooth(0.0, 0.68, d).powf(1.5)
+                                } else {
+                                    0.3 * (1.0 - smooth(0.68, 1.0, d))
+                                };
+                                acc += c * depth;
+                            }
+                        }
+                        (acc + 0.08 * rough) * (1.0 - smooth(0.68, 1.0, r))
+                    }
+                    // Zigzag military trench with raised earthen parapets along its edges.
+                    StampForm::Trench => {
+                        let along = 1.0 - smooth(0.74, 0.98, u.abs());
+                        let zig = ((u * 2.5 + 0.5).rem_euclid(2.0) - 1.0).abs() * 0.28 - 0.14;
+                        let d = (v - zig).abs();
+                        let profile = if d < 0.13 {
+                            -1.0 + 0.2 * smooth(0.06, 0.13, d)
+                        } else if d < 0.28 {
+                            -0.8 + 1.08 * smooth(0.13, 0.28, d)
+                        } else {
+                            0.28 * (1.0 - smooth(0.28, 0.58, d))
+                        };
+                        along * profile * (1.0 - smooth(0.75, 1.0, v.abs()))
+                    }
+                    // One-sided escarpment: steep rocky face on one side, gentle backslope on the other.
+                    StampForm::Cliff => {
+                        let along = 1.0 - smooth(0.62, 0.98, u.abs());
+                        let edge = v + 0.09 * rough;
+                        let face = smooth(-0.14, 0.10, edge);
+                        let back = 1.0 - smooth(0.10, 0.92, edge);
+                        let crag = 1.0 + 0.18 * noise.ridged(u * 4.0, v * 4.0, 3, 0.5, 2.0) - 0.09;
+                        along * face * back * crag * (1.0 - smooth(0.8, 1.0, v.abs()))
+                    }
+                    // Flood levee / dyke: flat crest, steeper waterside, shallow drainage ditch on landside.
+                    StampForm::Levee => {
+                        let along = 1.0 - smooth(0.72, 0.98, u.abs());
+                        let profile = if v < -0.10 {
+                            1.0 - smooth(0.10, 0.42, -v)
+                        } else if v <= 0.10 {
+                            1.0
+                        } else if v < 0.48 {
+                            1.0 - smooth(0.10, 0.48, v)
+                        } else {
+                            -0.25 * (1.0 - smooth(0.0, 0.22, (v - 0.62).abs()))
+                        };
+                        along * profile * (1.0 - smooth(0.82, 1.0, v.abs()))
+                    }
+                    // Irregular pond basin with shallow littoral shelf and flat deep floor.
+                    StampForm::PondBasin => {
+                        let d = (u * 0.92).hypot(v * 1.12) + 0.12 * rough;
+                        let shelf = 1.0 - smooth(0.45, 0.88, d);
+                        let deep = 1.0 - smooth(0.20, 0.52, d);
+                        -(0.35 * shelf + 0.65 * deep) * (1.0 - smooth(0.82, 1.0, r))
                     }
                 };
                 data.push(value.clamp(-1.0, 1.0));

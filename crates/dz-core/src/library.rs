@@ -595,7 +595,16 @@ impl GeneratorKind {
     }
     /// Variants added after 0.4.4, stored in a separate project field so older versions still open the file.
     pub fn is_extended(&self) -> bool {
-        matches!(self, GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_) | GeneratorKind::Roadblock(_) | GeneratorKind::GridArea(_) | GeneratorKind::Trench(_) | GeneratorKind::Trail(_))
+        matches!(
+            self,
+            GeneratorKind::Orchard(_)
+                | GeneratorKind::TreeAlley(_)
+                | GeneratorKind::Wetland(_)
+                | GeneratorKind::Roadblock(_)
+                | GeneratorKind::GridArea(_)
+                | GeneratorKind::Trench(_)
+                | GeneratorKind::Trail(_)
+        ) || matches!(self, GeneratorKind::Terrain(t) if t.kind.is_extended())
     }
     /// Name of the built-in generator this one derives from.
     pub fn type_name(&self) -> &'static str {
