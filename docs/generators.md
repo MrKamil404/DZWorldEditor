@@ -5,8 +5,11 @@
 The Content Browser at the bottom holds:
 
 * **Work drive**: every model of `P:\`, with thumbnails and a search.
-* **Built-in**: generators, presets and modifiers that come with the editor. They cannot be
-  changed, only duplicated. The forest presets are in **Built-in > Presets > Forests**.
+* **Built-in**: generators, object presets, prefabs and modifiers that come with the editor. They
+  cannot be changed, only duplicated. Forest presets are in **Built-in > Presets > Forests**, object
+  presets (walls and fences with rare damaged pieces, rocks, wrecks, debris, street props) in
+  **Built-in > Presets**, and ready-made scenes (*Bus stop*, *Forest camp*, *Hunting post*, *Road
+  checkpoint*, *Military outpost*, *Transformer station*) in **Built-in > Prefabs**.
 * **Library**: your own generators, presets and prefabs, in folders.
   To share them, right-click an item (or a folder, or the Library) and choose **Export to a file**.
   This makes a `.dzwelib` file. **Import from a file** adds the contents of such a file as new items,
@@ -29,17 +32,19 @@ this generator, the library, an object preset, or the built-in group.
 The rules of Surface painting and of the Scatter generator have **More conditions** besides height
 and slope: hollows and ridges (how far the ground lies below the ground round it), wetness (where
 water runs and gathers), and the distance to water and to roads, each with ragged edges if wanted.
-Moss in wet hollows, reeds along the water, dry grass on the crests, verges by the roads.
+Moss in wet hollows, reeds along the water, dry grass on the crests, verges by the roads. Surface
+painting also includes **Biome presets** (Central Europe, Summer, Winter & Volcanic, Desert, Alpine)
+that match your existing layers automatically and can add any missing vanilla layers for you.
 
 | Generators | |
 | --- | --- |
-| Vegetation | Forest with extra presets and edges, area and line scatter methods |
-| Water | Rivers from the game's straight and bend models, ponds and lakes that dig their own basins |
-| Settlements and lines | Settlement, fence, power line |
-| Terrain | Terrain shape, hydraulic and thermal erosion, terraces, terrain along a line |
-| Surfaces and clean-up | Rule-based surface painting, removing objects by category or name |
-| Landscape | Coast, cliffs and rocks, fields |
-| Along roads | Road verges with bushes and signs, railway surroundings, wrecks and road decals |
+| Vegetation | Forest (including orchard, windthrow, tundra and dead forest presets), orchard and vineyard rows, tree alleys, area and line scatter |
+| Water | Rivers from the game's straight and bend models, ponds and lakes that dig their own basins, wetlands and marshes |
+| Settlements and lines | Settlement, grid areas (cemetery, parking lot, container yard), fence, power line, trenches, tourist trail |
+| Terrain | Terrain shape (including volcanic island, fjords, sand desert and karst), hydraulic and thermal erosion, terraces, terrain along a line |
+| Surfaces and clean-up | Rule-based surface painting (with biome presets), removing objects by category or name |
+| Landscape | Coast, cliffs and rocks, fields, wetland and marsh |
+| Along roads | Road verges with bushes and signs, railway surroundings, wrecks and road decals, roadblocks and checkpoints, tree alleys, tourist trails |
 | Round buildings | Things round the buildings already on the map |
 
 * **Coast** paints beaches by the water and sand on the shallow sea floor (a layer named like sand,
@@ -49,6 +54,23 @@ Moss in wet hollows, reeds along the water, dry grass on the crests, verges by t
   it, with a rock surface under them.
 * **Fields** cuts polygons into strips of fields with balks between them, each strip sown with one
   of the chosen surfaces, and lays hay bales along them.
+* **Orchard, Vineyard, and Tree alley** lay regular rows of fruit trees or vines inside polygons
+  (with natural jitter, missing trees and ground surface), or a row of trees along both sides, only
+  the left side, or only the right side of a road or line.
+* **Wetland and marsh** uses terrain wetness and hollows to paint mud or peat and place reeds,
+  willows and fallen logs.
+* **Grid areas (*Cemetery*, *Parking lot*, *Container yard*)** fill polygons with regular rows and
+  aisles, optional aisle props, position and rotation jitter, 180° flips and noise-clustered gaps so
+  the layout looks natural rather than rigid.
+* **Roadblock and checkpoint** snaps and aligns to a road, line or map point in military, civilian
+  or mixed styles, placing barriers, wrecks, sandbags, hedgehogs, barbed wire and an optional guard
+  shed.
+* **Trenches** carves a zigzag trench into the terrain along a line, paints dirt on the mask and
+  adds parapet sandbags, timbers/crates and barbed wire in front.
+* **Tourist trail** follows a polyline or road (with smooth Bezier curves and side offset like
+  roads), paints a narrow ragged footpath, clears trees and bushes from the corridor (restoring them
+  if the generator is removed or re-run) and places colored trail marker poles, a start map board
+  and resting benches.
 * **Road verges** follows roads or lines: a verge surface, bushes beyond it and now and then a
   sign, a row of posts (poles, lamps) and stops with a platform. Dropped on the map, it follows
   every road, every railway or both.

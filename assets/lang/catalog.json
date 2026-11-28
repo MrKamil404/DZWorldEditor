@@ -11982,5 +11982,41 @@
  "Karst": {
   "de": "Karst",
   "pl": "Teren krasowy"
+ },
+ "Resizing terrain grid": {
+  "de": "Geländeraster wird skaliert",
+  "pl": "Zmiana rozdzielczości siatki terenu"
+ },
+ "Terrain grid resized to {0} × {0} ({1} m/cell)": {
+  "de": "Geländeraster auf {0} × {0} geändert ({1} m/Zelle)",
+  "pl": "Zmieniono siatkę terenu na {0} × {0} ({1} m/komórkę)"
+ },
+ "Terrain resolution (experimental)": {
+  "de": "Geländeauflösung (experimentell)",
+  "pl": "Rozdzielczość terenu (eksperymentalne)"
+ },
+ "Current: {0} × {0} ({1} m/cell)": {
+  "de": "Aktuell: {0} × {0} ({1} m/Zelle)",
+  "pl": "Obecnie: {0} × {0} ({1} m/komórkę)"
+ },
+ "Smooth (bicubic)": {
+  "de": "Glatt (bikubisch)",
+  "pl": "Wygładzanie (dwusześcienne)"
+ },
+ "Uses cubic interpolation when resampling; turn off for linear sampling of the existing triangles.": {
+  "de": "Verwendet kubische Interpolation beim Skalieren; ausschalten für lineare Abtastung der bestehenden Dreiecke.",
+  "pl": "Używa interpolacji dwusześciennej przy skalowaniu; wyłącz, aby próbkować liniowo istniejące trójkąty."
+ },
+ "Keeps the map size in metres and reapplies terrain modifiers. Clears undo history — make a backup first.": {
+  "de": "Behält die Kartengröße in Metern bei und wendet Geländemodifikatoren neu an. Löscht den Rückgängig-Verlauf — zuerst eine Sicherung erstellen.",
+  "pl": "Zachowuje rozmiar mapy w metrach i ponownie nakłada modyfikatory terenu. Czyści historię cofania — zrób najpierw kopię zapasową."
+ },
+ "Confirm resize": {
+  "de": "Änderung bestätigen",
+  "pl": "Potwierdź zmianę"
+ },
+ "Resize terrain grid": {
+  "de": "Geländeraster ändern",
+  "pl": "Zmień siatkę terenu"
  }
 }

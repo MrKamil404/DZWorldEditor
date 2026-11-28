@@ -138,6 +138,10 @@ pub struct SculptSettings {
     pub spray_density: f32,
     /// The height copied from the map for the set height brush.
     pub height: Option<f32>,
+    /// Experimental terrain grid resize controls.
+    pub resize_size: u32,
+    pub resize_smooth: bool,
+    pub resize_confirm: bool,
 }
 
 pub struct PaintSettings {
@@ -719,7 +723,7 @@ impl App {
             mode: Mode::Select, gizmo: Gizmo::Move, gizmo_local: false, view_mode: ViewMode::Perspective,
             shading3: Shading::Lit, shading2: Shading::Lit, wireframe: false, show_objects: true, show_grass: true, show_proxies: false, proxies: Default::default(), show_shadows: true, surface_catalog, step_sounds, surface_edit: None, material_edit: None, last_click: None, clutter_layers: Vec::new(), clutter_models: Vec::new(), show_water: true, show_lines: true,
             show_land_grid: false, show_tile_grid: false, show_contours: false, synthetic_modifiers: Default::default(), view_hovered: false, view_hovered_last: false, brushes: crate::brushes::load_all(), contour_interval: 10.0, camera_under: false, select_whole: true, whole: None, road_guard: (u64::MAX, 0), hole_tool: false, hole_radius: 2.0, hole_before: None, holes_seen: 0, bottom: BottomTab::Content,
-            sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08, height: None },
+            sculpt: SculptSettings { tool: SculptTool::Raise, radius: 60.0, falloff: 0.6, strength: 10.0, shape: Default::default(), noise: 0.0, picture: None, spray: false, spray_density: 0.08, height: None, resize_size: 2048, resize_smooth: true, resize_confirm: false },
             paint: PaintSettings { layer: 0, radius: 15.0, scatter: 0.3, shape: Default::default(), picture: None, spray: false, spray_density: 0.08, only_on: None, picking: false, into_modifier: true, target: None },
             place: PlaceSettings { model: None, random_yaw: true, scale_min: 1.0, scale_max: 1.0, align: false, brush: false, brush_radius: 20.0, brush_spacing: 4.0, brush_density: 2.0, brush_avoid: false, preset: None, prefab: None, pool: Vec::new(), auto_pad: false, pad_falloff: 8.0, pad_margin: 1.0, pad_follow: false, snap_surface: false },
             line: LineSettings { points: Vec::new(), action: LineAction::Road, family: "asf2".into(), grade: true, fence_model: String::new(), fence_spacing: 4.0, route: true, routing: Default::default(), rail_routing: dayz_road_tool::document::RoutingSettings::rail(), grade_width: 9.0, grade_falloff: 12.0, grading: Default::default(), extend: None, extend_only: true, selected_route: None, selected_point: None, point_drag: None, typed: None, forbidden: None, draw: Default::default(), crossroad_model: String::new(), crossroad_armed: false, roundabout_diameter: 40.0, roundabout_armed: false, roundabout: None, live_keep: true }, live: Default::default(), road_parts: Default::default(),
@@ -1817,6 +1821,8 @@ impl App {
             self.settings.save();
         }
         let name = world.meta.name.clone();
+        self.sculpt.resize_size = world.meta.terrain_size;
+        self.sculpt.resize_confirm = false;
         self.paint.layer = 0;
         self.doc = Some(Doc { world, dir, history: History::default(), lod, dirty: Dirty::default(), height_range: [lo, hi] });
         self.view3 = Default::default();
@@ -1843,6 +1849,47 @@ impl App {
             }
         }
         self.open_world(world, dir);
+    }
+
+    /// Resamples the open world's heightmap grid to `new_size × new_size`, keeping the world size
+    /// in metres and re-applying all terrain modifiers on a background thread.
+    pub fn resize_terrain(&mut self, new_size: u32, smooth: bool) {
+        let Some(doc) = &self.doc else { return };
+        if doc.world.meta.terrain_size == new_size {
+            return;
+        }
+        let mut meta = doc.world.meta.clone();
+        let mut base = doc.world.base.clone();
+        let mut height = dz_core::terrain::Heightmap::default();
+        let mut holes = doc.world.holes.clone();
+        let modifiers = doc.world.modifiers.clone();
+        self.sculpt.resize_confirm = false;
+        self.spawn(t("Resizing terrain grid"), move |_| {
+            dz_core::world::resize_terrain_data(&mut meta, &mut base, &mut height, &mut holes, &modifiers, new_size, smooth);
+            let lod = TerrainLod::build(&height);
+            let (lo, hi) = height.min_max();
+            Ok(Box::new(move |app: &mut App| {
+                let Some(doc) = &mut app.doc else { return };
+                doc.world.meta = meta;
+                doc.world.base = base;
+                doc.world.height = height;
+                doc.world.holes = holes;
+                doc.world.holes_rev += 1;
+                doc.lod = lod;
+                doc.height_range = [lo, hi];
+                doc.history = History::default();
+                doc.dirty.height = true;
+                {
+                    let mut r = app.renderer.lock().unwrap();
+                    r.reset_terrain(&doc.world.height);
+                    r.set_holes(&doc.world.holes, doc.world.height.cols, doc.world.height.rows);
+                }
+                let cell = format!("{:.2}", doc.world.meta.terrain_cell);
+                let n = doc.world.meta.terrain_size.to_string();
+                app.sculpt.resize_size = doc.world.meta.terrain_size;
+                app.info(tf("Terrain grid resized to {0} × {0} ({1} m/cell)", &[&n, &cell]));
+            }) as Finish)
+        });
     }
 
     pub fn open_project(&mut self, dir: PathBuf) {

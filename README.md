@@ -12,7 +12,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Live 3D and 2D views** of the whole map with real DayZ models, textures, satellite image, water and config-driven clutter draw distance; DayZ slope and object density heatmaps, a split view, a minimap, full screen and a view in a window of its own
 - **Getting around**: go to a key point, a map grid square or a position, saved camera views, a ruler for lengths, climbs and areas, and the sun at any time of day
 - **Maps of real places**: choose a place on the Earth and a DayZ map size, and the editor downloads its satellite picture (worldwide, or open orthophotos of Poland, Czechia, Austria and the USA), heights and OpenStreetMap shapes, paints the surface mask from the picture and the shapes, places the game's buildings in the outlines of the real ones, builds the roads from the game's road pieces and adds forest, field, river and stream generators. No account or API key is needed, see [docs/real-places.md](docs/real-places.md)
-- **Terrain** sculpting brushes, terrain holes, procedural terrain, hydraulic and thermal erosion, terraces, terrain stamps (craters, hills, quarries, your own pictures or pieces of terrain) and non-destructive modifiers
+- **Terrain** sculpting brushes, terrain holes, procedural terrain (including volcanic islands, fjords, sand desert and karst), hydraulic and thermal erosion, terraces, 14 built-in terrain stamps (craters, hills, mesas, bomb fields, trenches, cliffs, levees, pond basins, plus your own pictures or pieces of terrain) and non-destructive modifiers
 - **Surface painting** with per-tile limits that match what the game can render (up to six surfaces per tile, with excess-pixel highlighting and configurable tile fixes in Project settings) and a view that shows the surfaces as the built map will
 - **Map surfaces** (`CfgSurfaces`): new surfaces for your own textures and changes to the game's, with grass, sounds and physics, and a material window for each layer
 - **Satellite image** editing: bake objects, roads, water and decals into it, paint realistic ocean, river and pond water (with depth shading, ripples, shoreline foam, and above-water object awareness), a clone brush, a satellite painted from the surface mask and a surface mask read from the satellite (by colour groups, by the natural colours of a real photo, or by colours you pick), all as modifiers that can be hidden, deleted or, for brush strokes, merged
@@ -20,7 +20,7 @@ generate forests and rivers, edit the server mission, then build the map and sta
 - **Rows of walls and fences**: drag copies out in a row with the copy gizmo, turn them about their joint, join them to the next piece with a gap, copy the direction of another object, and take the copies from an object preset (a broken fence now and then)
 - **Roads and railways** fitted from the game's own parts, with embankments, bridges, level crossings and roundabouts
 - **Every vanilla road type** of Chernarus, Livonia, Sakhal and Takistan, and **crossroads** (`kr_*`) that roads start from or that go into a road
-- **Generators** for forests, rivers, ponds, coasts and beaches, cliffs, fields, road verges, railway surroundings, wrecks and road decals, things round buildings, settlements, fences (with closed corners and corner posts), power lines and more
+- **Generators and built-in library** for forests (with orchard, windthrow, tundra and dead forest presets), orchards, vineyards, tree alleys, rivers, ponds, wetlands and marshes, coasts and beaches, cliffs, fields, road verges, railway surroundings, wrecks and road decals, roadblocks and checkpoints, grid areas (cemeteries, parking lots, container yards), trenches, tourist trails, things round buildings, settlements, fences (with closed corners and corner posts), power lines, plus built-in object presets, prefabs and Surface Painting biome presets
 - **Library sharing**: export generators, presets and prefabs as `.dzwelib` files and import them on another computer
 - **Key points** for named places on the map, compatible with Terrain Builder
 - **Map config**: the `CfgWorlds` entry of the map, with its base world, map grid, clutter, sea waves, atmosphere, ambient sound map, navmesh settings and main menu scenes
@@ -87,13 +87,13 @@ Generators are in the Content Browser at the bottom of the window. Drop one on a
 
 | Generators | |
 | --- | --- |
-| Vegetation | Forest with extra presets and edges, area and line scatter methods |
-| Water | Rivers from the game's straight and bend models, ponds and lakes that dig their own basins |
-| Settlements and lines | Settlement, fence, power line |
-| Terrain | Terrain shape, hydraulic and thermal erosion, terraces, terrain along a line |
-| Surfaces and clean-up | Rule-based surface painting, removing objects by category or name |
-| Landscape | Coast, cliffs and rocks, fields |
-| Along roads | Road verges with bushes and signs, railway surroundings, wrecks and road decals |
+| Vegetation | Forest (including orchard, windthrow, tundra and dead forest presets), orchards, vineyards, tree alleys, area and line scatter |
+| Water | Rivers from the game's straight and bend models, ponds and lakes that dig their own basins, wetlands and marshes |
+| Settlements and lines | Settlement, grid areas (cemetery, parking lot, container yard), fence, power line, trenches, tourist trail |
+| Terrain | Terrain shape (including volcanic island, fjords, sand desert and karst), hydraulic and thermal erosion, terraces, terrain along a line |
+| Surfaces and clean-up | Rule-based surface painting (with biome presets), removing objects by category or name |
+| Landscape | Coast, cliffs and rocks, fields, wetland and marsh |
+| Along roads | Road verges with bushes and signs, railway surroundings, wrecks and road decals, roadblocks and checkpoints, tree alleys, tourist trails |
 | Round buildings | Things round the buildings already on the map |
 
 ## Importing

@@ -446,6 +446,59 @@ fn default_tile_surfaces() -> u8 {
     6
 }
 
+/// Resamples terrain data in place (usable on a worker thread without cloning the whole world).
+pub fn resize_terrain_data(
+    meta: &mut WorldMeta,
+    base: &mut Heightmap,
+    height: &mut Heightmap,
+    holes: &mut std::collections::BTreeSet<[u32; 2]>,
+    modifiers: &[TerrainModifier],
+    new_size: u32,
+    smooth: bool,
+) {
+    let new_size = new_size.max(64);
+    let old_cell = meta.terrain_cell.max(1e-6);
+    let size_m = meta.size_m();
+    let new_cell = size_m / new_size as f32;
+    let resampled = base.resample(new_size as usize, smooth);
+    *base = resampled;
+    *height = base.clone();
+
+    // Remap terrain holes so each old hole cell covers the matching world area on the new grid.
+    if !holes.is_empty() {
+        let mut next_holes = std::collections::BTreeSet::new();
+        let max_c = new_size.saturating_sub(1);
+        for &[hx, hz] in holes.iter() {
+            let x0 = ((hx as f32 * old_cell) / new_cell).floor().max(0.0) as u32;
+            let x1 = ((((hx + 1) as f32 * old_cell) / new_cell).ceil() as u32).saturating_sub(1).min(max_c);
+            let z0 = ((hz as f32 * old_cell) / new_cell).floor().max(0.0) as u32;
+            let z1 = ((((hz + 1) as f32 * old_cell) / new_cell).ceil() as u32).saturating_sub(1).min(max_c);
+            for z in z0..=z1.max(z0).min(max_c) {
+                for x in x0..=x1.max(x0).min(max_c) {
+                    next_holes.insert([x, z]);
+                }
+            }
+        }
+        *holes = next_holes;
+    }
+
+    meta.terrain_size = new_size;
+    meta.terrain_cell = new_cell;
+    // Keep `cells_per_tile` valid for WRP export (`terrain_size % cpt == 0 && land_size % cpt == 0`).
+    let mut cpt = meta.cells_per_tile.max(1);
+    while cpt > 1 && (new_size % cpt != 0 || (new_size / cpt) % cpt != 0) {
+        cpt /= 2;
+    }
+    meta.cells_per_tile = cpt.max(1);
+
+    let area = base.full_rect();
+    let forms = modifiers.iter().filter(|m| m.enabled && m.is_form());
+    let rest = modifiers.iter().filter(|m| m.enabled && !m.is_form());
+    for m in forms.chain(rest) {
+        apply_modifier(height, base, m, area);
+    }
+}
+
 /// Lays one modifier over `height` within `area`; `base` is the terrain targets are read from.
 fn apply_modifier(height: &mut Heightmap, base: &Heightmap, m: &TerrainModifier, area: Rect) {
     let cell = base.cell;
@@ -1174,6 +1227,21 @@ impl World {
         }
     }
 
+    /// Resamples the terrain grid to `new_size × new_size` while keeping the exact same world size
+    /// in metres, remapping terrain holes and re-applying all non-destructive terrain modifiers.
+    pub fn resize_terrain(&mut self, new_size: u32, smooth: bool) {
+        resize_terrain_data(
+            &mut self.meta,
+            &mut self.base,
+            &mut self.height,
+            &mut self.holes,
+            &self.modifiers,
+            new_size,
+            smooth,
+        );
+        self.holes_rev += 1;
+    }
+
     /// Moves attached modifiers after an object moved; returns the changed area.
     pub fn sync_attached(&mut self, object: u32) -> Option<Rect> {
         let o = *self.objects.get(object)?;
@@ -1450,6 +1518,21 @@ mod tests {
         // Move `a` above `b` -> height becomes 60.
         assert!(w.move_modifier(1, 1).is_some());
         assert_eq!(w.height.at(50, 50), 60.0);
+    }
+    #[test]
+    fn resize_terrain_keeps_size_modifiers_and_holes() {
+        let mut w = world(); // 128 × 128 @ 8.0 m = 1024 m
+        let size_before = w.meta.size_m();
+        w.modifiers.push(modifier(ModMode::Flatten, Some(75.0), 0.0));
+        w.holes.insert([10, 11]); // covers 80..88, 88..96 m
+        w.recompose(None);
+        w.resize_terrain(256, true);
+        assert_eq!(w.meta.terrain_size, 256);
+        assert!((w.meta.terrain_cell - 4.0).abs() < 1e-5);
+        assert!((w.meta.size_m() - size_before).abs() < 1e-3);
+        assert_eq!(w.height.cols, 256);
+        assert!((w.height.sample(400.0, 400.0) - 75.0).abs() < 1e-3);
+        assert!(w.is_hole(81.0, 89.0) && w.is_hole(87.0, 95.0) && !w.is_hole(79.0, 89.0));
     }
 }
 

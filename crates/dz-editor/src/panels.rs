@@ -1099,6 +1099,44 @@ fn sculpt_mode(app: &mut App, ui: &mut egui::Ui) {
         slider(ui, &t("Edge noise"), &mut app.sculpt.noise, 0.0..=1.0, false);
     });
     crate::stamps_ui::panel(app, ui);
+    if app.settings.experimental {
+        let cur = app.doc.as_ref().map(|d| (d.world.meta.terrain_size, d.world.meta.terrain_cell, d.world.meta.size_m()));
+        if let Some((cur_size, cur_cell, size_m)) = cur {
+            section(ui, &icons::with(icons::GRID_FOUR, &t("Terrain resolution (experimental)")), false, |ui| {
+                ui.label(tf("Current: {0} × {0} ({1} m/cell)", &[&cur_size.to_string(), &format!("{cur_cell:.2}")]));
+                if !matches!(app.sculpt.resize_size, 512 | 1024 | 2048 | 4096) {
+                    app.sculpt.resize_size = cur_size;
+                }
+                let target_cell = size_m / app.sculpt.resize_size as f32;
+                egui::ComboBox::from_id_salt("terrain_resize_target")
+                    .selected_text(format!("{} × {} ({:.2} m)", app.sculpt.resize_size, app.sculpt.resize_size, target_cell))
+                    .show_ui(ui, |ui| {
+                        for n in [512u32, 1024, 2048, 4096] {
+                            let c = size_m / n as f32;
+                            if ui.selectable_value(&mut app.sculpt.resize_size, n, format!("{n} × {n} ({c:.2} m)")).changed() {
+                                app.sculpt.resize_confirm = false;
+                            }
+                        }
+                    });
+                ui.checkbox(&mut app.sculpt.resize_smooth, t("Smooth (bicubic)")).on_hover_text(t("Uses cubic interpolation when resampling; turn off for linear sampling of the existing triangles."));
+                about(ui, &t("Keeps the map size in metres and reapplies terrain modifiers. Clears undo history — make a backup first."));
+                let same = app.sculpt.resize_size == cur_size;
+                if app.sculpt.resize_confirm && !same {
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::Button::new(RichText::new(t("Confirm resize")).color(Color32::WHITE)).fill(theme::ACCENT)).clicked() {
+                            let (n, sm) = (app.sculpt.resize_size, app.sculpt.resize_smooth);
+                            app.resize_terrain(n, sm);
+                        }
+                        if ui.button(t("Cancel")).clicked() {
+                            app.sculpt.resize_confirm = false;
+                        }
+                    });
+                } else if ui.add_enabled(!same, egui::Button::new(t("Resize terrain grid"))).clicked() {
+                    app.sculpt.resize_confirm = true;
+                }
+            });
+        }
+    }
     shortcuts(ui, |ui| brush_hints(app, ui, Some("Lower instead of raise"), true, true, true));
 }
 

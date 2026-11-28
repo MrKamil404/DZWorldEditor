@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0
+
+### New
+
+- **Six new built-in landscape and line generators.**
+  - **Orchard, Vineyard, and Tree alley**: fills polygons with regular rows of fruit trees or vines (with jitter, missing slots, and ground surface) and adds a linear **Tree alley** generator with **Both**, **Left**, or **Right** side placement and optional stagger.
+  - **Wetland and marsh**: uses terrain wetness and hollows to paint mud or peat and scatter reeds, willows, and fallen logs.
+  - **Roadblock and checkpoint**: snaps and aligns to roads, lines, or map points in **Military**, **Civilian**, or **Mixed** styles, placing barriers, wrecks, sandbags, hedgehogs, barbed wire, and an optional guard shed.
+  - **Grid areas (*Cemetery*, *Parking lot*, *Container yard*)**: fills polygons with rows, aisles, and optional aisle props, with position/rotation jitter, 180° flips, missing share, and noise-clustered gaps so layouts look natural.
+  - **Trenches**: carves a zigzag trench modifier along a line, paints dirt/soil on the mask, and places parapet sandbags, timbers/crates, and barbed wire in front.
+  - **Tourist trail**: follows a polyline or road using road-style smooth Bezier curves and side offset, paints a ragged footpath on the mask, clears trees and bushes from the corridor (restorable on re-run or delete), and places colored trail marker poles, a start map board, and resting benches.
+- **Built-in presets and prefabs in the Content Browser.**
+  - **Built-in Object Presets** (`Built-in > Presets`): ready-to-use wall and fence sets across Chernarus, Livonia, and Sakhal (with low weights on damaged/hole pieces), plus rocks and boulders, civilian and military wrecks, debris/pallets, hay bales, street lamps, signs, poles, and shoreline bushes.
+  - **Built-in Prefabs** (`Built-in > Prefabs`): *Bus stop*, *Forest camp*, *Hunting post*, *Road checkpoint*, *Military outpost*, and *Transformer station*.
+  - **Surface Painting biome presets**: five ready-made biome rule sets (*Chernarus / Central Europe*, *Livonia / Summer*, *Sakhal / Winter & Volcanic*, *Desert / Steppe*, and *Alpine*) that automatically match your project's layers and offer to add missing vanilla layers.
+  - **New forest presets**: *Orchard*, *Summer orchard*, *Windthrow / Clear-cut*, *Tundra / Mountain pine*, *Winter tundra*, and *Dead / Burned forest*.
+- **New terrain stamps and terrain shapes.**
+  - **Six new terrain stamps**: *Plateau / Mesa*, *Bomb crater field*, *Trench*, *Cliff*, *Levee / Dyke*, and *Pond basin*.
+  - **Four new terrain shapes** in the **Terrain** generator: *Volcanic island* (caldera), *Fjords*, *Sand desert* (erg), and *Karst* (sinkholes).
+- **Experimental terrain resolution resizing.**
+  - Added **Terrain resolution (experimental)** at the bottom of the **Sculpt** tab (available when **Edit > Settings > General > Show experimental features** is enabled) to resample the heightmap grid (`512`, `1024`, `2048`, or `4096`) with bicubic or linear interpolation while keeping the exact map size in metres, remapping terrain holes, and re-applying all terrain modifiers.
+
+### Good to know
+
+- Projects from 0.4.4 and earlier open in 0.5.0.
+- Projects saved in 0.5.0 also open in 0.4.4: the new generators and new terrain shapes are saved in `extra_generators` so older versions skip them cleanly instead of failing to load.
+- Resizing the terrain grid clears undo history — make a backup of your project first.
+
 ## 0.4.4
 
 ### New

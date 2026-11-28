@@ -105,6 +105,54 @@ impl Heightmap {
     pub fn full_rect(&self) -> Rect {
         Rect { x0: 0, y0: 0, x1: self.cols - 1, y1: self.rows - 1 }
     }
+    /// Catmull-Rom cubic interpolation at fractional grid coordinates `(fx, fz)`.
+    #[inline]
+    fn sample_bicubic(&self, fx: f32, fz: f32) -> f32 {
+        let i = fx.floor() as i64;
+        let j = fz.floor() as i64;
+        let tx = fx - i as f32;
+        let tz = fz - j as f32;
+        let cubic = |p0: f32, p1: f32, p2: f32, p3: f32, t: f32| -> f32 {
+            let t2 = t * t;
+            let t3 = t2 * t;
+            0.5 * ((2.0 * p1)
+                + (-p0 + p2) * t
+                + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
+        };
+        let mut row = [0.0f32; 4];
+        for (k, dj) in (-1..=2).enumerate() {
+            row[k] = cubic(
+                self.clamped(i - 1, j + dj),
+                self.clamped(i, j + dj),
+                self.clamped(i + 1, j + dj),
+                self.clamped(i + 2, j + dj),
+                tx,
+            );
+        }
+        cubic(row[0], row[1], row[2], row[3], tz)
+    }
+    /// Resamples the heightmap to `new_size × new_size` while keeping the exact same world size
+    /// in metres (`new_cell = width_m() / new_size`).
+    pub fn resample(&self, new_size: usize, bicubic: bool) -> Self {
+        let new_size = new_size.max(2);
+        let new_cell = self.width_m() / new_size as f32;
+        let mut data = vec![0.0f32; new_size * new_size];
+        let old_cell = self.cell.max(1e-6);
+        data.par_chunks_mut(new_size).enumerate().for_each(|(j, row)| {
+            let z = j as f32 * new_cell;
+            let fz = z / old_cell;
+            for (i, dst) in row.iter_mut().enumerate() {
+                let x = i as f32 * new_cell;
+                *dst = if bicubic {
+                    self.sample_bicubic(x / old_cell, fz)
+                } else {
+                    self.sample(x, z)
+                };
+            }
+        });
+        Self { cols: new_size, rows: new_size, cell: new_cell, data }
+    }
 }
 
 /// Parsed ESRI ASCII grid.
@@ -295,5 +343,22 @@ mod tests {
         m.set(1, 0, 10.0);
         assert!((m.sample(5.0, 0.0) - 5.0).abs() < 1e-5);
         assert!((m.sample(10.0, 0.0) - 10.0).abs() < 1e-5);
+    }
+    #[test]
+    fn resample_keeps_world_size_and_heights() {
+        let mut m = Heightmap::new(32, 32, 8.0, 0.0);
+        for j in 0..32 {
+            for i in 0..32 {
+                m.set(i, j, 10.0 + i as f32 * 0.5 + (j as f32 * 0.25).sin() * 4.0);
+            }
+        }
+        let up = m.resample(64, true);
+        assert_eq!(up.cols, 64);
+        assert!((up.width_m() - m.width_m()).abs() < 1e-3);
+        assert!((up.cell - 4.0).abs() < 1e-5);
+        // Existing vertices at even indices keep their exact height.
+        assert!((up.at(20, 20) - m.at(10, 10)).abs() < 1e-4);
+        let lin = m.resample(64, false);
+        assert!((lin.at(20, 20) - m.at(10, 10)).abs() < 1e-4);
     }
 }
