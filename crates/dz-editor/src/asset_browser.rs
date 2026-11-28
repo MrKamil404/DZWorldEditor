@@ -23,6 +23,8 @@ pub enum Pick {
     Generator(u64),
     /// A forest preset, built in or of the library.
     Forest(String),
+    /// A built-in surface painting biome (index into `dz_core::gen::surface_biomes()`).
+    Biome(usize),
     /// A road type of the road catalog.
     Road(String),
     /// One of `MODIFIERS`.
@@ -69,7 +71,7 @@ pub enum Source {
 fn categories(g: Group) -> &'static [&'static str] {
     match g {
         Group::BuiltInGenerators => &["Terrain", "Surfaces and vegetation", "Objects in areas", "Objects along lines", "Water", "Landscape"],
-        Group::BuiltInPresets => &["Forests", "Roads", "Walls and fences", "Rocks and stones", "Wrecks", "Props and debris", "Street and roadside"],
+        Group::BuiltInPresets => &["Forests", "Roads", "Walls and fences", "Rocks and stones", "Wrecks", "Props and debris", "Street and roadside", "Surface biomes"],
         Group::BuiltInModifiers => &["Levelling", "Raise and lower", "Fill and cut", "Terrain stamps"],
         _ => &[],
     }
@@ -614,7 +616,7 @@ fn models_of(app: &App, pick: &Pick) -> Vec<String> {
         Pick::Preset(id) => app.object_preset(*id).map(|p| p.items.iter().map(|i| dz_core::objects::ObjectStore::normalize_path(&i.0)).collect()).unwrap_or_default(),
         Pick::Forest(n) => forest_models(app, n),
         Pick::Road(f) => crate::library_ui::road_model(app, f).into_iter().collect(),
-        Pick::Generator(_) | Pick::Modifier(_) => Vec::new(),
+        Pick::Generator(_) | Pick::Modifier(_) | Pick::Biome(_) => Vec::new(),
         Pick::Prefab(id) => {
             let mut seen = std::collections::HashSet::new();
             app.library.prefabs.iter().find(|p| p.id == *id).map(|p| p.items.iter().map(|i| dz_core::objects::ObjectStore::normalize_path(&i.model)).filter(|m| seen.insert(m.clone())).collect()).unwrap_or_default()
@@ -631,7 +633,7 @@ fn is_locked(app: &App, pick: &Pick) -> bool {
         Pick::Generator(id) => app.built_in.iter().any(|g| g.id == *id),
         Pick::Preset(id) => app.built_in_objects.iter().any(|p| p.id == *id),
         Pick::Forest(n) => !app.library.forest_presets.iter().any(|p| p.name == *n),
-        Pick::Road(_) | Pick::Modifier(_) => true,
+        Pick::Road(_) | Pick::Modifier(_) | Pick::Biome(_) => true,
         Pick::Model(_) | Pick::Prefab(_) => false,
     }
 }
@@ -642,6 +644,7 @@ fn name_of(app: &App, pick: &Pick) -> String {
         Pick::Preset(id) => app.object_preset(*id).map(|p| app.object_preset_name(p)).unwrap_or_default(),
         Pick::Generator(id) => generator(app, *id).map(|g| if g.folder == BUILT_IN { t(&g.name) } else { g.name.clone() }).unwrap_or_default(),
         Pick::Forest(n) | Pick::Road(n) => n.clone(),
+        Pick::Biome(i) => dz_core::gen::surface_biomes().get(*i).map(|b| t(b.name)).unwrap_or_default(),
         Pick::Modifier(i) => t(MODIFIERS[*i].name),
         Pick::Prefab(id) => app.library.prefabs.iter().find(|p| p.id == *id).map(|p| p.name.clone()).unwrap_or_default(),
     }
@@ -682,6 +685,14 @@ fn look_of(app: &mut App, ctx: &egui::Context, pick: &Pick, layers: &[(String, [
             (letter, color) = ("F", Color32::from_rgb(44, 96, 56));
             count = Some(models.len());
             STRIPE_FOREST
+        }
+        Pick::Biome(i) => {
+            (letter, color) = ("B", Color32::from_rgb(104, 114, 62));
+            if let Some(b) = dz_core::gen::surface_biomes().get(*i) {
+                count = Some(b.rules.len());
+                tooltip = format!("{name}\n{}", t(b.summary));
+            }
+            STRIPE_GENERATOR
         }
         Pick::Road(_) => {
             (letter, color) = ("R", Color32::from_rgb(70, 72, 78));
@@ -777,6 +788,7 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
                     out.extend(dz_core::gen::forest_preset_names().into_iter().filter(|n| !own.contains(&n.as_str()) && named(n)).map(|n| Item::Asset(Pick::Forest(n))));
                     out.extend(app.road_families.iter().filter(|f| named(f)).map(|f| Item::Asset(Pick::Road(f.clone()))));
                     out.extend(app.built_in_objects.iter().filter(|p| named(&t(&p.name))).map(|p| Item::Asset(Pick::Preset(p.id))));
+                    out.extend(dz_core::gen::surface_biomes().iter().enumerate().filter(|(_, b)| named(&t(b.name))).map(|(i, _)| Item::Asset(Pick::Biome(i))));
                 }
                 Group::LibraryPrefabs => {
                     if !searching { out.extend(library_subfolders(app, PREFABS_ROOT)); }
@@ -819,6 +831,8 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
             Group::BuiltInPresets => {
                 if let Some(&cat) = dz_core::library::BUILT_IN_OBJECT_CATEGORIES.get(*c - 2) {
                     out.extend(app.built_in_objects.iter().filter(|p| p.built_in_category() == Some(cat) && named(&t(&p.name))).map(|p| Item::Asset(Pick::Preset(p.id))));
+                } else if *c == 2 + dz_core::library::BUILT_IN_OBJECT_CATEGORIES.len() {
+                    out.extend(dz_core::gen::surface_biomes().iter().enumerate().filter(|(_, b)| named(&t(b.name))).map(|(i, _)| Item::Asset(Pick::Biome(i))));
                 }
             }
             Group::BuiltInModifiers => out.extend((0..MODIFIERS.len()).filter(|i| modifier_category(*i) == *c && named(&t(MODIFIERS[*i].name))).map(|i| Item::Asset(Pick::Modifier(i)))),
@@ -865,7 +879,7 @@ fn take_library_drop(resp: &egui::Response, folder: &str, acts: &mut Vec<Act>) {
             LibDrag::Generator(id) => acts.push(Act::LibMove(folder.to_string(), vec![id], Vec::new())),
             LibDrag::ObjectPreset(id) => acts.push(Act::LibMove(folder.to_string(), Vec::new(), vec![id])),
             LibDrag::Prefab(id) => acts.push(Act::LibMovePrefabs(folder.to_string(), vec![id])),
-            LibDrag::ForestPreset(_) => {}
+            LibDrag::ForestPreset(_) | LibDrag::SurfaceBiome(_) => {}
         }
     }
     if let Some(d) = crate::theme::take::<Dragged>(resp) {
@@ -1530,6 +1544,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         Pick::Generator(id) => resp.dnd_set_drag_payload(LibDrag::Generator(*id)),
                                         Pick::Prefab(id) => resp.dnd_set_drag_payload(LibDrag::Prefab(*id)),
                                         Pick::Forest(n) => resp.dnd_set_drag_payload(LibDrag::ForestPreset(n.clone())),
+                                        Pick::Biome(i) => resp.dnd_set_drag_payload(LibDrag::SurfaceBiome(*i)),
                                         Pick::Road(_) | Pick::Modifier(_) => resp.dnd_set_drag_payload(Dragged(group.clone())),
                                     }
                                 }
@@ -2032,7 +2047,7 @@ fn activate(app: &mut App, pick: &Pick, single: bool) {
             app.line.action = LineAction::Road;
             if single { app.mode = Mode::Lines; }
         }
-        Pick::Generator(_) | Pick::Forest(_) | Pick::Modifier(_) => {}
+        Pick::Generator(_) | Pick::Forest(_) | Pick::Biome(_) | Pick::Modifier(_) => {}
     }
 }
 
@@ -2049,6 +2064,7 @@ fn open(app: &mut App, pick: &Pick) {
         Pick::Preset(id) => { clear(app); app.edit_object = Some(*id); }
         Pick::Generator(id) => { clear(app); app.edit_generator = Some(*id); }
         Pick::Forest(n) => { clear(app); app.edit_forest = Some(n.clone()); }
+        Pick::Biome(i) => { crate::library_ui::add_biome(app, *i, None); }
         Pick::Road(f) => { app.line.family = f.clone(); app.dialog = Dialog::RoadCatalog; }
         Pick::Prefab(id) => { clear(app); app.edit_prefab = Some(*id); }
         Pick::Model(_) | Pick::Modifier(_) => {}
@@ -2235,6 +2251,22 @@ fn details(app: &mut App, ui: &mut egui::Ui, layers: &[(String, [u8; 3])], acts:
                     model_strip(app, ui, &items);
                     let _ = n;
                 }
+                Pick::Biome(i) => {
+                    if let Some(b) = dz_core::gen::surface_biomes().get(*i) {
+                        rows.push((t("Kind"), t("Surface biome")));
+                        info_rows(ui, &rows);
+                        ui.weak(t(b.summary));
+                        if let Some(doc) = &app.doc {
+                            let m = dz_core::gen::build_biome_rules(&doc.world, b);
+                            ui.label(tf("{0} rules match this project", &[&m.rules.len().to_string()]));
+                            if !m.missing.is_empty() {
+                                let skipped = m.missing.iter().map(|r| t(r.role)).collect::<Vec<_>>().join(", ");
+                                ui.weak(tf("No matching layer for: {0}", &[&skipped]));
+                            }
+                        }
+                        ui.weak(t("Drop it on the map or on a shape to add it to the project."));
+                    }
+                }
                 Pick::Road(_) => {
                     rows.push((t("Kind"), t("Road type")));
                     info_rows(ui, &rows);
@@ -2280,6 +2312,9 @@ fn details(app: &mut App, ui: &mut egui::Ui, layers: &[(String, [u8; 3])], acts:
                     Pick::Forest(n) => {
                         if ui.button(t("Add to the project")).clicked() { crate::library_ui::add_forest(app, n, None); }
                         if ui.button(if locked { t("Edit a copy") } else { t("Edit") }).clicked() { if locked { duplicate(app, one) } else { open(app, one) } }
+                    }
+                    Pick::Biome(i) => {
+                        if ui.button(t("Add to the project")).clicked() { crate::library_ui::add_biome(app, *i, None); }
                     }
                     Pick::Prefab(id) => {
                         if ui.button(t("Place")).clicked() { activate(app, one, true); app.mode = Mode::Place; }
@@ -2374,6 +2409,7 @@ pub fn dragged_picks(ctx: &egui::Context) -> Vec<Pick> {
         Some(LibDrag::ObjectPreset(id)) => vec![Pick::Preset(id)],
         Some(LibDrag::Generator(id)) => vec![Pick::Generator(id)],
         Some(LibDrag::ForestPreset(n)) => vec![Pick::Forest(n)],
+        Some(LibDrag::SurfaceBiome(i)) => vec![Pick::Biome(i)],
         Some(LibDrag::Prefab(id)) => vec![Pick::Prefab(id)],
         None => Vec::new(),
     }
@@ -2429,7 +2465,7 @@ pub fn drop_preview(app: &App, painter: &egui::Painter, v: &crate::camera::View,
                 ring(x, at[2], r);
                 ring(x, at[2], r + tpl.falloff);
             }
-            Pick::Generator(_) | Pick::Forest(_) => {
+            Pick::Generator(_) | Pick::Forest(_) | Pick::Biome(_) => {
                 ring(at[0], at[2], 12.0);
                 line([at[0] - 16.0, at[1] + 0.2, at[2]], [at[0] + 16.0, at[1] + 0.2, at[2]], 1.5);
                 line([at[0], at[1] + 0.2, at[2] - 16.0], [at[0], at[1] + 0.2, at[2] + 16.0], 1.5);
@@ -2455,6 +2491,7 @@ pub fn drop_many(app: &mut App, picks: &[Pick], x: f32, z: f32, surface_y: Optio
             Pick::Prefab(id) => { app.place_prefab(*id, x, z); }
             Pick::Generator(id) => crate::library_ui::add_instance(app, *id, Some(crate::library_ui::Dropped { shape: None, route: None, at: [x, z] })),
             Pick::Forest(n) => crate::library_ui::add_forest(app, n, Some(crate::library_ui::Dropped { shape: None, route: None, at: [x, z] })),
+            Pick::Biome(i) => crate::library_ui::add_biome(app, *i, Some(crate::library_ui::Dropped { shape: None, route: None, at: [x, z] })),
             Pick::Road(f) => {
                 app.line.family = f.clone();
                 app.line.action = LineAction::Road;

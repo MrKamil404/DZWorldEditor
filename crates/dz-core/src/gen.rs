@@ -471,6 +471,234 @@ pub fn default_paint_rules(w: &World) -> Vec<PaintRule> {
     ].into_iter().flatten().collect()
 }
 
+/// One template rule of a [`SurfaceBiome`]. Its surface layer is resolved against each project's
+/// `world.layers` by matching layer name, material path and texture path against `groups` in order.
+#[derive(Clone, Debug)]
+pub struct BiomeRule {
+    /// Human-readable role name (e.g. `"Snow"`, `"Grass"`), used to report missing layers.
+    pub role: &'static str,
+    /// Suggested vanilla `.rvmat` path (relative to `P:\`) to add when the project lacks a matching layer.
+    pub default_surface: &'static str,
+    /// Priority keyword groups: the first group that matches any layer wins.
+    pub groups: &'static [&'static [&'static str]],
+    /// When true, prefer a layer not already used by an earlier rule of the same biome, and skip
+    /// if no distinct layer exists (useful for secondary grass/meadow blotches).
+    pub distinct: bool,
+    /// Height bounds; when `above_sea` is true, `min_height` and `max_height` are offsets from
+    /// `world.meta.sea_level` (except extreme sentinel values <= -500 or >= 5000).
+    pub above_sea: bool,
+    pub min_height: f32,
+    pub max_height: f32,
+    pub min_slope: f32,
+    pub max_slope: f32,
+    pub noise_scale: f32,
+    pub coverage: f32,
+    pub hollow: Option<[f32; 2]>,
+    pub wetness: Option<[f32; 2]>,
+    pub water_dist: Option<[f32; 2]>,
+    pub road_dist: Option<[f32; 2]>,
+    pub edge_noise: f32,
+}
+
+/// A built-in surface painting preset (biome) that adapts to any project's surface layers.
+#[derive(Clone, Debug)]
+pub struct SurfaceBiome {
+    pub name: &'static str,
+    pub summary: &'static str,
+    pub rules: &'static [BiomeRule],
+}
+
+/// A surface layer a biome needs that is not yet in the project, with a vanilla suggestion.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MissingSurface {
+    pub role: &'static str,
+    pub name: String,
+    pub texture: String,
+    pub material: String,
+}
+
+/// Result of resolving a [`SurfaceBiome`] against a project's layers.
+#[derive(Clone, Debug, Default)]
+pub struct BiomeMatch {
+    pub rules: Vec<PaintRule>,
+    /// Roles that had no matching layer in the project, with suggested vanilla layers to add.
+    pub missing: Vec<MissingSurface>,
+}
+
+/// Finds the best matching layer index for a biome rule by checking layer `name`, `material`
+/// filename and `texture` filename against prioritized keyword `groups`.
+pub fn match_biome_layer(layers: &[crate::world::SurfaceLayer], groups: &[&[&str]], avoid: &[usize], require_distinct: bool) -> Option<usize> {
+    let haystack = |l: &crate::world::SurfaceLayer| -> String {
+        let mat = l.material.rsplit(['\\', '/']).next().unwrap_or(&l.material);
+        let tex = l.texture.rsplit(['\\', '/']).next().unwrap_or(&l.texture);
+        format!("{} {} {}", l.name, mat, tex).to_ascii_lowercase()
+    };
+    let texts: Vec<String> = layers.iter().map(haystack).collect();
+    for group in groups {
+        // Prefer a layer not yet used by an earlier rule.
+        if let Some(i) = texts.iter().enumerate().find(|(i, s)| !avoid.contains(i) && group.iter().any(|k| s.contains(k))).map(|(i, _)| i) {
+            return Some(i);
+        }
+        if !require_distinct {
+            if let Some(i) = texts.iter().enumerate().find(|(_, s)| group.iter().any(|k| s.contains(k))).map(|(i, _)| i) {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
+/// Builds concrete [`PaintRule`]s for `biome` matched to `layers` and `sea` level.
+pub fn build_biome_rules_for(layers: &[crate::world::SurfaceLayer], sea: f32, biome: &SurfaceBiome) -> BiomeMatch {
+    let mut out = BiomeMatch::default();
+    let mut used: Vec<usize> = Vec::new();
+    for r in biome.rules {
+        let Some(layer) = match_biome_layer(layers, r.groups, &used, r.distinct) else {
+            if !out.missing.iter().any(|m| m.material.eq_ignore_ascii_case(r.default_surface)) {
+                let stem = r.default_surface.strip_suffix(".rvmat").unwrap_or(r.default_surface);
+                let name = stem.rsplit(['\\', '/']).next().unwrap_or(stem).to_string();
+                out.missing.push(MissingSurface {
+                    role: r.role,
+                    name,
+                    texture: format!("{stem}_ca.paa"),
+                    material: r.default_surface.to_string(),
+                });
+            }
+            continue;
+        };
+        if !used.contains(&layer) {
+            used.push(layer);
+        }
+        let h = |v: f32| if r.above_sea && v > -500.0 && v < 5000.0 { sea + v } else { v };
+        out.rules.push(PaintRule {
+            layer,
+            min_height: h(r.min_height),
+            max_height: h(r.max_height),
+            min_slope: r.min_slope,
+            max_slope: r.max_slope,
+            noise_scale: r.noise_scale,
+            coverage: r.coverage,
+            conditions: crate::analysis::Conditions {
+                hollow: r.hollow,
+                wetness: r.wetness,
+                water_dist: r.water_dist,
+                road_dist: r.road_dist,
+                edge_noise: r.edge_noise,
+            },
+        });
+    }
+    // Never return an empty list if the project has at least one layer.
+    if out.rules.is_empty() && !layers.is_empty() {
+        out.rules.push(PaintRule::default());
+    }
+    out
+}
+
+/// Builds concrete [`PaintRule`]s for `biome` matched to `w.layers` and `w.meta.sea_level`.
+pub fn build_biome_rules(w: &World, biome: &SurfaceBiome) -> BiomeMatch {
+    build_biome_rules_for(&w.layers, w.meta.sea_level, biome)
+}
+
+const fn brule(
+    role: &'static str,
+    default_surface: &'static str,
+    groups: &'static [&'static [&'static str]],
+    distinct: bool,
+    above_sea: bool,
+    min_height: f32,
+    max_height: f32,
+    min_slope: f32,
+    max_slope: f32,
+    noise_scale: f32,
+    coverage: f32,
+) -> BiomeRule {
+    BiomeRule {
+        role, default_surface, groups, distinct, above_sea, min_height, max_height, min_slope, max_slope, noise_scale, coverage,
+        hollow: None, wetness: None, water_dist: None, road_dist: None, edge_noise: 0.0,
+    }
+}
+
+const BIOME_CHERNARUS: &[BiomeRule] = &[
+    brule("Grass", r"dz\surfaces\data\terrain\cp_grass.rvmat", &[&["cp_grass.", "grass1", "grass_green"], &["grass", "meadow"]], false, false, -1000.0, 9000.0, 0.0, 90.0, 0.0, 1.0),
+    brule("Tall grass", r"dz\surfaces\data\terrain\cp_grass_tall.rvmat", &[&["grass_tall", "grass2", "flowers"], &["grass"]], true, false, -1000.0, 9000.0, 0.0, 28.0, 160.0, 0.45),
+    brule("Stubble", r"dz\surfaces_bliss\data\terrain\en_stubble.rvmat", &[&["stubble", "deforested", "grass_dry"]], false, true, 2.0, 180.0, 0.0, 10.0, 420.0, 0.25),
+    brule("Forest floor", r"dz\surfaces\data\terrain\cp_broadleaf_dense1.rvmat", &[&["broadleaf", "forest_dec", "birch"], &["forest"]], false, true, 12.0, 9000.0, 8.0, 32.0, 220.0, 0.45),
+    BiomeRule {
+        hollow: Some([0.5, 100.0]), wetness: Some([0.35, 1.0]), edge_noise: 15.0,
+        ..brule("Wet moss", r"dz\surfaces\data\terrain\cp_conifer_moss1.rvmat", &[&["moss", "conifer", "forest_con", "mud"], &["soil", "dirt"]], false, true, 2.0, 9000.0, 0.0, 30.0, 0.0, 1.0)
+    },
+    brule("Soil", r"dz\surfaces\data\terrain\cp_dirt.rvmat", &[&["dirt", "soil"]], false, false, -1000.0, 9000.0, 25.0, 40.0, 0.0, 1.0),
+    brule("Rock", r"dz\surfaces\data\terrain\cp_rock.rvmat", &[&["rock", "stone", "cliff"]], false, false, -1000.0, 9000.0, 36.0, 90.0, 0.0, 1.0),
+    brule("Shore", r"dz\surfaces\data\terrain\cp_gravel.rvmat", &[&["beach", "sand"], &["gravel", "stone", "rock"]], false, true, -1000.0, 1.8, 0.0, 90.0, 0.0, 1.0),
+    BiomeRule {
+        road_dist: Some([0.0, 5.0]), edge_noise: 2.0,
+        ..brule("Road verge", r"dz\surfaces\data\terrain\cp_gravel.rvmat", &[&["gravel"], &["dirt", "soil"]], false, true, 0.5, 9000.0, 0.0, 45.0, 0.0, 1.0)
+    },
+];
+
+const BIOME_LIVONIA: &[BiomeRule] = &[
+    brule("Grass", r"dz\surfaces_bliss\data\terrain\en_grass1.rvmat", &[&["en_grass1", "grass1", "grass_green"], &["grass", "meadow"]], false, false, -1000.0, 9000.0, 0.0, 90.0, 0.0, 1.0),
+    brule("Meadow", r"dz\surfaces_bliss\data\terrain\en_flowers1.rvmat", &[&["flowers", "en_grass2", "grass2", "grass_tall"], &["grass"]], true, false, -1000.0, 9000.0, 0.0, 25.0, 140.0, 0.45),
+    brule("Stubble", r"dz\surfaces_bliss\data\terrain\en_stubble.rvmat", &[&["stubble", "deforested"]], false, true, 1.0, 200.0, 0.0, 9.0, 450.0, 0.30),
+    brule("Deciduous forest", r"dz\surfaces_bliss\data\terrain\en_forest_dec.rvmat", &[&["forest_dec", "broadleaf", "birch"], &["forest"]], false, true, 8.0, 9000.0, 5.0, 30.0, 240.0, 0.40),
+    BiomeRule {
+        wetness: Some([0.30, 1.0]), edge_noise: 18.0,
+        ..brule("Conifer hollow", r"dz\surfaces_bliss\data\terrain\en_forest_con.rvmat", &[&["forest_con", "conifer", "moss"], &["mud", "soil"]], false, true, 1.0, 9000.0, 0.0, 30.0, 0.0, 1.0)
+    },
+    brule("Soil", r"dz\surfaces_bliss\data\terrain\en_soil.rvmat", &[&["soil", "dirt"]], false, false, -1000.0, 9000.0, 24.0, 38.0, 0.0, 1.0),
+    brule("Rock", r"dz\surfaces_bliss\data\terrain\en_stones.rvmat", &[&["stones", "rock", "stone", "cliff"]], false, false, -1000.0, 9000.0, 36.0, 90.0, 0.0, 1.0),
+    brule("Shore", r"dz\surfaces_bliss\data\terrain\en_stones.rvmat", &[&["sand", "beach", "gravel"], &["stones", "stone"]], false, true, -1000.0, 1.5, 0.0, 90.0, 0.0, 1.0),
+];
+
+const BIOME_SAKHAL: &[BiomeRule] = &[
+    brule("Snow", r"dz\surfaces_sakhal\data\terrain\sakhal_snow.rvmat", &[&["sakhal_snow.", "snow"], &["ice"]], false, false, -1000.0, 9000.0, 0.0, 90.0, 0.0, 1.0),
+    brule("Snowy forest", r"dz\surfaces_sakhal\data\terrain\sakhal_snow_forest.rvmat", &[&["snow_forest", "forest_spruce", "forest_con", "conifer"], &["forest"]], false, true, 5.0, 250.0, 0.0, 28.0, 220.0, 0.45),
+    brule("Tundra grass", r"dz\surfaces_sakhal\data\terrain\sakhal_grass_brown.rvmat", &[&["grass_brown", "grass_green", "grass", "moss"]], false, true, 2.0, 50.0, 0.0, 20.0, 180.0, 0.40),
+    brule("Volcanic", r"dz\surfaces_sakhal\data\terrain\sakhal_volcanic_yellow.rvmat", &[&["volcanic_yellow", "volcanic_red", "volcanic"], &["soil", "dirt"]], false, true, 40.0, 9000.0, 22.0, 42.0, 150.0, 0.55),
+    brule("Rock", r"dz\surfaces_sakhal\data\terrain\sakhal_volcanic_red.rvmat", &[&["volcanic_red", "rock", "stone", "gravel"]], false, false, -1000.0, 9000.0, 34.0, 90.0, 0.0, 1.0),
+    brule("Beach", r"dz\surfaces_sakhal\data\terrain\sakhal_beach.rvmat", &[&["sakhal_beach", "beach", "gravel", "sand"], &["stone"]], false, true, -1000.0, 2.5, 0.0, 90.0, 0.0, 1.0),
+];
+
+const BIOME_DESERT: &[BiomeRule] = &[
+    brule("Desert", r"dz\surfaces_takistan\data\terrain\nasdara_desert.rvmat", &[&["desert", "sand"], &["stubble", "soil", "dirt"]], false, false, -1000.0, 9000.0, 0.0, 90.0, 0.0, 1.0),
+    brule("Windswept sand", r"dz\surfaces_takistan\data\terrain\nasdara_sand_windswept.rvmat", &[&["sand_windswept", "sand", "beach"]], true, false, -1000.0, 9000.0, 0.0, 22.0, 240.0, 0.45),
+    brule("Desert gravel", r"dz\surfaces_takistan\data\terrain\nasdara_desert_gravel.rvmat", &[&["desert_gravel", "gravel"]], false, false, -1000.0, 9000.0, 12.0, 32.0, 180.0, 0.50),
+    BiomeRule {
+        hollow: Some([0.5, 100.0]), edge_noise: 20.0,
+        ..brule("Dry grass", r"dz\surfaces_takistan\data\terrain\nasdara_grass_dry.rvmat", &[&["grass_dry", "stubble", "grass_brown", "grass2"], &["grass"]], false, true, 1.0, 9000.0, 0.0, 22.0, 0.0, 1.0)
+    },
+    BiomeRule {
+        water_dist: Some([0.0, 18.0]), edge_noise: 6.0,
+        ..brule("Oasis", r"dz\surfaces_takistan\data\terrain\nasdara_grass_green.rvmat", &[&["grass_green", "grass1", "mud"], &["grass", "soil"]], false, true, 0.2, 9000.0, 0.0, 25.0, 0.0, 1.0)
+    },
+    brule("Rock", r"dz\surfaces_takistan\data\terrain\nasdara_stony.rvmat", &[&["stony", "rock", "stone", "cliff"]], false, false, -1000.0, 9000.0, 28.0, 90.0, 0.0, 1.0),
+];
+
+const BIOME_ALPINE: &[BiomeRule] = &[
+    brule("Valley grass", r"dz\surfaces_bliss\data\terrain\en_grass1.rvmat", &[&["grass1", "grass_green", "grass", "meadow"]], false, true, -1000.0, 180.0, 0.0, 28.0, 0.0, 1.0),
+    brule("Alpine meadow", r"dz\surfaces_bliss\data\terrain\en_flowers1.rvmat", &[&["grass2", "flowers", "grass_brown", "stubble"], &["grass"]], true, true, 90.0, 260.0, 0.0, 28.0, 160.0, 0.55),
+    brule("Mountain forest", r"dz\surfaces_bliss\data\terrain\en_forest_con.rvmat", &[&["forest_con", "conifer", "forest_spruce", "moss"], &["forest"]], false, true, 40.0, 210.0, 8.0, 32.0, 200.0, 0.55),
+    brule("Scree", r"dz\surfaces\data\terrain\cp_gravel.rvmat", &[&["gravel", "soil", "dirt"]], false, false, -1000.0, 9000.0, 24.0, 36.0, 0.0, 1.0),
+    brule("Rock", r"dz\surfaces\data\terrain\cp_rock.rvmat", &[&["rock", "stone", "stony", "cliff"]], false, false, -1000.0, 9000.0, 34.0, 90.0, 0.0, 1.0),
+    brule("Snow", r"dz\surfaces_sakhal\data\terrain\sakhal_snow.rvmat", &[&["snow", "ice"]], false, true, 220.0, 9000.0, 0.0, 42.0, 180.0, 0.75),
+    BiomeRule {
+        water_dist: Some([0.0, 6.0]), edge_noise: 3.0,
+        ..brule("Shore", r"dz\surfaces\data\terrain\cp_gravel.rvmat", &[&["gravel", "sand", "beach"], &["stone", "rock"]], false, true, -1000.0, 9000.0, 0.0, 40.0, 0.0, 1.0)
+    },
+];
+
+pub const SURFACE_BIOMES: &[SurfaceBiome] = &[
+    SurfaceBiome { name: "Central Europe (Chernarus)", summary: "Temperate meadows, mixed woods, wet hollows, cliffs and gravel verges", rules: BIOME_CHERNARUS },
+    SurfaceBiome { name: "Summer countryside (Livonia)", summary: "Lush grass, wildflower meadows, stubble fields and damp conifer hollows", rules: BIOME_LIVONIA },
+    SurfaceBiome { name: "Arctic and volcanic (Sakhal)", summary: "Snow cover, snowy spruce woods, tundra lows, volcanic slopes and dark beaches", rules: BIOME_SAKHAL },
+    SurfaceBiome { name: "Desert and steppe (Takistan)", summary: "Desert sand, windswept dunes, rocky canyons and green oases near water", rules: BIOME_DESERT },
+    SurfaceBiome { name: "Alpine mountains", summary: "Valley grass, timberline conifers, rocky scree and high-altitude snow", rules: BIOME_ALPINE },
+];
+
+pub fn surface_biomes() -> &'static [SurfaceBiome] {
+    SURFACE_BIOMES
+}
+
 /// The maps the conditions of some rules need, or none.
 fn maps_for(w: &World, marks: &crate::analysis::Landmarks, conditions: &[&crate::analysis::Conditions], job: &Job) -> Option<crate::analysis::TerrainMaps> {
     let needs = conditions.iter().fold(crate::analysis::Needs::default(), |n, c| n.or(c.needs()));
@@ -3974,6 +4202,53 @@ mod vanilla_roads {
                 let slack = if family.contains("takistan") { 16.0 } else { 4.5 };
                 assert!((ring.radius * 2.0 - d).abs() < slack, "{family} {d}: {}", ring.radius * 2.0);
                 assert!(ring.kink < 6.0 && ring.stray < 0.5, "{family} {d}: kink {} stray {}", ring.kink, ring.stray);
+            }
+        }
+    }
+
+    #[test]
+    fn surface_biomes_adapt_to_different_layer_setups() {
+        use crate::world::{SurfaceLayer, WorldMeta};
+        let mk = |name: &str, mat: &str| SurfaceLayer { name: name.into(), texture: format!("{mat}_ca.paa"), material: format!("{mat}.rvmat"), color: [100, 100, 100] };
+
+        // 1. Default Livonia project: Livonia biome matches every rule.
+        let w_liv = World::new(WorldMeta::new("liv", 64, 4.0), 10.0);
+        let liv = build_biome_rules(&w_liv, &SURFACE_BIOMES[1]);
+        assert!(liv.missing.is_empty(), "missing in Livonia: {:?}", liv.missing);
+        assert_eq!(liv.rules.len(), BIOME_LIVONIA.len());
+        assert_ne!(liv.rules[0].layer, liv.rules[1].layer, "distinct meadow layer");
+
+        // 2. Sakhal layers with custom sea level: Sakhal biome matches every rule & shifts heights.
+        let mut meta = WorldMeta::new("sak", 64, 4.0);
+        meta.sea_level = 15.0;
+        let mut w_sak = World::new(meta, 20.0);
+        w_sak.layers = vec![
+            mk("snieg", "dz\\surfaces_sakhal\\data\\terrain\\sakhal_snow"),
+            mk("las_zima", "dz\\surfaces_sakhal\\data\\terrain\\sakhal_snow_forest"),
+            mk("trawa_b", "dz\\surfaces_sakhal\\data\\terrain\\sakhal_grass_brown"),
+            mk("wulkan_z", "dz\\surfaces_sakhal\\data\\terrain\\sakhal_volcanic_yellow"),
+            mk("wulkan_c", "dz\\surfaces_sakhal\\data\\terrain\\sakhal_volcanic_red"),
+            mk("plaza", "dz\\surfaces_sakhal\\data\\terrain\\sakhal_beach"),
+        ];
+        // Notice layer names are Polish ("snieg", "las_zima"...), matched via material path!
+        let sak = build_biome_rules(&w_sak, &SURFACE_BIOMES[2]);
+        assert!(sak.missing.is_empty(), "missing in Sakhal: {:?}", sak.missing);
+        assert_eq!(sak.rules[0].layer, 0);
+        assert_eq!(sak.rules[5].layer, 5);
+        assert!((sak.rules[5].max_height - 17.5).abs() < 1e-3, "beach adapts to sea_level=15");
+
+        // 3. Applying Sakhal biome to a Livonia project reports Snow as missing with a vanilla suggestion.
+        let sak_on_liv = build_biome_rules(&w_liv, &SURFACE_BIOMES[2]);
+        assert!(sak_on_liv.missing.iter().any(|m| m.role == "Snow" && m.material.contains("sakhal_snow.rvmat")));
+        assert!(!sak_on_liv.rules.is_empty());
+
+        // 4. When P:\dz is mounted locally, every biome's suggested default_surface exists.
+        if Path::new(r"P:\dz").is_dir() {
+            for b in SURFACE_BIOMES {
+                for r in b.rules {
+                    let full = Path::new(r"P:\").join(r.default_surface);
+                    assert!(full.is_file(), "missing default_surface in {}: {}", b.name, full.display());
+                }
             }
         }
     }

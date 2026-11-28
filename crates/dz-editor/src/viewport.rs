@@ -2299,6 +2299,10 @@ fn tool_input(app: &mut App, ctx: &egui::Context, resp: &egui::Response, v: &Vie
                     let (shape, route) = drop_targets(app, v, mouse, hit);
                     crate::library_ui::add_forest(app, &name, Some(crate::library_ui::Dropped { shape, route, at: [h[0], h[2]] }));
                 }
+                L::SurfaceBiome(i) => {
+                    let (shape, route) = drop_targets(app, v, mouse, hit);
+                    crate::library_ui::add_biome(app, i, Some(crate::library_ui::Dropped { shape, route, at: [h[0], h[2]] }));
+                }
                 L::ObjectPreset(id) => crate::library_ui::place_preset(app, id, h[0], h[2]),
                 L::Prefab(id) => { app.place_prefab(id, h[0], h[2]); }
             }

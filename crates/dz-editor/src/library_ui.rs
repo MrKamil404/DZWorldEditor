@@ -18,6 +18,7 @@ pub enum LibDrag {
     Generator(u64),
     ObjectPreset(u64),
     ForestPreset(String),
+    SurfaceBiome(usize),
     Prefab(u64),
 }
 
@@ -59,6 +60,10 @@ struct KindContext {
     work_drive: std::path::PathBuf,
     /// Sizes of the game's models.
     db: dz_core::model_info::ModelDb,
+    /// Full surface layers and sea level of the open project, for biome preset matching.
+    surface_layers: Vec<dz_core::world::SurfaceLayer>,
+    /// Index of a biome picked in the `Surface painting` combo box during this frame.
+    picked_biome: std::cell::Cell<Option<usize>>,
 }
 
 fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindContext {
@@ -84,6 +89,8 @@ fn context(app: &App, user: &[forest_core::user_presets::UserPreset]) -> KindCon
         pick: Default::default(),
         work_drive: app.settings.tools.work_drive.clone(),
         db: app.db.clone(),
+        surface_layers: doc.map(|d| d.world.layers.clone()).unwrap_or_default(),
+        picked_biome: Default::default(),
     }
 }
 
@@ -515,6 +522,19 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             });
         }
         GeneratorKind::SurfacePaint { rules, seed } => {
+            if !cx.surface_layers.is_empty() {
+                row(ui, &t("Biome preset"), |ui| {
+                    egui::ComboBox::from_id_salt("surface_biome_pick")
+                        .selected_text(t("Apply a biome..."))
+                        .show_ui(ui, |ui| {
+                            for (i, b) in gen::surface_biomes().iter().enumerate() {
+                                if ui.selectable_label(false, t(b.name)).on_hover_text(t(b.summary)).clicked() {
+                                    cx.picked_biome.set(Some(i));
+                                }
+                            }
+                        });
+                });
+            }
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(seed)); });
             let mut remove = None;
             ui.weak(t("Each rule paints its surface where the height and slope fit; later rules paint over earlier ones."));
@@ -1416,6 +1436,9 @@ fn generator_preset_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     ui.weak(t(g.kind.type_name()));
     let sample = kind_ui(ui, &mut g.kind, &cx);
     keep_forest_presets(&mut app.library, &mut app.lib_dirty, cx.loaded.take());
+    if let Some(bi) = cx.picked_biome.take() {
+        request_biome_apply(app, bi, crate::app::BiomeApplyTarget::LibraryGenerator(id));
+    }
     if sample { app.sampling = Some(id); }
     let released = !ui.ctx().input(|i| i.pointer.any_down());
     app.lib_dirty |= released;
@@ -1476,6 +1499,9 @@ fn instance_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
     }
     ui.separator();
     if kind_ui(ui, &mut g.kind, &cx) { app.sampling = Some(id); }
+    if let Some(bi) = cx.picked_biome.take() {
+        request_biome_apply(app, bi, crate::app::BiomeApplyTarget::Instance(id));
+    }
     if let Some(k) = cx.pick.take() {
         app.pick_opening = Some((id, k));
         app.mode = crate::app::Mode::Select;
@@ -1641,6 +1667,94 @@ pub fn add_forest(app: &mut App, preset: &str, drop: Option<Dropped>) {
     add_kind(app, GeneratorKind::Forest(Box::new(forest)), preset.to_string(), drop);
 }
 
+/// Adds a `Surface painting` generator pre-filled from a built-in biome, matched to the open
+/// project's surface layers and sea level (prompting to add missing layers when needed).
+pub fn add_biome(app: &mut App, index: usize, drop: Option<Dropped>) {
+    request_biome_apply(app, index, crate::app::BiomeApplyTarget::NewInstance(drop));
+}
+
+/// Applies a biome preset to `target`, or opens a dialog asking which missing layers to add first.
+pub fn request_biome_apply(app: &mut App, biome_index: usize, target: crate::app::BiomeApplyTarget) {
+    let Some(b) = gen::surface_biomes().get(biome_index) else { return };
+    let Some(doc) = &app.doc else { return };
+    let m = gen::build_biome_rules(&doc.world, b);
+    if m.missing.is_empty() {
+        finish_biome_apply(app, biome_index, target, Vec::new());
+    } else {
+        let drive = &app.settings.tools.work_drive;
+        let items = m.missing.into_iter().map(|ms| {
+            let exists = drive.join(&ms.material).is_file();
+            (ms, exists, exists)
+        }).collect();
+        app.dialog = crate::app::Dialog::BiomeLayers(crate::app::BiomeLayersDialog { biome_index, target, items });
+    }
+}
+
+/// Adds any chosen missing surface layers to the project and applies the biome rules to `target`.
+pub fn finish_biome_apply(app: &mut App, biome_index: usize, target: crate::app::BiomeApplyTarget, to_add: Vec<gen::MissingSurface>) {
+    let Some(b) = gen::surface_biomes().get(biome_index) else { return };
+    if !to_add.is_empty() {
+        let mut added = 0usize;
+        let mut full = false;
+        if let Some(d) = &mut app.doc {
+            let before = d.world.layers.clone();
+            for ms in to_add {
+                let n = d.world.layers.len();
+                if n >= 255 {
+                    full = true;
+                    break;
+                }
+                let color = forest_core::species::hsv_to_rgb(n as f64 * 67.0 % 360.0, 0.5, 0.75);
+                d.world.layers.push(dz_core::world::SurfaceLayer { name: ms.name, texture: ms.texture, material: ms.material, color });
+                added += 1;
+            }
+            if added > 0 {
+                d.history.push(t("Add surface layers"), dz_core::edit::Change::SurfaceLayers(before));
+            }
+        }
+        if full {
+            app.warn(t("A project holds at most 255 surfaces"));
+        }
+        if added > 0 {
+            app.push_palette();
+            app.reload_layer_textures();
+        }
+    }
+    let Some(doc) = &app.doc else { return };
+    let m = gen::build_biome_rules(&doc.world, b);
+    let count = m.rules.len().to_string();
+    let msg = if m.missing.is_empty() {
+        tf("Applied {0} ({1} rules)", &[&t(b.name), &count])
+    } else {
+        let skipped = m.missing.iter().map(|r| t(r.role)).collect::<Vec<_>>().join(", ");
+        tf("Applied {0} ({1} rules; no matching layer for: {2})", &[&t(b.name), &count, &skipped])
+    };
+    match target {
+        crate::app::BiomeApplyTarget::NewInstance(drop) => {
+            add_kind(app, GeneratorKind::SurfacePaint { rules: m.rules, seed: 1 }, t(b.name), drop);
+        }
+        crate::app::BiomeApplyTarget::Instance(id) => {
+            if let Some(doc) = &mut app.doc {
+                if let Some(g) = doc.world.generators.iter_mut().find(|g| g.id == id) {
+                    if let GeneratorKind::SurfacePaint { rules, .. } = &mut g.kind {
+                        *rules = m.rules;
+                        doc.history.revision += 1;
+                    }
+                }
+            }
+        }
+        crate::app::BiomeApplyTarget::LibraryGenerator(id) => {
+            if let Some(g) = app.library.generators.iter_mut().find(|g| g.id == id) {
+                if let GeneratorKind::SurfacePaint { rules, .. } = &mut g.kind {
+                    *rules = m.rules;
+                    app.lib_dirty = true;
+                }
+            }
+        }
+    }
+    app.info(msg);
+}
+
 /// The library generator `preset` (or forest preset `forest`) as it would be added.
 fn kind_of(app: &App, preset: u64) -> Option<GeneratorKind> {
     app.built_in.iter().chain(app.library.generators.iter()).find(|g| g.id == preset).map(|g| g.kind.clone())
@@ -1683,6 +1797,7 @@ pub(crate) fn drop_hint(app: &App, drag: &LibDrag, drop: Dropped) -> Option<(Res
     let kind = match drag {
         LibDrag::Generator(id) => kind_of(app, *id)?,
         LibDrag::ForestPreset(name) => GeneratorKind::Forest(Box::new(ForestGen { preset: name.clone(), ..Default::default() })),
+        LibDrag::SurfaceBiome(_) => GeneratorKind::SurfacePaint { rules: Vec::new(), seed: 1 },
         _ => return None,
     };
     let w = &app.doc.as_ref()?.world;

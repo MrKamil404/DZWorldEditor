@@ -11434,5 +11434,189 @@
  "Low rusty tin fence (Sakhal)": {
   "de": "Niedriger rostiger Blechzaun (Sakhal)",
   "pl": "Niski zardzewiały płot blaszany (Sakhal)"
+ },
+ "Surface biomes": {
+  "de": "Oberflächenbiome",
+  "pl": "Biomy powierzchni"
+ },
+ "Surface biome": {
+  "de": "Oberflächenbiom",
+  "pl": "Biom powierzchni"
+ },
+ "Biome preset": {
+  "de": "Biom-Preset",
+  "pl": "Preset biomu"
+ },
+ "Apply a biome...": {
+  "de": "Biom anwenden...",
+  "pl": "Zastosuj biom..."
+ },
+ "Applied {0} ({1} rules)": {
+  "de": "{0} angewendet ({1} Regeln)",
+  "pl": "Zastosowano {0} ({1} reguł)"
+ },
+ "Applied {0} ({1} rules; no matching layer for: {2})": {
+  "de": "{0} angewendet ({1} Regeln; keine passende Schicht für: {2})",
+  "pl": "Zastosowano {0} ({1} reguł; brak pasującej warstwy dla: {2})"
+ },
+ "{0} rules match this project": {
+  "de": "{0} Regeln passen zu diesem Projekt",
+  "pl": "{0} reguł pasuje do tego projektu"
+ },
+ "No matching layer for: {0}": {
+  "de": "Keine passende Schicht für: {0}",
+  "pl": "Brak pasującej warstwy dla: {0}"
+ },
+ "Central Europe (Chernarus)": {
+  "de": "Mitteleuropa (Chernarus)",
+  "pl": "Europa Środkowa (Chernarus)"
+ },
+ "Temperate meadows, mixed woods, wet hollows, cliffs and gravel verges": {
+  "de": "Gemäßigte Wiesen, Mischwälder, feuchte Senken, Klippen und Schotterränder",
+  "pl": "Umiarkowane łąki, lasy mieszane, wilgotne zagłębienia, klify i żwirowe pobocza"
+ },
+ "Summer countryside (Livonia)": {
+  "de": "Sommerliche Landschaft (Livonia)",
+  "pl": "Letnia wieś (Livonia)"
+ },
+ "Lush grass, wildflower meadows, stubble fields and damp conifer hollows": {
+  "de": "Sattes Gras, Blumenwiesen, Stoppelfelder und feuchte Nadelwaldsenken",
+  "pl": "Soczysta trawa, łąki kwiatowe, ścierniska i wilgotne zagłębienia iglaste"
+ },
+ "Arctic and volcanic (Sakhal)": {
+  "de": "Arktisch und vulkanisch (Sakhal)",
+  "pl": "Arktyka i wulkany (Sakhal)"
+ },
+ "Snow cover, snowy spruce woods, tundra lows, volcanic slopes and dark beaches": {
+  "de": "Schneedecke, verschneite Fichtenwälder, Tundraniederungen, Vulkanhänge und dunkle Strände",
+  "pl": "Pokrywa śnieżna, zaśnieżone bory świerkowe, niziny tundrowe, zbocza wulkaniczne i ciemne plaże"
+ },
+ "Desert and steppe (Takistan)": {
+  "de": "Wüste und Steppe (Takistan)",
+  "pl": "Pustynia i step (Takistan)"
+ },
+ "Desert sand, windswept dunes, rocky canyons and green oases near water": {
+  "de": "Wüstensand, verwehte Dünen, felsige Schluchten und grüne Oasen am Wasser",
+  "pl": "Piasek pustynny, wydmy, skaliste kaniony i zielone oazy przy wodzie"
+ },
+ "Alpine mountains": {
+  "de": "Hochgebirge (Alpen)",
+  "pl": "Góry wysokie (Alpy)"
+ },
+ "Valley grass, timberline conifers, rocky scree and high-altitude snow": {
+  "de": "Talgras, Nadelwald an der Baumgrenze, Geröll und Hochgebirgsschnee",
+  "pl": "Trawa dolinna, górskie bory iglaste, piargi i wysokogórski śnieg"
+ },
+ "Tall grass": {
+  "de": "Hohes Gras",
+  "pl": "Wysoka trawa"
+ },
+ "Stubble": {
+  "de": "Stoppelfeld",
+  "pl": "Ściernisko"
+ },
+ "Forest floor": {
+  "de": "Waldboden",
+  "pl": "Ściółka leśna"
+ },
+ "Wet moss": {
+  "de": "Feuchtes Moos",
+  "pl": "Wilgotny mech"
+ },
+ "Shore": {
+  "de": "Ufer",
+  "pl": "Brzeg"
+ },
+ "Road verge": {
+  "de": "Straßenrand",
+  "pl": "Pobocze drogi"
+ },
+ "Meadow": {
+  "de": "Wiese",
+  "pl": "Łąka"
+ },
+ "Deciduous forest": {
+  "de": "Laubwald",
+  "pl": "Las liściasty"
+ },
+ "Conifer hollow": {
+  "de": "Nadelwaldsenke",
+  "pl": "Zagłębienie iglaste"
+ },
+ "Snow": {
+  "de": "Schnee",
+  "pl": "Śnieg"
+ },
+ "Snowy forest": {
+  "de": "Verschneiter Wald",
+  "pl": "Zaśnieżony las"
+ },
+ "Tundra grass": {
+  "de": "Tundragras",
+  "pl": "Trawa tundrowa"
+ },
+ "Volcanic": {
+  "de": "Vulkanboden",
+  "pl": "Podłoże wulkaniczne"
+ },
+ "Beach": {
+  "de": "Strand",
+  "pl": "Plaża"
+ },
+ "Desert": {
+  "de": "Wüste",
+  "pl": "Pustynia"
+ },
+ "Windswept sand": {
+  "de": "Flugsand",
+  "pl": "Piasek wydmowy"
+ },
+ "Desert gravel": {
+  "de": "Wüstenschotter",
+  "pl": "Żwir pustynny"
+ },
+ "Oasis": {
+  "de": "Oase",
+  "pl": "Oaza"
+ },
+ "Valley grass": {
+  "de": "Talgras",
+  "pl": "Trawa dolinna"
+ },
+ "Alpine meadow": {
+  "de": "Almwiese",
+  "pl": "Łąka alpejska"
+ },
+ "Mountain forest": {
+  "de": "Bergwald",
+  "pl": "Las górski"
+ },
+ "Scree": {
+  "de": "Geröll",
+  "pl": "Piarg"
+ },
+ "Add surface layers": {
+  "de": "Oberflächenschichten hinzufügen",
+  "pl": "Dodaj warstwy powierzchni"
+ },
+ "Missing surface layers": {
+  "de": "Fehlende Oberflächenschichten",
+  "pl": "Brakujące warstwy powierzchni"
+ },
+ "The biome {0} uses surface layers that are not in this project. Choose which ones to add:": {
+  "de": "Das Biom {0} verwendet Oberflächenschichten, die in diesem Projekt fehlen. Wähle aus, welche hinzugefügt werden sollen:",
+  "pl": "Biom {0} korzysta z warstw powierzchni, których nie ma w tym projekcie. Wybierz, które dodać:"
+ },
+ "(not found on the work drive)": {
+  "de": "(nicht auf dem Arbeitslaufwerk gefunden)",
+  "pl": "(nie znaleziono na dysku roboczym)"
+ },
+ "Add selected and apply": {
+  "de": "Ausgewählte hinzufügen und anwenden",
+  "pl": "Dodaj wybrane i zastosuj"
+ },
+ "Apply without adding": {
+  "de": "Ohne Hinzufügen anwenden",
+  "pl": "Zastosuj bez dodawania"
  }
 }

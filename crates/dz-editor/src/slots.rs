@@ -39,6 +39,7 @@ fn dragged(ctx: &egui::Context) -> Vec<Pick> {
     match egui::DragAndDrop::payload::<LibDrag>(ctx).as_deref() {
         Some(LibDrag::ObjectPreset(id)) => vec![Pick::Preset(*id)],
         Some(LibDrag::ForestPreset(n)) => vec![Pick::Forest(n.clone())],
+        Some(LibDrag::SurfaceBiome(i)) => vec![Pick::Biome(*i)],
         _ => Vec::new(),
     }
 }
@@ -54,6 +55,7 @@ fn dropped(resp: &egui::Response) -> Vec<Pick> {
     match theme::take::<LibDrag>(resp).as_deref() {
         Some(LibDrag::ObjectPreset(id)) => vec![Pick::Preset(*id)],
         Some(LibDrag::ForestPreset(n)) => vec![Pick::Forest(n.clone())],
+        Some(LibDrag::SurfaceBiome(i)) => vec![Pick::Biome(*i)],
         _ => Vec::new(),
     }
 }

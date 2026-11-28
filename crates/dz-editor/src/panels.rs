@@ -3568,6 +3568,49 @@ fn dialogs(app: &mut App, ctx: &egui::Context) {
                 });
             });
         }
+        Dialog::BiomeLayers(dlg) => {
+            let biome_index = dlg.biome_index;
+            let target = dlg.target.clone();
+            let biome_name = dz_core::gen::surface_biomes().get(biome_index).map(|b| t(b.name)).unwrap_or_default();
+            let mut apply_add: Option<Vec<dz_core::gen::MissingSurface>> = None;
+            egui::Window::new(t("Missing surface layers"))
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.set_max_width(440.0);
+                    ui.label(tf("The biome {0} uses surface layers that are not in this project. Choose which ones to add:", &[&biome_name]));
+                    ui.add_space(6.0);
+                    for (ms, checked, exists) in &mut dlg.items {
+                        ui.horizontal(|ui| {
+                            ui.add_enabled_ui(*exists, |ui| {
+                                ui.checkbox(checked, format!("{}  ({})", t(ms.role), ms.name)).on_hover_text(&ms.material);
+                            });
+                            if !*exists {
+                                ui.weak(t("(not found on the work drive)"));
+                            }
+                        });
+                    }
+                    ui.add_space(8.0);
+                    let any_checked = dlg.items.iter().any(|(_, c, e)| *c && *e);
+                    ui.horizontal(|ui| {
+                        if ui.add_enabled(any_checked, egui::Button::new(t("Add selected and apply"))).clicked() {
+                            apply_add = Some(dlg.items.iter().filter(|(_, c, e)| *c && *e).map(|(ms, _, _)| ms.clone()).collect());
+                            close = true;
+                        }
+                        if ui.button(t("Apply without adding")).clicked() {
+                            apply_add = Some(Vec::new());
+                            close = true;
+                        }
+                        if ui.button(t("Cancel")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            if let Some(to_add) = apply_add {
+                crate::library_ui::finish_biome_apply(app, biome_index, target, to_add);
+            }
+        }
         Dialog::ConvertToBrush { kind, id, name } => {
             let (kind, id, name) = (*kind, *id, name.clone());
             let mut confirmed = false;

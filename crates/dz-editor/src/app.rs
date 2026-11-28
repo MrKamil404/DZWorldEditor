@@ -340,6 +340,20 @@ pub enum ConvertKind {
     Satellite,
 }
 
+#[derive(Clone, Debug)]
+pub enum BiomeApplyTarget {
+    NewInstance(Option<crate::library_ui::Dropped>),
+    Instance(u64),
+    LibraryGenerator(u64),
+}
+
+pub struct BiomeLayersDialog {
+    pub biome_index: usize,
+    pub target: BiomeApplyTarget,
+    /// (missing surface suggestion, checked to add, exists on work drive)
+    pub items: Vec<(dz_core::gen::MissingSurface, bool, bool)>,
+}
+
 pub enum Dialog {
     None,
     Import(Box<ImportDialog>),
@@ -352,6 +366,7 @@ pub enum Dialog {
     Shortcuts,
     Export(Option<crate::exporting::Part>),
     Delete(crate::deleting::Plan),
+    BiomeLayers(BiomeLayersDialog),
     Confirm { text: String, action: fn(&mut App) },
     /// Removing a surface layer: which, and the layer its ground becomes.
     DeleteLayer { layer: usize, into: usize },
