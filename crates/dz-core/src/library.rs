@@ -561,6 +561,7 @@ pub enum GeneratorKind {
     Dressing(crate::dressing::DressGen),
     Orchard(crate::landscape::OrchardGen),
     TreeAlley(crate::landscape::TreeAlleyGen),
+    Wetland(crate::landscape::WetlandGen),
 }
 
 /// What a generator needs to be pointed at.
@@ -578,7 +579,7 @@ pub enum TargetKind {
 impl GeneratorKind {
     pub fn target_kind(&self) -> TargetKind {
         match self {
-            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) | GeneratorKind::Pond(_) | GeneratorKind::Coast(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Fields(_) | GeneratorKind::Orchard(_) => TargetKind::Area,
+            GeneratorKind::Forest(_) | GeneratorKind::SurfacePaint { .. } | GeneratorKind::Scatter(_) | GeneratorKind::Area(_) | GeneratorKind::Pond(_) | GeneratorKind::Coast(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Fields(_) | GeneratorKind::Orchard(_) | GeneratorKind::Wetland(_) => TargetKind::Area,
             GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::TreeAlley(_) => TargetKind::Line,
             GeneratorKind::Dressing(_) => TargetKind::Area,
             GeneratorKind::Settlement(_) => TargetKind::Point,
@@ -590,7 +591,7 @@ impl GeneratorKind {
     }
     /// Variants added after 0.4.4, stored in a separate project field so older versions still open the file.
     pub fn is_extended(&self) -> bool {
-        matches!(self, GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_))
+        matches!(self, GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_))
     }
     /// Name of the built-in generator this one derives from.
     pub fn type_name(&self) -> &'static str {
@@ -629,6 +630,7 @@ impl GeneratorKind {
             GeneratorKind::Dressing(_) => "Things round buildings",
             GeneratorKind::Orchard(_) => "Orchard",
             GeneratorKind::TreeAlley(_) => "Tree alley",
+            GeneratorKind::Wetland(_) => "Wetland and marsh",
         }
     }
 }
@@ -1362,6 +1364,7 @@ pub fn built_in_generators() -> Vec<GeneratorPreset> {
         make(33, "Orchard", GeneratorKind::Orchard(Default::default())),
         make(34, "Vineyard", GeneratorKind::Orchard(crate::landscape::OrchardGen::vineyard())),
         make(35, "Tree alley", GeneratorKind::TreeAlley(Default::default())),
+        make(36, "Wetland and marsh", GeneratorKind::Wetland(Default::default())),
     ]
 }
 
@@ -1966,8 +1969,8 @@ mod tests {
     #[test]
     fn built_ins_cover_every_kind() {
         let names: Vec<&str> = built_in_generators().iter().map(|g| g.kind.type_name()).collect();
-        assert_eq!(names.len(), 35);
-        assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects") && names.contains(&"Orchard") && names.contains(&"Tree alley"));
+        assert_eq!(names.len(), 36);
+        assert!(names.contains(&"River") && names.contains(&"Area: Random") && names.contains(&"Terrain shape") && names.contains(&"Line: Nodes Objects") && names.contains(&"Orchard") && names.contains(&"Tree alley") && names.contains(&"Wetland and marsh"));
     }
 
     #[test]

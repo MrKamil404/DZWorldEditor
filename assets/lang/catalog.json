@@ -11726,5 +11726,53 @@
  "Transformer station": {
   "de": "Trafostation",
   "pl": "Stacja transformatorowa"
+ },
+ "Wetland and marsh": {
+  "de": "Feuchtgebiet und Sumpf",
+  "pl": "Bagna i mokradła"
+ },
+ "Paints mud, peat or moss in wet hollows or polygons, and plants clumped reedbeds, swamp willows and fallen logs.": {
+  "de": "Malt Schlamm, Torf oder Moos in feuchte Senken oder Polygone und setzt Schilfbüschel, Sumpfweiden und umgestürzte Stämme.",
+  "pl": "Maluje błoto, torf lub mech w wilgotnych zagłębieniach albo poligonach i sadzi kępy trzcin, wierzby bagienne oraz powalone kłody."
+ },
+ "Wetland surface": {
+  "de": "Feuchtgebiet-Oberfläche",
+  "pl": "Powierzchnia bagna"
+ },
+ "Follow terrain wetness": {
+  "de": "Geländefeuchtigkeit folgen",
+  "pl": "Podążaj za wilgotnością terenu"
+ },
+ "On: only in damp hollows. Off: fills the whole polygon up to the max slope.": {
+  "de": "An: nur in feuchten Senken. Aus: füllt das ganze Polygon bis zur maximalen Neigung.",
+  "pl": "Wł.: tylko w wilgotnych zagłębieniach. Wył.: wypełnia cały poligon do maksymalnego nachylenia."
+ },
+ "Min wetness": {
+  "de": "Min. Feuchtigkeit",
+  "pl": "Min. wilgotność"
+ },
+ "Min hollow m": {
+  "de": "Min. Senke m",
+  "pl": "Min. zagłębienie m"
+ },
+ "Ragged edge m": {
+  "de": "Ausgefranster Rand m",
+  "pl": "Postrzępiony brzeg m"
+ },
+ "Max slope °": {
+  "de": "Max. Neigung °",
+  "pl": "Maks. nachylenie °"
+ },
+ "Reeds and marsh shrubs": {
+  "de": "Schilf und Sumpfsträucher",
+  "pl": "Trzciny i krzewy bagienne"
+ },
+ "Willows and marsh trees": {
+  "de": "Weiden und Sumpfbäume",
+  "pl": "Wierzby i drzewa bagienne"
+ },
+ "Fallen logs": {
+  "de": "Umgestürzte Stämme",
+  "pl": "Powalone kłody"
  }
 }

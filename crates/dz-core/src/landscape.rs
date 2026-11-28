@@ -995,6 +995,151 @@ pub fn tree_alley_objects(w: &mut World, g: &TreeAlleyGen, lines: &[Vec<[f32; 2]
     Ok(out)
 }
 
+// ---------------------------------------------------------------- wetlands, marshes and reedbeds
+
+/// Wetlands, marshes and reedbeds in wet hollows or inside polygons: paints mud/peat/moss,
+/// plants clumped reedbeds, swamp willows and fallen logs.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct WetlandGen {
+    /// Mud, peat or moss surface; empty picks a layer named like mud/peat/moss/soil.
+    pub surface: String,
+    /// When true, restrict placement to places where terrain wetness & hollow meet the thresholds.
+    pub use_wetness: bool,
+    /// Minimum wetness (0..1) from terrain flow accumulation.
+    pub min_wetness: f32,
+    /// Minimum hollow depth in metres (0 = flat or lower than surroundings).
+    pub min_hollow: f32,
+    /// Maximum ground slope in degrees.
+    pub max_slope: f32,
+    /// Ragged boundary noise in metres.
+    pub edge_noise: f32,
+    /// Clumped reeds and marsh shrubs, per hectare.
+    pub reeds: ObjectSet,
+    pub reed_density: f32,
+    /// Swamp willows and marsh trees, per hectare.
+    pub trees: ObjectSet,
+    pub tree_density: f32,
+    /// Fallen logs and deadwood, per hectare.
+    pub logs: ObjectSet,
+    pub log_density: f32,
+    pub seed: u64,
+}
+
+impl Default for WetlandGen {
+    fn default() -> Self {
+        let reeds = vec![
+            ("dz\\plants\\clutter\\p_Phragmites.p3d".to_string(), 4.0),
+            ("dz\\plants\\bush\\b_betulaHumilis_1s.p3d".to_string(), 1.5),
+        ];
+        let trees = vec![
+            ("dz\\plants\\tree\\t_salixAlba_2sb_swamp.p3d".to_string(), 3.0),
+            ("dz\\plants\\tree\\t_salixAlba_2s.p3d".to_string(), 2.0),
+            ("dz\\plants\\tree\\t_salixAlba_2sb.p3d".to_string(), 1.5),
+        ];
+        let logs = vec![
+            ("dz\\plants\\tree\\d_FagusSylvatica_fallen.p3d".to_string(), 1.0),
+            ("dz\\plants\\tree\\d_piceaabies_fallen.p3d".to_string(), 1.0),
+            ("dz\\plants\\tree\\d_quercusRobur_fallenb.p3d".to_string(), 1.0),
+        ];
+        Self {
+            surface: String::new(),
+            use_wetness: true,
+            min_wetness: 0.25,
+            min_hollow: 0.0,
+            max_slope: 12.0,
+            edge_noise: 12.0,
+            reeds: ObjectSet { models: reeds, scale_min: 0.85, scale_max: 1.3, random_yaw: true, align: false, ..Default::default() },
+            reed_density: 320.0,
+            trees: ObjectSet { models: trees, scale_min: 0.85, scale_max: 1.15, random_yaw: true, align: false, ..Default::default() },
+            tree_density: 45.0,
+            logs: ObjectSet { models: logs, scale_min: 0.9, scale_max: 1.1, random_yaw: true, align: true, ..Default::default() },
+            log_density: 18.0,
+            seed: 1,
+        }
+    }
+}
+
+impl WetlandGen {
+    pub fn ground_layer(&self, w: &World) -> Option<u8> {
+        find_layer(w, &self.surface, &["mud", "peat", "swamp", "moss", "soil", "dirt"])
+    }
+}
+
+fn is_wetland(w: &World, g: &WetlandGen, maps: &TerrainMaps, edge: &Perlin, x: f32, z: f32) -> bool {
+    let h = w.height.sample(x, z);
+    if h < w.meta.sea_level || w.height.slope(x, z) > g.max_slope {
+        return false;
+    }
+    if !g.use_wetness {
+        return true;
+    }
+    let (sx, sz) = if g.edge_noise > 0.0 {
+        let s = (g.edge_noise * 3.0).max(1.0);
+        (x + edge.fbm(x / s, z / s, 3, 0.5, 2.0) * g.edge_noise, z + edge.fbm(z / s + 11.3, x / s - 7.1, 3, 0.5, 2.0) * g.edge_noise)
+    } else {
+        (x, z)
+    };
+    let wet = maps.wetness_at(sx, sz);
+    let hol = maps.hollow_at(sx, sz);
+    wet >= g.min_wetness && hol >= g.min_hollow
+}
+
+/// Paints mud/peat/moss over wetland zones.
+pub fn wetland_mask(w: &World, g: &WetlandGen, maps: &TerrainMaps, area: Option<&PolygonIndex>) -> Vec<u8> {
+    let Some(layer) = g.ground_layer(w) else { return w.mask.data.clone() };
+    let edge = Perlin::new(g.seed ^ 0x57a0);
+    paint_mask(w, |x, z| (in_area(area, x, z) && is_wetland(w, g, maps, &edge, x, z)).then_some(layer))
+}
+
+/// Plants clumped reedbeds, swamp willows and fallen logs in wetland zones.
+pub fn wetland_objects(w: &mut World, g: &WetlandGen, maps: &TerrainMaps, area: Option<&PolygonIndex>, bounds: [f32; 4], job: &Job) -> Result<Vec<Obj>> {
+    use rand::Rng;
+    let [x0, z0, x1, z1] = bounds;
+    let ha = ((x1 - x0).max(0.0) * (z1 - z0).max(0.0)) / 10_000.0;
+    if ha <= 0.0 {
+        return Ok(Vec::new());
+    }
+    let edge = Perlin::new(g.seed ^ 0x57a0);
+    let clump = Perlin::new(g.seed ^ 0x7eed);
+    let mut rng = StdRng::seed_from_u64(g.seed.wrapping_mul(0x9e3779b97f4a7c15) ^ 0x57a0);
+    let mut out = Vec::new();
+    let mut scatter_set = |set: &ObjectSet, density: f32, min_dist: f32, clumped: bool| -> Result<()> {
+        if density <= 0.0 || set.models.is_empty() {
+            return Ok(());
+        }
+        let picker = Picker::new(w, set)?;
+        let mut spacing = Spacing::new(min_dist);
+        let target = (density * ha).round() as usize;
+        let tries = (target * 8).clamp(64, 400_000);
+        let mut placed = 0usize;
+        for _ in 0..tries {
+            if placed >= target || job.cancelled() {
+                break;
+            }
+            let x = rng.gen_range(x0..x1);
+            let z = rng.gen_range(z0..z1);
+            if !in_area(area, x, z) || !is_wetland(w, g, maps, &edge, x, z) {
+                continue;
+            }
+            if clumped && clump.fbm(x / 18.0, z / 18.0, 3, 0.55, 2.0) < -0.05 {
+                continue;
+            }
+            if !spacing.claim(x, z) {
+                continue;
+            }
+            let model = picker.model(&mut rng);
+            out.push(picker.object(w, &mut rng, model, x, z, None));
+            placed += 1;
+        }
+        Ok(())
+    };
+    scatter_set(&g.trees, g.tree_density, 5.0, false)?;
+    scatter_set(&g.logs, g.log_density, 4.5, false)?;
+    scatter_set(&g.reeds, g.reed_density, 1.4, true)?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1129,5 +1274,25 @@ mod tests {
 
         let right = tree_alley_objects(&mut w, &TreeAlleyGen { sides: AlleySide::Right, ..base }, std::slice::from_ref(&road), std::slice::from_ref(&road)).unwrap();
         assert!(!right.is_empty() && right.iter().all(|o| (o.x - 108.0).abs() < 0.01), "only right side");
+    }
+
+    #[test]
+    fn wetland_paints_ground_and_plants_reeds_willows_and_logs() {
+        let mut w = world();
+        w.layers.push(SurfaceLayer { name: "mud".into(), texture: String::new(), material: String::new(), color: [0, 0, 0] });
+        let poly = vec![[60.0, 60.0], [130.0, 60.0], [130.0, 130.0], [60.0, 130.0]];
+        let area = PolygonIndex::new(&crate::shapes::ShapeLayer {
+            name: "swamp".into(),
+            visible: true,
+            shapes: vec![crate::shapes::MapShape { kind: crate::shapes::ShapeKind::Polygon, points: poly, holes: Vec::new(), attributes: Default::default() }],
+        });
+        let g = WetlandGen { use_wetness: false, ..Default::default() };
+        let maps = TerrainMaps::default();
+        let m = wetland_mask(&w, &g, &maps, Some(&area));
+        assert_eq!(mask_at(&w, &m, 95.0, 95.0), 5, "swamp interior auto-picks mud");
+        assert_eq!(mask_at(&w, &m, 200.0, 200.0), 0, "outside stays grass");
+        let objs = wetland_objects(&mut w, &g, &maps, Some(&area), [60.0, 60.0, 130.0, 130.0], &Job::default()).unwrap();
+        assert!(objs.len() > 20, "reeds, willows and logs placed: {}", objs.len());
+        assert!(objs.iter().all(|o| o.x >= 60.0 && o.x <= 130.0 && o.z >= 60.0 && o.z <= 130.0));
     }
 }

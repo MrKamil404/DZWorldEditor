@@ -88,7 +88,7 @@ fn generator_category(kind: &dz_core::library::GeneratorKind) -> usize {
         K::Fence(_) | K::PowerLine(_) | K::Line(_) | K::Roadside(_) | K::Wrecks(_) | K::TreeAlley(_) => 3,
         K::Dressing(_) => 2,
         K::River(_) | K::Pond(_) => 4,
-        K::Coast(_) | K::Cliffs(_) | K::Fields(_) | K::Orchard(_) => 5,
+        K::Coast(_) | K::Cliffs(_) | K::Fields(_) | K::Orchard(_) | K::Wetland(_) => 5,
     }
 }
 

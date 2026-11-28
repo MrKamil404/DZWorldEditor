@@ -1000,6 +1000,30 @@ fn kind_ui(ui: &mut egui::Ui, kind: &mut GeneratorKind, cx: &KindContext) -> boo
             follow_row(ui, &mut g.follow);
             row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
         }
+        GeneratorKind::Wetland(g) => {
+            ui.weak(t("Paints mud, peat or moss in wet hollows or polygons, and plants clumped reedbeds, swamp willows and fallen logs."));
+            layer_pick(ui, "wetland_surface", t("Wetland surface"), &mut g.surface, &cx.layers, &cx.layer_pics);
+            ui.checkbox(&mut g.use_wetness, t("Follow terrain wetness")).on_hover_text(t("On: only in damp hollows. Off: fills the whole polygon up to the max slope."));
+            if g.use_wetness {
+                number(ui, t("Min wetness"), &mut g.min_wetness, 0.0..=1.0);
+                number(ui, t("Min hollow m"), &mut g.min_hollow, -10.0..=15.0);
+                number(ui, t("Ragged edge m"), &mut g.edge_noise, 0.0..=60.0);
+            }
+            number(ui, t("Max slope °"), &mut g.max_slope, 1.0..=45.0);
+            group(ui, "wetland_reeds", t("Reeds and marsh shrubs"), false, |ui| {
+                number(ui, t("Per hectare"), &mut g.reed_density, 0.0..=1200.0);
+                objects_ui(ui, &mut g.reeds, cx);
+            });
+            group(ui, "wetland_trees", t("Willows and marsh trees"), false, |ui| {
+                number(ui, t("Per hectare"), &mut g.tree_density, 0.0..=300.0);
+                objects_ui(ui, &mut g.trees, cx);
+            });
+            group(ui, "wetland_logs", t("Fallen logs"), false, |ui| {
+                number(ui, t("Per hectare"), &mut g.log_density, 0.0..=200.0);
+                objects_ui(ui, &mut g.logs, cx);
+            });
+            row(ui, &t("Seed"), |ui| { ui.add(egui::DragValue::new(&mut g.seed)); });
+        }
         GeneratorKind::Wrecks(g) => {
             ui.weak(t("Places with wrecks along roads: a jam of cars in a lane, a crash, or a car left on the verge, with stains under them; and cracks, patches and tyre marks on the road. Drop it on a road, or on the map for all roads."));
             number(ui, t("Places per km"), &mut g.scenes_per_km, 0.0..=20.0);
@@ -1100,6 +1124,7 @@ pub(crate) fn kind_look(kind: &GeneratorKind) -> (&'static str, Color32) {
         GeneratorKind::Dressing(_) => ("D", Color32::from_rgb(110, 90, 70)),
         GeneratorKind::Orchard(_) => ("O", Color32::from_rgb(108, 134, 64)),
         GeneratorKind::TreeAlley(_) => ("A", Color32::from_rgb(76, 122, 68)),
+        GeneratorKind::Wetland(_) => ("M", Color32::from_rgb(66, 108, 86)),
     }
 }
 
@@ -1147,11 +1172,12 @@ pub(crate) fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
         GeneratorKind::Dressing(g) => first_of(&g.residential),
         GeneratorKind::Orchard(g) => first_of(&g.objects),
         GeneratorKind::TreeAlley(g) => first_of(&g.objects),
+        GeneratorKind::Wetland(g) => first_of(&g.reeds),
         _ => None,
     };
     match model {
         Some(m) => Preview::Model(ObjectStore::normalize_path(&m)),
-        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_) | GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_)) => Preview::Nothing,
+        None if matches!(kind, GeneratorKind::Forest(_) | GeneratorKind::Scatter(_) | GeneratorKind::Settlement(_) | GeneratorKind::Fence(_) | GeneratorKind::PowerLine(_) | GeneratorKind::Area(_) | GeneratorKind::Line(_) | GeneratorKind::Cliffs(_) | GeneratorKind::Coast(_) | GeneratorKind::Fields(_) | GeneratorKind::Roadside(_) | GeneratorKind::Wrecks(_) | GeneratorKind::Dressing(_) | GeneratorKind::Orchard(_) | GeneratorKind::TreeAlley(_) | GeneratorKind::Wetland(_)) => Preview::Nothing,
         None => {
             let key = match kind {
                 GeneratorKind::Terrain(p) => format!("terrain {p:?}"),
@@ -2337,6 +2363,28 @@ pub fn run_generator(app: &mut App, id: u64) {
                 let models = model_list(&lite);
                 Ok(Box::new(move |a: &mut App| {
                     store_generated(a, id, models, objects);
+                }) as Finish)
+            });
+        }
+        GeneratorKind::Wetland(mut g) => {
+            g.reeds = g.reeds.resolved(&presets);
+            g.trees = g.trees.resolved(&presets);
+            g.logs = g.logs.resolved(&presets);
+            let (index, bounds) = area_bounds(&polygons, world.meta.size_m());
+            app.spawn(label.clone(), move |job| {
+                let needs = dz_core::analysis::Needs { hollow: g.use_wetness, wetness: g.use_wetness, ..Default::default() };
+                let maps = if needs.any() {
+                    job.stage("Reading the shape of the terrain");
+                    dz_core::analysis::TerrainMaps::new(&lite, &Default::default(), needs, dz_core::analysis::HOLLOW_RADIUS)
+                } else {
+                    Default::default()
+                };
+                let data = dz_core::landscape::wetland_mask(&lite, &g, &maps, index.as_ref());
+                let objects = dz_core::landscape::wetland_objects(&mut lite, &g, &maps, index.as_ref(), bounds, job)?;
+                let models = model_list(&lite);
+                Ok(Box::new(move |a: &mut App| {
+                    store_generated(a, id, models, objects);
+                    store_mask(a, id, &label, data);
                 }) as Finish)
             });
         }
