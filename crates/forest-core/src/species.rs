@@ -618,6 +618,13 @@ pub fn zone_presets() -> Vec<ZonePreset> {
         P { group: "Krzewy i zarośla", name: "Podszyt — samosiewy", density_per_ha: 220.0, weights: &[(62, 3.0), (76, 2.0), (101, 2.0), (48, 1.0), (21, 1.0)] },
         P { group: "Krzewy i zarośla", name: "Ciernisty pas", density_per_ha: 180.0, weights: &[(156, 3.0), (149, 3.0), (154, 2.0), (157, 1.0)] },
         P { group: "Sakhal (zima/mrok)", name: "Zimowy pas krzewów", density_per_ha: 150.0, weights: &[(275, 3.0), (274, 2.0), (279, 2.0), (307, 1.0)] },
+        // --- sady, wiatrołomy, tundra, las martwy ---
+        P { group: "Liściaste", name: "Sad owocowy", density_per_ha: 140.0, weights: &[(118, 3.0), (119, 2.5), (117, 1.5), (114, 2.0), (115, 2.0), (116, 1.0), (140, 2.0)] },
+        P { group: "Bliss (lato)", name: "Letni sad owocowy", density_per_ha: 140.0, weights: &[(195, 3.0), (194, 2.5), (192, 2.5), (193, 2.0)] },
+        P { group: "Pniaki i wykroty", name: "Wiatrołom / wyrąb", density_per_ha: 95.0, weights: &[(30, 2.5), (27, 2.0), (28, 1.5), (35, 2.5), (31, 2.0), (32, 1.5), (9, 2.0), (8, 1.5), (12, 2.0), (10, 1.5), (48, 1.5), (62, 1.0), (21, 1.0)] },
+        P { group: "Krzewy i zarośla", name: "Tundra i kosodrzewina", density_per_ha: 240.0, weights: &[(146, 3.5), (158, 3.0), (159, 2.5), (48, 1.5), (151, 1.0)] },
+        P { group: "Sakhal (zima/mrok)", name: "Zimowa tundra (Sakhal)", density_per_ha: 220.0, weights: &[(275, 3.5), (274, 3.0), (327, 2.5), (311, 2.0), (273, 1.5), (331, 1.0)] },
+        P { group: "Pniaki i wykroty", name: "Las martwy / spalony", density_per_ha: 130.0, weights: &[(125, 3.0), (126, 3.0), (151, 2.0), (30, 2.0), (35, 1.5), (9, 1.5), (12, 1.5)] },
     ];
     v.sort_by(|a, b| {
         let order = |g: &str| match g {
@@ -709,5 +716,27 @@ mod tests {
         assert_eq!(z.label, p.name);
         assert_eq!(z.density_per_ha, p.density_per_ha);
         assert_eq!(z.species_weights.len(), p.weights.len());
+    }
+
+    #[test]
+    fn new_presets_point_to_expected_models() {
+        let lib = vanilla_library();
+        let presets = zone_presets();
+        let models_of = |name: &str| -> Vec<&str> {
+            let p = presets.iter().find(|p| p.name == name).unwrap_or_else(|| panic!("missing preset {name}"));
+            p.weights.iter().map(|(i, _)| lib[*i].model.as_str()).collect()
+        };
+        let orchard = models_of("Sad owocowy");
+        assert!(orchard.contains(&"t_malusDomestica_2s") && orchard.contains(&"t_pyrusCommunis_3s") && orchard.contains(&"t_prunusDomestica_2s"));
+        let summer = models_of("Letni sad owocowy");
+        assert!(summer.contains(&"t_malusDomestica_3s_summer") && summer.contains(&"t_pyrusCommunis_3s_summer"));
+        let windthrow = models_of("Wiatrołom / wyrąb");
+        assert!(windthrow.contains(&"d_piceaabies_stump") && windthrow.contains(&"d_piceaabies_fallen") && windthrow.contains(&"t_PiceaAbies_1s"));
+        let tundra = models_of("Tundra i kosodrzewina");
+        assert!(tundra.contains(&"b_betulaHumilis_1s") && tundra.contains(&"b_PiceaAbies_1f"));
+        let winter_tundra = models_of("Zimowa tundra (Sakhal)");
+        assert!(winter_tundra.contains(&"b_betulaNana_1s_winter") && winter_tundra.contains(&"b_PiceaAbies_1f_frozen"));
+        let dead = models_of("Las martwy / spalony");
+        assert!(dead.contains(&"t_naked_1s") && dead.contains(&"t_naked_2s") && dead.contains(&"b_naked_2s"));
     }
 }
