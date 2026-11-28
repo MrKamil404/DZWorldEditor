@@ -1368,8 +1368,7 @@ fn paint_mode(app: &mut App, ui: &mut egui::Ui) {
 
 fn place_mode(app: &mut App, ui: &mut egui::Ui) {
     section(ui, &icons::with(icons::TREE_EVERGREEN, &t("Place objects")), true, |ui| {
-        let presets: Vec<(u64, String)> = app.library.objects.iter().map(|p| (p.id, p.name.clone())).collect();
-        let preset = app.place.preset.and_then(|id| presets.iter().find(|p| p.0 == id)).map(|p| p.1.clone());
+        let preset = app.place.preset.and_then(|id| app.object_preset(id)).map(|p| app.object_preset_name(p));
         let (badge_icon, badge_text, active) = match (&preset, &app.place.model) {
             (Some(p), _) => (icons::PACKAGE, tf("Places the preset {0}", &[p]), true),
             (None, Some(m)) => (icons::CUBE, tf("Places {0}", &[m.rsplit('\\').next().unwrap_or(m)]), true),
@@ -1440,47 +1439,58 @@ fn place_mode(app: &mut App, ui: &mut egui::Ui) {
     });
     section(ui, &icons::with(icons::ARROWS_CLOCKWISE, &t("Rotation and size")), true, |ui| {
         // A preset places its models with its own options, so those are the ones shown here.
-        let preset = app.place.preset.and_then(|id| app.library.objects.iter().position(|p| p.id == id));
-        let (mut random, mut align, mut lo, mut hi) = match preset {
-            Some(i) => { let p = &app.library.objects[i]; (p.random_yaw, p.align, p.scale_min, p.scale_max) }
-            None => (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max),
+        let own_preset = app.place.preset.and_then(|id| app.library.objects.iter().position(|p| p.id == id));
+        let built_in_preset = if own_preset.is_none() {
+            app.place.preset.and_then(|id| app.built_in_objects.iter().find(|p| p.id == id)).cloned()
+        } else {
+            None
         };
-        if let Some(i) = preset {
+        let (mut random, mut align, mut lo, mut hi) = match (own_preset, &built_in_preset) {
+            (Some(i), _) => { let p = &app.library.objects[i]; (p.random_yaw, p.align, p.scale_min, p.scale_max) }
+            (None, Some(p)) => (p.random_yaw, p.align, p.scale_min, p.scale_max),
+            (None, None) => (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max),
+        };
+        if let Some(i) = own_preset {
             about(ui, &tf("Saved with the preset {0}.", &[&app.library.objects[i].name]));
+        } else if built_in_preset.is_some() {
+            about(ui, &t("A built-in preset. Duplicate it to make your own version."));
         }
-        theme::check_row(ui, &mut random, t("Random rotation"));
-        theme::check_row(ui, &mut align, t("Align to slope"));
-        row(ui, &t("Scale"), |ui| {
-            let tip = t("Each placed object gets a random size in this range.");
-            let from_lbl = t("from");
-            let to_lbl = t("to");
-            ui.columns(2, |c| {
-                c[0].spacing_mut().slider_width = c[0].available_width();
-                let fl = from_lbl.clone();
-                let fl2 = from_lbl.clone();
-                c[0].add(theme::ValueField::new(&mut lo, 0.1..=4.0).step_by(0.01)
-                    .custom_formatter(move |v, _| format!("{fl} {v:.2}"))
-                    .custom_parser(move |s| s.trim().strip_prefix(&fl2).unwrap_or(s).trim().parse::<f64>().ok()))
-                    .on_hover_text(&tip);
-                c[1].spacing_mut().slider_width = c[1].available_width();
-                let tl = to_lbl.clone();
-                let tl2 = to_lbl.clone();
-                c[1].add(theme::ValueField::new(&mut hi, 0.1..=4.0).step_by(0.01)
-                    .custom_formatter(move |v, _| format!("{tl} {v:.2}"))
-                    .custom_parser(move |s| s.trim().strip_prefix(&tl2).unwrap_or(s).trim().parse::<f64>().ok()))
-                    .on_hover_text(&tip);
+        ui.add_enabled_ui(built_in_preset.is_none(), |ui| {
+            theme::check_row(ui, &mut random, t("Random rotation"));
+            theme::check_row(ui, &mut align, t("Align to slope"));
+            row(ui, &t("Scale"), |ui| {
+                let tip = t("Each placed object gets a random size in this range.");
+                let from_lbl = t("from");
+                let to_lbl = t("to");
+                ui.columns(2, |c| {
+                    c[0].spacing_mut().slider_width = c[0].available_width();
+                    let fl = from_lbl.clone();
+                    let fl2 = from_lbl.clone();
+                    c[0].add(theme::ValueField::new(&mut lo, 0.1..=4.0).step_by(0.01)
+                        .custom_formatter(move |v, _| format!("{fl} {v:.2}"))
+                        .custom_parser(move |s| s.trim().strip_prefix(&fl2).unwrap_or(s).trim().parse::<f64>().ok()))
+                        .on_hover_text(&tip);
+                    c[1].spacing_mut().slider_width = c[1].available_width();
+                    let tl = to_lbl.clone();
+                    let tl2 = to_lbl.clone();
+                    c[1].add(theme::ValueField::new(&mut hi, 0.1..=4.0).step_by(0.01)
+                        .custom_formatter(move |v, _| format!("{tl} {v:.2}"))
+                        .custom_parser(move |s| s.trim().strip_prefix(&tl2).unwrap_or(s).trim().parse::<f64>().ok()))
+                        .on_hover_text(&tip);
+                });
             });
         });
         if hi < lo { hi = lo; }
-        match preset {
-            Some(i) => {
+        match (own_preset, built_in_preset.is_some()) {
+            (Some(i), _) => {
                 let p = &mut app.library.objects[i];
                 if (p.random_yaw, p.align, p.scale_min, p.scale_max) != (random, align, lo, hi) {
                     (p.random_yaw, p.align, p.scale_min, p.scale_max) = (random, align, lo, hi);
                     app.lib_dirty = true;
                 }
             }
-            None => (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = (random, align, lo, hi),
+            (None, true) => {}
+            (None, false) => (app.place.random_yaw, app.place.align, app.place.scale_min, app.place.scale_max) = (random, align, lo, hi),
         }
     });
     section(ui, &icons::with(icons::STACK, &t("Terrain under objects")), false, |ui| {

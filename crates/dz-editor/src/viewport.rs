@@ -4496,7 +4496,7 @@ fn append_place_preview(app: &mut App, ctx: &egui::Context, v: &View, resp: &egu
                     models.push((m.clone(), app.place.scale_max, app.place.random_yaw, s));
                 }
                 Pick::Preset(id) => {
-                    if let Some(pr) = app.library.objects.iter().find(|x| x.id == *id) {
+                    if let Some(pr) = app.object_preset(*id) {
                         if let Some((m, _)) = pr.items.first() {
                             models.push((m.clone(), pr.scale_max, pr.random_yaw, (pr.scale_min + pr.scale_max) * 0.5));
                         }
@@ -4528,7 +4528,7 @@ fn append_place_preview(app: &mut App, ctx: &egui::Context, v: &View, resp: &egu
             }
         }
     } else if let Some(pid) = app.place.preset {
-        if let Some(pr) = app.library.objects.iter().find(|p| p.id == pid) {
+        if let Some(pr) = app.object_preset(pid) {
             if let Some((m, _)) = pr.items.first() {
                 let yaw = if pr.random_yaw { (seed >> 7) as f32 / (u32::MAX >> 7) as f32 * 360.0 } else { 0.0 };
                 let scale = (pr.scale_min + pr.scale_max) * 0.5;

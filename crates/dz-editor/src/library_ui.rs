@@ -130,10 +130,30 @@ fn forest_field(ui: &mut egui::Ui, label: &str, id: impl std::hash::Hash, value:
     crate::slots::preset_slot(ui, label, id, value, none.map(|n| (String::new(), n)), &cx.forest_items, &cx.thumbs, &|p| if let Pick::Forest(n) = p { Some(n.clone()) } else { None }, &|n| (!n.is_empty()).then(|| Pick::Forest(n.clone())), cx.selected_forest.clone(), remove);
 }
 
-/// The object presets of the library to choose from in a [`crate::theme::search_pick`]: each
-/// with its folder and its first model for the picture.
+/// The object presets of the library (and built-in ones) to choose from in a
+/// [`crate::theme::search_pick`]: each with its folder/category and its first model for the picture.
 pub fn preset_items(app: &App) -> Vec<crate::theme::PickItem<Option<u64>>> {
-    app.library.objects.iter().map(|p| crate::theme::PickItem { key: Some(p.id), name: p.name.clone(), note: p.folder.clone(), model: p.items.first().map(|m| m.0.clone()), picture: None }).collect()
+    let mut out: Vec<_> = app.library.objects.iter().map(|p| crate::theme::PickItem {
+        key: Some(p.id),
+        name: p.name.clone(),
+        note: p.folder.clone(),
+        model: p.items.first().map(|m| m.0.clone()),
+        picture: None,
+    }).collect();
+    out.extend(app.built_in_objects.iter().map(|p| {
+        let note = match p.built_in_category() {
+            Some(c) => format!("{} · {}", t("Built-in"), t(c)),
+            None => t("Built-in"),
+        };
+        crate::theme::PickItem {
+            key: Some(p.id),
+            name: t(&p.name),
+            note,
+            model: p.items.first().map(|m| m.0.clone()),
+            picture: None,
+        }
+    }));
+    out
 }
 
 /// Chooses an object preset in place of a list of models.
@@ -1033,20 +1053,21 @@ fn preset_model(app: &App, preset: &str, user: &[forest_core::user_presets::User
 }
 
 pub(crate) fn preview_of(app: &App, kind: &GeneratorKind) -> Preview {
+    let first_of = |s: &ObjectSet| s.first_model(&app.library.objects).or_else(|| s.first_model(&app.built_in_objects)).map(str::to_string);
     let model = match kind {
         GeneratorKind::Forest(f) => preset_model(app, &f.preset, &f.user_presets).or_else(|| preset_model(app, &f.preset, &app.library.all_forest_presets())),
-        GeneratorKind::Scatter(s) => s.preset.and_then(|id| app.library.objects.iter().find(|p| p.id == id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| s.models.first().map(|m| m.0.clone())),
-        GeneratorKind::Area(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
-        GeneratorKind::Line(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Scatter(s) => s.preset.and_then(|id| app.object_preset(id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| s.models.first().map(|m| m.0.clone())),
+        GeneratorKind::Area(g) => first_of(&g.objects),
+        GeneratorKind::Line(g) => first_of(&g.objects),
         GeneratorKind::Settlement(s) => s.buildings.first().cloned(),
-        GeneratorKind::Fence(g) => g.preset.and_then(|id| app.library.objects.iter().find(|p| p.id == id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| Some(g.model.clone()).filter(|m| !m.is_empty())),
+        GeneratorKind::Fence(g) => g.preset.and_then(|id| app.object_preset(id)).and_then(|p| p.items.first().map(|m| m.0.clone())).or_else(|| Some(g.model.clone()).filter(|m| !m.is_empty())),
         GeneratorKind::PowerLine(g) => g.poles.first().and_then(|p| app.assets.resolve(&p.name).map(str::to_string)),
-        GeneratorKind::Cliffs(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
-        GeneratorKind::Coast(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
-        GeneratorKind::Fields(g) => g.objects.first_model(&app.library.objects).map(str::to_string),
-        GeneratorKind::Roadside(g) => g.plants.first_model(&app.library.objects).map(str::to_string),
-        GeneratorKind::Wrecks(g) => g.wrecks.first_model(&app.library.objects).map(str::to_string),
-        GeneratorKind::Dressing(g) => g.residential.first_model(&app.library.objects).map(str::to_string),
+        GeneratorKind::Cliffs(g) => first_of(&g.objects),
+        GeneratorKind::Coast(g) => first_of(&g.objects),
+        GeneratorKind::Fields(g) => first_of(&g.objects),
+        GeneratorKind::Roadside(g) => first_of(&g.plants),
+        GeneratorKind::Wrecks(g) => first_of(&g.wrecks),
+        GeneratorKind::Dressing(g) => first_of(&g.residential),
         _ => None,
     };
     match model {
@@ -1249,9 +1270,13 @@ fn unused_name(base: &str, taken: impl Fn(&str) -> bool) -> String {
 }
 
 pub(crate) fn duplicate_object_preset(app: &mut App, id: u64) {
-    let Some(mut p) = app.library.objects.iter().find(|p| p.id == id).cloned() else { return };
+    let Some(mut p) = app.object_preset(id).cloned() else { return };
+    let base = app.object_preset_name(&p);
+    if p.is_built_in() {
+        p.folder.clear();
+    }
     p.id = new_id();
-    p.name = unused_name(&p.name, |n| app.library.objects.iter().any(|x| x.name == n));
+    p.name = unused_name(&base, |n| app.library.objects.iter().any(|x| x.name == n));
     app.edit_object = Some(p.id);
     app.edit_forest = None;
     app.library.objects.push(p);
@@ -1331,6 +1356,20 @@ fn forest_preset_details(app: &mut App, ui: &mut egui::Ui, name: &str) {
 }
 
 fn object_preset_details(app: &mut App, ui: &mut egui::Ui, id: u64) {
+    if let Some(p) = app.built_in_objects.iter().find(|p| p.id == id).cloned() {
+        ui.strong(t(&p.name));
+        ui.weak(t("A built-in preset. Duplicate it to make your own version."));
+        ui.label(format!("{}: {:.2} – {:.2}", t("Scale"), p.scale_min, p.scale_max));
+        ui.label(format!("{}: {}", t("Random rotation"), if p.random_yaw { t("Yes") } else { t("No") }));
+        ui.label(format!("{}: {}", t("Align to slope"), if p.align { t("Yes") } else { t("No") }));
+        let total: f32 = p.items.iter().map(|(_, w)| *w).sum::<f32>().max(1e-6);
+        for (m, w) in &p.items {
+            let short = m.rsplit('\\').next().unwrap_or(m);
+            ui.label(format!("{w:.2}  ({:.0}%)  {short}", *w / total * 100.0)).on_hover_text(m.as_str());
+        }
+        if ui.button(t("Duplicate")).clicked() { duplicate_object_preset(app, id); }
+        return;
+    }
     if ui.button(t("Duplicate")).clicked() { duplicate_object_preset(app, id); return; }
     let selected = app.place.model.clone();
     let Some(p) = app.library.objects.iter_mut().find(|p| p.id == id) else { app.edit_object = None; return };
@@ -1761,7 +1800,7 @@ pub fn run_generator(app: &mut App, id: u64) {
     let mut lite = doc.world.lite();
     let db = app.db.clone();
     let assets = app.assets.clone();
-    let presets = app.library.objects.clone();
+    let presets = app.all_object_presets();
     let library_forest = app.library.all_forest_presets();
     let world = &doc.world;
     let polygons = target_shapes(world, &g.target, ShapeKind::Polygon);
@@ -2077,7 +2116,7 @@ fn run_dressing(app: &mut App, id: u64, label: String, kind: GeneratorKind, targ
     let world = &doc.world;
     let mut lite = world.lite();
     let db = app.db.clone();
-    let presets = app.library.objects.clone();
+    let presets = app.all_object_presets();
     match kind {
         GeneratorKind::Wrecks(mut g) => {
             g.wrecks = g.wrecks.resolved(&presets);
@@ -2310,7 +2349,7 @@ pub fn take_sample(app: &mut App, x: f32, z: f32) {
 
 /// A model of an object preset chosen by weight, with the preset's placement options.
 pub fn pick_from_preset(app: &mut App, id: u64, seed: u32) -> Option<(String, (bool, bool, f32, f32))> {
-    let p = app.library.objects.iter().find(|p| p.id == id).cloned()?;
+    let p = app.object_preset(id).cloned()?;
     let total: f32 = p.items.iter().map(|i| i.1).sum();
     if p.items.is_empty() || total <= 0.0 {
         app.warn(t("This preset has no models yet"));

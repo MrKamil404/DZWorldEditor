@@ -69,7 +69,7 @@ pub enum Source {
 fn categories(g: Group) -> &'static [&'static str] {
     match g {
         Group::BuiltInGenerators => &["Terrain", "Surfaces and vegetation", "Objects in areas", "Objects along lines", "Water", "Landscape"],
-        Group::BuiltInPresets => &["Forests", "Roads"],
+        Group::BuiltInPresets => &["Forests", "Roads", "Walls and fences", "Rocks and stones", "Wrecks", "Props and debris", "Street and roadside"],
         Group::BuiltInModifiers => &["Levelling", "Raise and lower", "Fill and cut", "Terrain stamps"],
         _ => &[],
     }
@@ -114,6 +114,14 @@ pub fn library_source_of(home: &str, root: &str) -> Source {
 /// the built-in presets for the others.
 pub fn forest_source(own: bool) -> Source {
     if own { Source::Group(Group::LibraryPresets) } else { Source::Category(Group::BuiltInPresets, 0) }
+}
+
+/// Where a built-in object preset of category `cat` shows in the browser.
+pub fn built_in_object_source(cat: &str) -> Source {
+    match dz_core::library::BUILT_IN_OBJECT_CATEGORIES.iter().position(|c| *c == cat) {
+        Some(i) => Source::Category(Group::BuiltInPresets, 2 + i),
+        None => Source::Group(Group::BuiltInPresets),
+    }
 }
 
 /// The source showing a folder of the library: one of its groups or a folder of its own.
@@ -603,7 +611,7 @@ pub fn forest_models(app: &App, name: &str) -> Vec<String> {
 fn models_of(app: &App, pick: &Pick) -> Vec<String> {
     match pick {
         Pick::Model(m) => vec![m.clone()],
-        Pick::Preset(id) => app.library.objects.iter().find(|p| p.id == *id).map(|p| p.items.iter().map(|i| dz_core::objects::ObjectStore::normalize_path(&i.0)).collect()).unwrap_or_default(),
+        Pick::Preset(id) => app.object_preset(*id).map(|p| p.items.iter().map(|i| dz_core::objects::ObjectStore::normalize_path(&i.0)).collect()).unwrap_or_default(),
         Pick::Forest(n) => forest_models(app, n),
         Pick::Road(f) => crate::library_ui::road_model(app, f).into_iter().collect(),
         Pick::Generator(_) | Pick::Modifier(_) => Vec::new(),
@@ -621,16 +629,17 @@ fn generator(app: &App, id: u64) -> Option<&dz_core::library::GeneratorPreset> {
 fn is_locked(app: &App, pick: &Pick) -> bool {
     match pick {
         Pick::Generator(id) => app.built_in.iter().any(|g| g.id == *id),
+        Pick::Preset(id) => app.built_in_objects.iter().any(|p| p.id == *id),
         Pick::Forest(n) => !app.library.forest_presets.iter().any(|p| p.name == *n),
         Pick::Road(_) | Pick::Modifier(_) => true,
-        Pick::Model(_) | Pick::Preset(_) | Pick::Prefab(_) => false,
+        Pick::Model(_) | Pick::Prefab(_) => false,
     }
 }
 
 fn name_of(app: &App, pick: &Pick) -> String {
     match pick {
         Pick::Model(m) => m.rsplit('\\').next().unwrap_or(m).trim_end_matches(".p3d").to_string(),
-        Pick::Preset(id) => app.library.objects.iter().find(|p| p.id == *id).map(|p| p.name.clone()).unwrap_or_default(),
+        Pick::Preset(id) => app.object_preset(*id).map(|p| app.object_preset_name(p)).unwrap_or_default(),
         Pick::Generator(id) => generator(app, *id).map(|g| if g.folder == BUILT_IN { t(&g.name) } else { g.name.clone() }).unwrap_or_default(),
         Pick::Forest(n) | Pick::Road(n) => n.clone(),
         Pick::Modifier(i) => t(MODIFIERS[*i].name),
@@ -740,8 +749,8 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
                     }
                 }
                 for id in &f.presets {
-                    let name = app.library.objects.iter().find(|p| p.id == *id).map(|p| p.name.as_str());
-                    if name.is_some_and(named) && seen.insert(Pick::Preset(*id)) {
+                    let name = app.object_preset(*id).map(|p| app.object_preset_name(p));
+                    if name.as_deref().is_some_and(named) && seen.insert(Pick::Preset(*id)) {
                         out.push(Item::Asset(Pick::Preset(*id)));
                     }
                 }
@@ -767,6 +776,7 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
                     let own: Vec<&str> = app.library.forest_presets.iter().map(|p| p.name.as_str()).collect();
                     out.extend(dz_core::gen::forest_preset_names().into_iter().filter(|n| !own.contains(&n.as_str()) && named(n)).map(|n| Item::Asset(Pick::Forest(n))));
                     out.extend(app.road_families.iter().filter(|f| named(f)).map(|f| Item::Asset(Pick::Road(f.clone()))));
+                    out.extend(app.built_in_objects.iter().filter(|p| named(&t(&p.name))).map(|p| Item::Asset(Pick::Preset(p.id))));
                 }
                 Group::LibraryPrefabs => {
                     if !searching { out.extend(library_subfolders(app, PREFABS_ROOT)); }
@@ -805,7 +815,12 @@ fn items_of(app: &App, source: &Source, tree: &DriveTree) -> Vec<Item> {
                 let own: Vec<&str> = app.library.forest_presets.iter().map(|p| p.name.as_str()).collect();
                 out.extend(dz_core::gen::forest_preset_names().into_iter().filter(|n| !own.contains(&n.as_str()) && named(n)).map(|n| Item::Asset(Pick::Forest(n))));
             }
-            Group::BuiltInPresets => out.extend(app.road_families.iter().filter(|f| named(f)).map(|f| Item::Asset(Pick::Road(f.clone())))),
+            Group::BuiltInPresets if *c == 1 => out.extend(app.road_families.iter().filter(|f| named(f)).map(|f| Item::Asset(Pick::Road(f.clone())))),
+            Group::BuiltInPresets => {
+                if let Some(&cat) = dz_core::library::BUILT_IN_OBJECT_CATEGORIES.get(*c - 2) {
+                    out.extend(app.built_in_objects.iter().filter(|p| p.built_in_category() == Some(cat) && named(&t(&p.name))).map(|p| Item::Asset(Pick::Preset(p.id))));
+                }
+            }
             Group::BuiltInModifiers => out.extend((0..MODIFIERS.len()).filter(|i| modifier_category(*i) == *c && named(&t(MODIFIERS[*i].name))).map(|i| Item::Asset(Pick::Modifier(i)))),
             _ => {}
         },
@@ -2200,7 +2215,7 @@ fn details(app: &mut App, ui: &mut egui::Ui, layers: &[(String, [u8; 3])], acts:
             let mut rows = Vec::new();
             match one {
                 Pick::Preset(id) => {
-                    if let Some(p) = app.library.objects.iter().find(|p| p.id == *id) {
+                    if let Some(p) = app.object_preset(*id) {
                         rows.push((t("Kind"), t("Object preset")));
                         rows.push((t("Scale"), format!("{:.2} – {:.2}", p.scale_min, p.scale_max)));
                         rows.push((t("Random rotation"), if p.random_yaw { t("Yes") } else { t("No") }));

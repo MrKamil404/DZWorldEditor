@@ -618,6 +618,7 @@ pub struct App {
     pub grass_under_objects: bool,
     pub library: dz_core::library::Library,
     pub built_in: Vec<dz_core::library::GeneratorPreset>,
+    pub built_in_objects: Vec<dz_core::library::ObjectPreset>,
     /// Generator of the project shown in the details panel.
     pub selected_generator: Option<u64>,
     /// Library entries being edited.
@@ -711,7 +712,7 @@ impl App {
             top_center: [0.0, 0.0], top_mpp: 8.0, view3: Default::default(), view2: Default::default(), view_mini: Default::default(), road_joins: Default::default(),
             impostor_fits: HashMap::new(), sat: Default::default(), mask_tool: Default::default(), applied_graphics: (0, 0), detail_center: [f32::MIN, f32::MIN],
             selection: BTreeSet::new(), hidden_objects: std::collections::HashSet::new(), selected_modifier: None, selection_rev: 0, outliner_rev: 0, drag: None, box_select: None, lasso_points: Vec::new(), modifiers_now: egui::Modifiers::NONE, cursor_ground: None, shot_during_task: None, last_copy: None, minimap_zoom: 1.0, minimap_center: [f32::NAN, f32::NAN], minimap_hover: false, minimap_camera: [0.0; 3], minimap_panned: false, grading_edit: None, layer_colour_edit: None, replace_keep_ground: true, fullscreen: false, edge_open: [false; 4], detached: false,
-            task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, outliner_rename: None, tile_limit: TileLimitState::default(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
+            task: None, gen_queue: Default::default(), route_queue: Default::default(), route_tally: None, log: Vec::new(), log_seen: 0, status: String::new(), dialog: Dialog::None, filter: String::new(), browser: Default::default(), key_capture: None, focus_search: false, pick_opening: None, pick_direction: false, team_seen: 0, team_warned: Default::default(), row_seed: 1, outliner_filter: String::new(), outliner_fold: None, outliner_unfolded: true, outliner_cache: None, layer_rename: None, shape_rename: None, outliner_rename: None, tile_limit: TileLimitState::default(), pick_meshes: HashMap::new(), shape: ShapePanel::default(), show_shapes: true, show_keypoints: true, grass_under_objects: false, library: dz_core::library::Library::load(&crate::library_ui::library_path()), built_in: dz_core::library::built_in_generators(), built_in_objects: dz_core::library::built_in_objects(), selected_generator: None, edit_generator: None, edit_object: None, edit_prefab: None, edit_forest: None, preset_folder: None, sampling: None, lib_dirty: false, lib_thumbs: HashMap::new(), place_stroke: Vec::new(), place_counter: 0, place_zone: Vec::new(), place_carry: 0.0, shape_open: BTreeSet::new(),
             last_autosave: Instant::now(), saved_at: None, last_backup: Instant::now(), backup_revision: 0, backup_job: None, session: None, close_confirmed: false, frame_ms: 0.0, autoscript: None, shot_path: None, synthetic: Vec::new(), perf: None, mission: Default::default(), loot_proto: Default::default(), team: Default::default(),
             settings,
         };
@@ -757,6 +758,23 @@ impl App {
         self.bottom = BottomTab::Content;
     }
 
+    /// Finds an object preset by id in the user library or the built-in ones.
+    pub fn object_preset(&self, id: u64) -> Option<&dz_core::library::ObjectPreset> {
+        self.library.objects.iter().find(|p| p.id == id).or_else(|| self.built_in_objects.iter().find(|p| p.id == id))
+    }
+
+    /// User object presets followed by the built-in ones.
+    pub fn all_object_presets(&self) -> Vec<dz_core::library::ObjectPreset> {
+        let mut out = self.library.objects.clone();
+        out.extend(self.built_in_objects.iter().cloned());
+        out
+    }
+
+    /// Display name of an object preset (translated for built-in presets).
+    pub fn object_preset_name(&self, p: &dz_core::library::ObjectPreset) -> String {
+        if p.is_built_in() { crate::i18n::t(&p.name) } else { p.name.clone() }
+    }
+
     /// Opens the asset browser where a field of a panel asked it to (see `slots`): at a model,
     /// an object preset or a forest preset, selected.
     pub fn reveal_asked(&mut self, ctx: &egui::Context) {
@@ -765,9 +783,14 @@ impl App {
         match &pick {
             Pick::Model(m) => self.show_in_browser(&m.clone()),
             Pick::Preset(id) => {
-                let Some(folder) = self.library.objects.iter().find(|p| p.id == *id).map(|p| p.folder.clone()) else { return };
-                let home = self.library.library_home(&folder, dz_core::library::LibraryItem::Preset).to_string();
-                self.browser.show_pick(crate::asset_browser::library_source_of(&home, dz_core::library::PRESETS_ROOT), pick);
+                let Some(p) = self.object_preset(*id).cloned() else { return };
+                let source = if let Some(cat) = p.built_in_category() {
+                    crate::asset_browser::built_in_object_source(cat)
+                } else {
+                    let home = self.library.library_home(&p.folder, dz_core::library::LibraryItem::Preset).to_string();
+                    crate::asset_browser::library_source_of(&home, dz_core::library::PRESETS_ROOT)
+                };
+                self.browser.show_pick(source, pick);
                 self.bottom = BottomTab::Content;
             }
             Pick::Forest(n) => {
@@ -2515,7 +2538,7 @@ impl App {
     /// The models of the row's preset, with their weights, as far as they are in the project;
     /// `None` when the copies keep the models of the selection.
     pub fn row_choices(&self) -> Option<Vec<(u32, f32)>> {
-        let preset = self.library.objects.iter().find(|p| Some(p.id) == self.settings.row_preset)?;
+        let preset = self.settings.row_preset.and_then(|id| self.object_preset(id))?;
         let w = &self.doc.as_ref()?.world;
         let list: Vec<(u32, f32)> = preset.items.iter().filter_map(|(m, k)| Some((w.objects.index_of(m)?, *k))).collect();
         (!list.is_empty()).then_some(list)
@@ -2523,9 +2546,9 @@ impl App {
 
     /// Puts the models of the row's preset into the project, so copies and their preview can use them.
     pub fn intern_row_preset(&mut self) {
-        let Some(preset) = self.library.objects.iter().find(|p| Some(p.id) == self.settings.row_preset) else { return };
+        let Some(items) = self.settings.row_preset.and_then(|id| self.object_preset(id)).map(|p| p.items.clone()) else { return };
         let Some(doc) = self.doc.as_mut() else { return };
-        for (m, _) in &preset.items {
+        for (m, _) in &items {
             doc.world.objects.intern(m);
         }
     }

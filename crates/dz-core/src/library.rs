@@ -647,6 +647,16 @@ pub struct ObjectPreset {
     pub align: bool,
 }
 
+impl ObjectPreset {
+    pub fn is_built_in(&self) -> bool {
+        self.folder == BUILT_IN || self.folder.starts_with("Built-in/")
+    }
+
+    pub fn built_in_category(&self) -> Option<&str> {
+        self.folder.strip_prefix("Built-in/")
+    }
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Library {
@@ -787,6 +797,18 @@ pub fn model_key(path: &str) -> String {
 }
 
 impl Library {
+    /// User object presets followed by the built-in ones.
+    pub fn all_objects(&self) -> Vec<ObjectPreset> {
+        let mut out = self.objects.clone();
+        out.extend(built_in_objects());
+        out
+    }
+
+    /// Finds an object preset by id in the user library or the built-in ones.
+    pub fn find_object(&self, id: u64) -> Option<ObjectPreset> {
+        self.objects.iter().find(|p| p.id == id).cloned().or_else(|| built_in_objects().into_iter().find(|p| p.id == id))
+    }
+
     /// Everything in the library a forest can be planted with.
     pub fn all_forest_presets(&self) -> Vec<UserPreset> {
         let mut out = self.forest_presets.clone();
@@ -1323,6 +1345,369 @@ pub fn built_in_generators() -> Vec<GeneratorPreset> {
     ]
 }
 
+/// Categories of the built-in object presets, in the order shown in the Content Browser.
+pub const BUILT_IN_OBJECT_CATEGORIES: &[&str] = &[
+    "Walls and fences",
+    "Rocks and stones",
+    "Wrecks",
+    "Props and debris",
+    "Street and roadside",
+];
+
+/// The object presets every installation starts with; they cannot be changed, only duplicated.
+///
+/// Damaged and holed wall/fence variants carry low weights (~5–8% total) so rows and fences
+/// stay mostly intact with only occasional breaks.
+pub fn built_in_objects() -> Vec<ObjectPreset> {
+    let make = |id, cat: &str, name: &str, items: &[(&str, f32)], scale_min, scale_max, random_yaw, align| ObjectPreset {
+        id,
+        name: name.to_string(),
+        folder: format!("{BUILT_IN}/{cat}"),
+        items: items.iter().map(|(m, w)| ((*m).to_string(), *w)).collect(),
+        scale_min,
+        scale_max,
+        random_yaw,
+        align,
+    };
+    let wall = |id, name: &str, items: &[(&str, f32)]| make(id, "Walls and fences", name, items, 1.0, 1.0, false, false);
+    vec![
+        // Walls and fences (damaged/hole weights kept low: ~4–8% of total)
+        wall(1001, "Wooden fence (village)", &[
+            (r"dz\structures\walls\Wall_Wood2_5.p3d", 12.0),
+            (r"dz\structures\walls\Wall_Wood2_5_D.p3d", 0.8),
+        ]),
+        wall(1002, "Wooden plank fence", &[
+            (r"dz\structures\walls\Wall_Wood1_5.p3d", 6.0),
+            (r"dz\structures\walls\Wall_Wood1_5_2.p3d", 6.0),
+            (r"dz\structures\walls\Wall_Wood1D_5.p3d", 0.5),
+            (r"dz\structures\walls\Wall_Wood1D_5_2.p3d", 0.5),
+        ]),
+        wall(1003, "Picket fence (village)", &[
+            (r"dz\structures\walls\Wall_VilVar2_4.p3d", 6.0),
+            (r"dz\structures\walls\Wall_VilVar2_4_2.p3d", 6.0),
+            (r"dz\structures\walls\Wall_VilVar2_4_D.p3d", 0.8),
+        ]),
+        wall(1004, "Wire fence (low)", &[
+            (r"dz\structures\walls\Wall_Fen1_5.p3d", 6.0),
+            (r"dz\structures\walls\Wall_Fen1_5_2.p3d", 6.0),
+            (r"dz\structures\walls\Wall_Fen1_5_Hole.p3d", 0.5),
+        ]),
+        wall(1005, "Wire mesh fence (tall)", &[
+            (r"dz\structures\walls\Wall_Fen2_6.p3d", 12.0),
+            (r"dz\structures\walls\Wall_Fen2_6_Hole.p3d", 0.5),
+        ]),
+        wall(1006, "Industrial chain-link fence", &[
+            (r"dz\structures\walls\Wall_IndFnc_3.p3d", 12.0),
+            (r"dz\structures\walls\Wall_IndFnc_3_D.p3d", 0.7),
+            (r"dz\structures\walls\Wall_IndFnc_3_Hole.p3d", 0.4),
+        ]),
+        wall(1007, "Brick wall", &[
+            (r"dz\structures\walls\Wall_CBrk_5.p3d", 12.0),
+            (r"dz\structures\walls\Wall_CBrk_5_D.p3d", 0.8),
+        ]),
+        wall(1008, "Grey concrete wall", &[
+            (r"dz\structures\walls\Wall_CGry_5.p3d", 12.0),
+            (r"dz\structures\walls\Wall_CGry_5_D.p3d", 0.8),
+        ]),
+        wall(1009, "Industrial concrete wall", &[
+            (r"dz\structures\walls\Wall_IndCnc_4.p3d", 12.0),
+            (r"dz\structures\walls\Wall_IndCnc_4_D.p3d", 0.8),
+        ]),
+        wall(1010, "Industrial panel wall", &[
+            (r"dz\structures\walls\Wall_IndVar1_5.p3d", 6.0),
+            (r"dz\structures\walls\Wall_IndVar1_5_2.p3d", 6.0),
+            (r"dz\structures\walls\Wall_IndVar1_5_D.p3d", 0.5),
+            (r"dz\structures\walls\Wall_IndVar1_5_D_2.p3d", 0.5),
+        ]),
+        wall(1011, "Stone wall", &[
+            (r"dz\structures\walls\Wall_Stone.p3d", 12.0),
+            (r"dz\structures\walls\Wall_StoneD.p3d", 0.8),
+        ]),
+        wall(1012, "Wooden fence (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_Fen3_4.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_Fen3_D.p3d", 0.8),
+        ]),
+        wall(1013, "Wooden fence (Sakhal)", &[
+            (r"dz\structures_sakhal\walls\Wall_Wood5_4.p3d", 6.0),
+            (r"dz\structures_sakhal\walls\Wall_Wood5_4_2.p3d", 6.0),
+            (r"dz\structures_sakhal\walls\Wall_Wood5_4_D.p3d", 0.8),
+        ]),
+        // Additional Chernarus walls and fences
+        wall(1101, "Wooden rail fence", &[
+            (r"dz\structures\walls\Wall_FenW_7.p3d", 6.0),
+            (r"dz\structures\walls\Wall_FenW_7_S.p3d", 6.0),
+            (r"dz\structures\walls\Wall_FenW_7_D.p3d", 0.8),
+        ]),
+        wall(1102, "Forest field fence", &[
+            (r"dz\structures\walls\Wall_ForFieldFen_1.p3d", 1.0),
+            (r"dz\structures\walls\Wall_ForFieldFen_2.p3d", 1.0),
+        ]),
+        wall(1103, "Industrial corrugated wall", &[
+            (r"dz\structures\walls\Wall_IndVar2_5.p3d", 12.0),
+            (r"dz\structures\walls\Wall_IndVar2_5_D.p3d", 0.8),
+        ]),
+        wall(1104, "Tin fence (4 m)", &[
+            (r"dz\structures\walls\Wall_Tin_4.p3d", 1.0),
+            (r"dz\structures\walls\Wall_Tin_4_2.p3d", 1.0),
+        ]),
+        wall(1105, "Commercial tin fence (9 m)", &[
+            (r"dz\structures\walls\Wall_TinCom_9.p3d", 1.0),
+            (r"dz\structures\walls\Wall_TinCom_9_2.p3d", 1.0),
+        ]),
+        wall(1106, "Wooden farm fence", &[
+            (r"dz\structures\walls\Wall_WoodF_5.p3d", 1.0),
+            (r"dz\structures\walls\Wall_WoodF_5_2.p3d", 1.0),
+        ]),
+        wall(1107, "Wooden village fence (4 m)", &[
+            (r"dz\structures\walls\Wall_WoodVil_4.p3d", 1.0),
+            (r"dz\structures\walls\Wall_WoodVil_4_2.p3d", 1.0),
+        ]),
+        // Additional Livonia walls and fences
+        wall(1108, "Wire fence (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_Fen4_4.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_Fen4_D.p3d", 0.8),
+        ]),
+        wall(1109, "Pasture fence (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_Fen5_10.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_Fen5_10_D.p3d", 0.8),
+        ]),
+        wall(1110, "Forest mesh fence (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_FenForest_5.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_FenForest_5_D.p3d", 0.8),
+        ]),
+        wall(1111, "Concrete slab wall (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_IndCnc3_1_4.p3d", 6.0),
+            (r"dz\structures_bliss\walls\Wall_IndCnc3_2_4.p3d", 6.0),
+            (r"dz\structures_bliss\walls\Wall_IndCnc3_1_D.p3d", 0.5),
+            (r"dz\structures_bliss\walls\Wall_IndCnc3_2_D.p3d", 0.5),
+        ]),
+        wall(1112, "Tall concrete wall (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_IndCnc4_4.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_IndCnc4_D.p3d", 0.8),
+        ]),
+        wall(1113, "Tall concrete wall 8 m (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_IndCnc4_8.p3d", 6.0),
+            (r"dz\structures_bliss\walls\Wall_IndCnc4_8_Graffiti.p3d", 1.5),
+        ]),
+        wall(1114, "Low concrete wall (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_IndCnc4_Low_4.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_IndCnc4_Low_D.p3d", 0.8),
+        ]),
+        wall(1115, "Industrial chain-link fence (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_IndFnc2_3.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_IndFnc2_3_D.p3d", 0.7),
+            (r"dz\structures_bliss\walls\Wall_IndFnc2_3_Hole.p3d", 0.4),
+        ]),
+        wall(1116, "Industrial panel wall (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_IndVar3_5.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_IndVar3_5_D.p3d", 0.8),
+        ]),
+        wall(1117, "Wooden pole fence (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_PoleWall_5_1.p3d", 1.0),
+            (r"dz\structures_bliss\walls\Wall_PoleWall_5_2.p3d", 1.0),
+        ]),
+        wall(1118, "Silage concrete wall (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_SilageWall_5.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_SilageWall_5_D.p3d", 0.8),
+        ]),
+        wall(1119, "Stone wall (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_Stone2.p3d", 12.0),
+            (r"dz\structures_bliss\walls\Wall_Stone2D.p3d", 0.8),
+        ]),
+        wall(1120, "Tin fence (Livonia)", &[
+            (r"dz\structures_bliss\walls\Wall_Tin6_1_4.p3d", 1.0),
+            (r"dz\structures_bliss\walls\Wall_Tin6_2_4.p3d", 1.0),
+        ]),
+        // Additional Sakhal walls and fences
+        wall(1121, "Green picket fence (Sakhal)", &[
+            (r"dz\structures_sakhal\walls\Wall_VilVar2_Green_4.p3d", 6.0),
+            (r"dz\structures_sakhal\walls\Wall_VilVar2_Green_4_2.p3d", 6.0),
+            (r"dz\structures_sakhal\walls\Wall_VilVar2_Green_4_D.p3d", 0.8),
+        ]),
+        wall(1122, "Red picket fence (Sakhal)", &[
+            (r"dz\structures_sakhal\walls\Wall_VilVar2_Red_4.p3d", 6.0),
+            (r"dz\structures_sakhal\walls\Wall_VilVar2_Red_4_2.p3d", 6.0),
+            (r"dz\structures_sakhal\walls\Wall_VilVar2_Red_4_D.p3d", 0.8),
+        ]),
+        wall(1123, "Low blue tin fence (Sakhal)", &[
+            (r"dz\structures_sakhal\walls\Wall_Tin8_LowBlue_4.p3d", 12.0),
+            (r"dz\structures_sakhal\walls\Wall_Tin8_LowBlue_4_D.p3d", 0.8),
+        ]),
+        wall(1124, "Low green tin fence (Sakhal)", &[
+            (r"dz\structures_sakhal\walls\Wall_Tin8_LowGreen_4.p3d", 12.0),
+            (r"dz\structures_sakhal\walls\Wall_Tin8_LowGreen_4_D.p3d", 0.8),
+        ]),
+        wall(1125, "Low red tin fence (Sakhal)", &[
+            (r"dz\structures_sakhal\walls\Wall_Tin8_LowRed_4.p3d", 12.0),
+            (r"dz\structures_sakhal\walls\Wall_Tin8_LowRed_4_D.p3d", 0.8),
+        ]),
+        wall(1126, "Low rusty tin fence (Sakhal)", &[
+            (r"dz\structures_sakhal\walls\Wall_Tin8_LowRusty_4.p3d", 12.0),
+            (r"dz\structures_sakhal\walls\Wall_Tin8_LowRusty_4_D.p3d", 0.8),
+        ]),
+        // Rocks and stones
+        make(1020, "Rocks and stones", "Stones (Chernarus)", &[
+            (r"dz\rocks\stone1.p3d", 1.0),
+            (r"dz\rocks\stone2.p3d", 1.0),
+            (r"dz\rocks\stone3.p3d", 1.0),
+            (r"dz\rocks\stone4.p3d", 1.0),
+            (r"dz\rocks\stone5.p3d", 1.0),
+        ], 0.75, 1.3, true, true),
+        make(1021, "Rocks and stones", "Rocks and boulders (Chernarus)", &[
+            (r"dz\rocks\rock_monolith1.p3d", 1.0),
+            (r"dz\rocks\rock_monolith2.p3d", 1.0),
+            (r"dz\rocks\rock_monolith3.p3d", 1.0),
+            (r"dz\rocks\rock_monolith4.p3d", 1.0),
+            (r"dz\rocks\rock_wallh1.p3d", 1.0),
+            (r"dz\rocks\rock_wallh2.p3d", 1.0),
+            (r"dz\rocks\rock_wallh3.p3d", 1.0),
+            (r"dz\rocks\rock_spike1.p3d", 1.0),
+            (r"dz\rocks\rock_apart1.p3d", 1.0),
+            (r"dz\rocks\rock_apart2.p3d", 1.0),
+        ], 0.8, 1.2, true, false),
+        make(1022, "Rocks and stones", "Mossy stones (Livonia)", &[
+            (r"dz\rocks_bliss\stone6_moss.p3d", 1.0),
+            (r"dz\rocks_bliss\stone7_moss.p3d", 1.0),
+            (r"dz\rocks_bliss\stone8_moss.p3d", 1.0),
+            (r"dz\rocks_bliss\stone9_moss.p3d", 1.0),
+            (r"dz\rocks_bliss\stone10_moss.p3d", 1.0),
+        ], 0.75, 1.3, true, true),
+        make(1023, "Rocks and stones", "Snowy stones (Sakhal)", &[
+            (r"dz\rocks_sakhal\stone6_snow.p3d", 1.0),
+            (r"dz\rocks_sakhal\stone7_snow.p3d", 1.0),
+            (r"dz\rocks_sakhal\stone8_snow.p3d", 1.0),
+            (r"dz\rocks_sakhal\stone9_snow.p3d", 1.0),
+            (r"dz\rocks_sakhal\stone10_snow.p3d", 1.0),
+        ], 0.75, 1.3, true, true),
+        make(1024, "Rocks and stones", "Volcanic rocks (Sakhal)", &[
+            (r"dz\rocks_sakhal\rock_lava_boulder1.p3d", 1.0),
+            (r"dz\rocks_sakhal\rock_lava_boulder2.p3d", 1.0),
+            (r"dz\rocks_sakhal\rock_lava_boulder3.p3d", 1.0),
+            (r"dz\rocks_sakhal\rock_lava_boulder4.p3d", 1.0),
+            (r"dz\rocks_sakhal\stone14_lava.p3d", 1.0),
+            (r"dz\rocks_sakhal\stone15_lava.p3d", 1.0),
+            (r"dz\rocks_sakhal\stones_lava_cluster1.p3d", 1.0),
+            (r"dz\rocks_sakhal\stones_lava_cluster2.p3d", 1.0),
+        ], 0.8, 1.25, true, false),
+        // Wrecks
+        make(1030, "Wrecks", "Civilian car wrecks", &[
+            (r"dz\structures\wrecks\vehicles\wreck_sed01_aban1_black.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_sed01_aban2_white.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_sed02_aban1_grey.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_sed02_aban2_red.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_hb01_aban1_blue.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_hb01_aban2_green.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_hb02_aban1_red.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_offroad02_aban1.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\wreck_truck01_aban1_blue.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Volha_Grey.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Lada_Red.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_S1023_Blue.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_V3S.p3d", 1.0),
+        ], 1.0, 1.0, false, true),
+        make(1031, "Wrecks", "Military vehicle wrecks", &[
+            (r"dz\structures\wrecks\vehicles\Wreck_BMP1.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_BMP2.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_BRDM.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_HMMWV.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_MTVR_Cargo.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Stryker.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Uaz.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Ural.p3d", 1.0),
+        ], 1.0, 1.0, false, true),
+        make(1032, "Wrecks", "Farm and construction wrecks", &[
+            (r"dz\structures\wrecks\vehicles\Wreck_Baler.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Bulldozer.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Digger.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Harverster.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_PowGen.p3d", 1.0),
+            (r"dz\structures\wrecks\vehicles\Wreck_Trailer_Flat.p3d", 1.0),
+        ], 1.0, 1.0, false, true),
+        // Props and debris
+        make(1040, "Props and debris", "Garbage and rubble", &[
+            (r"dz\structures\residential\misc\Garbage_Pile1.p3d", 1.0),
+            (r"dz\structures\residential\misc\Garbage_Pile2.p3d", 1.0),
+            (r"dz\structures\residential\misc\Garbage_Pile3.p3d", 1.0),
+            (r"dz\structures\residential\misc\Garbage_Pile4.p3d", 1.0),
+            (r"dz\structures\residential\misc\Garbage_Pile5.p3d", 1.0),
+            (r"dz\structures\residential\misc\Garbage_Pile6.p3d", 1.0),
+            (r"dz\structures\residential\misc\Garbage_Bin.p3d", 0.6),
+            (r"dz\structures\residential\misc\Garbage_Container.p3d", 0.4),
+        ], 0.95, 1.05, true, true),
+        make(1041, "Props and debris", "Industrial pallets and barrels", &[
+            (r"dz\structures\industrial\misc\misc_barrelempty.p3d", 1.0),
+            (r"dz\structures\industrial\misc\misc_pallet.p3d", 1.0),
+            (r"dz\structures\industrial\misc\misc_pallets1.p3d", 1.0),
+            (r"dz\structures\industrial\misc\misc_pallets2.p3d", 1.0),
+            (r"dz\structures\industrial\misc\misc_tirepile.p3d", 1.0),
+            (r"dz\structures\industrial\misc\misc_tire_big.p3d", 0.7),
+            (r"dz\structures\industrial\misc\misc_boardspack1.p3d", 1.0),
+            (r"dz\structures\industrial\misc\misc_coil.p3d", 0.7),
+            (r"dz\structures\industrial\misc\misc_timbers1.p3d", 1.0),
+        ], 0.95, 1.05, true, true),
+        make(1042, "Props and debris", "Yard and woodpiles", &[
+            (r"dz\structures\residential\misc\Misc_WoodPile1.p3d", 1.5),
+            (r"dz\structures\residential\misc\Misc_WoodPile2.p3d", 1.5),
+            (r"dz\structures\residential\misc\Misc_WoodReserve.p3d", 1.0),
+            (r"dz\structures\residential\misc\Misc_BoxWooden.p3d", 1.0),
+            (r"dz\structures\residential\misc\Misc_DogHouse.p3d", 0.6),
+            (r"dz\structures\residential\misc\Misc_Hutch.p3d", 0.6),
+            (r"dz\structures\residential\misc\Misc_WoodBlock.p3d", 1.0),
+            (r"dz\structures\residential\misc\Misc_WoodTable_Outdoor.p3d", 0.7),
+        ], 0.95, 1.05, true, true),
+        make(1043, "Props and debris", "Hay bales and farm props", &[
+            (r"dz\structures\industrial\misc\misc_haybale.p3d", 4.0),
+            (r"dz\structures\industrial\misc\misc_haybale_decayed.p3d", 1.0),
+            (r"dz\structures\residential\misc\Misc_HayStack.p3d", 1.2),
+            (r"dz\structures\residential\misc\Misc_FeedRack.p3d", 0.8),
+            (r"dz\structures\industrial\misc\misc_timbers_log1.p3d", 1.0),
+            (r"dz\structures\industrial\misc\misc_timbers_log2.p3d", 1.0),
+        ], 0.95, 1.05, true, true),
+        make(1044, "Props and debris", "Military crates and sandbags", &[
+            (r"dz\structures\military\misc\misc_bagfence_3m.p3d", 1.0),
+            (r"dz\structures\military\misc\misc_supplybox1.p3d", 1.0),
+            (r"dz\structures\military\misc\misc_supplybox2.p3d", 1.0),
+            (r"dz\structures\military\misc\misc_supplybox3.p3d", 1.0),
+            (r"dz\structures\military\misc\misc_concreteblock1.p3d", 1.0),
+            (r"dz\structures\military\misc\misc_cover_small.p3d", 0.8),
+        ], 1.0, 1.0, true, true),
+        // Street and roadside
+        make(1050, "Street and roadside", "Street lamps", &[
+            (r"dz\structures\residential\misc\Lamp_City1.p3d", 1.0),
+            (r"dz\structures\residential\misc\Lamp_City2.p3d", 1.0),
+            (r"dz\structures\residential\misc\Lamp_City3.p3d", 1.0),
+        ], 1.0, 1.0, false, false),
+        make(1051, "Street and roadside", "Traffic signs (warning)", &[
+            (r"dz\structures\signs\traffic\sign_danger.p3d", 1.0),
+            (r"dz\structures\signs\traffic\sign_deer.p3d", 1.0),
+            (r"dz\structures\signs\traffic\sign_cow.p3d", 1.0),
+            (r"dz\structures\signs\traffic\sign_attention.p3d", 1.0),
+            (r"dz\structures\signs\traffic\sign_downHill.p3d", 1.0),
+            (r"dz\structures\signs\traffic\sign_upHill.p3d", 1.0),
+            (r"dz\structures\signs\traffic\sign_badRoadside.p3d", 1.0),
+        ], 1.0, 1.0, false, false),
+        make(1052, "Street and roadside", "Park benches", &[
+            (r"dz\structures\residential\misc\Misc_Bench1.p3d", 1.0),
+            (r"dz\structures\residential\misc\Misc_Bench2.p3d", 1.0),
+            (r"dz\structures\residential\misc\Misc_Bench3.p3d", 1.0),
+            (r"dz\structures\residential\misc\Misc_Bench4.p3d", 1.0),
+            (r"dz\structures\residential\misc\Misc_Bench5.p3d", 1.0),
+        ], 1.0, 1.0, false, false),
+        make(1053, "Street and roadside", "Roadside bushes", &[
+            (r"dz\plants\bush\b_corylusAvellana_1f.p3d", 1.0),
+            (r"dz\plants\bush\b_prunusSpinosa_1s.p3d", 1.0),
+            (r"dz\plants\bush\b_rosaCanina_1s.p3d", 1.0),
+            (r"dz\plants\bush\b_sambucusNigra_1s.p3d", 1.0),
+            (r"dz\plants\bush\b_crataegusLaevigata_1s.p3d", 1.0),
+        ], 0.85, 1.2, true, false),
+        make(1054, "Street and roadside", "Shore reeds and shrubs", &[
+            (r"dz\plants\clutter\p_Phragmites.p3d", 3.0),
+            (r"dz\plants\bush\b_betulaHumilis_1s.p3d", 1.5),
+            (r"dz\plants\bush\b_corylusAvellana_2s.p3d", 1.0),
+        ], 0.85, 1.25, true, false),
+    ]
+}
+
 /// Where a generator in the project works.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum GenTarget {
@@ -1501,5 +1886,51 @@ mod tests {
         assert_eq!(g.poles[0].joints.len(), 2);
         assert!(g.poles[0].joints[0].incoming && !g.poles[0].joints[0].outgoing);
         assert!(g.wires[0].main && g.wires[0].length == 50.0 && g.wires[0].height == -0.4);
+    }
+
+    #[test]
+    fn built_in_objects_are_valid_and_damaged_fences_are_rare() {
+        let gens: std::collections::HashSet<u64> = built_in_generators().iter().map(|g| g.id).collect();
+        let objs = built_in_objects();
+        assert!(!objs.is_empty());
+        let mut seen = std::collections::HashSet::new();
+        for p in &objs {
+            assert!(seen.insert(p.id), "duplicate built-in object id {}", p.id);
+            assert!(!gens.contains(&p.id), "id {} collides with built-in generator", p.id);
+            assert!(p.is_built_in());
+            let cat = p.built_in_category().expect("built-in object has a category");
+            assert!(BUILT_IN_OBJECT_CATEGORIES.contains(&cat), "unknown category {cat}");
+            assert!(!p.items.is_empty(), "empty preset {}", p.name);
+            assert!(p.scale_min > 0.0 && p.scale_max >= p.scale_min, "bad scale in {}", p.name);
+            for (m, w) in &p.items {
+                assert!(!m.is_empty() && *w > 0.0, "bad item in {}", p.name);
+            }
+            if cat == "Walls and fences" {
+                let total: f32 = p.items.iter().map(|(_, w)| *w).sum();
+                let broken: f32 = p.items.iter().filter(|(m, _)| {
+                    let s = m.to_ascii_lowercase();
+                    s.contains("_d.") || s.contains("_d_") || s.contains("1d_") || s.contains("stoned.") || s.contains("stone2d.") || s.contains("hole")
+                }).map(|(_, w)| *w).sum();
+                assert!(broken / total <= 0.12, "damaged share too high in {}: {:.1}%", p.name, broken / total * 100.0);
+            }
+        }
+        // Built-in presets resolve through Library::all_objects and Library::find_object.
+        let lib = Library::default();
+        let first = &objs[0];
+        assert_eq!(lib.find_object(first.id).as_ref(), Some(first));
+        let set = ObjectSet { preset: Some(first.id), ..Default::default() };
+        let resolved = set.resolved(&lib.all_objects());
+        assert_eq!(resolved.models, first.items);
+
+        // When P:\dz is mounted locally, every built-in model path must exist on disk.
+        let drive = std::path::Path::new(r"P:\dz");
+        if drive.is_dir() {
+            for p in &objs {
+                for (m, _) in &p.items {
+                    let full = std::path::Path::new(r"P:\").join(m);
+                    assert!(full.is_file(), "missing model in {}: {}", p.name, full.display());
+                }
+            }
+        }
     }
 }

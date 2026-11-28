@@ -182,7 +182,12 @@ mod tests {
     #[test]
     fn names_from_the_core_are_translated() {
         let raw: HashMap<String, HashMap<String, String>> = serde_json::from_str(CATALOG).unwrap();
-        let names = dz_core::real_terrain::SHAPE_CLASSES.iter().map(|c| c.name).chain(dz_core::satgen::NATURAL_NAMES).chain(dz_core::satgen::CLASS_NAMES);
+        let built_in_objs = dz_core::library::built_in_objects();
+        let names = dz_core::real_terrain::SHAPE_CLASSES.iter().map(|c| c.name)
+            .chain(dz_core::satgen::NATURAL_NAMES)
+            .chain(dz_core::satgen::CLASS_NAMES)
+            .chain(dz_core::library::BUILT_IN_OBJECT_CATEGORIES.iter().copied())
+            .chain(built_in_objs.iter().map(|p| p.name.as_str()));
         let missing: Vec<&str> = names.filter(|n| !raw.get(*n).is_some_and(|m| m.contains_key("pl") && m.contains_key("de"))).collect();
         assert!(missing.is_empty(), "untranslated: {missing:?}");
     }

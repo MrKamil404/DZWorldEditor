@@ -11194,5 +11194,245 @@
  "Visual settings here preview live in the 3D view when Camera / Lighting sources are set to Map config.": {
   "de": "Visuelle Einstellungen hier werden live in der 3D-Ansicht angezeigt, wenn Kamera-/Lichtquellen auf Kartenkonfiguration stehen.",
   "pl": "Ustawienia wizualne stąd widać na żywo w widoku 3D, gdy źródła w menu Kamera / Oświetlenie są ustawione na Konfigurację mapy."
+ },
+ "Rocks and stones": {
+  "de": "Felsen und Steine",
+  "pl": "Skały i kamienie"
+ },
+ "Props and debris": {
+  "de": "Requisiten und Trümmer",
+  "pl": "Rekwizyty i gruz"
+ },
+ "Street and roadside": {
+  "de": "Straße und Straßenrand",
+  "pl": "Ulica i pobocze"
+ },
+ "Wooden fence (village)": {
+  "de": "Holzzaun (Dorf)",
+  "pl": "Drewniany płot (wiejski)"
+ },
+ "Wooden plank fence": {
+  "de": "Bretterzaun",
+  "pl": "Płot z desek"
+ },
+ "Picket fence (village)": {
+  "de": "Lattenzaun (Dorf)",
+  "pl": "Płot sztachetowy (wiejski)"
+ },
+ "Wire fence (low)": {
+  "de": "Drahtzaun (niedrig)",
+  "pl": "Płot z siatki (niski)"
+ },
+ "Wire mesh fence (tall)": {
+  "de": "Maschendrahtzaun (hoch)",
+  "pl": "Płot z siatki (wysoki)"
+ },
+ "Industrial chain-link fence": {
+  "de": "Industrie-Maschendrahtzaun",
+  "pl": "Przemysłowe ogrodzenie z siatki"
+ },
+ "Brick wall": {
+  "de": "Backsteinmauer",
+  "pl": "Mur z cegły"
+ },
+ "Grey concrete wall": {
+  "de": "Graue Betonmauer",
+  "pl": "Szary mur betonowy"
+ },
+ "Industrial concrete wall": {
+  "de": "Industrie-Betonmauer",
+  "pl": "Przemysłowy mur betonowy"
+ },
+ "Industrial panel wall": {
+  "de": "Industrie-Plattenmauer",
+  "pl": "Przemysłowy mur z płyt"
+ },
+ "Stone wall": {
+  "de": "Steinmauer",
+  "pl": "Mur kamienny"
+ },
+ "Wooden fence (Livonia)": {
+  "de": "Holzzaun (Livonia)",
+  "pl": "Drewniany płot (Livonia)"
+ },
+ "Wooden fence (Sakhal)": {
+  "de": "Holzzaun (Sakhal)",
+  "pl": "Drewniany płot (Sakhal)"
+ },
+ "Stones (Chernarus)": {
+  "de": "Steine (Chernarus)",
+  "pl": "Kamienie (Chernarus)"
+ },
+ "Rocks and boulders (Chernarus)": {
+  "de": "Felsen und Findlinge (Chernarus)",
+  "pl": "Skały i głazy (Chernarus)"
+ },
+ "Mossy stones (Livonia)": {
+  "de": "Bemooste Steine (Livonia)",
+  "pl": "Omszałe kamienie (Livonia)"
+ },
+ "Snowy stones (Sakhal)": {
+  "de": "Verschneite Steine (Sakhal)",
+  "pl": "Ośnieżone kamienie (Sakhal)"
+ },
+ "Volcanic rocks (Sakhal)": {
+  "de": "Vulkanfelsen (Sakhal)",
+  "pl": "Skały wulkaniczne (Sakhal)"
+ },
+ "Civilian car wrecks": {
+  "de": "Zivile Autowracks",
+  "pl": "Wraki aut cywilnych"
+ },
+ "Military vehicle wrecks": {
+  "de": "Militärfahrzeugwracks",
+  "pl": "Wraki pojazdów wojskowych"
+ },
+ "Farm and construction wrecks": {
+  "de": "Land- und Baufahrzeugwracks",
+  "pl": "Wraki rolnicze i budowlane"
+ },
+ "Garbage and rubble": {
+  "de": "Müll und Schutt",
+  "pl": "Śmieci i gruz"
+ },
+ "Industrial pallets and barrels": {
+  "de": "Industriepaletten und Fässer",
+  "pl": "Palety i beczki przemysłowe"
+ },
+ "Yard and woodpiles": {
+  "de": "Hof und Holzstapel",
+  "pl": "Podwórko i stosy drewna"
+ },
+ "Hay bales and farm props": {
+  "de": "Heuballen und Hofrequisiten",
+  "pl": "Bele siana i rekwizyty rolnicze"
+ },
+ "Military crates and sandbags": {
+  "de": "Militärkisten und Sandsäcke",
+  "pl": "Skrzynie wojskowe i worki z piaskiem"
+ },
+ "Street lamps": {
+  "de": "Straßenlaternen",
+  "pl": "Latarnie uliczne"
+ },
+ "Traffic signs (warning)": {
+  "de": "Verkehrsschilder (Warnung)",
+  "pl": "Znaki drogowe (ostrzegawcze)"
+ },
+ "Park benches": {
+  "de": "Parkbänke",
+  "pl": "Ławki parkowe"
+ },
+ "Roadside bushes": {
+  "de": "Sträucher am Straßenrand",
+  "pl": "Krzewy przydrożne"
+ },
+ "Shore reeds and shrubs": {
+  "de": "Uferschilf und Sträucher",
+  "pl": "Trzciny i krzewy przybrzeżne"
+ },
+ "Wooden rail fence": {
+  "de": "Holzstangenzaun",
+  "pl": "Drewniany płot z żerdzi"
+ },
+ "Forest field fence": {
+  "de": "Waldfeldzaun",
+  "pl": "Leśny płot polny"
+ },
+ "Industrial corrugated wall": {
+  "de": "Industrie-Wellblechmauer",
+  "pl": "Przemysłowy mur z blachy falistej"
+ },
+ "Tin fence (4 m)": {
+  "de": "Blechzaun (4 m)",
+  "pl": "Płot blaszany (4 m)"
+ },
+ "Commercial tin fence (9 m)": {
+  "de": "Gewerbe-Blechzaun (9 m)",
+  "pl": "Przemysłowy płot blaszany (9 m)"
+ },
+ "Wooden farm fence": {
+  "de": "Bauernhof-Holzzaun",
+  "pl": "Drewniany płot gospodarczy"
+ },
+ "Wooden village fence (4 m)": {
+  "de": "Dorf-Holzzaun (4 m)",
+  "pl": "Drewniany płot wiejski (4 m)"
+ },
+ "Wire fence (Livonia)": {
+  "de": "Drahtzaun (Livonia)",
+  "pl": "Płot z siatki (Livonia)"
+ },
+ "Pasture fence (Livonia)": {
+  "de": "Weidezaun (Livonia)",
+  "pl": "Ogrodzenie pastwiska (Livonia)"
+ },
+ "Forest mesh fence (Livonia)": {
+  "de": "Wald-Maschendrahtzaun (Livonia)",
+  "pl": "Leśne ogrodzenie z siatki (Livonia)"
+ },
+ "Concrete slab wall (Livonia)": {
+  "de": "Betonplattenmauer (Livonia)",
+  "pl": "Mur z płyt betonowych (Livonia)"
+ },
+ "Tall concrete wall (Livonia)": {
+  "de": "Hohe Betonmauer (Livonia)",
+  "pl": "Wysoki mur betonowy (Livonia)"
+ },
+ "Tall concrete wall 8 m (Livonia)": {
+  "de": "Hohe Betonmauer 8 m (Livonia)",
+  "pl": "Wysoki mur betonowy 8 m (Livonia)"
+ },
+ "Low concrete wall (Livonia)": {
+  "de": "Niedrige Betonmauer (Livonia)",
+  "pl": "Niski mur betonowy (Livonia)"
+ },
+ "Industrial chain-link fence (Livonia)": {
+  "de": "Industrie-Maschendrahtzaun (Livonia)",
+  "pl": "Przemysłowe ogrodzenie z siatki (Livonia)"
+ },
+ "Industrial panel wall (Livonia)": {
+  "de": "Industrie-Plattenmauer (Livonia)",
+  "pl": "Przemysłowy mur z płyt (Livonia)"
+ },
+ "Wooden pole fence (Livonia)": {
+  "de": "Holzpfahlzaun (Livonia)",
+  "pl": "Płot z pali drewnianych (Livonia)"
+ },
+ "Silage concrete wall (Livonia)": {
+  "de": "Silo-Betonmauer (Livonia)",
+  "pl": "Mur betonowy silosu (Livonia)"
+ },
+ "Stone wall (Livonia)": {
+  "de": "Steinmauer (Livonia)",
+  "pl": "Mur kamienny (Livonia)"
+ },
+ "Tin fence (Livonia)": {
+  "de": "Blechzaun (Livonia)",
+  "pl": "Płot blaszany (Livonia)"
+ },
+ "Green picket fence (Sakhal)": {
+  "de": "Grüner Lattenzaun (Sakhal)",
+  "pl": "Zielony płot sztachetowy (Sakhal)"
+ },
+ "Red picket fence (Sakhal)": {
+  "de": "Roter Lattenzaun (Sakhal)",
+  "pl": "Czerwony płot sztachetowy (Sakhal)"
+ },
+ "Low blue tin fence (Sakhal)": {
+  "de": "Niedriger blauer Blechzaun (Sakhal)",
+  "pl": "Niski niebieski płot blaszany (Sakhal)"
+ },
+ "Low green tin fence (Sakhal)": {
+  "de": "Niedriger grüner Blechzaun (Sakhal)",
+  "pl": "Niski zielony płot blaszany (Sakhal)"
+ },
+ "Low red tin fence (Sakhal)": {
+  "de": "Niedriger roter Blechzaun (Sakhal)",
+  "pl": "Niski czerwony płot blaszany (Sakhal)"
+ },
+ "Low rusty tin fence (Sakhal)": {
+  "de": "Niedriger rostiger Blechzaun (Sakhal)",
+  "pl": "Niski zardzewiały płot blaszany (Sakhal)"
  }
 }
